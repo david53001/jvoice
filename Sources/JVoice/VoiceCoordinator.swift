@@ -1,0 +1,587 @@
+import AppKit
+import ApplicationServices
+import Combine
+import Foundation
+
+enum ToneMode: String, CaseIterable, Identifiable {
+    case casual
+    case formal
+    case veryCasual
+
+    var id: String {
+        rawValue
+    }
+
+    var displayName: String {
+        switch self {
+        case .casual:
+            return "Casual"
+        case .formal:
+            return "Formal"
+        case .veryCasual:
+            return "Very Casual"
+        }
+    }
+}
+
+enum WhisperModelChoice: String, CaseIterable, Identifiable {
+    case tiny
+    case base
+    case small
+    case largeTurbo
+
+    var id: String {
+        rawValue
+    }
+
+    var displayName: String {
+        switch self {
+        case .tiny, .base, .small:
+            return rawValue.capitalized
+        case .largeTurbo:
+            return "Large"
+        }
+    }
+}
+
+@MainActor
+final class VoiceCoordinator: ObservableObject {
+    @Published var toneMode: ToneMode {
+        didSet {
+            persistSettings()
+        }
+    }
+
+    @Published var whisperModel: WhisperModelChoice {
+        didSet {
+            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage))
+            persistSettings()
+        }
+    }
+
+    @Published var transcriptionLanguage: TranscriptionLanguage {
+        didSet {
+            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage))
+            persistSettings()
+        }
+    }
+
+    @Published var customWords: [String] {
+        didSet {
+            persistSettings()
+        }
+    }
+
+    @Published var removeFillerWords: Bool {
+        didSet {
+            persistSettings()
+        }
+    }
+
+    @Published private(set) var settingsState: SettingsState
+    /// Reflects the live `SMAppService` registration state, not a stored setting.
+    @Published private(set) var launchAtLogin: Bool = LaunchAtLoginManager.isEnabled
+    @Published private(set) var isRecording = false
+    @Published private(set) var hudState: HUDState = .idle
+    @Published private(set) var totalWordsSpoken: Int = 0
+    @Published private(set) var averageWPM: Double = 0
+
+    private let settingsStore: SettingsStore
+    private let recordingManager: RecordingManager
+    private let transcriptionManager: TranscriptionManager
+    private let pasteManager: PasteManager
+    private let statsStore = StatsStore()
+    private lazy var hotKeyManager: HotKeyManager = {
+        HotKeyManager(shortcutName: .toggleRecording) { [weak self] in
+            Task { @MainActor in
+                await self?.handleHotKeyToggle()
+            }
+        }
+    }()
+    private var hudDismissTask: Task<Void, Never>?
+    private var currentTranscriptionTask: Task<Void, Never>?
+    private var isInitializing = true
+    @MainActor private var lastNonSelfFrontmostPID: pid_t?
+    private var isStartingRecording = false
+    private var isStoppingRecording = false
+    private var recordingStartDate: Date?
+    private var lastRecordingDuration: TimeInterval = 0
+    private let lastTranscriptStore = LastTranscriptStore()
+    @Published private(set) var lastTranscript: String = ""
+    @Published private(set) var canRevert: Bool = false
+    private var pendingRevertWords: [String] = []
+    private var preFixTranscript: String = ""
+
+    private lazy var menuBarController = MenuBarController(coordinator: self)
+    private var settingsWindow: SettingsWindow?
+    private lazy var hudWindow = HUDWindow()
+    private var didStart = false
+
+    init() {
+        let settingsStore = SettingsStore()
+        self.settingsStore = settingsStore
+        self.recordingManager = RecordingManager()
+        self.transcriptionManager = TranscriptionManager(
+            engine: Self.makeTranscriptionEngine(for: settingsStore.state.model, language: settingsStore.state.language)
+        )
+        self.pasteManager = PasteManager()
+        self.settingsState = settingsStore.state
+        self.toneMode = ToneMode(appMode: settingsStore.state.mode)
+        self.whisperModel = WhisperModelChoice(model: settingsStore.state.model)
+        self.transcriptionLanguage = settingsStore.state.language
+        self.customWords = settingsStore.state.customWords
+        self.removeFillerWords = settingsStore.state.removeFillerWords
+        self.totalWordsSpoken = statsStore.totalWords
+        self.averageWPM = statsStore.averageWPM
+        self.lastTranscript = lastTranscriptStore.transcript
+        self.isInitializing = false
+    }
+
+    func start() {
+        guard !didStart else { return }
+        didStart = true
+
+        installFrontmostObserver()
+
+        hudWindow.onStop = { [weak self] in self?.toggleRecording() }
+
+        ensureAccessibilityOnceForLaunch()
+
+        hotKeyManager.register()
+        menuBarController.installStatusItem()
+        menuBarController.updateRecordingState(isRecording)
+        updateHUD(.idle)
+
+        // Warm the selected Whisper model in the background so the first
+        // dictation after launch isn't a cold-start model load.
+        transcriptionManager.prewarm()
+    }
+
+    /// Run once on launch: auto-enable launch-at-login the first time, then
+    /// sync the published mirror to the live OS status.
+    func bootstrapLaunchAtLogin() {
+        LaunchAtLoginManager.performFirstRunEnableIfNeeded()
+        launchAtLogin = LaunchAtLoginManager.isEnabled
+    }
+
+    /// Toggle launch-at-login. Re-reads the OS status afterward so the UI shows
+    /// the real state, and routes any failure through the HUD error path.
+    func setLaunchAtLogin(_ enabled: Bool) {
+        do {
+            try LaunchAtLoginManager.setEnabled(enabled)
+        } catch {
+            SystemActions.errorHandler?("Couldn't \(enabled ? "enable" : "disable") Launch at Login: \(error.localizedDescription)")
+        }
+        launchAtLogin = LaunchAtLoginManager.isEnabled
+    }
+
+    private func ensureAccessibilityOnceForLaunch() {
+        let defaults = UserDefaults.standard
+        let key = "jvoice.app.didPromptAXOnLaunch"
+        let trusted = AXIsProcessTrusted()
+        if trusted {
+            defaults.set(false, forKey: key)   // reset so a future revocation triggers prompt
+            return
+        }
+        let hasPrompted = defaults.bool(forKey: key)
+        if hasPrompted { return }
+        let opts: NSDictionary = [
+            kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true
+        ]
+        _ = AXIsProcessTrustedWithOptions(opts)
+        defaults.set(true, forKey: key)
+    }
+
+    private func installFrontmostObserver() {
+        let center = NSWorkspace.shared.notificationCenter
+        center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+                           object: nil,
+                           queue: .main) { [weak self] note in
+            guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
+            let ownPID = ProcessInfo.processInfo.processIdentifier
+            guard app.processIdentifier != ownPID else { return }
+            let pid = app.processIdentifier
+            Task { @MainActor [weak self] in
+                self?.lastNonSelfFrontmostPID = pid
+            }
+        }
+    }
+
+    func toggleRecording() {
+        // Both flags flip synchronously on the main actor, so a re-entry
+        // from a fast hotkey press will short-circuit here rather than
+        // double-dispatching a startRecordingFlow / stopRecordingAndTranscribe.
+        if isRecording {
+            guard !isStoppingRecording else { return }
+            isStoppingRecording = true
+            Task { [weak self] in
+                defer { Task { @MainActor [weak self] in self?.isStoppingRecording = false } }
+                self?.stopRecordingAndTranscribe()
+            }
+        } else {
+            guard !isStartingRecording else { return }
+            guard !transcriptionManager.isTranscribing else { return }
+            isStartingRecording = true
+            // P1.7: abandon any transcription still running for an earlier recording.
+            currentTranscriptionTask?.cancel()
+            currentTranscriptionTask = nil
+            Task { [weak self] in
+                defer { Task { @MainActor [weak self] in self?.isStartingRecording = false } }
+                await self?.startRecordingFlow()
+            }
+        }
+    }
+
+    func showSettings() {
+        openSettingsWindow()
+    }
+
+    func openSettingsWindow() {
+        if settingsWindow == nil {
+            settingsWindow = SettingsWindow(coordinator: self)
+        }
+        settingsWindow?.show()
+    }
+
+    func quitApp() {
+        hudDismissTask?.cancel()
+
+        if isRecording {
+            _ = recordingManager.stopRecording()
+            isRecording = false
+            menuBarController.updateRecordingState(false)
+        }
+
+        updateHUD(.idle)
+        NSApp.terminate(nil)
+    }
+
+    func updateHUD(_ state: HUDState) {
+        hudState = state
+        hudWindow.update(state: state)
+    }
+
+    /// Surface a transient error in the HUD and auto-dismiss after the
+    /// usual delay.
+    func showError(_ message: String) {
+        updateHUD(.error(message))
+        scheduleHUDReset(after: 3_000_000_000)
+    }
+
+    /// Synchronously flush any pending debounced settings write.
+    /// Called from `applicationWillTerminate` so the last keystrokes
+    /// aren't lost when the user quits mid-debounce.
+    func flushSettings() {
+        settingsStore.flush()
+    }
+
+    /// Reset all persisted settings to defaults and re-pull every
+    /// @Published mirror so the UI reflects the fresh state. The
+    /// `isInitializing` guard suppresses the cascade of didSet →
+    /// persistSettings writes that would otherwise re-encode the blob
+    /// N times during reset. A final explicit `flush()` persists the
+    /// freshly-defaulted state.
+    public func resetSettings() {
+        isInitializing = true
+        settingsStore.reset()
+        toneMode = ToneMode(appMode: settingsStore.state.mode)
+        whisperModel = WhisperModelChoice(model: settingsStore.state.model)
+        transcriptionLanguage = settingsStore.state.language
+        customWords = settingsStore.state.customWords
+        removeFillerWords = settingsStore.state.removeFillerWords
+        isInitializing = false
+        settingsStore.flush()
+    }
+
+    private func handleHotKeyToggle() async {
+        toggleRecording()
+    }
+
+    private func startRecordingFlow() async {
+        hudDismissTask?.cancel()
+
+        let granted = await recordingManager.requestPermission()
+        guard granted else {
+            PermissionError.microphoneDenied.surfaceAndOpenSettings()
+            return
+        }
+
+        guard recordingManager.startRecording() else {
+            if let err = recordingManager.lastError {
+                switch err {
+                case .permissionDenied:
+                    PermissionError.microphoneDenied.surfaceAndOpenSettings()
+                    return
+                case .engineSetupFailed(let msg):
+                    updateHUD(.error("Couldn't start recorder: \(msg)"))
+                case .encodeFailure(let msg):
+                    updateHUD(.error("Recorder failed: \(msg)"))
+                case .finishedUnsuccessfully:
+                    updateHUD(.error("Recording stopped unexpectedly."))
+                case .fileTooSmall(let bytes):
+                    updateHUD(.error("Recording too short (\(bytes) bytes captured)."))
+                }
+            } else {
+                updateHUD(.error("Unable to start recording."))
+            }
+            scheduleHUDReset()
+            return
+        }
+
+        isRecording = true
+        recordingStartDate = Date()
+        menuBarController.updateRecordingState(true)
+        updateHUD(.recording)
+    }
+
+    private func stopRecordingAndTranscribe() {
+        guard isRecording else {
+            return
+        }
+
+        isRecording = false
+        lastRecordingDuration = recordingStartDate.map { Date().timeIntervalSince($0) } ?? 0
+        recordingStartDate = nil
+        menuBarController.updateRecordingState(false)
+
+        let audioURL = recordingManager.stopRecording()
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        let resolvedTargetPID: pid_t?
+        if let frontmost, frontmost.processIdentifier != ownPID {
+            resolvedTargetPID = frontmost.processIdentifier
+        } else {
+            resolvedTargetPID = lastNonSelfFrontmostPID
+        }
+        guard let targetPID = resolvedTargetPID else {
+            updateHUD(.error("No target app — focus an app that accepts text before recording."))
+            scheduleHUDReset(after: 3_000_000_000)
+            if let audioURL {
+                try? FileManager.default.removeItem(at: audioURL)
+            }
+            return
+        }
+        updateHUD(.transcribing)
+
+        currentTranscriptionTask?.cancel()
+        currentTranscriptionTask = Task { [weak self] in
+            await self?.finishTranscription(audioURL: audioURL, targetPID: targetPID)
+        }
+    }
+
+    private func finishTranscription(audioURL: URL?, targetPID: pid_t?) async {
+        guard let audioURL else {
+            updateHUD(.error("No recording was captured."))
+            scheduleHUDReset()
+            return
+        }
+
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        guard RecordingManager.isUsableRecording(at: audioURL) else {
+            // The user tapped+released too fast to capture audio. Surface a clear
+            // message instead of waiting for WhisperKit to fail with an opaque
+            // 'unsupportedAudioFile' several seconds later.
+            updateHUD(.error("Recording too short — please hold the hotkey longer."))
+            scheduleHUDReset(after: 3_000_000_000)
+            return
+        }
+
+        do {
+            let transcript = try await transcriptionManager.transcribe(audioURL: audioURL)
+            if Task.isCancelled {
+                // The user moved on; don't paste into whatever app is now frontmost.
+                return
+            }
+            let userDict = TextProcessor.buildUserDictionary(from: customWords)
+            let processed = removeBlankTranscriptPlaceholder(from: TextProcessor.process(transcript, mode: toneMode.appMode, extraDictionary: userDict, removeFillerWords: removeFillerWords))
+
+            guard !processed.isEmpty else {
+                updateHUD(.error("No speech detected."))
+                scheduleHUDReset()
+                return
+            }
+
+            // Bring the target app back to focus before synthesizing Cmd+V.
+            // WhisperKit can take several seconds; the window may have lost key status.
+            if let pid = targetPID,
+               let targetApp = NSRunningApplication(processIdentifier: pid) {
+                targetApp.activate()
+                try? await Task.sleep(nanoseconds: UInt64(AppTimings.pasteActivationDelay * 1_000_000_000))
+            }
+
+            let outcome: PasteOutcome
+            if let pid = targetPID {
+                outcome = pasteManager.paste(processed, targetPID: pid)
+            } else {
+                outcome = pasteManager.paste(processed)
+            }
+
+            switch outcome {
+            case .ok:
+                break
+            case .accessibilityDenied:
+                PermissionError.accessibilityDenied.surfaceAndOpenSettings()
+                scheduleHUDReset()
+                return
+            case .pasteboardLocked:
+                updateHUD(.error("Pasteboard is busy — try again."))
+                scheduleHUDReset()
+                return
+            case .targetRejected:
+                updateHUD(.error("Unable to paste into the active app."))
+                scheduleHUDReset()
+                return
+            }
+
+            let wordCount = processed.split(separator: " ").count
+            lastTranscriptStore.transcript = processed
+            lastTranscript = processed
+            statsStore.record(words: wordCount, durationSeconds: lastRecordingDuration)
+            totalWordsSpoken = statsStore.totalWords
+            averageWPM = statsStore.averageWPM
+
+            updateHUD(.done(processed))
+            scheduleHUDReset()
+        } catch {
+            updateHUD(.error(error.localizedDescription))
+            scheduleHUDReset()
+        }
+    }
+
+    private func removeBlankTranscriptPlaceholder(from text: String) -> String {
+        return TextProcessor.removeWhisperHallucinations(text)
+    }
+
+    private func scheduleHUDReset(after delayNanoseconds: UInt64 = 1_000_000_000) {
+        hudDismissTask?.cancel()
+        hudDismissTask = Task { [weak self] in
+            do {
+                try await Task.sleep(nanoseconds: delayNanoseconds)
+            } catch {
+                return
+            }
+
+            guard !Task.isCancelled, let self else { return }
+            self.updateHUD(.idle)
+        }
+    }
+
+    private func persistSettings() {
+        guard !isInitializing else { return }
+        var s = settingsState
+        s.mode = toneMode.appMode
+        s.model = whisperModel.modelOption
+        s.language = transcriptionLanguage
+        s.customWords = customWords
+        s.removeFillerWords = removeFillerWords
+        settingsStore.state = s
+        settingsState = s
+    }
+
+    func addCustomWord(_ word: String) {
+        let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !customWords.contains(trimmed) else { return }
+        customWords.append(trimmed)
+    }
+
+    func removeCustomWord(_ word: String) {
+        customWords.removeAll { $0 == word }
+    }
+
+    func fixLastTranscript(_ corrected: String) {
+        let trimmed = corrected.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        preFixTranscript = lastTranscript
+        let newWords = TextProcessor.extractCorrections(from: lastTranscript, corrected: trimmed)
+        var inserted: [String] = []
+        for word in newWords {
+            let t = word.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !t.isEmpty, !customWords.contains(t) else { continue }
+            addCustomWord(t)
+            inserted.append(t)
+        }
+        pendingRevertWords = inserted
+        canRevert = !inserted.isEmpty
+
+        lastTranscriptStore.transcript = trimmed
+        lastTranscript = trimmed
+    }
+
+    func revertLastFix() {
+        for word in pendingRevertWords {
+            removeCustomWord(word)
+        }
+        pendingRevertWords = []
+        canRevert = false
+        lastTranscript = preFixTranscript
+        lastTranscriptStore.transcript = preFixTranscript
+        preFixTranscript = ""
+    }
+
+    func clearRevertBuffer() {
+        pendingRevertWords = []
+        canRevert = false
+    }
+
+    private static func makeTranscriptionEngine(for model: WhisperModelOption, language: TranscriptionLanguage = .english) -> any TranscriptionEngine {
+        #if canImport(WhisperKit)
+        return WhisperKitTranscriptionEngine(model: model, language: language)
+        #else
+        return FileBackedTranscriptionEngine()
+        #endif
+    }
+}
+
+private extension ToneMode {
+    init(appMode: AppMode) {
+        switch appMode {
+        case .casual:
+            self = .casual
+        case .formal:
+            self = .formal
+        case .veryCasual:
+            self = .veryCasual
+        }
+    }
+
+    var appMode: AppMode {
+        switch self {
+        case .casual:
+            return .casual
+        case .formal:
+            return .formal
+        case .veryCasual:
+            return .veryCasual
+        }
+    }
+}
+
+private extension WhisperModelChoice {
+    init(model: WhisperModelOption) {
+        switch model {
+        case .tiny:
+            self = .tiny
+        case .base:
+            self = .base
+        case .small:
+            self = .small
+        case .largeTurbo:
+            self = .largeTurbo
+        }
+    }
+
+    var modelOption: WhisperModelOption {
+        switch self {
+        case .tiny:
+            return .tiny
+        case .base:
+            return .base
+        case .small:
+            return .small
+        case .largeTurbo:
+            return .largeTurbo
+        }
+    }
+}
