@@ -18,3 +18,4 @@ xcuserdata/
 *.swp
 *.swo
 docs/assets/demo-src/frames/
+.vscode/
