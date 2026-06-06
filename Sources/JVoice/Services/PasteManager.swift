@@ -1,0 +1,180 @@
+import AppKit
+import ApplicationServices
+import Combine
+import CoreGraphics
+import Foundation
+import Carbon.HIToolbox
+
+public enum PasteOutcome: Equatable, Sendable {
+    case ok
+    case accessibilityDenied
+    case pasteboardLocked
+    case targetRejected
+}
+
+public protocol PasteActionPerforming {
+    func performPaste() -> Bool
+    func performPaste(targetPID: pid_t) -> Bool
+}
+
+public struct SystemPasteActionPerformer: PasteActionPerforming {
+    public init() {}
+
+    public func performPaste() -> Bool {
+        if let pid = NSWorkspace.shared.frontmostApplication?.processIdentifier {
+            return synthesizeCommandVPaste(to: pid)
+        }
+        return synthesizeCommandVPaste()
+    }
+
+    public func performPaste(targetPID: pid_t) -> Bool {
+        synthesizeCommandVPaste(to: targetPID)
+    }
+
+    private func synthesizeCommandVPaste(to pid: pid_t) -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+
+        guard let source = CGEventSource(stateID: .hidSystemState) else {
+            return false
+        }
+
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) else {
+            return false
+        }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.postToPid(pid)
+        keyUp.postToPid(pid)
+        return true
+    }
+
+    private func synthesizeCommandVPaste() -> Bool {
+        guard AXIsProcessTrusted() else { return false }
+
+        guard let source = CGEventSource(stateID: .hidSystemState) else {
+            return false
+        }
+
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_V), keyDown: false) else {
+            return false
+        }
+
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.post(tap: .cghidEventTap)
+        keyUp.post(tap: .cghidEventTap)
+        return true
+    }
+}
+
+@MainActor
+public final class PasteManager: ObservableObject {
+    @Published public private(set) var stagedText: String = ""
+
+    private let performer: any PasteActionPerforming
+    private let pasteboard: NSPasteboard
+    /// Restore task from the most recent paste. Cancelled when a new paste starts
+    /// so two pastes inside the `pasteRestoreDelay` window don't clobber each
+    /// other's clipboard restore.
+    private var restoreTask: Task<Void, Never>?
+
+    public init(
+        performer: any PasteActionPerforming = SystemPasteActionPerformer(),
+        pasteboard: NSPasteboard = .general
+    ) {
+        self.performer = performer
+        self.pasteboard = pasteboard
+    }
+
+    public func stage(_ text: String) {
+        stagedText = text
+        pasteboard.clearContents()
+        _ = pasteboard.setString(text, forType: .string)
+    }
+
+    public func stageText(_ text: String) {
+        stage(text)
+    }
+
+    @discardableResult
+    public func paste(_ text: String? = nil) -> PasteOutcome {
+        guard AXIsProcessTrusted() else { return .accessibilityDenied }
+
+        var saved: ClipboardSnapshot? = nil
+        if let text {
+            saved = captureClipboard()
+            stage(text)
+        }
+
+        guard !stagedText.isEmpty else {
+            return .targetRejected
+        }
+
+        let result = performer.performPaste()
+        // Always restore: on success, after the target app has had time to
+        // consume the staged text; on failure, immediately so the user's
+        // prior clipboard isn't permanently overwritten.
+        if let saved {
+            scheduleClipboardRestore(saved,
+                                     delay: result ? AppTimings.pasteRestoreDelay : 0.05)
+        }
+        return result ? .ok : .targetRejected
+    }
+
+    @discardableResult
+    public func paste(_ text: String, targetPID: pid_t) -> PasteOutcome {
+        guard AXIsProcessTrusted() else { return .accessibilityDenied }
+        let saved = captureClipboard()
+        stage(text)
+        guard !stagedText.isEmpty else { return .targetRejected }
+        let result = performer.performPaste(targetPID: targetPID)
+        // Always restore: on success, after the target app has had time to
+        // consume the staged text; on failure, immediately so the user's
+        // prior clipboard isn't permanently overwritten.
+        scheduleClipboardRestore(saved,
+                                 delay: result ? AppTimings.pasteRestoreDelay : 0.05)
+        return result ? .ok : .targetRejected
+    }
+
+    private typealias ClipboardSnapshot = [(NSPasteboard.PasteboardType, Data)]
+
+    private func captureClipboard() -> ClipboardSnapshot {
+        guard let items = pasteboard.pasteboardItems else { return [] }
+        return items.flatMap { item in
+            item.types.compactMap { type in
+                item.data(forType: type).map { (type, $0) }
+            }
+        }
+    }
+
+    private func scheduleClipboardRestore(_ snapshot: ClipboardSnapshot,
+                                          delay: TimeInterval) {
+        restoreTask?.cancel()
+        restoreTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+            guard !Task.isCancelled, let self, !snapshot.isEmpty else { return }
+            self.pasteboard.clearContents()
+            let item = NSPasteboardItem()
+            for (type, data) in snapshot {
+                item.setData(data, forType: type)
+            }
+            self.pasteboard.writeObjects([item])
+        }
+    }
+
+    @discardableResult
+    public func performPaste() -> PasteOutcome {
+        paste()
+    }
+
+    public func clear() {
+        stagedText = ""
+    }
+
+    public func clearStagedText() {
+        clear()
+    }
+}

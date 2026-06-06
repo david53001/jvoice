@@ -1,0 +1,60 @@
+import Foundation
+
+#if canImport(KeyboardShortcuts)
+import KeyboardShortcuts
+public typealias HotKeyShortcutName = KeyboardShortcuts.Name
+
+public extension KeyboardShortcuts.Name {
+    static let toggleRecording = Self("toggleRecording", default: .init(.space, modifiers: [.option]))
+}
+#else
+public struct HotKeyShortcutName: Hashable, Sendable {
+    public var rawValue: String
+
+    public init(_ rawValue: String) {
+        self.rawValue = rawValue
+    }
+
+    public static let toggleRecording = HotKeyShortcutName("toggleRecording")
+}
+#endif
+
+@MainActor
+public final class HotKeyManager {
+    public typealias ToggleAction = @Sendable () -> Void
+
+    public let shortcutName: HotKeyShortcutName
+    private let onToggle: ToggleAction
+    private var isRegistered = false
+    private var lastFiredAt: Date = .distantPast
+    private static let minimumInterval: TimeInterval = 0.15
+
+    public init(shortcutName: HotKeyShortcutName = .toggleRecording, onToggle: @escaping ToggleAction) {
+        self.shortcutName = shortcutName
+        self.onToggle = onToggle
+        register()
+    }
+
+    public func register() {
+        guard !isRegistered else { return }
+        isRegistered = true
+
+        #if canImport(KeyboardShortcuts)
+        KeyboardShortcuts.onKeyDown(for: shortcutName) { [weak self] in
+            guard let self else { return }
+            let now = Date()
+            if now.timeIntervalSince(self.lastFiredAt) < HotKeyManager.minimumInterval { return }
+            self.lastFiredAt = now
+            self.onToggle()
+        }
+        #endif
+    }
+
+    public func trigger() {
+        onToggle()
+    }
+
+    public func handleToggle() {
+        trigger()
+    }
+}

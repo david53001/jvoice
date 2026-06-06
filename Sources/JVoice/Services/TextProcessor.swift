@@ -1,0 +1,226 @@
+import Foundation
+
+public struct TextProcessor: Sendable {
+    public static let shared = TextProcessor()
+
+    public static let correctionDictionary: [String: String] = [
+        "app kit": "AppKit",
+        "appkit": "AppKit",
+        "j voice": "JVoice",
+        "jvoice": "JVoice",
+        "keyboard shortcuts": "KeyboardShortcuts",
+        "keyboardshortcuts": "KeyboardShortcuts",
+        "mac os": "macOS",
+        "whisper kit": "WhisperKit",
+        "whisperkit": "WhisperKit"
+    ]
+
+    public init() {}
+
+    public func process(_ text: String, mode: AppMode) -> String {
+        Self.process(text, mode: mode)
+    }
+
+    public static func process(_ text: String, mode: AppMode, extraDictionary: [String: String] = [:], removeFillerWords: Bool = false) -> String {
+        let normalized = normalizeWhitespace(text)
+        let clean = removeFillerWords ? removeDisfluencies(normalized) : normalized
+        let corrected = applyCorrections(clean, extraDictionary: extraDictionary)
+        return format(corrected, mode: mode)
+    }
+
+    public func transform(_ text: String, mode: AppMode) -> String {
+        process(text, mode: mode)
+    }
+
+    public static func transform(_ text: String, mode: AppMode) -> String {
+        process(text, mode: mode)
+    }
+
+    public static func applyCorrections(_ text: String, extraDictionary: [String: String] = [:]) -> String {
+        var result = text
+        let combined = extraDictionary.merging(correctionDictionary) { _, builtin in builtin }
+        for (needle, replacement) in combined.sorted(by: { $0.key.count > $1.key.count }) {
+            result = replaceOccurrences(of: needle, in: result, with: replacement)
+        }
+        return result
+    }
+
+    public static func buildUserDictionary(from words: [String]) -> [String: String] {
+        var dict: [String: String] = [:]
+        for word in words {
+            for variant in spokenVariants(for: word) where correctionDictionary[variant] == nil {
+                dict[variant] = word
+            }
+        }
+        return dict
+    }
+
+    public static func extractCorrections(from original: String, corrected: String) -> [String] {
+        let originalWords = original.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+        let correctedWords = corrected.components(separatedBy: .whitespaces).filter { !$0.isEmpty }
+
+        var results: [String] = []
+
+        if originalWords.count == correctedWords.count {
+            for (orig, corr) in zip(originalWords, correctedWords) where orig != corr {
+                let stripped = corr.trimmingCharacters(in: .punctuationCharacters)
+                if !stripped.isEmpty { results.append(stripped) }
+            }
+        } else {
+            let originalExact = Set(originalWords)
+            for word in correctedWords where !originalExact.contains(word) {
+                let stripped = word.trimmingCharacters(in: .punctuationCharacters)
+                if !stripped.isEmpty { results.append(stripped) }
+            }
+        }
+
+        return Array(Set(results)).filter { $0.count > 1 }
+    }
+
+    public static func spokenVariants(for word: String) -> [String] {
+        var variants: Set<String> = []
+        let lower = word.lowercased()
+
+        variants.insert(lower)
+        variants.insert(lower.replacingOccurrences(of: " ", with: ""))
+        variants.insert(lower.replacingOccurrences(of: ".", with: "").replacingOccurrences(of: " ", with: ""))
+        variants.insert(lower.replacingOccurrences(of: ".", with: " "))
+
+        var camelSplit = ""
+        for (i, char) in word.enumerated() {
+            if char.isUppercase && i > 0 {
+                camelSplit += " "
+            }
+            camelSplit += String(char).lowercased()
+        }
+        variants.insert(camelSplit)
+        variants.insert(camelSplit.replacingOccurrences(of: " ", with: ""))
+
+        return Array(variants).filter { !$0.isEmpty && $0 != word }
+    }
+
+    public static func format(_ text: String, mode: AppMode) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        switch mode {
+        case .casual:
+            return removeTerminalPunctuation(trimmed)
+        case .formal:
+            let capitalized = capitalizeFirstCharacter(trimmed)
+            return ensureTerminalPeriod(capitalized)
+        case .veryCasual:
+            let lowered = trimmed.lowercased()
+            let tidied = collapseRepeatedCommas(lowered)
+            return ensureTerminalDotOrQuestion(tidied)
+        }
+    }
+
+    private static func normalizeWhitespace(_ text: String) -> String {
+        text
+            .components(separatedBy: .whitespacesAndNewlines)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    public static func removeDisfluencies(_ text: String) -> String {
+        let pattern = #"(?i)\b(um+h?|uh+|er+|a+h+|hmm+)\b[,.]?\s*"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let stripped = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
+        var result = normalizeWhitespace(stripped.trimmingCharacters(in: .whitespacesAndNewlines))
+        if result.hasSuffix(",") { result.removeLast() }
+        return result
+    }
+
+    /// Strips known Whisper hallucination outputs that occur on near-silent or zero-content
+    /// audio. Returns an empty string if the entire input is hallucination noise.
+    public static func removeWhisperHallucinations(_ text: String) -> String {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Lone punctuation
+        if trimmed.isEmpty { return "" }
+        if trimmed.allSatisfy({ ".,;:!? ".contains($0) }) { return "" }
+        // Whisper-specific sentinels
+        let blanklikePatterns = [
+            "[BLANK_TEXT]",
+            "BLANK_TEXT",
+            "Thanks for watching!",
+            "Thanks for watching.",
+            "Thank you.",
+            "Thank you for watching.",
+            "Subscribe to my channel",
+            "Subscribe to my channel.",
+            "Please subscribe to my channel.",
+            "Bye.",
+            "Bye!",
+        ]
+        for pattern in blanklikePatterns {
+            if trimmed.caseInsensitiveCompare(pattern) == .orderedSame {
+                return ""
+            }
+        }
+        return text
+    }
+
+    private static func replaceOccurrences(of needle: String, in text: String, with replacement: String) -> String {
+        let pattern = phrasePattern(for: needle)
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else {
+            return text
+        }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let safeTemplate = NSRegularExpression.escapedTemplate(for: replacement)
+        return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: safeTemplate)
+    }
+
+    private static func phrasePattern(for phrase: String) -> String {
+        let components = phrase
+            .split(separator: " ")
+            .map { NSRegularExpression.escapedPattern(for: String($0)) }
+        return #"\b"# + components.joined(separator: #"\s+"#) + #"\b"#
+    }
+
+    private static func removeTerminalPunctuation(_ text: String) -> String {
+        var result = text
+        while let last = result.last, ".!?".contains(last) {
+            result.removeLast()
+        }
+        return result
+    }
+
+    private static func capitalizeFirstCharacter(_ text: String) -> String {
+        guard let first = text.first else { return text }
+        return String(first).uppercased() + text.dropFirst()
+    }
+
+    private static func ensureTerminalPeriod(_ text: String) -> String {
+        guard let last = text.last else { return text }
+        if ".!?".contains(last) { return text }
+        return text + "."
+    }
+
+    /// Collapses runs of commas — and the whitespace around them — into a
+    /// single ", " so a very-casual transcript separates clauses without
+    /// piling up commas.
+    private static func collapseRepeatedCommas(_ text: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"\s*,(?:\s*,)*\s*"#) else { return text }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: ", ")
+    }
+
+    /// Guarantees the very-casual output ends on a dot or a question mark.
+    /// An existing `?`/`.` is kept, a trailing `!` becomes `.`, and any
+    /// dangling comma or whitespace separator is dropped before the period.
+    private static func ensureTerminalDotOrQuestion(_ text: String) -> String {
+        var result = text
+        while let last = result.last, last == " " || last == "," {
+            result.removeLast()
+        }
+        guard let last = result.last else { return result }
+        if last == "?" || last == "." { return result }
+        if last == "!" {
+            result.removeLast()
+            return result + "."
+        }
+        return result + "."
+    }
+}
