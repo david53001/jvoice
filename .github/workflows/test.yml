@@ -4,6 +4,11 @@ on:
   pull_request:
   push:
     branches: [main, "feat/**", "fix/**"]
+    tags: ['v*']
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   swift-test:
@@ -23,18 +28,34 @@ jobs:
           xcodebuild -version
       - name: Resolve packages
         run: swift package resolve
+      - name: Build release configuration
+        # The shipped artifact (release DMG) is built in release config; CI
+        # must compile it so a release-only break or `#else` fallback path
+        # (non-WhisperKit branches) can't ship undetected.
+        run: swift build -c release
       - name: Run tests
         run: |
           set -o pipefail
           swift test 2>&1 | tee test.log
+      - name: Run local logic verification scripts
+        # These are the source of truth for the pure-logic core on a CLT-only
+        # machine; running them in CI keeps them compiling/passing against
+        # current sources (they need only the Swift toolchain — no WhisperKit,
+        # no mic).
+        run: |
+          bash ./scripts/run-logic-tests.sh
+          bash ./scripts/verify-streaming.sh
       - name: Verify the swift-testing suite actually ran
         # Two layers of protection against the `#if canImport(Testing)`
         # silent-skip trap:
         #   1. The swift-testing run summary must be present (XCTest output
         #      alone — the 4 fallback files — must NOT satisfy this).
-        #   2. The executed-case count must be near the authored count
-        #      (96 cases as of 2026-06-06; threshold leaves headroom for
-        #      legitimate removals but catches wholesale skips).
+        #   2. The executed-case count must track the authored count. Instead
+        #      of a hard-coded floor (which erodes as the suite grows), count
+        #      the authored `@Test` cases in Tests/ and require executed
+        #      >= authored - 5 (a small slack for legitimate removals). This is
+        #      self-maintaining: adding tests raises the floor automatically,
+        #      while a wholesale silent skip still fails the build.
         run: |
           SUMMARY=$(grep -Eo "Test run with [0-9]+ tests" test.log | head -1 || true)
           if [ -z "$SUMMARY" ]; then
@@ -42,8 +63,9 @@ jobs:
             exit 1
           fi
           COUNT=$(echo "$SUMMARY" | grep -Eo "[0-9]+")
-          echo "swift-testing executed $COUNT cases"
-          if [ "$COUNT" -lt 90 ]; then
-            echo "::error::Only $COUNT swift-testing cases executed (expected ≥ 90). Tests are being silently skipped."
+          AUTHORED=$(grep -rohE '@Test' Tests | wc -l | tr -d ' ')
+          echo "swift-testing authored=$AUTHORED executed=$COUNT"
+          if [ "$COUNT" -lt "$((AUTHORED - 5))" ]; then
+            echo "::error::Only $COUNT swift-testing cases executed (authored $AUTHORED, allowed slack 5). Tests are being silently skipped."
             exit 1
           fi

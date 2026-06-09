@@ -11,6 +11,13 @@ set -euo pipefail
 #
 # Reuses the "JVoice Self-Signed" cert name, so an identity already present
 # in the login keychain (e.g. from a prior install) is detected and reused.
+#
+# PREREQUISITE: Homebrew OpenSSL 3.x with the PKCS12 `-legacy` flag.
+#   Install via:  brew install openssl@3
+# macOS ships LibreSSL, which lacks `-legacy`, so the system `openssl` cannot
+# produce the RC2-40-CBC PKCS12 that `security import` requires. This script
+# searches the Homebrew install paths below; without brew OpenSSL 3 it exits
+# with an actionable error.
 
 CERT_NAME="JVoice Self-Signed"
 LOGIN_KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
@@ -60,7 +67,7 @@ EOF
 
 "$OPENSSL" req -x509 -nodes -days 3650 -newkey rsa:2048 \
     -keyout "$TMP/key.pem" -out "$TMP/cert.pem" \
-    -config "$TMP/cert.conf" 2>/dev/null
+    -config "$TMP/cert.conf"
 
 "$OPENSSL" pkcs12 -legacy -export -inkey "$TMP/key.pem" -in "$TMP/cert.pem" \
     -out "$TMP/identity.p12" -password pass:jvoice -name "$CERT_NAME"

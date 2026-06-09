@@ -99,7 +99,16 @@ def run_bench(wav, stream):
     cmd = [BIN, "--bench", wav, "--model", MODEL, "--vocab", VOCAB_ARG]
     if stream:
         cmd.append("--stream")
-    out = subprocess.run(cmd, capture_output=True, text=True).stdout
+    proc = subprocess.run(cmd, capture_output=True, text=True)
+    out = proc.stdout
+    # A non-zero exit or empty stdout means the bench itself failed (missing
+    # model, crash, WhisperKit load failure). Surface it loudly rather than
+    # scoring empty output as a flood of fake transcription failures.
+    if proc.returncode != 0 or not out.strip():
+        sys.exit(
+            f"bench invocation failed (exit {proc.returncode}) for {wav}:\n"
+            f"{proc.stderr.strip() or '<no stderr>'}"
+        )
     lines = out.splitlines()
     if not stream:
         for line in lines:
@@ -131,6 +140,12 @@ for i, a in enumerate(sys.argv[1:], 1):
         QUICK = True
 
 def main():
+    if not os.path.exists(BIN):
+        sys.exit(
+            f"bench binary not found at {BIN}\n"
+            "build the release binary first (swift build -c release)"
+        )
+
     pause_patterns = {"short": 500, "med": 2200} if QUICK else {"short": 500, "med": 2200, "long": 6500}
     voices = VOICES[:1] if QUICK else VOICES
 

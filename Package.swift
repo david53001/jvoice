@@ -16,7 +16,7 @@ let package = Package(
     dependencies: [
         .package(
             url: "https://github.com/argmaxinc/WhisperKit.git",
-            from: "1.0.0"
+            exact: "1.0.0"
         ),
         .package(
             url: "https://github.com/sindresorhus/KeyboardShortcuts.git",
