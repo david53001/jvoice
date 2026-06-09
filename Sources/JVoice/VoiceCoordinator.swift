@@ -122,6 +122,7 @@ final class VoiceCoordinator: ObservableObject {
     /// recording N+1 has begun.
     private var recordingGeneration = 0
     private var isInitializing = true
+    private var frontmostObserver: NSObjectProtocol?
     @MainActor private var lastNonSelfFrontmostPID: pid_t?
     private var isStartingRecording = false
     private var isStoppingRecording = false
@@ -156,6 +157,12 @@ final class VoiceCoordinator: ObservableObject {
         self.averageWPM = statsStore.averageWPM
         self.lastTranscript = lastTranscriptStore.transcript
         self.isInitializing = false
+    }
+
+    deinit {
+        if let frontmostObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(frontmostObserver)
+        }
     }
 
     func start() {
@@ -207,7 +214,7 @@ final class VoiceCoordinator: ObservableObject {
             return
         }
         let hasPrompted = defaults.bool(forKey: key)
-        if hasPrompted { return }
+        guard Self.shouldPromptAX(trusted: trusted, hasPrompted: hasPrompted) else { return }
         let opts: NSDictionary = [
             kAXTrustedCheckOptionPrompt.takeUnretainedValue(): true
         ]
@@ -217,7 +224,7 @@ final class VoiceCoordinator: ObservableObject {
 
     private func installFrontmostObserver() {
         let center = NSWorkspace.shared.notificationCenter
-        center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
+        frontmostObserver = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                            object: nil,
                            queue: .main) { [weak self] note in
             guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else { return }
@@ -267,6 +274,17 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     func quitApp() {
+        cleanUpForTermination()
+        updateHUD(.idle)
+        NSApp.terminate(nil)
+    }
+
+    /// Idempotent exit cleanup: stop an in-flight recording and remove the
+    /// abandoned WAV so a quit mid-recording (via any path — menu Quit, Cmd+Q,
+    /// logout) never orphans audio. A no-op when not recording / nothing to
+    /// remove, so it's safe to call more than once (quitApp → terminate →
+    /// applicationWillTerminate).
+    func cleanUpForTermination() {
         hudDismissTask?.cancel()
 
         if isRecording {
@@ -281,9 +299,6 @@ final class VoiceCoordinator: ObservableObject {
             }
             isRecording = false
         }
-
-        updateHUD(.idle)
-        NSApp.terminate(nil)
     }
 
     func updateHUD(_ state: HUDState) {
@@ -331,6 +346,10 @@ final class VoiceCoordinator: ObservableObject {
         removeFillerWords = settingsStore.state.removeFillerWords
         isInitializing = false
         settingsStore.flush()
+        // A reset is an explicit user action, so also clear the persisted
+        // plaintext transcript and the corruption-recovery backup blob.
+        clearLastTranscript()
+        settingsStore.clearCorruptBackup()
     }
 
     private func handleHotKeyToggle() async {
@@ -411,12 +430,9 @@ final class VoiceCoordinator: ObservableObject {
         streamingSession = nil
         let ownPID = ProcessInfo.processInfo.processIdentifier
         let frontmost = NSWorkspace.shared.frontmostApplication
-        let resolvedTargetPID: pid_t?
-        if let frontmost, frontmost.processIdentifier != ownPID {
-            resolvedTargetPID = frontmost.processIdentifier
-        } else {
-            resolvedTargetPID = lastNonSelfFrontmostPID
-        }
+        let resolvedTargetPID = Self.resolveTargetPID(frontmostPID: frontmost?.processIdentifier,
+                                                       ownPID: ownPID,
+                                                       lastNonSelfPID: lastNonSelfFrontmostPID)
         guard let targetPID = resolvedTargetPID else {
             updateHUD(.error("No target app — focus an app that accepts text before recording."))
             scheduleHUDReset(after: 3_000_000_000)
@@ -569,10 +585,17 @@ final class VoiceCoordinator: ObservableObject {
         settingsState = s
     }
 
-    func addCustomWord(_ word: String) {
+    // NOTE: comma-splitting (e.g. "React, Swift" → two entries) is deliberately
+    // NOT done here — it's a separate behavior decision (see UI-09).
+    @discardableResult
+    func addCustomWord(_ word: String) -> String? {
         let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !customWords.contains(trimmed) else { return }
+        guard !trimmed.isEmpty else { return nil }
+        guard trimmed.count <= 60 else { return nil }
+        guard trimmed.rangeOfCharacter(from: .alphanumerics) != nil else { return nil }
+        guard !customWords.contains(where: { $0.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return nil }
         customWords.append(trimmed)
+        return trimmed
     }
 
     func removeCustomWord(_ word: String) {
@@ -587,10 +610,9 @@ final class VoiceCoordinator: ObservableObject {
         let newWords = TextProcessor.extractCorrections(from: lastTranscript, corrected: trimmed)
         var inserted: [String] = []
         for word in newWords {
-            let t = word.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !t.isEmpty, !customWords.contains(t) else { continue }
-            addCustomWord(t)
-            inserted.append(t)
+            if let added = addCustomWord(word) {
+                inserted.append(added)
+            }
         }
         pendingRevertWords = inserted
         canRevert = !inserted.isEmpty
@@ -613,6 +635,32 @@ final class VoiceCoordinator: ObservableObject {
     func clearRevertBuffer() {
         pendingRevertWords = []
         canRevert = false
+    }
+
+    /// Erase the persisted last transcript (privacy: it's stored in plaintext
+    /// prefs). Clears the in-memory mirror and the revert buffer too.
+    func clearLastTranscript() {
+        lastTranscriptStore.transcript = ""
+        lastTranscript = ""
+        clearRevertBuffer()
+    }
+
+    /// Decide which app the transcription should be pasted into. Mirrors the
+    /// original inline logic exactly: use the frontmost app's PID unless it's
+    /// our own process, in which case fall back to the last non-self frontmost
+    /// PID (nil when none was ever recorded).
+    static func resolveTargetPID(frontmostPID: pid_t?, ownPID: pid_t, lastNonSelfPID: pid_t?) -> pid_t? {
+        if let frontmostPID, frontmostPID != ownPID {
+            return frontmostPID
+        } else {
+            return lastNonSelfPID
+        }
+    }
+
+    /// Whether to surface the one-shot Accessibility prompt: only when the
+    /// process isn't already trusted and hasn't been prompted this launch.
+    static func shouldPromptAX(trusted: Bool, hasPrompted: Bool) -> Bool {
+        return !trusted && !hasPrompted
     }
 
     private static func makeTranscriptionEngine(for model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = []) -> any TranscriptionEngine {

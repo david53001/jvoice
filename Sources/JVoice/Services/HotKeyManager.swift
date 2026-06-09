@@ -32,7 +32,9 @@ public final class HotKeyManager {
     public init(shortcutName: HotKeyShortcutName = .toggleRecording, onToggle: @escaping ToggleAction) {
         self.shortcutName = shortcutName
         self.onToggle = onToggle
-        register()
+        // Registration happens at app start (VoiceCoordinator.start →
+        // hotKeyManager.register()), not at construction — so the global
+        // hotkey isn't grabbed merely by building the manager (e.g. in tests).
     }
 
     public func register() {

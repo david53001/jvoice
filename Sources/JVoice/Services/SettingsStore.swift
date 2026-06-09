@@ -46,6 +46,13 @@ public final class SettingsStore: ObservableObject {
         state = SettingsState()
     }
 
+    /// Remove the corruption-recovery backup blob. Call this only on an
+    /// explicit user reset — never on a routine save, which would delete the
+    /// recovery copy immediately on the corruption-recovery path.
+    public func clearCorruptBackup() {
+        defaults.removeObject(forKey: corruptBackupKey)
+    }
+
     private func scheduleSave(_ state: SettingsState) {
         saveTask?.cancel()
         let snapshot = state
