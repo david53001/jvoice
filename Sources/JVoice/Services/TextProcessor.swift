@@ -21,11 +21,16 @@ public struct TextProcessor: Sendable {
         Self.process(text, mode: mode)
     }
 
-    public static func process(_ text: String, mode: AppMode, extraDictionary: [String: String] = [:], removeFillerWords: Bool = false) -> String {
+    public static func process(_ text: String, mode: AppMode, extraDictionary: [String: String] = [:], removeFillerWords: Bool = false, vocabulary: [String] = []) -> String {
         let normalized = normalizeWhitespace(text)
         let clean = removeFillerWords ? removeDisfluencies(normalized) : normalized
-        let corrected = applyCorrections(clean, extraDictionary: extraDictionary)
-        return format(corrected, mode: mode)
+        // Very Casual lowercases the sentence — but corrections must win over
+        // the lowering, so lower *first* and correct after. Custom words keep
+        // their exact casing in every tone.
+        let cased = mode == .veryCasual ? clean.lowercased() : clean
+        let corrected = applyCorrections(cased, extraDictionary: extraDictionary)
+        let phonetic = PhoneticMatcher.correct(corrected, vocabulary: vocabulary)
+        return format(phonetic, mode: mode)
     }
 
     public func transform(_ text: String, mode: AppMode) -> String {
@@ -110,8 +115,9 @@ public struct TextProcessor: Sendable {
             let capitalized = capitalizeFirstCharacter(trimmed)
             return ensureTerminalPeriod(capitalized)
         case .veryCasual:
-            let lowered = trimmed.lowercased()
-            let tidied = collapseRepeatedCommas(lowered)
+            // Lowercasing happens in `process` *before* the correction passes
+            // (so corrections survive); re-lowering here would destroy them.
+            let tidied = collapseRepeatedCommas(trimmed)
             return ensureTerminalDotOrQuestion(tidied)
         }
     }
@@ -131,6 +137,19 @@ public struct TextProcessor: Sendable {
         var result = normalizeWhitespace(stripped.trimmingCharacters(in: .whitespacesAndNewlines))
         if result.hasSuffix(",") { result.removeLast() }
         return result
+    }
+
+    /// Removes WhisperKit/Whisper special-token renderings that leak into the
+    /// transcript on silence / non-speech — "[BLANK_AUDIO]", "[BLANK_TEXT]",
+    /// "[MUSIC]", "[APPLAUSE]", etc. These are never user speech and can appear
+    /// mid-transcript on pause-heavy dictation. The all-caps/underscore bracket
+    /// shape never occurs in natural dictation, so this is safe to apply to the
+    /// raw decode of every chunk and whole-file transcript.
+    public static func stripDecoderArtifacts(_ text: String) -> String {
+        guard let regex = try? NSRegularExpression(pattern: #"\[[A-Z_][A-Z_ ]*\]"#) else { return text }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        let stripped = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: " ")
+        return normalizeWhitespace(stripped).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Strips known Whisper hallucination outputs that occur on near-silent or zero-content

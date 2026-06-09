@@ -45,6 +45,18 @@ private final class MockTranscriptionEngine: TranscriptionEngine {
     func transcribe(audioURL: URL) async throws -> String { return "" }
 }
 
+#if canImport(WhisperKit)
+@Test func promptedPrefillCountMatchesWhisperKitAssembly() {
+    // [<|startofprev|>] + N prompt tokens + [SOT, language, task, timestamps].
+    // The prompt-compatibility SuppressBlankFilter fires at exactly this index;
+    // an off-by-one here silently re-breaks vocabulary biasing on
+    // large-v3-v20240930 (empty transcripts). See TranscriptionManager.swift.
+    #expect(WhisperKitTranscriptionEngine.promptedPrefillCount(promptTokenCount: 0) == 5)
+    #expect(WhisperKitTranscriptionEngine.promptedPrefillCount(promptTokenCount: 2) == 7)
+    #expect(WhisperKitTranscriptionEngine.promptedPrefillCount(promptTokenCount: 96) == 101)
+}
+#endif
+
 #elseif canImport(XCTest)
 import Foundation
 import XCTest

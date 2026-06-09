@@ -195,10 +195,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.lastError = .encodeFailure(message: msg)
-            self.isRecording = false
-            self.recorder?.stop()
-            self.recorder = nil
-            self.restoreDefaultInput()
+            self.tearDownFailedRecording()
         }
     }
 
@@ -207,10 +204,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.lastError = .finishedUnsuccessfully
-            self.isRecording = false
-            self.recorder?.stop()
-            self.recorder = nil
-            self.restoreDefaultInput()
+            self.tearDownFailedRecording()
         }
     }
 
@@ -218,10 +212,38 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         Task { @MainActor [weak self] in
             guard let self, self.isRecording else { return }
             self.lastError = .encodeFailure(message: "Audio input changed mid-recording")
-            self.isRecording = false
-            self.recorder?.stop()
-            self.recorder = nil
-            self.restoreDefaultInput()
+            self.tearDownFailedRecording()
+        }
+    }
+
+    /// Shared teardown for mid-recording failures (encoder error, unsuccessful
+    /// finish, input device change). Removes the partial WAV — a failed
+    /// recording must not leave raw audio behind in the temp directory — and
+    /// clears `recordedURL` so the coordinator's next stop reports "no
+    /// recording was captured" instead of transcribing a broken file.
+    private func tearDownFailedRecording() {
+        isRecording = false
+        recorder?.stop()
+        recorder = nil
+        restoreDefaultInput()
+        if let url = recordedURL {
+            try? FileManager.default.removeItem(at: url)
+            recordedURL = nil
+        }
+    }
+
+    /// Best-effort launch-time sweep of recordings orphaned by a crash or
+    /// force-quit. Safe at startup: nothing is recording yet, and every
+    /// recording this app makes matches the `jvoice-*.wav` pattern in the
+    /// user's temporary directory.
+    public static func sweepOrphanedRecordings() {
+        let fileManager = FileManager.default
+        let tempDir = fileManager.temporaryDirectory
+        guard let entries = try? fileManager.contentsOfDirectory(at: tempDir, includingPropertiesForKeys: nil) else {
+            return
+        }
+        for url in entries where url.lastPathComponent.hasPrefix("jvoice-") && url.pathExtension == "wav" {
+            try? fileManager.removeItem(at: url)
         }
     }
 

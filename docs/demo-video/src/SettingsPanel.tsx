@@ -228,7 +228,13 @@ export const SettingsPanel: React.FC = () => {
 
         {/* Whisper Model */}
         <Section title="Whisper Model" accent={SP.cyan}>
-          <Segmented options={["Tiny", "Base", "Small", "Large"]} selected={0} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+            <Segmented options={["Tiny", "Base", "Small", "Large"]} selected={0} />
+            {/* Mirrors WhisperModelChoice.guidance for the selected (Tiny) model */}
+            <span style={{ fontSize: 10, color: SP.white38 }}>
+              Fastest · smallest download · least accurate
+            </span>
+          </div>
         </Section>
 
         {/* Custom Words */}

@@ -14,17 +14,22 @@ Extracted 2026-06-06 from `../MacOSUtils` (David's multi-utility app, formerly n
 
 ## Build & test
 
-- `swift build` — must pass. SwiftPM, Swift 5.9, macOS 14+. Deps: WhisperKit (≥1.0.0), KeyboardShortcuts (exact 1.10.0).
-- `swift test` — **compiles but executes 0 tests locally**: this machine has Command Line Tools only (no xctest runner). Same limitation as MacOSUtils. Real test runs happen in CI (`.github/workflows/test.yml`, macos-14 + Xcode 15.4, guards against silently-skipped tests).
+- `swift build` — must pass. SwiftPM, Swift 5.9, macOS 14+. Deps: WhisperKit (≥1.0.0), KeyboardShortcuts (exact 1.10.0). `Package.resolved` is tracked deliberately (reproducible builds).
+- `swift test` — **compiles but executes 0 tests locally**: this machine has Command Line Tools only (no swift-testing runner). Real test runs happen in CI (`.github/workflows/test.yml`, macos-15 + Xcode 16, which asserts ≥90 swift-testing cases actually executed — older Xcode silently compiles the suite out via `#if canImport(Testing)`).
+- `./scripts/run-logic-tests.sh` — REAL local verification for the pure-logic sources (TextProcessor, PhoneticMatcher, VocabularyPrompt, RepetitionGuard incl. a 120-case loop fuzz, WavTail, ChunkPlanner): compiles them with a standalone assertion main and runs it.
+- `./scripts/verify-streaming.sh` — REAL local verification (compiles + EXECUTES, no WhisperKit/mic) of the streaming session's data-loss guarantee (empty non-silent chunk → fallback, never a silent drop) and the regurgitation-recovery policy, using mock decoders.
+- `python3 scripts/verify-transcription.py --model tiny|base|small|large [--quick]` — end-to-end harness: generates many `say` clips (varied length/pauses/voices, custom words spoken or not) and scores word-retention (no dropped speech) + spurious-vocab (no hallucinated custom words) across whole-file AND streaming. Needs the model downloaded.
+- `.build/release/JVoice --bench <wav> [--model tiny|base|small|large] [--vocab "A,B"] [--stream] [--lang en|ro] [--no-prompt]` — hidden CLI mode for measuring transcription speed and verifying vocabulary biasing / streaming end-to-end on this machine (generate clips with `say` + `afconvert`). `--stream` simulates a live recording at 10×; `--no-prompt` A/B-tests the decoder prompt.
+- `swift scripts/generate-icon.swift` — regenerates `Resources/AppIcon.icns` (black-squircle "J") and `docs/demo-video/public/app-icon.png`.
 - `./scripts/install.sh` — release build, signs with the local "JVoice Self-Signed" keychain cert, installs to /Applications. Only run when David asks to install/dogfood.
 - Bundle ID is `com.jvoice.app` — deliberately NOT `com.jvoice.JVoice` (that's MacOSUtils'; both apps coexist on this machine). UserDefaults namespace: `jvoice.app.*`.
 
 ## Architecture (Sources/JVoice/)
 
-- `VoiceCoordinator.swift` — central orchestrator: hotkey → record → transcribe → process → paste flow, HUD state, stats.
-- `Services/` — RecordingManager (AVAudioRecorder), TranscriptionManager (+WhisperKit engine, WhisperModelLocator), TextProcessor (tone styles, filler removal, custom words), PasteManager (Accessibility paste), HotKeyManager, AudioInputRouter (keeps Bluetooth on A2DP by recording from built-in mic), SettingsStore, StatsStore, LastTranscriptStore.
-- `Models/` — AppMode (tone styles), HUDState, WhisperModelOption, TranscriptionLanguage, SettingsState.
-- `UI/` — HUDView/HUDWindow (recording/transcribing/done pills), SettingsView/SettingsWindow, MenuBarController (status item + NSMenu).
+- `VoiceCoordinator.swift` — central orchestrator: hotkey → record → transcribe → process → paste flow, HUD state (menu bar mirrors it), stats.
+- `Services/` — RecordingManager (AVAudioRecorder, orphan-WAV sweep), TranscriptionManager (WhisperKit engine; WhisperModelLocator). **Custom-word accuracy + robustness is layered**: VocabularyPrompt builds the decoder-conditioning `promptTokens` (the main accuracy lever — gets "Li-Fraumeni"/"VS Code" right; kept ON by default); RepetitionGuard detects/strips "prompt regurgitation" (the decoder reciting the vocab list on pauses/silence) and flags it via `scrub`; RegurgitationRecovery re-decodes the same audio *without* the prompt **only when** a decode regurgitated or came back empty — keeping prompt accuracy in the common case while making the failure mode (loops, scattered insertions, dropped speech) unreachable. The engine also duration-gates `withoutTimestamps` (long clips MUST keep timestamps — WhisperKit 1.0.0 truncates otherwise) and runs `TextProcessor.stripDecoderArtifacts` (drops `[BLANK_AUDIO]`-style sentinels). **Streaming-while-recording**: WavTail (growing-WAV parser), ChunkPlanner (pure silence-cut chunk policy), StreamingTranscriptionSession (decodes completed chunks during recording; any failure or an empty non-silent chunk → whole-file fallback, *never* a silent drop). **Post-processing**: TextProcessor (tone styles, filler removal, exact custom-word corrections, hallucination-sentinel stripping), PhoneticMatcher (fuzzy sound-alike correction, "jay voice"→"JVoice"). Plus PasteManager (Accessibility paste), HotKeyManager, AudioInputRouter (keeps Bluetooth on A2DP by recording from built-in mic), SettingsStore, StatsStore, LastTranscriptStore, BenchRunner (hidden `--bench` CLI).
+- `Models/` — AppMode (tone styles), HUDState (incl. `.preparingModel` for first-load waits), WhisperModelOption, TranscriptionLanguage, SettingsState.
+- `UI/` — HUDView/HUDWindow (recording/preparing/transcribing/done pills), SettingsView/SettingsWindow, MenuBarController (status item: bold "J" template image idle, red mic recording, cyan waveform transcribing + NSMenu).
 
 ## Demo video (Remotion)
 

@@ -42,6 +42,21 @@ enum WhisperModelChoice: String, CaseIterable, Identifiable {
             return "Large"
         }
     }
+
+    /// One-line guidance shown under the model picker so users know the
+    /// speed/accuracy/download trade-off before switching.
+    var guidance: String {
+        switch self {
+        case .tiny:
+            return "Fastest · smallest download · least accurate"
+        case .base:
+            return "Fast · balanced accuracy"
+        case .small:
+            return "Slower · more accurate"
+        case .largeTurbo:
+            return "Most accurate · ~630 MB download · first use prepares the model for a few minutes"
+        }
+    }
 }
 
 @MainActor
@@ -54,14 +69,14 @@ final class VoiceCoordinator: ObservableObject {
 
     @Published var whisperModel: WhisperModelChoice {
         didSet {
-            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage))
+            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage, vocabulary: customWords))
             persistSettings()
         }
     }
 
     @Published var transcriptionLanguage: TranscriptionLanguage {
         didSet {
-            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage))
+            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage, vocabulary: customWords))
             persistSettings()
         }
     }
@@ -69,6 +84,7 @@ final class VoiceCoordinator: ObservableObject {
     @Published var customWords: [String] {
         didSet {
             persistSettings()
+            transcriptionManager.updateVocabulary(customWords)
         }
     }
 
@@ -100,6 +116,11 @@ final class VoiceCoordinator: ObservableObject {
     }()
     private var hudDismissTask: Task<Void, Never>?
     private var currentTranscriptionTask: Task<Void, Never>?
+    private var streamingSession: StreamingTranscriptionSession?
+    /// Bumped on every recording start so a session created for recording N
+    /// (asynchronously — see startRecordingFlow) is never assigned once
+    /// recording N+1 has begun.
+    private var recordingGeneration = 0
     private var isInitializing = true
     @MainActor private var lastNonSelfFrontmostPID: pid_t?
     private var isStartingRecording = false
@@ -122,7 +143,7 @@ final class VoiceCoordinator: ObservableObject {
         self.settingsStore = settingsStore
         self.recordingManager = RecordingManager()
         self.transcriptionManager = TranscriptionManager(
-            engine: Self.makeTranscriptionEngine(for: settingsStore.state.model, language: settingsStore.state.language)
+            engine: Self.makeTranscriptionEngine(for: settingsStore.state.model, language: settingsStore.state.language, vocabulary: settingsStore.state.customWords)
         )
         self.pasteManager = PasteManager()
         self.settingsState = settingsStore.state
@@ -141,6 +162,9 @@ final class VoiceCoordinator: ObservableObject {
         guard !didStart else { return }
         didStart = true
 
+        // Privacy: clear any recordings orphaned by a crash/force-quit.
+        RecordingManager.sweepOrphanedRecordings()
+
         installFrontmostObserver()
 
         hudWindow.onStop = { [weak self] in self?.toggleRecording() }
@@ -149,7 +173,6 @@ final class VoiceCoordinator: ObservableObject {
 
         hotKeyManager.register()
         menuBarController.installStatusItem()
-        menuBarController.updateRecordingState(isRecording)
         updateHUD(.idle)
 
         // Warm the selected Whisper model in the background so the first
@@ -247,9 +270,16 @@ final class VoiceCoordinator: ObservableObject {
         hudDismissTask?.cancel()
 
         if isRecording {
-            _ = recordingManager.stopRecording()
+            if let session = streamingSession {
+                streamingSession = nil
+                Task { await session.cancel() }
+            }
+            // Privacy: don't orphan the in-flight WAV in the temp directory —
+            // a quit mid-recording means the user abandoned that audio.
+            if let abandonedAudio = recordingManager.stopRecording() {
+                try? FileManager.default.removeItem(at: abandonedAudio)
+            }
             isRecording = false
-            menuBarController.updateRecordingState(false)
         }
 
         updateHUD(.idle)
@@ -259,6 +289,16 @@ final class VoiceCoordinator: ObservableObject {
     func updateHUD(_ state: HUDState) {
         hudState = state
         hudWindow.update(state: state)
+        // The menu bar mirrors the HUD so progress stays visible even when
+        // the pill is dismissed or off-screen.
+        switch state {
+        case .recording:
+            menuBarController.updateActivity(.recording)
+        case .preparingModel, .transcribing:
+            menuBarController.updateActivity(.transcribing)
+        case .idle, .done, .error:
+            menuBarController.updateActivity(.idle)
+        }
     }
 
     /// Surface a transient error in the HUD and auto-dismiss after the
@@ -329,9 +369,32 @@ final class VoiceCoordinator: ObservableObject {
         }
 
         isRecording = true
+        recordingGeneration += 1
         recordingStartDate = Date()
-        menuBarController.updateRecordingState(true)
         updateHUD(.recording)
+
+        // Best-effort streaming overlay: transcribe completed chunks while the
+        // user is still talking so only the tail remains on hotkey release.
+        // nil when the engine has no loaded model — never trigger a load here.
+        if let url = recordingManager.recordedURL {
+            let generation = recordingGeneration
+            Task { [weak self] in
+                guard let self else { return }
+                let session = await self.transcriptionManager.makeStreamingSession()
+                // (MainActor) the recording may have stopped — or a NEWER one
+                // started — during the await; a stale session must never be
+                // assigned, or recording N's session (bound to N's deleted WAV)
+                // could shadow recording N+1's.
+                guard self.isRecording, self.recordingGeneration == generation else {
+                    if let session { await session.cancel() }
+                    return
+                }
+                self.streamingSession = session
+                if let session {
+                    await session.start(url: url)
+                }
+            }
+        }
     }
 
     private func stopRecordingAndTranscribe() {
@@ -342,9 +405,10 @@ final class VoiceCoordinator: ObservableObject {
         isRecording = false
         lastRecordingDuration = recordingStartDate.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartDate = nil
-        menuBarController.updateRecordingState(false)
 
         let audioURL = recordingManager.stopRecording()
+        let session = streamingSession
+        streamingSession = nil
         let ownPID = ProcessInfo.processInfo.processIdentifier
         let frontmost = NSWorkspace.shared.frontmostApplication
         let resolvedTargetPID: pid_t?
@@ -359,18 +423,22 @@ final class VoiceCoordinator: ObservableObject {
             if let audioURL {
                 try? FileManager.default.removeItem(at: audioURL)
             }
+            if let session {
+                Task { await session.cancel() }
+            }
             return
         }
         updateHUD(.transcribing)
 
         currentTranscriptionTask?.cancel()
         currentTranscriptionTask = Task { [weak self] in
-            await self?.finishTranscription(audioURL: audioURL, targetPID: targetPID)
+            await self?.finishTranscription(audioURL: audioURL, targetPID: targetPID, session: session)
         }
     }
 
-    private func finishTranscription(audioURL: URL?, targetPID: pid_t?) async {
+    private func finishTranscription(audioURL: URL?, targetPID: pid_t?, session: StreamingTranscriptionSession? = nil) async {
         guard let audioURL else {
+            if let session { await session.cancel() }
             updateHUD(.error("No recording was captured."))
             scheduleHUDReset()
             return
@@ -382,19 +450,41 @@ final class VoiceCoordinator: ObservableObject {
             // The user tapped+released too fast to capture audio. Surface a clear
             // message instead of waiting for WhisperKit to fail with an opaque
             // 'unsupportedAudioFile' several seconds later.
+            if let session { await session.cancel() }
             updateHUD(.error("Recording too short — please hold the hotkey longer."))
             scheduleHUDReset(after: 3_000_000_000)
             return
         }
 
+        // If the model isn't loaded yet (first dictation after launch, a model
+        // switch, or the Large model's first-ever multi-minute CoreML
+        // specialization), tell the user instead of showing a silent
+        // "Transcribing…" hang.
+        if await !transcriptionManager.isEngineReady() {
+            updateHUD(.preparingModel)
+            await transcriptionManager.prewarmAndWait()
+            if Task.isCancelled { return }
+            updateHUD(.transcribing)
+        }
+
         do {
-            let transcript = try await transcriptionManager.transcribe(audioURL: audioURL)
+            let transcript: String
+            if let session, let streamed = await session.finish() {
+                // Chunks were decoded while the user was talking; finish()
+                // handled the tail (plus any backlog the poll loop didn't get
+                // to). nil (failed/cancelled/never-streamed/all-silence) falls
+                // back to the whole-file path below — worst case is exactly
+                // today's behavior.
+                transcript = streamed
+            } else {
+                transcript = try await transcriptionManager.transcribe(audioURL: audioURL)
+            }
             if Task.isCancelled {
                 // The user moved on; don't paste into whatever app is now frontmost.
                 return
             }
             let userDict = TextProcessor.buildUserDictionary(from: customWords)
-            let processed = removeBlankTranscriptPlaceholder(from: TextProcessor.process(transcript, mode: toneMode.appMode, extraDictionary: userDict, removeFillerWords: removeFillerWords))
+            let processed = removeBlankTranscriptPlaceholder(from: TextProcessor.process(transcript, mode: toneMode.appMode, extraDictionary: userDict, removeFillerWords: removeFillerWords, vocabulary: customWords))
 
             guard !processed.isEmpty else {
                 updateHUD(.error("No speech detected."))
@@ -525,9 +615,9 @@ final class VoiceCoordinator: ObservableObject {
         canRevert = false
     }
 
-    private static func makeTranscriptionEngine(for model: WhisperModelOption, language: TranscriptionLanguage = .english) -> any TranscriptionEngine {
+    private static func makeTranscriptionEngine(for model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = []) -> any TranscriptionEngine {
         #if canImport(WhisperKit)
-        return WhisperKitTranscriptionEngine(model: model, language: language)
+        return WhisperKitTranscriptionEngine(model: model, language: language, vocabulary: vocabulary)
         #else
         return FileBackedTranscriptionEngine()
         #endif

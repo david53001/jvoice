@@ -5,7 +5,7 @@ enum HUDLayout {
 
     static func minimumSize(for state: HUDState) -> NSSize {
         switch state {
-        case .recording, .transcribing, .done, .error, .idle:
+        case .recording, .preparingModel, .transcribing, .done, .error, .idle:
             return hudPillSize
         }
     }

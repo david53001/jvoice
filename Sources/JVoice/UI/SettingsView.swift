@@ -247,13 +247,21 @@ struct SettingsView: View {
 
                 // Whisper Model
                 DarkSection("Whisper Model", accentColor: SettingsPalette.cyan) {
-                    Picker("Model", selection: $coordinator.whisperModel) {
-                        ForEach(WhisperModelChoice.allCases) { model in
-                            Text(model.displayName).tag(model)
+                    VStack(alignment: .leading, spacing: 7) {
+                        Picker("Model", selection: $coordinator.whisperModel) {
+                            ForEach(WhisperModelChoice.allCases) { model in
+                                Text(model.displayName).tag(model)
+                            }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+
+                        Text(coordinator.whisperModel.guidance)
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color(white: 0.38))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.segmented)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 // Custom Words

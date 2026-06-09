@@ -119,8 +119,10 @@ uses 0–1 sRGB components; CSS equivalents are `round(component * 255)`.
 ## 3. Menu Bar (Source: `Sources/JVoice/UI/MenuBarController.swift`)
 
 ### Status item icon
-- SF Symbol **`waveform`** when idle; **`mic.fill`** tinted `.systemRed` when recording.
+- A bold 15pt **"J"** mark when idle (the product changed 2026-06-06; mirrors
+  `MenuBarController.makeStatusIcon()`); **`mic.fill`** tinted `.systemRed` when recording.
 - Appearance forced `.darkAqua`. imagePosition imageOnly. toolTip "JVoice".
+- In the demo, the menu bar height is **MENUBAR_H = 25** (macOS 14 at 1×; was 28).
 
 ### NSMenu items IN ORDER (exact titles)
 1. **"Start Dictation"** (becomes **"Stop Dictation"** while recording).
@@ -133,8 +135,9 @@ uses 0–1 sRGB components; CSS equivalents are `round(component * 255)`.
 ---
 
 ## 4. App Icon (Source: `Resources/AppIcon.icns`)
-- Black rounded-square (squircle) app icon with a centered white/off-white **"M"** glyph,
-  subtle inner shadow/gradient. Extracted to `public/app-icon.png`.
+- Black rounded-square (squircle) app icon with a centered white/off-white **"J"** glyph
+  (the product changed from "M" to "J" on 2026-06-06), subtle inner shadow/gradient.
+  Extracted to `public/app-icon.png`.
 
 ---
 
@@ -147,7 +150,55 @@ uses 0–1 sRGB components; CSS equivalents are `round(component * 255)`.
 
 ## 6. Motion / fidelity rules
 - All entrances use spring()/interpolate — nothing pops.
-- Cursor uses macOS arrow shape (SVG), spring/bezier easing.
+- Cursor uses the real macOS arrow pointer (extracted PNG), spring/bezier easing.
 - Typing is per-character with slight raggedness (variable delay), not linear.
 - Orbital ring arc: one full rotation every 4.0s; pulse aura 1.8s autoreverse.
 - Caret blink ~1.06s period (standard macOS).
+
+---
+
+## 7. System environment assets (2026-06-06)
+The Apple UI in the demo is no longer hand-drawn — every Apple-owned artifact is
+extracted from the OS itself by `scripts/extract-assets.swift` into
+`public/system/`, so the recreation is pixel-true:
+
+- **Dock app icons** — `NSWorkspace.shared.icon(forFile:)` for Finder, Safari,
+  Messages, Notes, System Settings; Trash from `CoreTypes.bundle`
+  (`TrashIcon.icns`). Files: `app-*.png` (256×256). Each PNG already contains its
+  own squircle + margins — no CSS `borderRadius`.
+- **Menu-bar & Notes-toolbar glyphs** — real SF Symbols via
+  `NSImage(systemSymbolName:)`, recolored with `.sourceIn` and rendered @4×.
+  Files: `mb-*.png` (Apple logo, battery.100, wifi, magnifyingglass, switch.2,
+  mic.fill) and `nt-*.png` (sidebar.left, list.bullet, square.grid.2x2, trash,
+  square.and.pencil, textformat, checklist, tablecells, photo, lock.open.fill,
+  square.and.arrow.up, link).
+- **Cursor** — `NSCursor.arrow.image` (`cursor-arrow.png`) with hotspot/size in
+  `cursor-meta.json` (hotspot 5,5; native 28×40). Extraction requires a GUI app
+  context: the script calls `NSApplication.shared.setActivationPolicy(.accessory)`
+  first, otherwise the cursor image resolves to 0×0 and the bitmap rep fails.
+- **Wallpaper** — system desktop picture converted to `wallpaper.jpg` via
+  `sips`. The video uses **`Mac Purple.heic`** (purple/lavender abstract) because
+  its tone flatters the dark JVoice UI under blur; `Sonoma.heic` was an option but
+  its green lower half clashed with the dark window and colored overlays.
+- The JVoice status item is a bold 15px **"J"** drawn in React (mirrors
+  `MenuBarController.makeStatusIcon()`); it swaps to `mb-mic-recording.png`
+  (mic.fill, systemRed) while recording.
+
+**Before rendering on a new machine, re-run** `swift scripts/extract-assets.swift`
+then `sips -s format jpeg -Z 3200 "/System/Library/Desktop Pictures/Mac Purple.heic" --out public/system/wallpaper.jpg`
+to repopulate `public/system/` (assets are machine-specific OS artifacts).
+
+## Post-rebuild product deltas (2026-06-06, later same day)
+
+- **Menu bar transcribing state**: the status item now has three states —
+  idle bold "J" (template), recording `mic.fill` (systemRed), transcribing
+  `waveform` tinted rgb(0,212,224) (the HUD transcribing accent). Mirrored in
+  `Desktop.tsx` via `recording`/`transcribing` props and the
+  `mb-waveform-transcribing.png` asset.
+- **Whisper Model guidance caption**: `SettingsView` shows a 10pt gray
+  (white 0.38) caption under the model picker (`WhisperModelChoice.guidance`).
+  The panel mirror shows the Tiny caption ("Fastest · smallest download ·
+  least accurate") since Tiny is the selected segment.
+- **HUD `.preparingModel` state** (purple accent rgb(128,96,255), gearshape.2,
+  "Preparing Model / First use can take a few minutes…") exists in the app but
+  is deliberately NOT depicted in the demo (transient first-use state).

@@ -8,22 +8,42 @@ on:
 jobs:
   swift-test:
     name: swift test
-    runs-on: macos-14
+    # macos-15 + Xcode 16 is required: swift-testing (`import Testing`) only
+    # executes under `swift test` from Swift 6 / Xcode 16 toolchains. The old
+    # macos-14 + Xcode 15.4 pin compiled the suite out via the
+    # `#if canImport(Testing)` guards — 78 of 96 cases silently never ran.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode_15.4.app
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.4.app 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode_16.2.app 2>/dev/null \
+            || sudo xcode-select -s /Applications/Xcode.app
+          xcodebuild -version
       - name: Resolve packages
         run: swift package resolve
       - name: Run tests
         run: |
           set -o pipefail
           swift test 2>&1 | tee test.log
-      - name: Verify tests actually ran
-        # Guard against the `#if canImport(Testing)` silent-skip path.
-        # If no @Test cases executed, the suite produced nothing — fail.
+      - name: Verify the swift-testing suite actually ran
+        # Two layers of protection against the `#if canImport(Testing)`
+        # silent-skip trap:
+        #   1. The swift-testing run summary must be present (XCTest output
+        #      alone — the 4 fallback files — must NOT satisfy this).
+        #   2. The executed-case count must be near the authored count
+        #      (96 cases as of 2026-06-06; threshold leaves headroom for
+        #      legitimate removals but catches wholesale skips).
         run: |
-          if ! grep -E "Test (Suite|case|Run)" test.log > /dev/null; then
-            echo "::error::No tests appear to have executed. Check Swift Testing toolchain."
+          SUMMARY=$(grep -Eo "Test run with [0-9]+ tests" test.log | head -1 || true)
+          if [ -z "$SUMMARY" ]; then
+            echo "::error::swift-testing run summary not found — the Testing suite did not execute (toolchain too old?)."
+            exit 1
+          fi
+          COUNT=$(echo "$SUMMARY" | grep -Eo "[0-9]+")
+          echo "swift-testing executed $COUNT cases"
+          if [ "$COUNT" -lt 90 ]; then
+            echo "::error::Only $COUNT swift-testing cases executed (expected ≥ 90). Tests are being silently skipped."
             exit 1
           fi

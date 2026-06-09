@@ -37,6 +37,11 @@ private struct ModelFixture {
         try Data([0x00]).write(to: dir.appendingPathComponent("coremldata.bin"))
     }
 
+    /// Writes the model's `config.json` — present in every complete download.
+    func addConfig() throws {
+        try Data("{}".utf8).write(to: modelFolder.appendingPathComponent("config.json"))
+    }
+
     func cleanup() {
         try? fileManager.removeItem(at: documents)
     }
@@ -48,11 +53,27 @@ private struct ModelFixture {
     try fixture.addComponentWithWeights("MelSpectrogram")
     try fixture.addComponentWithWeights("AudioEncoder")
     try fixture.addComponentWithWeights("TextDecoder")
+    try fixture.addConfig()
 
     let resolved = WhisperModelLocator.completeModelFolder(
         named: fixture.folderName, documentsDirectory: fixture.documents)
 
     #expect(resolved == fixture.modelFolder.path)
+}
+
+@Test func completeModelFolderReturnsNilWhenConfigMissing() throws {
+    // All component weights finished but config.json never landed — still an
+    // interrupted download; WhisperKit needs the config to load the model.
+    let fixture = try ModelFixture(folderName: "openai_whisper-small")
+    defer { fixture.cleanup() }
+    try fixture.addComponentWithWeights("MelSpectrogram")
+    try fixture.addComponentWithWeights("AudioEncoder")
+    try fixture.addComponentWithWeights("TextDecoder")
+
+    let resolved = WhisperModelLocator.completeModelFolder(
+        named: fixture.folderName, documentsDirectory: fixture.documents)
+
+    #expect(resolved == nil)
 }
 
 @Test func completeModelFolderReturnsNilWhenDecoderWeightsMissing() throws {
@@ -63,6 +84,7 @@ private struct ModelFixture {
     try fixture.addComponentWithWeights("MelSpectrogram")
     try fixture.addComponentWithWeights("AudioEncoder")
     try fixture.addComponentWithoutWeights("TextDecoder")
+    try fixture.addConfig()
 
     let resolved = WhisperModelLocator.completeModelFolder(
         named: fixture.folderName, documentsDirectory: fixture.documents)
@@ -76,6 +98,7 @@ private struct ModelFixture {
     try fixture.addComponentWithWeights("MelSpectrogram")
     try fixture.addComponentWithoutWeights("AudioEncoder")
     try fixture.addComponentWithWeights("TextDecoder")
+    try fixture.addConfig()
 
     let resolved = WhisperModelLocator.completeModelFolder(
         named: fixture.folderName, documentsDirectory: fixture.documents)

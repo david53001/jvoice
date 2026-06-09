@@ -8,6 +8,8 @@ struct HUDView: View {
         switch state {
         case .recording:
             RecordingPill(onStop: onStop)
+        case .preparingModel:
+            PreparingModelPill()
         case .transcribing:
             TranscribingPill()
         case .done, .error:
@@ -168,6 +170,57 @@ private struct RecordingPill: View {
         .background { pillBackground(borderColor: Self.accent) }
         .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
         .padding(32)
+    }
+}
+
+// MARK: - PreparingModelPill
+
+/// Shown when a dictation has to wait for the Whisper model to load (or its
+/// first-ever CoreML specialization — measured ~2¼ min for large-v3_turbo on
+/// an M3; the OS caches the result per bundle ID, so it only happens once).
+/// The ticking elapsed counter proves the app is alive: a static pill reads
+/// as a hang and invites a force-quit, which restarts the ANE compile from
+/// zero and makes the wait endless.
+private struct PreparingModelPill: View {
+    private static let accent = Color(red: 0.502, green: 0.376, blue: 1.000)
+    private static let textColor = Color(red: 0.792, green: 0.733, blue: 1.000)
+    private static let subColor = accent.opacity(0.62)
+
+    @State private var startDate = Date()
+
+    private static func elapsedText(from start: Date, to now: Date) -> String {
+        let seconds = max(0, Int(now.timeIntervalSince(start)))
+        return String(format: "%d:%02d", seconds / 60, seconds % 60)
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            OrbitalRing(ringColor: Self.accent, iconName: "gearshape.2")
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Preparing Model")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Self.textColor)
+                    .shadow(color: Self.accent.opacity(0.55), radius: 6)
+                    .shadow(color: Self.accent.opacity(0.20), radius: 18)
+                TimelineView(.periodic(from: startDate, by: 1)) { context in
+                    Text("One-time setup — keep JVoice open · \(Self.elapsedText(from: startDate, to: context.date))")
+                        .monospacedDigit()
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(Self.subColor)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 7)
+        .frame(minWidth: HUDLayout.hudPillSize.width, minHeight: HUDLayout.hudPillSize.height)
+        .background { pillBackground(borderColor: Self.accent) }
+        .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
+        .padding(32)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Preparing model")
     }
 }
 

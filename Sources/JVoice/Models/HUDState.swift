@@ -3,6 +3,7 @@ import Foundation
 public enum HUDState: Equatable, Codable, Sendable {
     case idle
     case recording
+    case preparingModel
     case transcribing
     case done(String)
     case error(String)
@@ -23,6 +24,7 @@ public enum HUDState: Equatable, Codable, Sendable {
     private enum Kind: String, Codable {
         case idle
         case recording
+        case preparingModel
         case transcribing
         case done
         case error
@@ -34,6 +36,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Ready"
         case .recording:
             return "Recording"
+        case .preparingModel:
+            return "Preparing model…"
         case .transcribing:
             return "Transcribing…"
         case .done:
@@ -49,6 +53,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Ready"
         case .recording:
             return "Listening"
+        case .preparingModel:
+            return "Preparing Model"
         case .transcribing:
             return "Transcribing"
         case .done:
@@ -64,6 +70,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "JVoice is standing by."
         case .recording:
             return "Capturing audio for transcription."
+        case .preparingModel:
+            return "First use of a model can take a few minutes."
         case .transcribing:
             return "Processing the latest recording…"
         case .done:
@@ -79,6 +87,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "waveform"
         case .recording:
             return "mic.fill"
+        case .preparingModel:
+            return "gearshape.2"
         case .transcribing:
             return "arrow.triangle.2.circlepath"
         case .done:
@@ -94,6 +104,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return .secondary
         case .recording:
             return .red
+        case .preparingModel:
+            return .blue
         case .transcribing:
             return .blue
         case .done:
@@ -107,14 +119,14 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .idle:
             return false
-        case .recording, .transcribing, .done, .error:
+        case .recording, .preparingModel, .transcribing, .done, .error:
             return true
         }
     }
 
     public var isBusy: Bool {
         switch self {
-        case .recording, .transcribing:
+        case .recording, .preparingModel, .transcribing:
             return true
         case .idle, .done, .error:
             return false
@@ -125,7 +137,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .done, .error:
             return true
-        case .idle, .recording, .transcribing:
+        case .idle, .recording, .preparingModel, .transcribing:
             return false
         }
     }
@@ -134,7 +146,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .done(let text), .error(let text):
             return text
-        case .idle, .recording, .transcribing:
+        case .idle, .recording, .preparingModel, .transcribing:
             return nil
         }
     }
@@ -148,6 +160,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             self = .idle
         case .recording:
             self = .recording
+        case .preparingModel:
+            self = .preparingModel
         case .transcribing:
             self = .transcribing
         case .done:
@@ -165,6 +179,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             try container.encode(Kind.idle, forKey: .kind)
         case .recording:
             try container.encode(Kind.recording, forKey: .kind)
+        case .preparingModel:
+            try container.encode(Kind.preparingModel, forKey: .kind)
         case .transcribing:
             try container.encode(Kind.transcribing, forKey: .kind)
         case .done(let text):

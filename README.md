@@ -23,7 +23,7 @@ Dictation tools like Wispr Flow and superwhisper cost $8–15/month for somethin
 - 🧠 **On-device Whisper** — choose tiny → large-turbo models depending on your Mac; nothing is sent anywhere
 - ✍️ **Tone styles** — Casual, Formal, or Very Casual: JVoice rewrites your rambling into the register you want
 - 🧹 **Filler-word removal** — "um", "uh", "like" are gone before the text lands
-- 📖 **Custom dictionary** — teach it your name, your school, your project names
+- 📖 **Custom dictionary** — teach it your name, your school, your project names. Words aren't just find-replaced afterwards: they bias Whisper itself at recognition time, and a phonetic matcher catches the mishearings that slip through ("jay voice" → "JVoice")
 - 🎧 **Headphone-friendly** — keeps Bluetooth audio quality intact by routing recording to the built-in mic
 - 📊 **Stats** — total words dictated and average WPM (you talk ~3× faster than you type)
 - 🌍 **English & Romanian** (more languages easy to add — Whisper supports ~100)

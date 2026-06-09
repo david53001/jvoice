@@ -1,6 +1,8 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Img,
+  staticFile,
   interpolate,
   spring,
   useCurrentFrame,
@@ -52,9 +54,10 @@ export const JVoiceDemo: React.FC = () => {
   const t = frame / fps;
 
   const notesCenter = dockIconCenter(NOTES_INDEX, W, H);
-  // JVoice menu-bar icon location (right cluster). Time label is far right; JVoice
-  // status item sits left of the system icons. Approximate its center.
-  const jvoiceIcon = { x: W - 226, y: MENUBAR_H / 2 };
+  // JVoice menu-bar icon location (right cluster). The "J" status item sits first
+  // in the right cluster, left of battery/wifi/search/control-center/clock.
+  // Calibrated against a rendered still (Task 6).
+  const jvoiceIcon = { x: W - 286, y: MENUBAR_H / 2 };
 
   // ---------- CURSOR PATH ----------
   // Start off to the side, glide to Notes dock icon by S.notesClick, then to note
@@ -150,8 +153,10 @@ export const JVoiceDemo: React.FC = () => {
   });
   const highlightSettings = frame >= S.settingsClick - 12;
 
-  // recording icon in menu bar active during recording/transcribing
-  const menuBarRecording = frame >= S.recStart && frame < S.transEnd;
+  // Menu bar mirrors the app: red mic while recording, cyan waveform while
+  // transcribing (matches MenuBarController's activity states).
+  const menuBarRecording = frame >= S.recStart && frame < S.transStart;
+  const menuBarTranscribing = frame >= S.transStart && frame < S.transEnd;
   const highlightJVoiceMB = frame >= S.menuCursorStart - 6 && frame < S.settingsOpen;
 
   // ---------- SETTINGS WINDOW ----------
@@ -180,11 +185,17 @@ export const JVoiceDemo: React.FC = () => {
   const clickRipple = getClickRipple(frame, cursor);
 
   return (
-    <AbsoluteFill style={{ background: wallpaper(), overflow: "hidden" }}>
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <AbsoluteFill>
+        <Img
+          src={staticFile("system/wallpaper.jpg")}
+          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+        />
+      </AbsoluteFill>
       {/* Wallpaper vignette */}
       <AbsoluteFill style={{ background: "radial-gradient(120% 90% at 50% 0%, transparent 40%, rgba(0,0,0,0.35) 100%)" }} />
 
-      <MenuBar recording={menuBarRecording} highlightJVoice={highlightJVoiceMB} />
+      <MenuBar recording={menuBarRecording} transcribing={menuBarTranscribing} highlightJVoice={highlightJVoiceMB} />
 
       {/* Notes window */}
       {notesVisible && (
@@ -329,11 +340,6 @@ export const JVoiceDemo: React.FC = () => {
 };
 
 // ---------- helpers ----------
-
-function wallpaper(): string {
-  // tasteful Sonoma-like gradient
-  return "linear-gradient(160deg, #3a1d6e 0%, #5b2a8c 22%, #8a3b9e 45%, #c2557e 68%, #e8845c 88%, #f0a85f 100%)";
-}
 
 type Pt = { x: number; y: number; scale: number };
 

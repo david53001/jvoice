@@ -131,10 +131,33 @@ func veryCasualKeepsSeparatingCommasButDropsDanglingOne() {
 }
 
 @Test
-func veryCasualLowercasesEvenDictionaryCorrections() {
-    // "everything is lowercased" wins even over the correction dictionary.
+func veryCasualPreservesDictionaryCorrectionCasing() {
+    // Policy change (2026-06-06): corrections win over the lowering — the
+    // sentence is lowercased, but dictionary/custom words keep exact casing.
+    // (Previously the lowering destroyed corrections, which made custom
+    // words look broken in Very Casual mode.)
     let output = TextProcessor.process("use j voice now", mode: .veryCasual)
-    #expect(output == "use jvoice now.")
+    #expect(output == "use JVoice now.")
+}
+
+@Test
+func veryCasualPreservesCustomWordCasing() {
+    let result = TextProcessor.process(
+        "Open Jay Voice Settings",
+        mode: .veryCasual,
+        vocabulary: ["JVoice"]
+    )
+    #expect(result == "open JVoice settings.")
+}
+
+@Test
+func processAppliesPhoneticVocabularyCorrection() {
+    let result = TextProcessor.process(
+        "open jay voice now",
+        mode: .casual,
+        vocabulary: ["JVoice"]
+    )
+    #expect(result == "open JVoice now")
 }
 
 @Test func removesThanksForWatchingHallucination() {

@@ -1,7 +1,9 @@
 # Swift Package Manager
 .build/
 .swiftpm/
-Package.resolved
+# Package.resolved is deliberately TRACKED (app product, not a library):
+# it pins WhisperKit/KeyboardShortcuts revisions so CI and fresh clones
+# build exactly what was tested instead of re-resolving `from:` ranges.
 
 # Xcode
 DerivedData/
