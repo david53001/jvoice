@@ -83,6 +83,53 @@ expectEqual(TextProcessor.stripDecoderArtifacts("[BLANK_AUDIO]"), "", "all-artif
 expectEqual(TextProcessor.stripDecoderArtifacts("the quick brown fox"), "the quick brown fox", "ordinary text untouched")
 expectEqual(TextProcessor.stripDecoderArtifacts("see [note] here"), "see [note] here", "lowercase brackets are NOT decoder sentinels")
 
+print("TextProcessor.applyCorrections — TRX-01 (no double/triple substitution)")
+expectEqual(
+    TextProcessor.applyCorrections("use dot net daily", extraDictionary: TextProcessor.buildUserDictionary(from: [".NET"])),
+    "use dot .NET daily",
+    "TRX-01: .NET corrected once, no ..NET/...NET")
+expectEqual(
+    TextProcessor.applyCorrections("use whisperkit now"),
+    "use WhisperKit now",
+    "TRX-01 control: built-in dictionary idempotence preserved")
+expectEqual(
+    TextProcessor.applyCorrections("please use j voice with whisper kit"),
+    "please use JVoice with WhisperKit",
+    "TRX-01 control: built-in multi-entry corrections unchanged")
+
+print("TextProcessor.stripDecoderArtifacts — TRX-06 (preserve legitimate bracketed tokens)")
+expectEqual(TextProcessor.stripDecoderArtifacts("see figure [A] here"), "see figure [A] here", "TRX-06: [A] preserved")
+expectEqual(TextProcessor.stripDecoderArtifacts("reference [I] and [II]"), "reference [I] and [II]", "TRX-06: [I] and [II] preserved")
+expectEqual(TextProcessor.stripDecoderArtifacts("the answer is [X]"), "the answer is [X]", "TRX-06: [X] preserved")
+expectEqual(TextProcessor.stripDecoderArtifacts("hello [BLANK_AUDIO] world"), "hello world", "TRX-06: [BLANK_AUDIO] still stripped")
+expectEqual(TextProcessor.stripDecoderArtifacts("a [MUSIC] b"), "a b", "TRX-06: [MUSIC] still stripped")
+expectEqual(TextProcessor.stripDecoderArtifacts("a [APPLAUSE] b"), "a b", "TRX-06: [APPLAUSE] still stripped")
+expectEqual(TextProcessor.stripDecoderArtifacts("a [NOISE_1] b"), "a b", "TRX-06: [NOISE_1] still stripped")
+expectEqual(TextProcessor.stripDecoderArtifacts("see figure [A] then [MUSIC] plays"), "see figure [A] then plays", "TRX-06: mixed — keep [A], strip [MUSIC]")
+
+print("TextProcessor.extractCorrections — BLD-12 (bounded, no junk flood)")
+do {
+    // Full-sentence rewrite (length mismatch): the else-branch appends only
+    // corrected words absent from the original, punctuation-stripped, deduped,
+    // and filtered to length > 1. The result must stay bounded by the corrected
+    // word count — never an unbounded flood.
+    let rewrite = TextProcessor.extractCorrections(
+        from: "i think we should go now",
+        corrected: "Honestly, I believe that the team ought to proceed immediately at once.")
+    expect(rewrite.count <= 12, "BLD-12: full-sentence rewrite bounded by corrected word count (got \(rewrite.count))")
+    expect(!rewrite.contains("I"), "BLD-12: single-char tokens filtered out (count > 1 rule)")
+    expect(rewrite.allSatisfy { $0.count > 1 }, "BLD-12: every extracted token has length > 1")
+    expect(!rewrite.contains(""), "BLD-12: no empty tokens leak through")
+}
+expectEqual(
+    TextProcessor.extractCorrections(from: "please send the report by friday afternoon", corrected: "please send the report"),
+    [],
+    "BLD-12: pure-deletion edit yields no corrections (no new words appear)")
+expectEqual(
+    TextProcessor.extractCorrections(from: "i use whisper kit daily", corrected: "i use WhisperKit daily"),
+    ["WhisperKit"],
+    "BLD-12: genuine same-length single correction is captured")
+
 print("RepetitionGuard.strip")
 let regurgVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
 let regurgInput = "so basically what tariffs are is when governments put taxes on imported goods and who pays them is the people buying the item from a country that is sub agents, claude, li-fraumeni, sub agents, claude, vs code, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, la-fa, li-fraumeni, sub agents, li-fraumeni"

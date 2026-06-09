@@ -160,6 +160,74 @@ func processAppliesPhoneticVocabularyCorrection() {
     #expect(result == "open JVoice now")
 }
 
+// MARK: - TRX-01: no double/triple custom-word substitution
+
+@Test func punctuatedCustomWordCorrectedOnce() {
+    // ".NET" must be inserted exactly once; the old bug re-matched the bare
+    // "net" inside the freshly-inserted ".NET", yielding "..NET"/"...NET".
+    let dict = TextProcessor.buildUserDictionary(from: [".NET"])
+    #expect(TextProcessor.applyCorrections("use dot net daily", extraDictionary: dict) == "use dot .NET daily")
+}
+
+@Test func builtInDictionaryStaysIdempotent() {
+    #expect(TextProcessor.applyCorrections("use whisperkit now") == "use WhisperKit now")
+    #expect(TextProcessor.applyCorrections("please use j voice with whisper kit") == "please use JVoice with WhisperKit")
+}
+
+@Test func spokenVariantsDropSelfSubstrings() {
+    // ".NET" must NOT register the bare "net" variant (substring of the word),
+    // which is what caused the re-match. The dotted/spaced variants remain so
+    // "dot net" still corrects.
+    let variants = Set(TextProcessor.spokenVariants(for: ".NET"))
+    #expect(!variants.contains("net"))
+    #expect(!variants.contains(".net"))
+}
+
+// MARK: - TRX-06: preserve legitimate bracketed tokens
+
+@Test func stripDecoderArtifactsPreservesSingleLetterTokens() {
+    #expect(TextProcessor.stripDecoderArtifacts("see figure [A] here") == "see figure [A] here")
+    #expect(TextProcessor.stripDecoderArtifacts("reference [I] and [II]") == "reference [I] and [II]")
+    #expect(TextProcessor.stripDecoderArtifacts("the answer is [X]") == "the answer is [X]")
+}
+
+@Test func stripDecoderArtifactsStillStripsSentinels() {
+    #expect(TextProcessor.stripDecoderArtifacts("hello [BLANK_AUDIO] world") == "hello world")
+    #expect(TextProcessor.stripDecoderArtifacts("a [MUSIC] b") == "a b")
+    #expect(TextProcessor.stripDecoderArtifacts("a [APPLAUSE] b") == "a b")
+    #expect(TextProcessor.stripDecoderArtifacts("a [NOISE_1] b") == "a b")
+}
+
+@Test func stripDecoderArtifactsMixedKeepsLabelStripsSentinel() {
+    #expect(TextProcessor.stripDecoderArtifacts("see figure [A] then [MUSIC] plays") == "see figure [A] then plays")
+}
+
+// MARK: - BLD-12: extractCorrections stays bounded (no junk flood)
+
+@Test func extractCorrectionsFullRewriteIsBounded() {
+    let rewrite = TextProcessor.extractCorrections(
+        from: "i think we should go now",
+        corrected: "Honestly, I believe that the team ought to proceed immediately at once.")
+    #expect(rewrite.count <= 12)
+    #expect(!rewrite.contains("I"))          // single-char tokens filtered (count > 1)
+    #expect(rewrite.allSatisfy { $0.count > 1 })
+    #expect(!rewrite.contains(""))
+}
+
+@Test func extractCorrectionsPureDeletionIsEmpty() {
+    let result = TextProcessor.extractCorrections(
+        from: "please send the report by friday afternoon",
+        corrected: "please send the report")
+    #expect(result.isEmpty)
+}
+
+@Test func extractCorrectionsCapturesGenuineCorrection() {
+    let result = TextProcessor.extractCorrections(
+        from: "i use whisper kit daily",
+        corrected: "i use WhisperKit daily")
+    #expect(result == ["WhisperKit"])
+}
+
 @Test func removesThanksForWatchingHallucination() {
     #expect(TextProcessor.removeWhisperHallucinations(" Thanks for watching!") == "")
 }
@@ -264,6 +332,69 @@ final class TextProcessorTests: XCTestCase {
     func testProcessWithFillerRemovalEnabled() {
         let result = TextProcessor.process("Um, hello world", mode: .casual, removeFillerWords: true)
         XCTAssertEqual(result, "hello world")
+    }
+
+    // MARK: - TRX-01: no double/triple custom-word substitution
+
+    func testPunctuatedCustomWordCorrectedOnce() {
+        let dict = TextProcessor.buildUserDictionary(from: [".NET"])
+        XCTAssertEqual(TextProcessor.applyCorrections("use dot net daily", extraDictionary: dict), "use dot .NET daily")
+    }
+
+    func testBuiltInDictionaryStaysIdempotent() {
+        XCTAssertEqual(TextProcessor.applyCorrections("use whisperkit now"), "use WhisperKit now")
+        XCTAssertEqual(TextProcessor.applyCorrections("please use j voice with whisper kit"), "please use JVoice with WhisperKit")
+    }
+
+    func testSpokenVariantsDropSelfSubstrings() {
+        let variants = Set(TextProcessor.spokenVariants(for: ".NET"))
+        XCTAssertFalse(variants.contains("net"))
+        XCTAssertFalse(variants.contains(".net"))
+    }
+
+    // MARK: - TRX-06: preserve legitimate bracketed tokens
+
+    func testStripDecoderArtifactsPreservesSingleLetterTokens() {
+        XCTAssertEqual(TextProcessor.stripDecoderArtifacts("see figure [A] here"), "see figure [A] here")
+        XCTAssertEqual(TextProcessor.stripDecoderArtifacts("reference [I] and [II]"), "reference [I] and [II]")
+        XCTAssertEqual(TextProcessor.stripDecoderArtifacts("the answer is [X]"), "the answer is [X]")
+    }
+
+    func testStripDecoderArtifactsStillStripsSentinels() {
+        XCTAssertEqual(TextProcessor.stripDecoderArtifacts("hello [BLANK_AUDIO] world"), "hello world")
+        XCTAssertEqual(TextProcessor.stripDecoderArtifacts("a [MUSIC] b"), "a b")
+        XCTAssertEqual(TextProcessor.stripDecoderArtifacts("a [APPLAUSE] b"), "a b")
+        XCTAssertEqual(TextProcessor.stripDecoderArtifacts("a [NOISE_1] b"), "a b")
+    }
+
+    func testStripDecoderArtifactsMixedKeepsLabelStripsSentinel() {
+        XCTAssertEqual(TextProcessor.stripDecoderArtifacts("see figure [A] then [MUSIC] plays"), "see figure [A] then plays")
+    }
+
+    // MARK: - BLD-12: extractCorrections stays bounded (no junk flood)
+
+    func testExtractCorrectionsFullRewriteIsBounded() {
+        let rewrite = TextProcessor.extractCorrections(
+            from: "i think we should go now",
+            corrected: "Honestly, I believe that the team ought to proceed immediately at once.")
+        XCTAssertLessThanOrEqual(rewrite.count, 12)
+        XCTAssertFalse(rewrite.contains("I"))
+        XCTAssertTrue(rewrite.allSatisfy { $0.count > 1 })
+        XCTAssertFalse(rewrite.contains(""))
+    }
+
+    func testExtractCorrectionsPureDeletionIsEmpty() {
+        let result = TextProcessor.extractCorrections(
+            from: "please send the report by friday afternoon",
+            corrected: "please send the report")
+        XCTAssertTrue(result.isEmpty)
+    }
+
+    func testExtractCorrectionsCapturesGenuineCorrection() {
+        let result = TextProcessor.extractCorrections(
+            from: "i use whisper kit daily",
+            corrected: "i use WhisperKit daily")
+        XCTAssertEqual(result, ["WhisperKit"])
     }
 }
 

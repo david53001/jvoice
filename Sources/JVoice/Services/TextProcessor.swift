@@ -101,7 +101,14 @@ public struct TextProcessor: Sendable {
         variants.insert(camelSplit)
         variants.insert(camelSplit.replacingOccurrences(of: " ", with: ""))
 
-        return Array(variants).filter { !$0.isEmpty && $0 != word }
+        // Drop any variant that is itself a substring of the canonical word
+        // (case-insensitive). A punctuated custom word like ".NET" otherwise
+        // registers the bare "net" variant, whose \b…\b pattern then re-matches
+        // the letter-run inside the already-inserted ".NET" replacement,
+        // corrupting it into "..NET"/"...NET" (TRX-01). A variant that is a
+        // substring of the word can never correct anything the word itself
+        // wouldn't already, so removing it is safe and stops the self-overlap.
+        return Array(variants).filter { !$0.isEmpty && $0 != word && !lower.contains($0) }
     }
 
     public static func format(_ text: String, mode: AppMode) -> String {
@@ -139,17 +146,36 @@ public struct TextProcessor: Sendable {
         return result
     }
 
+    /// Known non-speech sentinel keywords WhisperKit/Whisper emit inside
+    /// brackets. A bracketed token only counts as an artifact if its content
+    /// contains an underscore (e.g. "BLANK_AUDIO", "NOISE_1") OR matches one of
+    /// these words. This keeps legitimate dictated tokens like "[A]", "[I]",
+    /// "[II]", "[X]" (option labels, citation markers, Roman numerals) intact.
+    private static let decoderSentinelKeywords: Set<String> = [
+        "BLANK_AUDIO", "BLANK_TEXT", "MUSIC", "APPLAUSE", "NOISE", "SILENCE",
+        "INAUDIBLE", "LAUGHTER", "SOUND", "CROSSTALK"
+    ]
+
     /// Removes WhisperKit/Whisper special-token renderings that leak into the
     /// transcript on silence / non-speech — "[BLANK_AUDIO]", "[BLANK_TEXT]",
     /// "[MUSIC]", "[APPLAUSE]", etc. These are never user speech and can appear
-    /// mid-transcript on pause-heavy dictation. The all-caps/underscore bracket
-    /// shape never occurs in natural dictation, so this is safe to apply to the
-    /// raw decode of every chunk and whole-file transcript.
+    /// mid-transcript on pause-heavy dictation. Only bracketed tokens that are
+    /// real decoder sentinels (underscore-bearing or in `decoderSentinelKeywords`)
+    /// are stripped, so legitimate dictated labels like "[A]"/"[II]"/"[X]" survive.
     public static func stripDecoderArtifacts(_ text: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: #"\[[A-Z_][A-Z_ ]*\]"#) else { return text }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        let stripped = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: " ")
-        return normalizeWhitespace(stripped).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let regex = try? NSRegularExpression(pattern: #"\[[A-Z_][A-Z0-9_ ]*\]"#) else { return text }
+        let nsText = text as NSString
+        let range = NSRange(location: 0, length: nsText.length)
+        var result = text
+        // Replace strippable matches back-to-front so earlier ranges stay valid.
+        for match in regex.matches(in: text, options: [], range: range).reversed() {
+            let bracketed = nsText.substring(with: match.range)
+            let inner = bracketed.dropFirst().dropLast() // strip the surrounding [ ]
+            let isSentinel = inner.contains("_") || decoderSentinelKeywords.contains(String(inner))
+            guard isSentinel, let r = Range(match.range, in: result) else { continue }
+            result.replaceSubrange(r, with: " ")
+        }
+        return normalizeWhitespace(result).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     /// Strips known Whisper hallucination outputs that occur on near-silent or zero-content
