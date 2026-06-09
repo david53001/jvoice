@@ -99,4 +99,15 @@ import Testing
     // <3 letters is too false-positive-prone to fuzzy-match.
     #expect(PhoneticMatcher.correct("ay bee sea", vocabulary: ["AB"]) == "ay bee sea")
 }
+
+@Test func leadingPunctuationVocabIsNotDoubled() {
+    // TRX-01: ".NET" splits into leading "." + core "NET"; the bare core
+    // fuzzy-matches the entry, and the replacement used to re-prepend the
+    // entry's own "." → "..NET". A token that already reads exactly as the
+    // vocab word (punctuation included) must be left alone.
+    #expect(
+        PhoneticMatcher.correct("use dot .NET daily", vocabulary: [".NET"])
+            == "use dot .NET daily"
+    )
+}
 #endif

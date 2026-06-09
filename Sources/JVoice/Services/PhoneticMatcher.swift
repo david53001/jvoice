@@ -39,9 +39,16 @@ public enum PhoneticMatcher {
                 for entry in entries where window <= entry.maxWindow {
                     guard matches(candidate: candidate, entry: entry) else { continue }
                     let renderedCore = slice.map(\.core).joined(separator: " ")
-                    if renderedCore == entry.word {
-                        // Already exact (single- or multi-token, e.g. "VS Code"
-                        // spelled correctly) — nothing to do, stop probing here.
+                    let renderedFull = slice.map(\.rendered).joined(separator: " ")
+                    if renderedCore == entry.word || renderedFull == entry.word {
+                        // Already exact — either the cores spell the word
+                        // ("VS Code" correctly spelled), or the full token
+                        // already reads as the word *including its own
+                        // punctuation*. The latter guards ".NET": its leading
+                        // "." is split into `leading`, so the bare core "NET"
+                        // fuzzy-matches the entry and the replacement would
+                        // re-prepend entry.word's own ".", corrupting it into
+                        // "..NET" (TRX-01). Nothing to do — stop probing here.
                         break windowSearch
                     }
                     let replacement = Token(

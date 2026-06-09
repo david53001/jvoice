@@ -64,6 +64,7 @@ expectEqual(PhoneticMatcher.correct("JVoice is so fast", vocabulary: ["JVoice"])
 expectEqual(PhoneticMatcher.correct("I use VS Code daily", vocabulary: ["VS Code"]), "I use VS Code daily", "multi-token exact spelling untouched")
 expectEqual(PhoneticMatcher.correct("hello there", vocabulary: []), "hello there", "empty vocabulary noop")
 expectEqual(PhoneticMatcher.correct("ay bee sea", vocabulary: ["AB"]), "ay bee sea", "short vocab words ignored")
+expectEqual(PhoneticMatcher.correct("use dot .NET daily", vocabulary: [".NET"]), "use dot .NET daily", "TRX-01: already-correct .NET not doubled to ..NET")
 
 print("VocabularyPrompt")
 expect(VocabularyPrompt.text(for: []) == nil, "empty → nil")
@@ -96,6 +97,16 @@ expectEqual(
     TextProcessor.applyCorrections("please use j voice with whisper kit"),
     "please use JVoice with WhisperKit",
     "TRX-01 control: built-in multi-entry corrections unchanged")
+do {
+    // End-to-end through process(): applyCorrections inserts ".NET", then the
+    // phonetic pass must NOT re-prepend the entry's own "." (was "..NET").
+    // format() may capitalize/punctuate, so assert robustly on the token.
+    let e2e = TextProcessor.process(
+        "use dot net daily", mode: .casual,
+        extraDictionary: TextProcessor.buildUserDictionary(from: [".NET"]), vocabulary: [".NET"])
+    expect(e2e.contains(".NET") && !e2e.contains("..NET"),
+        "TRX-01 end-to-end: process renders exactly one leading dot, got: \(e2e)")
+}
 
 print("TextProcessor.stripDecoderArtifacts — TRX-06 (preserve legitimate bracketed tokens)")
 expectEqual(TextProcessor.stripDecoderArtifacts("see figure [A] here"), "see figure [A] here", "TRX-06: [A] preserved")
