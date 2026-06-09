@@ -177,6 +177,12 @@ struct SettingsView: View {
                                 }
                                 .buttonStyle(DarkPrimaryButtonStyle(accentColor: SettingsPalette.gray))
                                 .disabled(!coordinator.canRevert)
+
+                                Button("Clear") {
+                                    coordinator.clearLastTranscript()
+                                }
+                                .buttonStyle(DarkPrimaryButtonStyle(accentColor: SettingsPalette.gray))
+                                .disabled(coordinator.lastTranscript.isEmpty)
                             }
                         }
                     }
@@ -372,7 +378,7 @@ struct SettingsView: View {
                         }
                         Button("Cancel", role: .cancel) {}
                     } message: {
-                        Text("Your custom words, model choice, and language will be restored to defaults. Recording statistics will not be affected.")
+                        Text("Your custom words, model choice, and language will be restored to defaults, and the last transcript will be cleared. Recording statistics will not be affected.")
                     }
 
                     Spacer()

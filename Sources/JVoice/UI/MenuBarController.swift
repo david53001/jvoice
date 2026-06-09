@@ -10,7 +10,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
 
     private weak var coordinator: VoiceCoordinator?
-    private var statusItem: NSStatusItem?
+    /// `private(set)` (not `private`) so `@testable` icon-state tests can read
+    /// back the button's image/tint after `updateActivity`.
+    private(set) var statusItem: NSStatusItem?
     private var activity: Activity = .idle
 
     init(coordinator: VoiceCoordinator) {
@@ -91,15 +93,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         case .recording:
             button.image = NSImage(systemSymbolName: "mic.fill", accessibilityDescription: "JVoice — recording")
             button.contentTintColor = .systemRed
+            // State is otherwise signalled only by tint color; the tooltip
+            // makes it discoverable for color-blind and hover users too.
+            button.toolTip = "JVoice — Recording"
         case .transcribing:
             // Cyan waveform = "working on your words" (matches the HUD's
             // transcribing accent), so the menu bar shows progress even when
             // the HUD is out of view.
             button.image = NSImage(systemSymbolName: "waveform", accessibilityDescription: "JVoice — transcribing")
             button.contentTintColor = NSColor(srgbRed: 0.0, green: 0.831, blue: 0.878, alpha: 1.0)
+            button.toolTip = "JVoice — Transcribing"
         case .idle:
             button.image = Self.statusIcon
             button.contentTintColor = nil
+            button.toolTip = "JVoice"
         }
     }
 

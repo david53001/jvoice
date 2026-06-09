@@ -145,18 +145,23 @@ private struct RecordingPill: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            OrbitalRing(ringColor: Self.accent, iconName: "mic.fill")
+            HStack(spacing: 10) {
+                OrbitalRing(ringColor: Self.accent, iconName: "mic.fill")
+                    .accessibilityHidden(true)
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Recording")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Self.textColor)
-                    .shadow(color: Self.accent.opacity(0.55), radius: 6)
-                    .shadow(color: Self.accent.opacity(0.20), radius: 18)
-                Text("Listening…")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Self.subColor)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Recording")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Self.textColor)
+                        .shadow(color: Self.accent.opacity(0.55), radius: 6)
+                        .shadow(color: Self.accent.opacity(0.20), radius: 18)
+                    Text("Listening…")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Self.subColor)
+                }
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("Recording")
 
             Spacer(minLength: 0)
 
@@ -170,6 +175,7 @@ private struct RecordingPill: View {
         .background { pillBackground(borderColor: Self.accent) }
         .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
         .padding(32)
+        .accessibilityElement(children: .contain)
     }
 }
 
@@ -281,7 +287,17 @@ private struct StatusPill: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        // For errors, show the specific message the coordinator built (e.g.
+        // "No target app…"); otherwise the short headline ("Pasted"). The
+        // `.done` transcript payload is never shown here.
+        let text: String = {
+            if case .error(let message) = state, !message.isEmpty {
+                return message
+            }
+            return state.headline
+        }()
+
+        return HStack(spacing: 10) {
             ZStack {
                 Circle()
                     .fill(accent.opacity(0.12))
@@ -294,22 +310,27 @@ private struct StatusPill: View {
                     .shadow(color: accent.opacity(0.70), radius: 4)
             }
 
-            Text(state.headline)
+            Text(text)
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(textColor)
                 .shadow(color: accent.opacity(0.55), radius: 6)
                 .shadow(color: accent.opacity(0.20), radius: 18)
-                .lineLimit(1)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .frame(minWidth: HUDLayout.hudPillSize.width, minHeight: HUDLayout.hudPillSize.height)
+        .frame(
+            minWidth: HUDLayout.hudPillSize.width,
+            maxWidth: 360,
+            minHeight: HUDLayout.hudPillSize.height
+        )
         .background { pillBackground(borderColor: accent) }
         .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
         .padding(32)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(state.headline)
+        .accessibilityLabel(text)
     }
 }

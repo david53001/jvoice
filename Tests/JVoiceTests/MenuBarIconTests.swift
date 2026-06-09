@@ -29,4 +29,29 @@ func statusIconHasNonEmptyContent() {
     }
     #expect(opaqueCount > 10, "The J glyph should cover at least a few pixels")
 }
+
+@Test @MainActor
+func statusButtonReflectsActivityState() {
+    let controller = MenuBarController(coordinator: VoiceCoordinator())
+    controller.installStatusItem()
+    guard let button = controller.statusItem?.button else {
+        Issue.record("Installing the status item should produce a button")
+        return
+    }
+
+    // Recording → red mic.
+    controller.updateActivity(.recording)
+    #expect(button.image != nil)
+    #expect(button.contentTintColor == .systemRed)
+
+    // Transcribing → cyan waveform (matches the HUD's transcribing accent).
+    controller.updateActivity(.transcribing)
+    #expect(button.image != nil)
+    #expect(button.contentTintColor == NSColor(srgbRed: 0.0, green: 0.831, blue: 0.878, alpha: 1.0))
+
+    // Idle → template "J", no tint.
+    controller.updateActivity(.idle)
+    #expect(button.image != nil)
+    #expect(button.contentTintColor == nil)
+}
 #endif
