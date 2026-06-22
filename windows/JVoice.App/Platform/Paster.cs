@@ -153,21 +153,43 @@ public sealed class Paster : IDisposable
     private static bool FocusTarget(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero) return false;
-        // SetForegroundWindow is subject to foreground-lock rules; AttachThreadInput
-        // is the standard workaround to reliably steal focus to our paste target.
-        uint targetThread = GetWindowThreadProcessId(hwnd, out _);
+
+        // Common case: the user never left their app, so the paste target is already
+        // the foreground window — no focus change is needed and SetForegroundWindow
+        // (which is unreliable / can return false here) must NOT be allowed to fail us.
+        if (GetForegroundWindow() == hwnd) return true;
+
+        // Otherwise force the target to the foreground. SetForegroundWindow is gated by
+        // Windows' foreground-lock rules; the robust, battle-tested workaround is to (a)
+        // momentarily zero the foreground-lock timeout, (b) attach our input queue to the
+        // CURRENT foreground thread (the documented requirement — NOT the target thread),
+        // then (c) raise the target and verify by reading the real foreground afterwards
+        // (SetForegroundWindow's return value is not trustworthy).
         uint thisThread = GetCurrentThreadId();
-        bool attached = false;
-        if (targetThread != thisThread)
-            attached = AttachThreadInput(thisThread, targetThread, true);
+        IntPtr fg = GetForegroundWindow();
+        uint fgThread = fg != IntPtr.Zero ? GetWindowThreadProcessId(fg, out _) : 0;
+        uint targetThread = GetWindowThreadProcessId(hwnd, out _);
+
+        IntPtr prevTimeout = IntPtr.Zero;
+        bool gotPrev = SystemParametersInfo(SPI_GETFOREGROUNDLOCKTIMEOUT, 0, ref prevTimeout, 0);
+        SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, IntPtr.Zero, SPIF_FLAGS);
+
+        bool attachedFg = fgThread != 0 && fgThread != thisThread && AttachThreadInput(thisThread, fgThread, true);
+        bool attachedTgt = targetThread != thisThread && targetThread != fgThread && AttachThreadInput(thisThread, targetThread, true);
         try
         {
             ShowWindowAsync(hwnd, SW_SHOW);
-            return SetForegroundWindow(hwnd);
+            BringWindowToTop(hwnd);
+            SetForegroundWindow(hwnd);
+            SetFocus(hwnd);
+            // Trust the observed foreground, not the API return code.
+            return GetForegroundWindow() == hwnd;
         }
         finally
         {
-            if (attached) AttachThreadInput(thisThread, targetThread, false);
+            if (attachedTgt) AttachThreadInput(thisThread, targetThread, false);
+            if (attachedFg) AttachThreadInput(thisThread, fgThread, false);
+            if (gotPrev) SystemParametersInfo(SPI_SETFOREGROUNDLOCKTIMEOUT, 0, prevTimeout, SPIF_FLAGS);
         }
     }
 
@@ -256,14 +278,42 @@ public sealed class Paster : IDisposable
     private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
     private const uint TOKEN_QUERY = 0x0008;
     private const int TOKEN_ELEVATION = 20;
+    private const uint SPI_GETFOREGROUNDLOCKTIMEOUT = 0x2000;
+    private const uint SPI_SETFOREGROUNDLOCKTIMEOUT = 0x2001;
+    private const uint SPIF_FLAGS = 0x0003; // SPIF_UPDATEINIFILE | SPIF_SENDCHANGE
 
     [StructLayout(LayoutKind.Sequential)]
     private struct INPUT { public int type; public InputUnion u; }
 
+    // The union MUST carry its largest member (MOUSEINPUT) so sizeof(INPUT) is the
+    // value SendInput's cbSize check expects (40 bytes on x64). Declaring only
+    // KEYBDINPUT made it 32 bytes → SendInput rejected every call with
+    // ERROR_INVALID_PARAMETER (87) and pasted nothing.
     [StructLayout(LayoutKind.Explicit)]
     private struct InputUnion
     {
+        [FieldOffset(0)] public MOUSEINPUT mi;
         [FieldOffset(0)] public KEYBDINPUT ki;
+        [FieldOffset(0)] public HARDWAREINPUT hi;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MOUSEINPUT
+    {
+        public int dx;
+        public int dy;
+        public uint mouseData;
+        public uint dwFlags;
+        public uint time;
+        public IntPtr dwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct HARDWAREINPUT
+    {
+        public uint uMsg;
+        public ushort wParamL;
+        public ushort wParamH;
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -282,6 +332,24 @@ public sealed class Paster : IDisposable
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr SetFocus(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, ref IntPtr pvParam, uint fWinIni);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SystemParametersInfo(uint uiAction, uint uiParam, IntPtr pvParam, uint fWinIni);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

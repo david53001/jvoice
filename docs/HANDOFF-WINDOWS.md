@@ -24,11 +24,13 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
 - **The GUI launches** to the system tray with the "J" icon + first-run Settings window
   (confirmed running; two startup crashes were found & fixed — see §7).
+- **The full dictation loop works:** hotkey → record (real mic) → transcribe (LargeTurbo on Vulkan) →
+  paste into the focused app. Two paste bugs that made *every* transcription end in "Something Went
+  Wrong" were found & fixed — see §7 #13. Verified by driving the real GUI with a synthetic hotkey.
 
-**What still needs a human (David's interactive dogfood):** the *live* dictation loop and the
-*visual* fidelity of the HUD/Settings can only be checked by a person at the desktop with a mic
-and keyboard. Walk `docs/launch/windows-dogfood-checklist.md`. Everything an autonomous/headless
-session can verify, is verified.
+**What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
+the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
+`docs/launch/windows-dogfood-checklist.md`. Everything an autonomous/headless session can verify, is verified.
 
 **Optional remaining work** (does NOT block a working app): an Inno Setup installer and a
 corpus-level accuracy harness — see §8.
@@ -272,6 +274,25 @@ These are real corrections discovered during execution — preserve them.
     (≈ the macOS behavior; Whisper.net has no exact fallback-count knob).
 12. Benign **CS4014** warnings on intentional fire-and-forget `_ = …PrewarmAsync()/…Cancel()`
     (`TreatWarningsAsErrors` is false).
+13. **Paste was broken end-to-end (two bugs, both fixed in `Platform/Paster.cs`) — found during the
+    first real dictation dogfood, where every transcription ended in the HUD's "Something Went Wrong"
+    (the title shown for *any* `HudState.Error`; the detail was `Unable to paste into the active app`).
+    Transcription itself was always fine — the failure was purely the paste step returning
+    `PasteOutcome.TargetRejected`:**
+    - **`SendInput` always failed with `ERROR_INVALID_PARAMETER` (87), sent 0/4 events.** The `INPUT`
+      P/Invoke struct's union declared only `KEYBDINPUT`, making `sizeof(INPUT)` = 32; on x64 SendInput's
+      `cbSize` check requires **40**. Fixed by giving `InputUnion` its largest member (`MOUSEINPUT`, plus
+      `HARDWAREINPUT`) so the struct is 40 bytes. This path had **never** been exercised successfully —
+      Phase 3 only verified no-target rejection + clipboard staging, never a real paste.
+    - **`FocusTarget` was fragile:** it attached input to the *target* thread (should be the *current
+      foreground* thread), trusted `SetForegroundWindow`'s unreliable return value, and treated any
+      non-`true` as a fatal abort — even when the target was already foreground (the common case!). Fixed
+      to early-return success when the target is already foreground, attach to the current-foreground
+      thread, zero the foreground-lock timeout (`SPI_SETFOREGROUNDLOCKTIMEOUT`), and verify success by
+      reading `GetForegroundWindow()` instead of the API return code.
+    - Verified by driving the real GUI (synthetic Ctrl+Shift+Space) end-to-end: pre-fix → `TargetRejected`;
+      post-fix → `PasteOutcome.Ok` with `SendInput` injecting 4/4 events (and correct `AccessDenied` when
+      the foreground target is an elevated window like Task Manager). `dotnet test` still 122/122.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
