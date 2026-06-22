@@ -15,7 +15,41 @@
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
     <AssemblyTitle>JVoice</AssemblyTitle>
     <Product>JVoice</Product>
+    <!-- Assembly metadata mirroring Resources/Info.plist (Phase 5 Task 2). -->
+    <Description>JVoice — free, on-device voice dictation for Windows (Whisper, no cloud).</Description>
+    <Company>JVoice</Company>
+    <Copyright>GPL-3.0-only — © JVoice contributors</Copyright>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <NeutralLanguage>en</NeutralLanguage>
   </PropertyGroup>
+
+  <!-- ========================= Publish configuration (Phase 5 Task 1) ========================= -->
+  <!-- Shared publish properties. WPF MUST NOT be trimmed (XAML/BAML reflection breaks). -->
+  <PropertyGroup Condition="'$(JVoiceFlavor)' != ''">
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <SelfContained>true</SelfContained>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <Deterministic>true</Deterministic>
+    <DebugType>none</DebugType>
+    <DebugSymbols>false</DebugSymbols>
+  </PropertyGroup>
+
+  <!-- "cpu" = CPU single-file lite. CUDA/Vulkan excluded so the self-extract stays small. -->
+  <PropertyGroup Condition="'$(JVoiceFlavor)' == 'cpu'">
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+  </PropertyGroup>
+
+  <!-- "gpu" = folder build keeping runtimes/ on disk (CUDA found next to the exe). -->
+  <PropertyGroup Condition="'$(JVoiceFlavor)' == 'gpu'">
+    <PublishSingleFile>false</PublishSingleFile>
+  </PropertyGroup>
+
 
   <ItemGroup>
     <ProjectReference Include="..\JVoice.Core\JVoice.Core.csproj" />
@@ -43,10 +77,15 @@
     <PackageReference Include="NAudio" Version="2.3.0" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+  </ItemGroup>
+
+  <!-- GPU native runtimes — included for dev builds and the 'gpu' publish flavor, but
+       OMITTED entirely from the 'cpu' single-file flavor (ExcludeAssets is insufficient:
+       the runtime packages copy natives via build .targets, ballooning the single-file
+       to ~418 MB). Conditional reference = the only reliable way to keep them out. -->
+  <ItemGroup Condition="'$(JVoiceFlavor)' != 'cpu'">
     <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
   </ItemGroup>
-
-  <!-- Whisper.net packages — versions written + pinned by `dotnet add package` (Task 1 Step 6). -->
 
 </Project>

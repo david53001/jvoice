@@ -32,3 +32,6 @@ windows/tools/**/bin/
 windows/tools/**/obj/
 # Whisper GGML models are downloaded at runtime, never committed
 *.bin
+
+# Windows publish artifacts
+windows/artifacts/

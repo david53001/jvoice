@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Windows;
 using Microsoft.Win32;
 using JVoice.App.Platform;
@@ -11,6 +12,14 @@ public partial class App : Application
     private VoiceCoordinator? _coordinator;
     private TrayIcon? _tray;
     private HudWindow? _hud;
+
+    /// JVoice's stable Application User Model ID (matches the macOS bundle id).
+    /// Windows uses it to group taskbar buttons and route toast notifications.
+    private const string AppUserModelId = "com.jvoice.app";
+
+    [DllImport("shell32.dll", SetLastError = true)]
+    private static extern int SetCurrentProcessExplicitAppUserModelID(
+        [MarshalAs(UnmanagedType.LPWStr)] string AppID);
 
     /// Explicit entry so the --bench CLI branch runs BEFORE any WPF startup
     /// (mirrors the macOS app calling BenchRunner.shouldRun before showing UI).
@@ -34,6 +43,9 @@ public partial class App : Application
 
     protected override void OnStartup(StartupEventArgs e)
     {
+        // Group taskbar/toasts under "com.jvoice.app" before any window appears.
+        try { SetCurrentProcessExplicitAppUserModelID(AppUserModelId); } catch { /* non-fatal */ }
+
         base.OnStartup(e);
 
         // 1) Coordinator (must be created on the UI thread — captures the dispatcher).
