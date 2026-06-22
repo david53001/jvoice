@@ -283,4 +283,28 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             vocabulary,
             usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false);
     }
+
+    // ---- streaming session integration (Task 4) -----------------------------
+
+    /// A streaming session bound to this engine, or null when no model is loaded.
+    /// Default cadence = AppTimings.StreamingPollMs (1000 ms), matching the app.
+    public Task<StreamingTranscriptionSession?> MakeStreamingSessionAsync()
+        => Task.FromResult(MakeStreamingSession(JVoice.Core.AppTimings.StreamingPollMs));
+
+    /// Parameterized variant so the bench can poll faster (e.g. 100 ms) when it
+    /// grows the WAV at ~10× real time. NEVER triggers a model load: no loaded
+    /// factory → null → the caller uses the whole-file fallback (Swift guard).
+    ///
+    /// A strong capture of `this` in the transcribe closure is correct: the engine
+    /// outlives the session (the coordinator owns both and tears the session down on
+    /// stop). The session itself catches decode exceptions and fails losslessly
+    /// (Core StreamingTranscriptionSession.AppendPiece/PollOnce).
+    internal StreamingTranscriptionSession? MakeStreamingSession(int pollMilliseconds)
+    {
+        if (_factory is null) return null;
+        return new StreamingTranscriptionSession(
+            transcribe: samples => TranscribeChunkSamplesAsync(samples, CancellationToken.None),
+            config: new ChunkPlanner.Config(),
+            pollMilliseconds: pollMilliseconds);
+    }
 }
