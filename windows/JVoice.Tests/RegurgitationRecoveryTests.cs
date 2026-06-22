@@ -61,4 +61,79 @@ public class RegurgitationRecoveryTests
         });
         Assert.Equal(1, calls);
     }
+
+    // ===== Edge / parity coverage the suite missed =====
+
+    // Even with the prompt OFF, the single decode is still scrubbed (RepetitionGuard runs
+    // regardless of the prompt flag) — the result is the scrubbed text, not the raw decode.
+    [Fact]
+    public async Task PromptDisabled_StillScrubs()
+    {
+        var result = await RegurgitationRecovery.Decode(false, Vocab, _ => Task.FromResult(Regurgitated));
+        Assert.Equal("so the thing about money is that", result);
+    }
+
+    // The prompted (clean) decode's single call receives usePrompt == true.
+    [Fact]
+    public async Task CleanDecode_FirstCall_IsPrompted()
+    {
+        bool? firstArg = null;
+        await RegurgitationRecovery.Decode(true, Vocab, usePrompt =>
+        {
+            firstArg ??= usePrompt;
+            return Task.FromResult(CleanSpeech);
+        });
+        Assert.True(firstArg);
+    }
+
+    // The recovery (second) decode is always prompt-free.
+    [Fact]
+    public async Task Recovery_SecondDecode_IsPromptFree()
+    {
+        int calls = 0;
+        bool? secondArg = null;
+        await RegurgitationRecovery.Decode(true, Vocab, usePrompt =>
+        {
+            calls++;
+            if (calls == 2) secondArg = usePrompt;
+            return Task.FromResult(usePrompt ? Regurgitated : CleanSpeech);
+        });
+        Assert.False(secondArg);
+    }
+
+    // The recovery decode is ALSO scrubbed — a generic loop in the prompt-free decode is stripped.
+    [Fact]
+    public async Task Recovery_OutputIsAlsoScrubbed()
+    {
+        const string promptFreeWithLoop =
+            "the real words that were spoken here today thanks thanks thanks thanks thanks thanks thanks thanks thanks";
+        var result = await RegurgitationRecovery.Decode(true, Vocab, usePrompt =>
+            Task.FromResult(usePrompt ? Regurgitated : promptFreeWithLoop));
+        Assert.Equal("the real words that were spoken here today", result);
+    }
+
+    // If the prompt-free recovery decode is itself all-loop, the result is empty (no silent fallback to the loop).
+    [Fact]
+    public async Task Recovery_AllLoopPromptFree_ReturnsEmpty()
+    {
+        var result = await RegurgitationRecovery.Decode(true, new[] { "claude" }, usePrompt =>
+            Task.FromResult(usePrompt
+                ? ""  // empty prompted decode triggers recovery
+                : "claude claude claude claude claude claude claude claude claude claude"));
+        Assert.Equal("", result);
+    }
+
+    // A decode failure propagates (never swallowed) — both on the first decode and on recovery.
+    [Fact]
+    public async Task FirstDecodeThrows_Propagates()
+        => await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            RegurgitationRecovery.Decode(true, Vocab, _ =>
+                Task.FromException<string>(new InvalidOperationException("boom"))));
+
+    [Fact]
+    public async Task RecoveryDecodeThrows_Propagates()
+        => await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            RegurgitationRecovery.Decode(true, Vocab, usePrompt => usePrompt
+                ? Task.FromResult(Regurgitated)                                  // triggers recovery
+                : Task.FromException<string>(new InvalidOperationException("boom"))));
 }

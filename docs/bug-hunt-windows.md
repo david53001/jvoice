@@ -20,8 +20,9 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **215** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard audits).
-  As the hunt adds regression tests this number only grows; it must never go down or go red.
+  now **222** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  RegurgitationRecovery audits). As the hunt adds regression tests this number only grows; it must
+  never go down or go red.
 
 ---
 
@@ -83,8 +84,14 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       <2 chars; only whole "vscode" survives) — C# matches the algorithm; that lone Swift assertion is
       inconsistent with its own code (a non-aborting `#expect`). We lock the real behaviour + the
       lowercase "vs code"→"vs" contrast.
-- [ ] **RegurgitationRecovery** — `…/Text/RegurgitationRecovery.cs` + `RegurgitationRecoveryTests.cs`
+- [x] **RegurgitationRecovery** — `…/Text/RegurgitationRecovery.cs` + `RegurgitationRecoveryTests.cs`
       ← `…/Services/RegurgitationRecovery.swift` / `RegurgitationRecoveryTests.swift`
+      — 2026-06-23 · +7 tests · **0 bugs**. Line-by-line fidelity confirmed: the guard is De Morgan-
+      equivalent to Swift's (`guard A, B else return` ↔ `if (!A || !B) return`), `isEmpty`↔`Length==0`,
+      decode is called with `useVocabularyPrompt` then `false`, and decode errors propagate (rethrows ↔
+      async throw). Added edges: prompt-off result is still scrubbed, first call is prompted, recovery's
+      second decode is prompt-free, recovery output is itself scrubbed, all-loop recovery → "" (no silent
+      loop fallback), and decode-throws propagates on both the first and the recovery decode.
 - [ ] **WavTail / WavTailReader** — `…/Audio/WavTail.cs` + `WavTailTests.cs`
       ← `…/Services/WavTail.swift` / `WavTailTests.swift` (FLLR padding, stale size, growing WAV)
 - [ ] **ChunkPlanner** — `…/Audio/ChunkPlanner.cs` + `ChunkPlannerTests.cs`
@@ -218,6 +225,10 @@ _(none yet)_
   correctly; legitimate single/dense mentions are preserved.
 - **`RepetitionGuard.Scrub` never throws and never lengthens the text** (null/empty/punctuation-only/
   loop-soup inputs across 3 vocab sets) — 400-case seeded fuzz; clean text is returned byte-identical.
+- **RegurgitationRecovery decode-and-recover policy C#↔Swift fidelity confirmed** — recovery fires iff
+  `useVocabularyPrompt && (removedRegurgitation || empty)`; the recovery decode is always prompt-free
+  and is itself scrubbed (no silent fallback to a loop — all-loop recovery → ""); the prompt-off path
+  still scrubs; decode exceptions propagate on both the first and recovery decode.
 
 ---
 
