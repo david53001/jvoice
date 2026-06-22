@@ -1,0 +1,128 @@
+using System.Text.Json;
+
+namespace JVoice.Core.Models;
+
+/// Thrown when a settings file was written by a newer JVoice build
+/// (schemaVersion > current). The caller (SettingsStore) treats this exactly
+/// like corruption: reset to defaults and back up the original blob.
+/// Ports the `DecodingError.dataCorruptedError` throw in SettingsState.init(from:).
+public sealed class ForwardVersionException : Exception
+{
+    public int FileVersion { get; }
+    public int CurrentVersion { get; }
+
+    public ForwardVersionException(int fileVersion, int currentVersion)
+        : base($"Settings written by a newer JVoice build (v{fileVersion} > v{currentVersion}). Refusing to read.")
+    {
+        FileVersion = fileVersion;
+        CurrentVersion = currentVersion;
+    }
+}
+
+/// Pure JSON (de)serialization for SettingsState. Faithful port of
+/// SettingsState.swift's custom Codable: forward-version refusal, schemaVersion
+/// normalized forward on write, and per-field fallback to defaults on missing or
+/// unparseable values. No file I/O here (that's Platform/SettingsStore).
+public static class SettingsStateJson
+{
+    private static readonly JsonSerializerOptions WriteOptions = new()
+    {
+        WriteIndented = true,
+    };
+
+    public static string Serialize(SettingsState state)
+    {
+        var dto = new
+        {
+            schemaVersion = SettingsState.CurrentSchemaVersion, // always normalize forward
+            mode = state.Mode.ToString(),
+            model = state.Model.ToString(),
+            language = state.Language.ToString(),
+            customWords = state.CustomWords,
+            removeFillerWords = state.RemoveFillerWords,
+        };
+        return JsonSerializer.Serialize(dto, WriteOptions);
+    }
+
+    /// Parses a settings JSON blob. Throws <see cref="ForwardVersionException"/>
+    /// when the file version is newer than we understand, and
+    /// <see cref="JsonException"/> when the JSON is structurally invalid; every
+    /// individual field falls back to its default rather than throwing.
+    public static SettingsState Deserialize(string json)
+    {
+        using var doc = JsonDocument.Parse(json); // throws JsonException on bad JSON
+        JsonElement root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object)
+            throw new JsonException("Settings root is not a JSON object.");
+
+        int version = TryGetInt(root, "schemaVersion") ?? 0; // absent => 0 (Swift parity)
+        if (version > SettingsState.CurrentSchemaVersion)
+            throw new ForwardVersionException(version, SettingsState.CurrentSchemaVersion);
+
+        return new SettingsState(
+            SchemaVersion: SettingsState.CurrentSchemaVersion, // always normalized forward
+            Mode: ParseTone(TryGetString(root, "mode")),
+            Model: ParseModel(TryGetString(root, "model")),
+            Language: ParseLanguage(TryGetString(root, "language")),
+            CustomWords: ParseCustomWords(root),
+            RemoveFillerWords: TryGetBool(root, "removeFillerWords") ?? true);
+    }
+
+    // field parsers (each falls back to the field default)
+
+    private static ToneStyle ParseTone(string? raw)
+    {
+        if (raw is null) return ToneStyle.Casual;
+        if (Enum.TryParse<ToneStyle>(raw, ignoreCase: true, out var v)) return v;
+        return ToneStyle.Casual;
+    }
+
+    private static WhisperModelOption ParseModel(string? raw)
+    {
+        if (raw is null) return WhisperModelOption.Tiny;
+        // Legacy macOS raw values (Swift WhisperModelOption rawValues + the pre-2026-06 alias).
+        switch (raw)
+        {
+            case "large-v3_turbo":
+            case "large-v3-v20240930":
+                return WhisperModelOption.LargeTurbo;
+            case "tiny": return WhisperModelOption.Tiny;
+            case "base": return WhisperModelOption.Base;
+            case "small": return WhisperModelOption.Small;
+        }
+        if (Enum.TryParse<WhisperModelOption>(raw, ignoreCase: true, out var v)) return v;
+        return WhisperModelOption.Tiny;
+    }
+
+    private static TranscriptionLanguage ParseLanguage(string? raw)
+    {
+        if (raw is null) return TranscriptionLanguage.English;
+        if (Enum.TryParse<TranscriptionLanguage>(raw, ignoreCase: true, out var v)) return v;
+        return TranscriptionLanguage.English;
+    }
+
+    private static IReadOnlyList<string> ParseCustomWords(JsonElement root)
+    {
+        if (!root.TryGetProperty("customWords", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return Array.Empty<string>();
+        var list = new List<string>();
+        foreach (var el in arr.EnumerateArray())
+            if (el.ValueKind == JsonValueKind.String && el.GetString() is { } s)
+                list.Add(s);
+        return list;
+    }
+
+    // lenient scalar readers (wrong type => null => field default)
+
+    private static int? TryGetInt(JsonElement root, string name)
+        => root.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.Number && e.TryGetInt32(out int v)
+            ? v : null;
+
+    private static string? TryGetString(JsonElement root, string name)
+        => root.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.String
+            ? e.GetString() : null;
+
+    private static bool? TryGetBool(JsonElement root, string name)
+        => root.TryGetProperty(name, out var e) && e.ValueKind is JsonValueKind.True or JsonValueKind.False
+            ? e.GetBoolean() : null;
+}
