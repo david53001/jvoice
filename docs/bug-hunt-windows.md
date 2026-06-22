@@ -20,9 +20,9 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **247** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
-  RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession audits). As the hunt
-  adds regression tests this number only grows; it must never go down or go red.
+  now **254** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState audits).
+  As the hunt adds regression tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -41,6 +41,17 @@ choices (sources: `docs/HANDOFF-WINDOWS.md` §7, `docs/superpowers/plans/2026-06
   `CoordinatorDecisions`) live in `JVoice.Core` (not `JVoice.App.Platform`) so tests can reach them.
 - `AppTimings.PasteRestoreDelayFailureMs = 50` exists in Core by design.
 - One Phase-2 constructor-default deviation (behaviorally identical) noted in the Phase 2 plan.
+- **SettingsStateJson per-field/wrong-type leniency** (documented in the source + locked by tests):
+  Swift's `SettingsState.init(from:)` uses `try?` only for `mode`/`model` but `try`+`decodeIfPresent`
+  for `schemaVersion`/`language`/`customWords`/`removeFillerWords`, so a field with the WRONG JSON TYPE
+  (e.g. `"schemaVersion":"x"`, `"language":5`, a mixed `customWords` array, `"removeFillerWords":"no"`)
+  makes the whole Swift decode THROW → the store treats it as corruption (reset + backup). The C# port
+  deliberately falls back **every** field to its default instead (no throw, valid fields preserved, no
+  backup) — see the `SettingsStateJson` doc comment + `Deserialize_UnknownEnumValues_FallBackPerField`.
+  Both end at defaults for the bad field; only corruption-backup differs. Low severity, deliberate.
+- **`SettingsState` record uses reference equality for `CustomWords`** (Swift's `Equatable` struct is
+  value-equal). Immaterial: `SettingsStore.Update` always saves/notifies on every call and never compares
+  `SettingsState` for equality, so record equality is never used for a correctness decision.
 
 ---
 
@@ -119,8 +130,15 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       fast-config vectors (in-order chunks+tail with **sum == total, no loss/dup**; transcriber-throws;
       one-empty-chunk-anywhere→fallback; silent-region-dropped; vanished-file→null). Verified non-flaky
       (3× clean full runs).
-- [ ] **SettingsState (+migration)** — `…/Models/SettingsState.cs` + `SettingsStateTests.cs`
+- [x] **SettingsState (+migration)** — `…/Models/SettingsState.cs` + `SettingsStateTests.cs`
       ← `…/Models/SettingsState.swift` / `SettingsStateMigrationTests.swift`
+      — 2026-06-23 · +7 tests · **0 bugs**. Record fields/defaults/CurrentSchemaVersion=1 match Swift;
+      all 7 Swift migration vectors are already locked (legacy-no-version→normalize, forward-version→
+      throw, unknown-enum→default, encode-has-version, legacy-model names, missing-fields, invalid-JSON).
+      Added macOS-lowercase rawValue decoding, customWords mixed-array leniency, wrong-type schemaVersion,
+      the schema==current boundary, the `with` pattern, + a 400-case decode fuzz (only ForwardVersion
+      throws; valid blobs always normalize the version forward). See new intentional-deviation note re:
+      per-field/wrong-type leniency + record equality.
 - [ ] **SettingsStateJson** — `…/Models/SettingsStateJson.cs` + `SettingsStoreJsonTests.cs`
       ← `…/Services/SettingsStore.swift` / `SettingsStoreCorruptionTests.swift` (forward-version refusal, per-field fallback)
 - [ ] **WhisperModelOption (+GGML map)** — `…/Models/WhisperModelOption.cs` + `ModelTests.cs`

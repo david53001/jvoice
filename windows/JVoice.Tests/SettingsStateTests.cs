@@ -1,3 +1,4 @@
+using System.Text.Json;
 using JVoice.Core.Models;
 using Xunit;
 
@@ -15,5 +16,107 @@ public class SettingsStateTests
         Assert.Equal(TranscriptionLanguage.English, s.Language);
         Assert.Empty(s.CustomWords);
         Assert.True(s.RemoveFillerWords);
+    }
+
+    [Fact]
+    public void CurrentSchemaVersion_Is1()
+        => Assert.Equal(1, SettingsState.CurrentSchemaVersion);
+
+    [Fact]
+    public void Record_With_OverridesOnlyNamedFields()
+    {
+        var s = SettingsState.Default with { Mode = ToneStyle.Formal, RemoveFillerWords = false };
+        Assert.Equal(ToneStyle.Formal, s.Mode);
+        Assert.False(s.RemoveFillerWords);
+        Assert.Equal(WhisperModelOption.Tiny, s.Model);   // unchanged
+        Assert.Equal(1, s.SchemaVersion);
+    }
+
+    // ===== Migration / decode parity (Swift SettingsStateMigrationTests) =====
+    // Swift vectors: legacy-no-version, forward-version-fails, unknown-enum->default, encode-has-version
+    // are already locked by SettingsStoreJsonTests. These add cross-format + leniency edges.
+
+    // A settings file written in the macOS rawValue style (lowercase) must still decode (Enum.TryParse
+    // is case-insensitive and the model switch handles the spoken forms). Mirrors the Swift rawValues.
+    [Fact]
+    public void Deserialize_AcceptsMacOSLowercaseRawValues()
+    {
+        var s = SettingsStateJson.Deserialize(
+            """{"mode":"casual","model":"tiny","language":"english","customWords":["X"],"removeFillerWords":true}""");
+        Assert.Equal(ToneStyle.Casual, s.Mode);
+        Assert.Equal(WhisperModelOption.Tiny, s.Model);
+        Assert.Equal(TranscriptionLanguage.English, s.Language);
+        Assert.Equal(new[] { "X" }, s.CustomWords);
+
+        var s2 = SettingsStateJson.Deserialize("""{"mode":"veryCasual","language":"romanian","model":"small"}""");
+        Assert.Equal(ToneStyle.VeryCasual, s2.Mode);
+        Assert.Equal(TranscriptionLanguage.Romanian, s2.Language);
+        Assert.Equal(WhisperModelOption.Small, s2.Model);
+
+        var s3 = SettingsStateJson.Deserialize("""{"mode":"formal","model":"base"}""");
+        Assert.Equal(ToneStyle.Formal, s3.Mode);
+        Assert.Equal(WhisperModelOption.Base, s3.Model);
+    }
+
+    // C# leniency (documented in SettingsStateJson + locked here): a customWords array with non-string
+    // elements keeps only the strings. (Swift's decodeIfPresent([String]) would throw on a mixed array;
+    // see the ledger "intentional deviations" note.)
+    [Fact]
+    public void Deserialize_CustomWords_KeepsOnlyStrings()
+    {
+        var s = SettingsStateJson.Deserialize("""{"customWords":["ok",5,null,"yes",true]}""");
+        Assert.Equal(new[] { "ok", "yes" }, s.CustomWords);
+    }
+
+    // C# leniency: a non-numeric schemaVersion reads as absent (version 0) and is accepted+normalized.
+    // (Swift's decodeIfPresent(Int) would throw on the type mismatch.)
+    [Fact]
+    public void Deserialize_SchemaVersionWrongType_TreatedAsZero()
+    {
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":"oops","mode":"Formal"}""");
+        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion);
+        Assert.Equal(ToneStyle.Formal, s.Mode);
+    }
+
+    // schemaVersion exactly == current is accepted (boundary; only > current is refused).
+    [Fact]
+    public void Deserialize_SchemaVersionEqualToCurrent_IsAccepted()
+    {
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":1,"mode":"Formal"}""");
+        Assert.Equal(ToneStyle.Formal, s.Mode);
+    }
+
+    // Deserialize over arbitrary well-formed settings JSON never throws anything except
+    // ForwardVersionException (version > current); valid blobs always normalize schemaVersion forward.
+    [Fact]
+    public void Fuzz_Deserialize_OnlyThrowsForwardVersion()
+    {
+        var rng = new Random(20260623);
+        string[] modes = { "Casual", "casual", "Formal", "VeryCasual", "Banana", "" };
+        string[] models = { "Tiny", "tiny", "LargeTurbo", "large-v3_turbo", "Quantum" };
+        string[] langs = { "English", "english", "Romanian", "Klingon" };
+        for (int i = 0; i < 400; i++)
+        {
+            int version = rng.Next(0, 4); // 0..3 — anything > 1 must throw ForwardVersionException
+            var dto = new
+            {
+                schemaVersion = version,
+                mode = modes[rng.Next(modes.Length)],
+                model = models[rng.Next(models.Length)],
+                language = langs[rng.Next(langs.Length)],
+                customWords = new[] { "a", "b" },
+                removeFillerWords = rng.Next(2) == 0,
+            };
+            string json = JsonSerializer.Serialize(dto);
+            if (version > SettingsState.CurrentSchemaVersion)
+            {
+                Assert.Throws<ForwardVersionException>(() => SettingsStateJson.Deserialize(json));
+            }
+            else
+            {
+                var s = SettingsStateJson.Deserialize(json);
+                Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // always normalized forward
+            }
+        }
     }
 }
