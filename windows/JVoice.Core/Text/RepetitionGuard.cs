@@ -78,9 +78,34 @@ public static class RepetitionGuard
         return counts.Count > 0 && counts.Values.Max() >= MinRepeatCount;
     }
 
-    /// Lowercased letters/digits only — strips surrounding punctuation.
+    /// Lowercased alphanumerics only — strips surrounding punctuation. Mirrors Swift's
+    /// `CharacterSet.alphanumerics` (Unicode categories L*, M*, N*), which — unlike
+    /// `char.IsLetterOrDigit` (only L* + Nd) — keeps combining marks (Mn/Mc/Me) and the
+    /// Nl/No number categories. Iterates Unicode scalars (runes) like Swift's `unicodeScalars`.
     internal static string Core(string token)
-        => new(token.ToLowerInvariant().Where(char.IsLetterOrDigit).ToArray());
+    {
+        var sb = new System.Text.StringBuilder(token.Length);
+        foreach (var rune in token.ToLowerInvariant().EnumerateRunes())
+            if (IsAlphanumericScalar(rune)) sb.Append(rune.ToString());
+        return sb.ToString();
+    }
+
+    private static bool IsAlphanumericScalar(System.Text.Rune rune)
+        => System.Text.Rune.GetUnicodeCategory(rune) switch
+        {
+            System.Globalization.UnicodeCategory.UppercaseLetter or
+            System.Globalization.UnicodeCategory.LowercaseLetter or
+            System.Globalization.UnicodeCategory.TitlecaseLetter or
+            System.Globalization.UnicodeCategory.ModifierLetter or
+            System.Globalization.UnicodeCategory.OtherLetter or
+            System.Globalization.UnicodeCategory.NonSpacingMark or
+            System.Globalization.UnicodeCategory.SpacingCombiningMark or
+            System.Globalization.UnicodeCategory.EnclosingMark or
+            System.Globalization.UnicodeCategory.DecimalDigitNumber or
+            System.Globalization.UnicodeCategory.LetterNumber or
+            System.Globalization.UnicodeCategory.OtherNumber => true,
+            _ => false,
+        };
 
     internal static HashSet<string> VocabularyCores(IReadOnlyList<string> vocabulary)
     {

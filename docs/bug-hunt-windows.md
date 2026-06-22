@@ -20,8 +20,8 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **202** after the TextProcessor + PhoneticMatcher + VocabularyPrompt audits). As the hunt adds
-  regression tests this number only grows; it must never go down or go red.
+  now **215** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard audits).
+  As the hunt adds regression tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -71,8 +71,18 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       precise Swift cap vector (word39 kept / word40 dropped / not ending word99), the 39/40/41 boundary,
       duplicate-not-deduped, order-preserved, comma-in-entry-not-escaped, tab/newline trim, + a 300-case
       never-throw/well-formed fuzz (null iff no non-blank entry, else starts with a single space).
-- [ ] **RepetitionGuard** — `…/Text/RepetitionGuard.cs` + `RepetitionGuardTests.cs`
+- [x] **RepetitionGuard** — `…/Text/RepetitionGuard.cs` + `RepetitionGuardTests.cs`
       ← `…/Services/RepetitionGuard.swift` / `RepetitionGuardTests.swift` (incl. the 120-case fuzz)
+      — 2026-06-23 · +13 tests · **1 bug** (#2 Core alphanumerics). Line-by-line fidelity confirmed
+      (all 5 constants, the 3-step strip pipeline, IsDegenerate, the loopy() predicate, stopwords list
+      verbatim, VocabularyCores camelCase split, trailing-sep trim). Added `InternalsVisibleTo` so Core
+      internals are white-box testable; ported the reported-bug case, generic loop, whole-loop→empty,
+      empty/whitespace, scrub flags, VocabularyCores parity + a 400-case never-throw/never-lengthen fuzz.
+      NOTE: the Swift `vocabularyCoresSplitsSpokenParts` test asserts `contains("vs")`, but the Swift
+      *algorithm* (faithfully ported) does NOT yield "vs" for "VS Code" (camelCase splits "VS"→V/S, each
+      <2 chars; only whole "vscode" survives) — C# matches the algorithm; that lone Swift assertion is
+      inconsistent with its own code (a non-aborting `#expect`). We lock the real behaviour + the
+      lowercase "vs code"→"vs" contrast.
 - [ ] **RegurgitationRecovery** — `…/Text/RegurgitationRecovery.cs` + `RegurgitationRecoveryTests.cs`
       ← `…/Services/RegurgitationRecovery.swift` / `RegurgitationRecoveryTests.swift`
 - [ ] **WavTail / WavTailReader** — `…/Audio/WavTail.cs` + `WavTailTests.cs`
@@ -150,6 +160,24 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
   after → `["the\nmacOS"]`), plus `ExtractCorrections_TabIsAWordBoundary` pins the kept behaviour.
 - *Commit:* see this firing's `test(win-bughunt): TextProcessor …` commit.
 
+**#2 [RepetitionGuard.Core] dropped Unicode marks + Nl/No numbers (CharacterSet.alphanumerics mismatch).**
+- *Symptom:* `Core("a½́b")` returned `"ab"` (Swift: `"a½́b"`). Consequence through the public API: a
+  repeated `No`/`Nl`/combining-mark token forms a regurgitation loop under Swift (its core is non-empty)
+  but C# silently dropped it, so `Scrub` returned the text unchanged where Swift stripped the loop —
+  a (rare) silent miss of the regurgitation guard.
+- *Root cause:* C# `Core` filtered with `char.IsLetterOrDigit` (Unicode **L\* + Nd** only). Swift `core()`
+  uses `CharacterSet.alphanumerics` = **L\* + M\* + N\*** — it keeps combining marks (Mn/Mc/Me) and the
+  Nl/No number categories. Not on the intentional-deviations list.
+- *Fix:* `Core` now enumerates Unicode scalars (`string.EnumerateRunes()`, mirroring Swift's
+  `unicodeScalars`) and keeps a rune iff `Rune.GetUnicodeCategory` is in L\*/M\*/N\* (new
+  `IsAlphanumericScalar`). ASCII behaviour is unchanged (the change only *adds* M\*/Nl/No), so no
+  regression. Also added `<InternalsVisibleTo Include="JVoice.Tests" />` to `JVoice.Core.csproj` to
+  white-box-test the internal `Core`/`VocabularyCores` (mirrors Swift `@testable`).
+- *Regression tests:* `Core_KeepsMarksAndNumberSymbols_LikeSwiftAlphanumerics` (red `"ab"` → green
+  `"a½́b"`) and `Scrub_NumberSymbolLoop_StrippedLikeSwift` (a 12× `½` loop: red not-stripped → green
+  stripped to the coherent prefix).
+- *Commit:* see this firing's `test(win-bughunt): RepetitionGuard …` commit.
+
 ## Open bugs needing David (could not be safely auto-fixed)
 *(HIGH PRIORITY — these are surfaced here AND the failing test is `[Fact(Skip="BUG: see #N")]` so the
 suite stays green+committed while the bug stays visible. Empty = good.)*
@@ -183,6 +211,13 @@ _(none yet)_
   commas in entries not escaped, and trimming identical to Swift's `.whitespacesAndNewlines`.
 - **`VocabularyPrompt.Text` never throws and is well-formed** — null iff every entry trims to empty,
   else starts with exactly one leading space — 300-case seeded fuzz.
+- **RepetitionGuard C#↔Swift fidelity confirmed** — all 5 constants (MinLoopTokens=8, TailWindow=12,
+  DensityThreshold=0.7, MinRepeatCount=3, NonLoopyTolerance=1), the 3-step strip pipeline, `IsDegenerate`,
+  the `loopy()` predicate, the 68-word stopwords list (verbatim), `VocabularyCores` camelCase splitting,
+  and the trailing-separator trim. The reported-bug regurgitation case + generic non-vocab loops strip
+  correctly; legitimate single/dense mentions are preserved.
+- **`RepetitionGuard.Scrub` never throws and never lengthens the text** (null/empty/punctuation-only/
+  loop-soup inputs across 3 vocab sets) — 400-case seeded fuzz; clean text is returned byte-identical.
 
 ---
 
