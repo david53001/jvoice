@@ -1,5 +1,6 @@
+using System.Drawing;
+using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media.Imaging;
 using H.NotifyIcon;
 
 namespace JVoice.App.UI;
@@ -7,14 +8,18 @@ namespace JVoice.App.UI;
 /// Ports MenuBarController.swift: the tray "J" with 3 activity states (idle "J" /
 /// red mic / cyan waveform) and the menu (Start/Stop Dictation, Settings…,
 /// Launch at Login ✓, Quit JVoice). Wraps H.NotifyIcon.Wpf's TaskbarIcon.
+///
+/// Tray icons are set via the System.Drawing.Icon `Icon` property (converted from
+/// the embedded PNGs), NOT `IconSource` — H.NotifyIcon feeds an IconSource PNG to
+/// `new System.Drawing.Icon(stream)`, which only accepts .ico bytes and throws on PNG.
 public sealed class TrayIcon : IDisposable
 {
     public enum Activity { Idle, Recording, Transcribing }
 
     private readonly TaskbarIcon _icon;
-    private readonly BitmapImage _idle = Load("tray-idle.png");
-    private readonly BitmapImage _recording = Load("tray-recording.png");
-    private readonly BitmapImage _transcribing = Load("tray-transcribing.png");
+    private readonly Icon _idle = LoadIcon("tray-idle.png");
+    private readonly Icon _recording = LoadIcon("tray-recording.png");
+    private readonly Icon _transcribing = LoadIcon("tray-transcribing.png");
     private Activity _activity = Activity.Idle;
 
     // Wiring (set by App on construction).
@@ -30,23 +35,33 @@ public sealed class TrayIcon : IDisposable
         _icon = new TaskbarIcon
         {
             ToolTipText = "JVoice",
-            IconSource = _idle,
+            Icon = _idle,
         };
         // Rebuild the context menu each time it opens so item titles/checkmarks
         // reflect live state (mirrors NSMenuDelegate.menuNeedsUpdate).
         _icon.TrayContextMenuOpen += (_, _) => RebuildMenu();
         _icon.ContextMenu = new ContextMenu();
-        _icon.ForceCreate(); // ensure the icon is shown immediately
+        // enablesEfficiencyMode: false — the default (true) calls SetProcessInformation
+        // (process QoS/power throttling), which throws COMException 0x80070001
+        // ("Incorrect function") on some Windows builds and crashes startup.
+        _icon.ForceCreate(enablesEfficiencyMode: false); // ensure the icon is shown immediately
     }
 
-    private static BitmapImage Load(string file)
-        => new(new Uri($"pack://application:,,,/Assets/{file}"));
+    /// Load an embedded PNG (WPF Resource) and convert it to a System.Drawing.Icon
+    /// via a 32-bit HICON (the tray API speaks HICON, not ImageSource).
+    private static Icon LoadIcon(string file)
+    {
+        var uri = new Uri($"pack://application:,,,/Assets/{file}");
+        using var stream = System.Windows.Application.GetResourceStream(uri)!.Stream;
+        using var bmp = new Bitmap(stream);
+        return Icon.FromHandle(bmp.GetHicon());
+    }
 
     public void SetActivity(Activity activity)
     {
         if (_activity == activity) return;
         _activity = activity;
-        _icon.IconSource = activity switch
+        _icon.Icon = activity switch
         {
             Activity.Recording => _recording,
             Activity.Transcribing => _transcribing,
