@@ -1,0 +1,145 @@
+<UserControl x:Class="JVoice.App.UI.HudView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             Background="Transparent">
+    <!-- 32px margin all around = the Swift .padding(32) glow margin. -->
+    <Grid Margin="32">
+        <!-- ===== shared glow layers (behind the pill) ===== -->
+        <Border x:Name="GlowOuter" CornerRadius="22" Background="{StaticResource Pill.Fill}">
+            <Border.Effect>
+                <DropShadowEffect x:Name="GlowOuterFx" BlurRadius="64" ShadowDepth="0" Color="#4A9EFF" Opacity="0.07" />
+            </Border.Effect>
+        </Border>
+        <Border x:Name="GlowInner" CornerRadius="22" Background="{StaticResource Pill.Fill}">
+            <Border.Effect>
+                <DropShadowEffect x:Name="GlowInnerFx" BlurRadius="32" ShadowDepth="0" Color="#4A9EFF" Opacity="0.18" />
+            </Border.Effect>
+        </Border>
+
+        <!-- ===== the pill body ===== -->
+        <Border x:Name="PillBody" CornerRadius="22" Background="{StaticResource Pill.Fill}"
+                MinWidth="220" MinHeight="50" BorderThickness="1">
+            <Border.BorderBrush>
+                <SolidColorBrush x:Name="PillBorderBrush" Color="#4A9EFF" Opacity="0.22" />
+            </Border.BorderBrush>
+            <Border.Effect>
+                <DropShadowEffect BlurRadius="24" ShadowDepth="6" Direction="270" Color="#000000" Opacity="0.35" />
+            </Border.Effect>
+
+            <Grid>
+                <!-- top-leading gradient overlay accent@0.06 -> clear -->
+                <Border CornerRadius="22">
+                    <Border.Background>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0.5,0.5">
+                            <GradientStop x:Name="OverlayStop0" Color="#0F4A9EFF" Offset="0" />
+                            <GradientStop Color="#004A9EFF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Border.Background>
+                </Border>
+
+                <!-- content: [ring/disc] [text block] [stop?] -->
+                <StackPanel Orientation="Horizontal" Margin="10,7" VerticalAlignment="Center">
+
+                    <!-- ===== Orbital ring (Recording/Preparing/Downloading/Transcribing) ===== -->
+                    <Grid x:Name="Ring" Width="36" Height="36" VerticalAlignment="Center">
+                        <Ellipse x:Name="RingAura" Width="36" Height="36" RenderTransformOrigin="0.5,0.5">
+                            <Ellipse.Fill>
+                                <RadialGradientBrush>
+                                    <GradientStop x:Name="AuraStop0" Color="#2E4A9EFF" Offset="0" />
+                                    <GradientStop Color="#004A9EFF" Offset="1" />
+                                </RadialGradientBrush>
+                            </Ellipse.Fill>
+                            <Ellipse.RenderTransform>
+                                <ScaleTransform x:Name="AuraScale" ScaleX="0.9" ScaleY="0.9" />
+                            </Ellipse.RenderTransform>
+                        </Ellipse>
+                        <Path x:Name="RingArc" Width="28" Height="28" RenderTransformOrigin="0.5,0.5"
+                              StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
+                            <Path.Stroke>
+                                <SolidColorBrush x:Name="RingArcBrush" Color="#4A9EFF" />
+                            </Path.Stroke>
+                            <Path.Effect>
+                                <DropShadowEffect x:Name="RingArcGlow" BlurRadius="6" ShadowDepth="0" Color="#4A9EFF" Opacity="0.85" />
+                            </Path.Effect>
+                            <Path.RenderTransform>
+                                <RotateTransform x:Name="RingArcRotate" Angle="0" />
+                            </Path.RenderTransform>
+                        </Path>
+                        <TextBlock x:Name="RingGlyph" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Text="&#xE720;">
+                            <TextBlock.Foreground>
+                                <SolidColorBrush x:Name="RingGlyphBrush" Color="#4A9EFF" />
+                            </TextBlock.Foreground>
+                            <TextBlock.Effect>
+                                <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#4A9EFF" Opacity="0.6" />
+                            </TextBlock.Effect>
+                        </TextBlock>
+                    </Grid>
+
+                    <!-- ===== Static disc (Done/Error) ===== -->
+                    <Grid x:Name="Disc" Width="28" Height="28" VerticalAlignment="Center" Visibility="Collapsed">
+                        <Ellipse x:Name="DiscFill" Width="28" Height="28" StrokeThickness="1">
+                            <Ellipse.Fill>
+                                <SolidColorBrush x:Name="DiscFillBrush" Color="#1F6EE7B7" Opacity="0.12" />
+                            </Ellipse.Fill>
+                            <Ellipse.Stroke>
+                                <SolidColorBrush x:Name="DiscStrokeBrush" Color="#6EE7B7" Opacity="0.30" />
+                            </Ellipse.Stroke>
+                            <Ellipse.Effect>
+                                <DropShadowEffect x:Name="DiscGlow" BlurRadius="12" ShadowDepth="0" Color="#6EE7B7" Opacity="0.22" />
+                            </Ellipse.Effect>
+                        </Ellipse>
+                        <TextBlock x:Name="DiscGlyph" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                                   HorizontalAlignment="Center" VerticalAlignment="Center" Text="&#xE73E;">
+                            <TextBlock.Foreground>
+                                <SolidColorBrush x:Name="DiscGlyphBrush" Color="#6EE7B7" />
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                    </Grid>
+
+                    <!-- ===== text block ===== -->
+                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
+                        <TextBlock x:Name="Title" FontSize="12" FontWeight="SemiBold" Text="Recording">
+                            <TextBlock.Foreground>
+                                <SolidColorBrush x:Name="TitleBrush" Color="#D1E8FF" />
+                            </TextBlock.Foreground>
+                            <TextBlock.Effect>
+                                <DropShadowEffect BlurRadius="12" ShadowDepth="0" x:Name="TitleGlow" Color="#4A9EFF" Opacity="0.55" />
+                            </TextBlock.Effect>
+                        </TextBlock>
+                        <TextBlock x:Name="Subtitle" FontSize="10" FontWeight="Medium" Text="Listening…" Margin="0,2,0,0">
+                            <TextBlock.Foreground>
+                                <SolidColorBrush x:Name="SubtitleBrush" Color="#4A9EFF" Opacity="0.55" />
+                            </TextBlock.Foreground>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <!-- ===== stop button (recording only) ===== -->
+                    <Button x:Name="StopButton" Style="{StaticResource PressableButton}"
+                            Margin="14,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"
+                            Width="22" Height="22">
+                        <Grid Width="22" Height="22">
+                            <Border CornerRadius="6" BorderThickness="1">
+                                <Border.Background>
+                                    <SolidColorBrush Color="#FF6060" Opacity="0.12" />
+                                </Border.Background>
+                                <Border.BorderBrush>
+                                    <SolidColorBrush Color="#FF6060" Opacity="0.30" />
+                                </Border.BorderBrush>
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#FF6060" Opacity="0.20" />
+                                </Border.Effect>
+                            </Border>
+                            <Border CornerRadius="2" Width="7" Height="7" Background="{StaticResource Stop.Red}"
+                                    HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <Border.Effect>
+                                    <DropShadowEffect BlurRadius="6" ShadowDepth="0" Color="#FF6060" Opacity="0.80" />
+                                </Border.Effect>
+                            </Border>
+                        </Grid>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>
