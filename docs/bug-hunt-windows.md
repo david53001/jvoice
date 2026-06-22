@@ -1,0 +1,139 @@
+# Windows Port — Autonomous Bug-Hunt Ledger
+
+**Purpose:** tracking doc for the autonomous `/loop` bug-hunt of the JVoice **Windows** port
+(`windows/` .NET solution). Each loop iteration re-reads this file, picks the next unaudited
+component, hunts for bugs/edge cases in the machine-verifiable layers, fixes any real bug at the
+root, adds a regression test, and records the result here. **This file is the memory of the loop —
+never start from a blank slate; never redo a `DONE` row.**
+
+> **Scope reminder:** an autonomous/headless session **cannot** dogfood the live GUI / mic / paste /
+> visual paths — those need a human at the desktop (`docs/launch/windows-dogfood-checklist.md`). This
+> hunt targets only what a machine can verify: the **pure brain** (`JVoice.Core`, fidelity vs the
+> read-only Swift reference under `Sources/JVoice/` + fuzzing), the **engine** (adversarial WAVs via
+> `whisper-smoke` / `--bench`), and the **headless-verifiable platform** code (persistence corruption,
+> orphan sweep, `hotkey-probe`, struct/marshalling review).
+
+---
+
+## Baseline (must hold at the start AND end of every iteration)
+
+- `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
+  `VoiceCoordinator.cs:267` are expected — not a finding).
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**).
+  As the hunt adds regression tests this number only grows; it must never go down or go red.
+
+---
+
+## NOT bugs — documented intentional deviations (do NOT "fix" these)
+
+Before flagging any C#↔Swift divergence as a bug, confirm it is **not** one of these deliberate
+choices (sources: `docs/HANDOFF-WINDOWS.md` §7, `docs/superpowers/plans/2026-06-22-windows-port-00-overview.md` §6.3/§10):
+
+- The two WhisperKit-1.0.0 workarounds are **deliberately dropped** — `SuppressBlankFilter` /
+  `installPromptCompatibilityFilter`, and the single-window `withoutTimestamps` 25 s truncation trap.
+  whisper.cpp doesn't have those bugs. Their **absence is correct**, not a missing port.
+- `HudState` has a **new** `DownloadingModel` kind (macOS folded download into "preparing").
+- Rebound hotkey is **session-only** — `SettingsState` has no hotkey field by design; reset to
+  `HotkeyChord.Default` (Ctrl+Shift+Space) on relaunch is intended.
+- Pure helpers (`HotkeyChord`, `SettingsStateJson`, `BluetoothDevicePolicy`, `StatsMath`,
+  `CoordinatorDecisions`) live in `JVoice.Core` (not `JVoice.App.Platform`) so tests can reach them.
+- `AppTimings.PasteRestoreDelayFailureMs = 50` exists in Core by design.
+- One Phase-2 constructor-default deviation (behaviorally identical) noted in the Phase 2 plan.
+
+---
+
+## Coverage map — audit status per component
+
+Legend: `[ ]` not started · `[~]` in progress · `[x]` audited (status line: date · #tests added · #bugs).
+Each row: **C# under test** ← **Swift reference** / **Swift test** (the fidelity oracle).
+
+### Tier 1 — pure brain (highest value; fully unit-testable on `JVoice.Core`)
+- [ ] **TextProcessor** — `JVoice.Core/Text/TextProcessor.cs` + `JVoice.Tests/TextProcessorTests.cs`
+      ← `Sources/JVoice/Services/TextProcessor.swift` / `Tests/JVoiceTests/TextProcessorTests.swift`
+- [ ] **PhoneticMatcher** — `…/Text/PhoneticMatcher.cs` + `PhoneticMatcherTests.cs`
+      ← `…/Services/PhoneticMatcher.swift` / `PhoneticMatcherTests.swift`
+- [ ] **VocabularyPrompt** — `…/Text/VocabularyPrompt.cs` + `VocabularyPromptTests.cs`
+      ← `…/Services/VocabularyPrompt.swift` / `VocabularyPromptTests.swift`
+- [ ] **RepetitionGuard** — `…/Text/RepetitionGuard.cs` + `RepetitionGuardTests.cs`
+      ← `…/Services/RepetitionGuard.swift` / `RepetitionGuardTests.swift` (incl. the 120-case fuzz)
+- [ ] **RegurgitationRecovery** — `…/Text/RegurgitationRecovery.cs` + `RegurgitationRecoveryTests.cs`
+      ← `…/Services/RegurgitationRecovery.swift` / `RegurgitationRecoveryTests.swift`
+- [ ] **WavTail / WavTailReader** — `…/Audio/WavTail.cs` + `WavTailTests.cs`
+      ← `…/Services/WavTail.swift` / `WavTailTests.swift` (FLLR padding, stale size, growing WAV)
+- [ ] **ChunkPlanner** — `…/Audio/ChunkPlanner.cs` + `ChunkPlannerTests.cs`
+      ← `…/Services/ChunkPlanner.swift` / `ChunkPlannerTests.swift` (silence-cut, min/max constants)
+- [ ] **StreamingTranscriptionSession** — `…/Audio/StreamingTranscriptionSession.cs` + `StreamingSessionTests.cs`
+      ← `…/Services/StreamingTranscriptionSession.swift` / `StreamingTranscriptionSessionTests.swift`
+      (the data-loss guarantee: empty non-silent chunk → fallback, NEVER a silent drop; finish-once; cancel-join)
+- [ ] **SettingsState (+migration)** — `…/Models/SettingsState.cs` + `SettingsStateTests.cs`
+      ← `…/Models/SettingsState.swift` / `SettingsStateMigrationTests.swift`
+- [ ] **SettingsStateJson** — `…/Models/SettingsStateJson.cs` + `SettingsStoreJsonTests.cs`
+      ← `…/Services/SettingsStore.swift` / `SettingsStoreCorruptionTests.swift` (forward-version refusal, per-field fallback)
+- [ ] **WhisperModelOption (+GGML map)** — `…/Models/WhisperModelOption.cs` + `ModelTests.cs`
+      ← `…/Models/WhisperModelOption.swift` / `WhisperModelOptionTests.swift`
+- [ ] **HudState** — `…/Models/HudState.cs` ← `…/Models/HUDState.swift` (+ `DownloadingModel` is new)
+- [ ] **HotkeyChord** — `…/Models/HotkeyChord.cs` + `HotkeyChordTests.cs` (Windows-only; parse/format/Default)
+- [ ] **StatsMath** — `…/StatsMath.cs` + `StatsMathTests.cs` ← WPM math in `…/Services/StatsStore.swift`
+      (edge cases: 0 seconds, 0 words, overflow)
+- [ ] **CoordinatorDecisions** — `…/CoordinatorDecisions.cs` + `CoordinatorDecisionsTests.cs`
+      ← decision logic in `…/VoiceCoordinator.swift` (target-window resolution, HUD→tray map, reset-delay map)
+- [ ] **BluetoothDevicePolicy** — `…/Audio/BluetoothDevicePolicy.cs` + `BluetoothDevicePolicyTests.cs`
+      ← `…/Services/AudioInputRouter.swift` / `AudioInputRouterTests.swift` (pure non-BT pick policy)
+- [ ] **FileBackedTranscriptionEngine** — `…/Transcription/FileBackedTranscriptionEngine.cs` + `FileBackedEngineTests.cs`
+      ← `FileBackedTranscriptionEngine` in `…/Services/TranscriptionManager.swift`
+- [ ] **Swift-test parity sweep** — enumerate EVERY case in each `Tests/JVoiceTests/*.swift` brain test
+      and confirm a C# equivalent assertion exists. Any Swift vector with no C# counterpart = a coverage
+      gap → add the C# test; if it fails, that's a port-fidelity bug → fix `JVoice.Core` to match Swift.
+
+### Tier 2 — engine + streaming on real audio (machine-verifiable via bench/smoke; needs Tiny model)
+- [ ] **WhisperNetTranscriptionEngine — adversarial WAVs** — `JVoice.App/Whisper/WhisperNetTranscriptionEngine.cs`.
+      Run crafted 16 kHz/mono/16-bit WAVs through `whisper-smoke` and `JVoice.exe --bench` (+`--stream`):
+      empty/near-empty, pure silence, < 1 s, very long (>120 s), full-scale clipping, DC offset, all-noise,
+      and a non-16 kHz file (expect a clean rejection, not a crash). Invariants: never crashes, never a
+      silent drop (streaming falls back to whole-file), correct exit codes (64/65/66/70/1/0).
+- [ ] **WhisperModelStore** — `JVoice.App/Whisper/WhisperModelStore.cs`. Verify size+SHA gate, atomic
+      `.part`→final rename, no re-download when present, no `.part` leftovers, corrupt-file re-fetch.
+- [ ] **Bench/smoke CLI** — arg parsing edge cases (missing args, bad flags, `--vocab` quoting, `--lang`,
+      `--no-prompt`, unknown model) → documented exit codes, never an unhandled exception.
+
+### Tier 3 — headless-verifiable platform (review + throwaway-console harnesses; NO GUI/mic/paste E2E)
+- [ ] **NAudioRecorder** — `JVoice.App/Platform/NAudioRecorder.cs`. Orphan-WAV sweep correctness,
+      `BufferedWaveProvider.ReadFully=false` (no infinite flush loop), `IsUsableRecording` thresholds,
+      growing-WAV header contract (16000/1/2) readable by `WavTailReader`. (Verify with a small console
+      that drives the recorder logic where a mic isn't required; review the parts that need a device.)
+- [ ] **SettingsStore / StatsStore / LastTranscriptStore** — `JVoice.App/Platform/*Store.cs`. Corruption→
+      backup+reset, forward-version refusal, UTF-8 round-trip, debounced-write coalescing, concurrent-write safety.
+- [ ] **Paster** — `JVoice.App/Platform/Paster.cs`. Review the `INPUT`/`InputUnion` struct (sizeof==40 on
+      x64), `FocusTarget` already-foreground early-return, clipboard save/restore (300 ms / 50 ms-failure).
+      Add a unit test for any pure logic (outcome mapping); E2E paste needs the dogfood checklist.
+- [ ] **GlobalHotkey** — `JVoice.App/Platform/GlobalHotkey.cs` via `windows/tools/hotkey-probe`
+      (chord-match, 150 ms debounce, watchdog re-arm, recovery modes). Drive its `chord`/`watchdog`/`recovery` paths.
+- [ ] **AudioInputRouter / ForegroundWindowTracker / LaunchAtLogin / SingleInstance / PermissionError /
+      SettingsUris** — `JVoice.App/Platform/*.cs`. Review for races/leaks; verify registry round-trips
+      **revert cleanly** (never leave `HKCU\…\Run\JVoice` set), cross-process mutex actually blocks.
+
+---
+
+## Bugs found & fixed
+*(append; newest last. Format: `#N [component] symptom → root cause → fix → regression test → commit`)*
+
+_(none yet)_
+
+## Open bugs needing David (could not be safely auto-fixed)
+*(HIGH PRIORITY — these are surfaced here AND the failing test is `[Fact(Skip="BUG: see #N")]` so the
+suite stays green+committed while the bug stays visible. Empty = good.)*
+
+_(none yet)_
+
+## Invariants proven (no bug; recorded for confidence)
+*(append; e.g. "WavTail tolerates a truncated FLLR chunk — fuzzed 500 cases, never throws")*
+
+_(none yet)_
+
+---
+
+## Loop control
+- **Consecutive iterations with no new bug AND no new coverage:** 0
+- **STATUS:** IN PROGRESS
+- **Stop when:** every coverage-map row is `[x]` **and** the last 3 iterations added neither a new bug
+  nor new coverage → set STATUS to `DONE` and report `DONE — nothing left`.

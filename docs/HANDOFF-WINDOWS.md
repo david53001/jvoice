@@ -123,7 +123,10 @@ windows/
 ├── JVoice.Tests/                  net9.0 xUnit — 122 tests locking JVoice.Core
 └── tools/
     ├── whisper-smoke/             net9.0 console — WPF-free end-to-end transcription harness
-    └── generate-icon/             net9.0 console (SkiaSharp) — writes Assets/JVoice.ico + tray PNGs
+    ├── generate-icon/             net9.0 console (SkiaSharp) — writes Assets/JVoice.ico + tray PNGs
+    └── hotkey-probe/              net9.0 console — compiles the REAL GlobalHotkey source and drives
+                                   it via SendInput/keybd_event (chord-match / watchdog re-arm / recovery
+                                   modes); the diagnostic harness behind §7 #14
 ```
 
 **Why the split:** `JVoice.Core` is pure `net9.0` (no UI/native deps) so `JVoice.Tests` (also
