@@ -49,3 +49,14 @@ Extracted 2026-06-06 from `../MacOSUtils` (David's multi-utility app, formerly n
 ## Current status & next steps
 
 See `docs/HANDOFF.md` for session-by-session state, open questions, and the agreed next actions.
+
+## Windows port (in progress — `windows/`)
+
+A native **Windows** port of JVoice lives under `windows/` (a separate .NET solution). The macOS Swift app above is **unchanged and read-only** — it is the reference and the source-of-truth for the accuracy "brain" and its invariants. **Do not modify `Sources/`, `Tests/`, `Package.swift`, or `Resources/` when working on the Windows port.**
+
+- **Stack:** C# on **.NET 9**, **WPF** (`win-x64`, WinExe), speech via **Whisper.net** (managed whisper.cpp bindings, GGML models) with **CUDA** GPU acceleration + a CPU fallback. This replaces macOS-only WhisperKit/CoreML. NAudio for capture, H.NotifyIcon.Wpf for the tray, SkiaSharp for the icon. The dev machine has an RTX 3060 Ti (CUDA) + i5-12400 (AVX2).
+- **The brain ports faithfully.** `JVoice.Core` reproduces TextProcessor / PhoneticMatcher / VocabularyPrompt / RepetitionGuard / RegurgitationRecovery / ChunkPlanner / WavTail / StreamingTranscriptionSession 1:1 (every constant verbatim), locked by `JVoice.Tests` (xUnit) translated from the Swift tests. The WhisperKit-specific workarounds (SuppressBlankFilter, single-window timestamp trap) are dropped — whisper.cpp doesn't need them.
+- **Plan:** the complete, zero-context, phase-by-phase implementation plan is in `docs/superpowers/plans/2026-06-22-windows-port-0{0..5}-*.md`. Read `…-00-overview.md` first (architecture, canonical names, constraints, rejected alternatives, cross-phase reconciliation §10). Phases: 1 Core brain → 2 Whisper engine → 3 platform (audio/hotkey/paste/persistence) → 4 WPF UI + VoiceCoordinator → 5 packaging/CI/docs.
+- **Build/test/run:** `dotnet build windows/JVoice.sln -c Release` · `dotnet test windows/JVoice.Tests` · `dotnet run --project windows/JVoice.App` · publish single-file per Phase 5.
+- **Same constraints as the macOS side:** $0 budget (no paid code-signing → unsigned `.exe`; document the SmartScreen "More info → Run anyway" step, the Windows analog of Gatekeeper "Open Anyway"); GPL-3.0 (all NuGet deps MIT-compatible); privacy (zero runtime network except the one-time GGML model download); **NO publishing/pushing without David's go-ahead.** Default hotkey is **Ctrl+Shift+Space** (⌥Space has no clean Windows equivalent — Alt+Space is the system window menu).
+- **Status:** see `docs/HANDOFF-WINDOWS.md`.

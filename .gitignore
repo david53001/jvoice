@@ -21,3 +21,14 @@ xcuserdata/
 *.swo
 docs/assets/demo-src/frames/
 .vscode/
+
+# .NET / Windows app (windows/)
+windows/**/bin/
+windows/**/obj/
+windows/**/*.user
+windows/.vs/
+windows/**/publish/
+windows/tools/**/bin/
+windows/tools/**/obj/
+# Whisper GGML models are downloaded at runtime, never committed
+*.bin
