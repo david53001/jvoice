@@ -23,7 +23,7 @@ A native **Windows** port of JVoice. JVoice is a hotkey-driven voice-dictation a
 - **01 core-brain** — `JVoice.Core` + `JVoice.Tests`. **EXECUTED & GREEN this session** (see below).
 - **02 whisper-engine** — Whisper.net engine + GGML model store + `--bench` CLI. **EXECUTED & VERIFIED this session** (see "Phase 2 progress" below — real on-device transcription on Windows, all invariants proven).
 - **03 platform** — audio capture, BT-safe device pick, global hotkey, paste, persistence, launch-at-login. **EXECUTED & VERIFIED this session** (see "Phase 3 progress" below).
-- **04 ui** — WPF tray + HUD pill + 320×520 settings + the "J" `.ico` + `VoiceCoordinator`. (Plan only.)
+- **04 ui** — WPF tray + HUD pill + 320×520 settings + the "J" `.ico` + `VoiceCoordinator`. **CODE-COMPLETE & BUILDS this session** (visual/dictation = David's dogfood; see "Phase 4 progress").
 - **05 packaging** — single-file publish, Inno Setup, SmartScreen docs, Windows CI, verify-transcription harness, docs, dogfood checklist. (Plan only.)
 
 ## What was DONE this session (autonomous)
@@ -168,10 +168,47 @@ ForegroundWindowTracker; GlobalHotkey; Paster.
 - **SettingsStoreJson invalid-JSON test** relaxed to `Assert.ThrowsAny<JsonException>` (JsonDocument.Parse throws the JsonReaderException subclass).
 - All `JVoice.App` Platform files need explicit `using System.IO;` (WindowsDesktop SDK trims it from implicit usings — see Phase 2 note).
 
+## Phase 4 progress (WPF UI + VoiceCoordinator — this session)
+
+**Code-complete.** `dotnet build windows/JVoice.sln -c Release` = 0 errors across all 5
+projects (JVoice.Core, JVoice.App, JVoice.Tests, whisper-smoke, generate-icon);
+`dotnet test` = **122/122** (13 new CoordinatorDecisions tests). NuGet pinned this phase:
+**H.NotifyIcon.Wpf 2.3.0** (tray) and **SkiaSharp 3.119.4** (icon tool only).
+
+Built (all 10 plan tasks): generate-icon tool → `Assets/JVoice.ico` (6-frame) + 3 tray
+PNGs; JVoicePalette.xaml (colors/brushes/button+segment+switch styles, DarkSection
+template, converters); App.xaml/App.xaml.cs (STAThread Main preserving --bench +
+single-instance + WhisperRuntime.EnsureLoaded; OnStartup wires coordinator/HUD/tray +
+first-run Settings; OnExit flush); HudWindow + HudView (all 7 pills, orbital ring,
+click-through overlay); HotkeyRecorder; DarkSection (templated ContentControl);
+SettingsView/SettingsWindow (9 sections bound to the coordinator); TrayIcon (3-state +
+live menu); CoordinatorDecisions (pure, tested); VoiceCoordinator (full pipeline port).
+
+### Verified (this non-interactive session)
+- Full Release build 0 errors; 122 xUnit tests green.
+- `JVoice.exe --bench` → exit 64 (the bench CLI still short-circuits before WPF, through the new App.Main).
+- generate-icon produced a structurally-valid 6-frame .ico (15KB, header `00 00 01 00 06 00`) + 3 PNGs; HUD glyph code points byte-verified (E720/E713/E896/E767/E73E/E7BA).
+
+### Deferred to David's interactive dogfood (Phase 4 Task 10 — manual, can't run headless)
+- Launching the GUI: the first-run `MessageBox` blocks and the tray/HUD/global-hook need an interactive desktop, so I did NOT launch `dotnet run --project windows/JVoice.App` here.
+- Visual fidelity of the HUD pills (colors/animation/orbital ring) and the 320×520 Settings panel vs DESIGN-TOKENS.
+- End-to-end live dictation: Ctrl+Shift+Space → record → transcribe → paste into the focused app; HUD state transitions; tray menu; settings round-trip; first-run flow.
+  - To re-test first-run: delete `HKCU\Software\JVoice\UiFirstRunShown`.
+
+### Phase 4 deviations from the plan (logged)
+- **H.NotifyIcon.Wpf 2.3.0, not 2.4.1** — 2.4.1 ships only `net10.0-windows7.0` + `net462`, so on net9 it fell back to net462 (broken WPF). 2.3.0 has a `net9.0-windows7.0` asset. Pinned 2.3.0.
+- **App.xaml is build-action `Page`, not `ApplicationDefinition`** — otherwise the SDK auto-generates a `Main` that collides with our explicit bench-aware `Main` (CS0017). `InitializeComponent` is still generated for the Page.
+- **DarkSection is a templated `ContentControl`, not a `UserControl`** — a UserControl creates its own namescope, making `x:Name`d children (Recorder, NewWordBox) inside a section illegal (MC3093). The ContentControl keeps section content in SettingsView's namescope. Its visual is the implicit `DarkSection` style in JVoicePalette.xaml; HeaderText is coerced to upper-case so the TemplateBinding shows it uppercased.
+- **Icon tool uses SkiaSharp 3.x `SKFont`+`DrawText`+`MeasureText`** (the plan's `SKPaint.GetTextPath` is 2.x; 3.x dropped SKPaint text members).
+- **HUD `ShowRing` overloads simplified** to a single `ShowRing(string glyph)`; Transcribing uses the Volume glyph (E767) as the closest MDL2 audio glyph (no clean waveform glyph; a drawn-Path waveform is a noted polish item).
+- Benign CS4014 warnings on intentional fire-and-forget `_ = …PrewarmAsync()/…Cancel()` (TreatWarningsAsErrors is false).
+
 ## Verification commands (reference)
 
 - Build: `dotnet build windows/JVoice.sln -c Release`
 - Test:  `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj`
+- Run the app (GUI): `dotnet run --project windows/JVoice.App`  (tray + first-run Settings)
+- Regenerate icons: `dotnet run --project windows/tools/generate-icon`
 - Transcribe (no GUI): `dotnet run --project windows/tools/whisper-smoke -- <wav> --model tiny`
 - Bench: `windows/JVoice.App/bin/<cfg>/net9.0-windows/JVoice.exe --bench <wav> [--model …] [--vocab …] [--stream] [--no-prompt]`
 - (Later) Run: `dotnet run --project windows/JVoice.App`
