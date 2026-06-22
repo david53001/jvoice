@@ -161,6 +161,14 @@ expect(RepetitionGuard.scrub(regurgInput, vocabulary: regurgVocab).removedRegurg
 expect(!RepetitionGuard.scrub("today I paired Claude with VS Code and my sub agents to ship the feature on time", vocabulary: regurgVocab).removedRegurgitation, "scrub does NOT flag clean vocab use")
 expect(RepetitionGuard.scrub("claude claude claude claude claude claude claude claude claude", vocabulary: ["claude"]).removedRegurgitation, "scrub flags all-loop")
 
+// Real-world sample (2026-06-10): loop interleaves whole vocabulary words,
+// then degenerates into a truncated "li-, li-, li-" run.
+let truncSpeech = "oh these are actually all really good it's very hard to make a choice maybe we could have like a theme settings in the app where you could really just pick your theme that you wanted out of all these different options and i also want you to add one that is it's just a minimalistic one just pretty minimalistic"
+let truncLoop = "sub agents, code, li-fraumeni, code, li-fraumeni, code, li-fraumeni, code, li-fraumeni, code, li-fraumeni, sub agents, code, li-fraumeni, code, li-fraumeni, code, " + Array(repeating: "li-,", count: 75).joined(separator: " ") + " li-."
+let truncResult = RepetitionGuard.scrub(truncSpeech + " " + truncLoop, vocabulary: regurgVocab)
+expect(truncResult.removedRegurgitation, "truncated-token loop (li-) flagged")
+expectEqual(truncResult.text, truncSpeech, "truncated-token loop stripped, speech intact")
+
 // Fuzz: hundreds of generated (coherent prefix + vocabulary loop) inputs must
 // strip cleanly, and the matching single-mention controls must stay untouched.
 do {

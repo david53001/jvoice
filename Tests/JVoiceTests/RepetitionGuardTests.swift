@@ -28,6 +28,26 @@ private let reportedVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
     #expect(out.count < input.count / 2)
 }
 
+@Test func stripsLoopDegeneratingIntoTruncatedTokens() {
+    // Real-world sample (2026-06-10, theme-settings dictation): the loop
+    // interleaves whole vocabulary words, then degenerates into a truncated
+    // "li-, li-, li-" run — the cores ("li") must still match the vocabulary.
+    let speech = """
+    oh these are actually all really good it's very hard to make a choice \
+    maybe we could have like a theme settings in the app where you could \
+    really just pick your theme that you wanted out of all these different \
+    options and i also want you to add one that is it's just a minimalistic \
+    one just pretty minimalistic
+    """
+    let loop = "sub agents, code, li-fraumeni, code, li-fraumeni, code, li-fraumeni, "
+        + "code, li-fraumeni, code, li-fraumeni, sub agents, code, li-fraumeni, "
+        + "code, li-fraumeni, code, "
+        + Array(repeating: "li-,", count: 75).joined(separator: " ") + " li-."
+    let r = RepetitionGuard.scrub(speech + " " + loop, vocabulary: reportedVocab)
+    #expect(r.removedRegurgitation == true)
+    #expect(r.text == speech)
+}
+
 @Test func wholeTranscriptIsLoopReducesToEmpty() {
     let input = "claude claude claude claude claude claude claude claude claude claude"
     #expect(RepetitionGuard.strip(input, vocabulary: ["claude"]) == "")
