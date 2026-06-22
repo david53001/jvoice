@@ -24,7 +24,7 @@ A native **Windows** port of JVoice. JVoice is a hotkey-driven voice-dictation a
 - **02 whisper-engine** — Whisper.net engine + GGML model store + `--bench` CLI. **EXECUTED & VERIFIED this session** (see "Phase 2 progress" below — real on-device transcription on Windows, all invariants proven).
 - **03 platform** — audio capture, BT-safe device pick, global hotkey, paste, persistence, launch-at-login. **EXECUTED & VERIFIED this session** (see "Phase 3 progress" below).
 - **04 ui** — WPF tray + HUD pill + 320×520 settings + the "J" `.ico` + `VoiceCoordinator`. **CODE-COMPLETE & BUILDS this session** (visual/dictation = David's dogfood; see "Phase 4 progress").
-- **05 packaging** — single-file publish, Inno Setup, SmartScreen docs, Windows CI, verify-transcription harness, docs, dogfood checklist. (Plan only.)
+- **05 packaging** — publish config, Inno Setup, SmartScreen docs, Windows CI, verify-transcription harness, docs, dogfood checklist. **MOSTLY EXECUTED this session** (Tasks 1,2,4,5,7,8 done; Tasks 3 Inno + 6 verify-transcription harness remain — see "Phase 5 progress").
 
 ## What was DONE this session (autonomous)
 
@@ -49,10 +49,17 @@ A native **Windows** port of JVoice. JVoice is a hotkey-driven voice-dictation a
 
 ## Next steps
 
-1. **David reviews the stack + plan**; confirm or redirect.
-2. Execute **Phase 2** (whisper engine) — first real transcription on Windows; verify a prompted vocab decode is non-empty and a >30 s clip isn't truncated (the two whisper.cpp-vs-WhisperKit checks).
-3. Execute **Phase 3** (platform), **Phase 4** (UI + coordinator), **Phase 5** (packaging).
-4. Dogfood (Phase 5 checklist). **Do NOT publish/push** without David's explicit go-ahead (same rule as the macOS side).
+Phases 1–3 are executed + verified; Phase 4 (UI) is code-complete + builds; Phase 5 is mostly
+done (publish config, manifest, CI, docs, dogfood checklist). Remaining:
+
+1. **Dogfood the GUI** on the dev machine — run `docs/launch/windows-dogfood-checklist.md`
+   (the live hotkey/dictation/paste loop + HUD/Settings visual fidelity, which can't be verified headlessly).
+2. **(Optional) Phase 5 Task 6** — port the `verify-transcription.py` accuracy harness to
+   `windows/tools/verify-transcription` for corpus-level word-retention / spurious-vocab scoring.
+3. **(Optional) Phase 5 Task 3** — an Inno Setup installer (`windows/installer/JVoice.iss`);
+   the zipped self-contained folder is already a complete distributable without it.
+4. Address anything the dogfood surfaces (esp. HUD pixel fidelity tweaks, glyph/waveform polish).
+5. **Do NOT publish/push** without David's explicit go-ahead (same rule as the macOS side).
 
 ## Phase 2 progress (Whisper engine — this session)
 
@@ -202,6 +209,42 @@ live menu); CoordinatorDecisions (pure, tested); VoiceCoordinator (full pipeline
 - **Icon tool uses SkiaSharp 3.x `SKFont`+`DrawText`+`MeasureText`** (the plan's `SKPaint.GetTextPath` is 2.x; 3.x dropped SKPaint text members).
 - **HUD `ShowRing` overloads simplified** to a single `ShowRing(string glyph)`; Transcribing uses the Volume glyph (E767) as the closest MDL2 audio glyph (no clean waveform glyph; a drawn-Path waveform is a noted polish item).
 - Benign CS4014 warnings on intentional fire-and-forget `_ = …PrewarmAsync()/…Cancel()` (TreatWarningsAsErrors is false).
+
+## Phase 5 progress (packaging / CI / docs — this session)
+
+**Done:** Task 1 (publish config), Task 2 (manifest + metadata + AppUserModelID), Task 4
+(`docs/launch/windows-distribution.md` — unsigned + SmartScreen), Task 5
+(`.github/workflows/windows.yml` — CI), Task 7 (docs: `windows/README.md`, this handoff;
+CLAUDE.md already has a Windows section), Task 8 (`docs/launch/windows-dogfood-checklist.md`).
+
+- **Publish** (`JVoice.App.csproj`, keyed on `JVoiceFlavor`): CUDA+Vulkan runtime packages are
+  CONDITIONAL (absent for `cpu`) — `ExcludeAssets` was insufficient. **Verified: the CPU FOLDER
+  build (161 MB) runs `--bench` → `runtime: whisper.cpp (Cpu)`, accurate transcript, exit 0.**
+- **Single-file caveat (decision):** the CPU single-file build (~75 MB, no CUDA) *builds* but
+  **fails native load (exit 70)** — Whisper.net 1.9.1 resolves natives via `Assembly.Location`,
+  empty for bundled single-file assemblies. → **Ship a zipped self-contained FOLDER, not a
+  single-file exe.** (The CI `build-artifact` job still produces the single-file for inspection;
+  it should be switched to a folder-zip if that job is ever used for real distribution.)
+- **CI:** windows-latest, .NET 9, build Release + `dotnet test` + a trx count-guard (fails on
+  0-executed or any failure). Locally reproduced: 122/122 executed, guard PASS. No GUI, no push.
+- **win-arm64:** CUDA is x64-only; an arm64 build is CPU-runtime-only (swap the RID; verify
+  `Whisper.net.Runtime` has a win-arm64 asset first).
+
+**Remaining Phase 5 (optional, not blocking a working app):**
+- **Task 3 — Inno Setup installer** (`windows/installer/JVoice.iss`): not written (needs Inno
+  Setup installed to compile; the zipped folder is a complete distributable without it).
+- **Task 6 — `windows/tools/verify-transcription`** harness (port of `verify-transcription.py`,
+  the accuracy-scoring corpus tool): not written. The existing `whisper-smoke` + `--bench`
+  already prove end-to-end transcription; this is the larger scripted accuracy harness.
+- A user-facing top-level `README-WINDOWS.md` (Task 7) was folded into `windows/README.md`
+  (developer-facing); a marketing README can be split out at publish time.
+
+## Phase 4/5 dogfood (David)
+
+Phases 1–3 are verified. Phase 4 (UI) is code-complete + builds but its visual fidelity and the
+live dictation loop need an interactive desktop — run `docs/launch/windows-dogfood-checklist.md`
+on the dev machine. The global-hotkey live-fire and live paste-into-app (deferred from Phase 3)
+are covered there too.
 
 ## Verification commands (reference)
 
