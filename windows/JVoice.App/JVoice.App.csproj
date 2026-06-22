@@ -7,17 +7,39 @@
     <RootNamespace>JVoice.App</RootNamespace>
     <AssemblyName>JVoice</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <!-- Phase 4 sets the WPF StartupObject / App.xaml entry. For now Program.Main is the entry. -->
-    <StartupObject>JVoice.App.Program</StartupObject>
+    <!-- Our own [STAThread] Main (App.xaml.cs) handles the bench CLI short-circuit
+         before WPF starts. Point the entry at it explicitly. -->
+    <StartupObject>JVoice.App.App</StartupObject>
+    <ApplicationIcon>Assets\JVoice.ico</ApplicationIcon>
     <Platforms>x64</Platforms>
     <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+    <AssemblyTitle>JVoice</AssemblyTitle>
+    <Product>JVoice</Product>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\JVoice.Core\JVoice.Core.csproj" />
   </ItemGroup>
 
+  <!-- App.xaml provides our own [STAThread] Main (App.xaml.cs) for the bench short-circuit,
+       so treat it as a Page (not ApplicationDefinition) to suppress the SDK's auto-generated
+       Main, which would otherwise collide with ours (CS0017). InitializeComponent is still
+       generated for the Page. -->
   <ItemGroup>
+    <ApplicationDefinition Remove="App.xaml" />
+    <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <!-- Tray PNGs are loaded at runtime via pack URIs; the .ico is the app icon. -->
+  <ItemGroup>
+    <Resource Include="Assets\tray-idle.png" />
+    <Resource Include="Assets\tray-recording.png" />
+    <Resource Include="Assets\tray-transcribing.png" />
+    <Resource Include="Assets\JVoice.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="H.NotifyIcon.Wpf" Version="2.3.0" />
     <PackageReference Include="NAudio" Version="2.3.0" />
     <PackageReference Include="Whisper.net" Version="1.9.1" />
     <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />

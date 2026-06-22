@@ -1,0 +1,154 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============ HUD pill colors ============ -->
+    <SolidColorBrush x:Key="Pill.Fill"           Color="#FF07070E" />
+    <SolidColorBrush x:Key="Accent.Recording"    Color="#FF4A9EFF" />
+    <SolidColorBrush x:Key="Text.Recording"      Color="#FFD1E8FF" />
+    <SolidColorBrush x:Key="Accent.Transcribing" Color="#FF00D4E0" />
+    <SolidColorBrush x:Key="Text.Transcribing"   Color="#FFA0F0F7" />
+    <SolidColorBrush x:Key="Accent.Preparing"    Color="#FF8060FF" />
+    <SolidColorBrush x:Key="Text.Preparing"      Color="#FFCABBFF" />
+    <SolidColorBrush x:Key="Accent.Done"         Color="#FF6EE7B7" />
+    <SolidColorBrush x:Key="Text.Done"           Color="#FFB1FCB7" />
+    <SolidColorBrush x:Key="Accent.Error"        Color="#FFFAA060" />
+    <SolidColorBrush x:Key="Text.Error"          Color="#FFFFD1A0" />
+    <SolidColorBrush x:Key="Stop.Red"            Color="#FFFF6060" />
+
+    <!-- ============ Settings palette ============ -->
+    <SolidColorBrush x:Key="Settings.PanelBg"    Color="#FF0D0D16" />
+    <SolidColorBrush x:Key="Settings.SectionBg"  Color="#FF0F0F1A" />
+    <SolidColorBrush x:Key="Settings.Border"     Color="#FF1E1E2C" />
+    <SolidColorBrush x:Key="Settings.HeaderText" Color="#FF4A80CC" />
+    <SolidColorBrush x:Key="Settings.InputBg"    Color="#FF0A0A14" />
+    <SolidColorBrush x:Key="Settings.Blue"       Color="#FF4A9EFF" />
+    <SolidColorBrush x:Key="Settings.Gray"       Color="#FF878787" />
+    <SolidColorBrush x:Key="Settings.Indigo"     Color="#FF60A0FF" />
+    <SolidColorBrush x:Key="Settings.Purple"     Color="#FF8060FF" />
+    <SolidColorBrush x:Key="Settings.Cyan"       Color="#FF20D8FF" />
+    <SolidColorBrush x:Key="Settings.Orange"     Color="#FFF0A030" />
+    <SolidColorBrush x:Key="Settings.Green"      Color="#FF4ADEA0" />
+    <SolidColorBrush x:Key="Settings.Teal"       Color="#FF20C0A0" />
+    <SolidColorBrush x:Key="Settings.Red"        Color="#FFFF6060" />
+
+    <!-- White-with-opacity text brushes (SwiftUI Color(white:x)) -->
+    <SolidColorBrush x:Key="Text.W85" Color="#FFD9D9D9" />
+    <SolidColorBrush x:Key="Text.W75" Color="#FFBFBFBF" />
+    <SolidColorBrush x:Key="Text.W45" Color="#FF737373" />
+    <SolidColorBrush x:Key="Text.W40" Color="#FF666666" />
+    <SolidColorBrush x:Key="Text.W38" Color="#FF616161" />
+    <SolidColorBrush x:Key="Text.W35" Color="#FF595959" />
+
+    <!-- ============ PressableButton (port of PanelPressableButtonStyle) ============
+         scaleEffect 0.97 + opacity 0.85 on press; chromeless template. -->
+    <Style x:Key="PressableButton" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root" Background="Transparent" Opacity="1.0">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="Scale" ScaleX="1" ScaleY="1" CenterX="0" CenterY="0" />
+                        </Grid.RenderTransform>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.85" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="0.97" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="0.97" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="1.0" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="1.0" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.40" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============ DarkPrimaryButton (port of DarkPrimaryButtonStyle) ============
+         font 11 semibold, accent foreground, r7 fill accent@0.12 border accent@0.28,
+         h12 v6 padding, opacity 0.70 on press. Accent defaults to Settings.Blue;
+         set Foreground + Tag (the template binds fill/border to Tag.Color) to recolor. -->
+    <Style x:Key="DarkPrimaryButton" TargetType="Button">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource Settings.Blue}" />
+        <Setter Property="Tag" Value="{StaticResource Settings.Blue}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="7" BorderThickness="1" Padding="12,6">
+                        <Border.Background>
+                            <SolidColorBrush Color="{Binding Tag.Color, RelativeSource={RelativeSource TemplatedParent}}" Opacity="0.12" />
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="{Binding Tag.Color, RelativeSource={RelativeSource TemplatedParent}}" Opacity="0.28" />
+                        </Border.BorderBrush>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.70" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.40" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============ DarkDestructiveButton (port of DarkDestructiveButtonStyle) ============
+         red foreground, r7 fill red@0.10 border red@0.24. -->
+    <Style x:Key="DarkDestructiveButton" TargetType="Button" BasedOn="{StaticResource DarkPrimaryButton}">
+        <Setter Property="Foreground" Value="{StaticResource Settings.Red}" />
+        <Setter Property="Tag" Value="{StaticResource Settings.Red}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="7" BorderThickness="1" Padding="12,6">
+                        <Border.Background>
+                            <SolidColorBrush Color="#FFFF6060" Opacity="0.10" />
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="#FFFF6060" Opacity="0.24" />
+                        </Border.BorderBrush>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.70" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>
