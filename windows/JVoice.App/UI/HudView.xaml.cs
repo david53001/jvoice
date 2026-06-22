@@ -1,7 +1,7 @@
+using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using JVoice.Core.Models;
 
@@ -9,8 +9,14 @@ namespace JVoice.App.UI;
 
 public partial class HudView : UserControl
 {
-    private Storyboard? _pulse;
-    private Storyboard? _spin;
+    // The HUD lives in an AllowsTransparency (layered) window. Storyboards started
+    // while that window is hidden don't reliably drive it, so the ring used to render
+    // frozen. We instead animate from CompositionTarget.Rendering — the WPF per-frame
+    // render loop (the analog of the macOS TimelineView(.animation)); subscribing keeps
+    // the loop ticking and writing the transforms each frame forces the layered window
+    // to repaint. A single free-running clock keeps the phase continuous across states.
+    private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private bool _animating;
     private readonly DispatcherTimer _elapsedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
     private DateTime _preparingStart;
     private Action? _onStop;
@@ -166,41 +172,30 @@ public partial class HudView : UserControl
 
     private void StartAnimations()
     {
-        StopAnimations();
-
-        // Pulse aura: scale 0.9 -> 1.05, easeInOut 1.8s, repeat forever, autoreverse.
-        var pulseX = new DoubleAnimation
-        {
-            From = 0.9, To = 1.05, Duration = TimeSpan.FromSeconds(1.8),
-            AutoReverse = true, RepeatBehavior = RepeatBehavior.Forever,
-            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
-        };
-        var pulseY = pulseX.Clone();
-        Storyboard.SetTarget(pulseX, AuraScale);
-        Storyboard.SetTargetProperty(pulseX, new PropertyPath("ScaleX"));
-        Storyboard.SetTarget(pulseY, AuraScale);
-        Storyboard.SetTargetProperty(pulseY, new PropertyPath("ScaleY"));
-        _pulse = new Storyboard();
-        _pulse.Children.Add(pulseX);
-        _pulse.Children.Add(pulseY);
-        _pulse.Begin();
-
-        // Spinning arc: full 360 degrees every 4.0s, linear, forever.
-        var spin = new DoubleAnimation
-        {
-            From = 0, To = 360, Duration = TimeSpan.FromSeconds(4.0),
-            RepeatBehavior = RepeatBehavior.Forever
-        };
-        _spin = new Storyboard();
-        Storyboard.SetTarget(spin, RingArcRotate);
-        Storyboard.SetTargetProperty(spin, new PropertyPath("Angle"));
-        _spin.Children.Add(spin);
-        _spin.Begin();
+        if (_animating) return;
+        _animating = true;
+        CompositionTarget.Rendering += OnRendering;
     }
 
     private void StopAnimations()
     {
-        _pulse?.Stop(); _pulse = null;
-        _spin?.Stop(); _spin = null;
+        if (!_animating) return;
+        _animating = false;
+        CompositionTarget.Rendering -= OnRendering;
+        RingArcRotate.Angle = 0;
+        AuraScale.ScaleX = AuraScale.ScaleY = 0.9;
+    }
+
+    /// Per-frame tick (mirrors the macOS OrbitalRing animations exactly):
+    ///   • spinning arc — a full 360° every 4.0s (linear),
+    ///   • pulsing aura — scale eased between 0.9 and 1.05 over 1.8s each way
+    ///     (3.6s round trip), via a cosine so the ends ease in/out like SwiftUI.
+    private void OnRendering(object? sender, EventArgs e)
+    {
+        double t = _clock.Elapsed.TotalSeconds;
+        RingArcRotate.Angle = t % 4.0 / 4.0 * 360.0;
+        double s = 0.975 - 0.075 * Math.Cos(2 * Math.PI * (t / 3.6));
+        AuraScale.ScaleX = s;
+        AuraScale.ScaleY = s;
     }
 }
