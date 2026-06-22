@@ -19,8 +19,9 @@ never start from a blank slate; never redo a `DONE` row.**
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**).
-  As the hunt adds regression tests this number only grows; it must never go down or go red.
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
+  now **168** after the TextProcessor audit). As the hunt adds regression tests this number only grows;
+  it must never go down or go red.
 
 ---
 
@@ -48,8 +49,12 @@ Legend: `[ ]` not started · `[~]` in progress · `[x]` audited (status line: da
 Each row: **C# under test** ← **Swift reference** / **Swift test** (the fidelity oracle).
 
 ### Tier 1 — pure brain (highest value; fully unit-testable on `JVoice.Core`)
-- [ ] **TextProcessor** — `JVoice.Core/Text/TextProcessor.cs` + `JVoice.Tests/TextProcessorTests.cs`
+- [x] **TextProcessor** — `JVoice.Core/Text/TextProcessor.cs` + `JVoice.Tests/TextProcessorTests.cs`
       ← `Sources/JVoice/Services/TextProcessor.swift` / `Tests/JVoiceTests/TextProcessorTests.swift`
+      — 2026-06-23 · +46 tests · **1 bug** (#1 ExtractCorrections newline tokenization). Line-by-line
+      fidelity confirmed for the whole file; ported every missing Swift vector (extractCorrections ×5,
+      regex-template literal-escape ×3, disfluencies ×9, very-casual ×7, hallucinations, dictionary
+      variants, phonetic-in-process) + empty/whitespace edges + a 400-case never-throw/idempotent fuzz.
 - [ ] **PhoneticMatcher** — `…/Text/PhoneticMatcher.cs` + `PhoneticMatcherTests.cs`
       ← `…/Services/PhoneticMatcher.swift` / `PhoneticMatcherTests.swift`
 - [ ] **VocabularyPrompt** — `…/Text/VocabularyPrompt.cs` + `VocabularyPromptTests.cs`
@@ -117,7 +122,21 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
 ## Bugs found & fixed
 *(append; newest last. Format: `#N [component] symptom → root cause → fix → regression test → commit`)*
 
-_(none yet)_
+**#1 [TextProcessor.ExtractCorrections] multiline input tokenized differently from the Swift oracle.**
+- *Symptom:* `ExtractCorrections("the\nMacOS thing", "the\nmacOS thing")` returned `["macOS"]` in C# but
+  the Swift reference returns `["the\nmacOS"]` — a newline was wrongly treated as a word boundary.
+- *Root cause:* the port split words with `original.Split((char[]?)null, …)`, i.e. `char.IsWhiteSpace`,
+  which splits on newlines, `\r`, U+0085 (NEL), U+2028/U+2029. Swift uses
+  `original.components(separatedBy: .whitespaces)` — `CharacterSet.whitespaces` = tab (U+0009) + Unicode
+  **Space_Separator (Zs)** only, deliberately **excluding** newlines (Swift's `.whitespacesAndNewlines`
+  is the broader set, not used here). This is the one place in the brain that uses `.whitespaces`, and
+  it is **not** on the intentional-deviations list.
+- *Fix:* added `SplitOnWhitespacesOnly` + `IsSwiftWhitespace` (`c == '\t' || GetUnicodeCategory(c) ==
+  SpaceSeparator`) in `TextProcessor.cs` and tokenized both word lists with it. Matches Swift verbatim;
+  tab stays a boundary, newlines/line-separators do not.
+- *Regression test:* `ExtractCorrections_NewlineIsNotAWordBoundary` (red before → `["macOS"]`; green
+  after → `["the\nmacOS"]`), plus `ExtractCorrections_TabIsAWordBoundary` pins the kept behaviour.
+- *Commit:* see this firing's `test(win-bughunt): TextProcessor …` commit.
 
 ## Open bugs needing David (could not be safely auto-fixed)
 *(HIGH PRIORITY — these are surfaced here AND the failing test is `[Fact(Skip="BUG: see #N")]` so the
@@ -128,7 +147,17 @@ _(none yet)_
 ## Invariants proven (no bug; recorded for confidence)
 *(append; e.g. "WavTail tolerates a truncated FLLR chunk — fuzzed 500 cases, never throws")*
 
-_(none yet)_
+- **TextProcessor pure transforms never throw** on adversarial input (control chars, brackets, regex
+  metacharacters `$`/`\`, exotic whitespace incl. U+00A0/U+2028, non-ASCII letters) — `Process` (all 3
+  tones), `RemoveDisfluencies`, `RemoveWhisperHallucinations`, `ExtractCorrections`, `SpokenVariants`:
+  400-case seeded fuzz (`Fuzz_PureTransforms_NeverThrow_AndStripIsIdempotent`).
+- **`StripDecoderArtifacts` is idempotent** on every input (proven over the same 400-case fuzz + an
+  explicit case).
+- **Custom-word replacements are inserted literally** — `$`, `\`, and `$1`-style group references in a
+  replacement value never trigger .NET regex substitution (parity with the three Swift backreference
+  tests).
+- TextProcessor C#↔Swift fidelity confirmed line-by-line (constants, branch order, tone formatting,
+  filler regex, hallucination sentinel list, phrase-pattern `\b…\s+…\b`, terminal-punctuation rules).
 
 ---
 

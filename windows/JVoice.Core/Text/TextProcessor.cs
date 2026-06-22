@@ -64,8 +64,8 @@ public static class TextProcessor
 
     public static IReadOnlyList<string> ExtractCorrections(string original, string corrected)
     {
-        var originalWords = original.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-        var correctedWords = corrected.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+        var originalWords = SplitOnWhitespacesOnly(original);
+        var correctedWords = SplitOnWhitespacesOnly(corrected);
 
         var results = new List<string>();
         if (originalWords.Length == correctedWords.Length)
@@ -128,6 +128,29 @@ public static class TextProcessor
 
     private static string NormalizeWhitespace(string text)
         => string.Join(" ", text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+    /// Mirrors Swift's `CharacterSet.whitespaces`: tab (U+0009) + Unicode Space_Separator (Zs).
+    /// It deliberately EXCLUDES newlines / line- & paragraph-separators — unlike `char.IsWhiteSpace`
+    /// (i.e. `Split((char[]?)null, …)`). `extractCorrections` tokenizes on this exact set, so a word
+    /// containing a newline must stay intact (TextProcessor.swift uses `.whitespaces` here, not
+    /// `.whitespacesAndNewlines`).
+    private static string[] SplitOnWhitespacesOnly(string text)
+    {
+        var words = new List<string>();
+        int i = 0;
+        while (i < text.Length)
+        {
+            while (i < text.Length && IsSwiftWhitespace(text[i])) i++;
+            int start = i;
+            while (i < text.Length && !IsSwiftWhitespace(text[i])) i++;
+            if (i > start) words.Add(text[start..i]);
+        }
+        return words.ToArray();
+    }
+
+    private static bool IsSwiftWhitespace(char c)
+        => c == '\t'
+           || char.GetUnicodeCategory(c) == System.Globalization.UnicodeCategory.SpaceSeparator;
 
     public static string RemoveDisfluencies(string text)
     {
