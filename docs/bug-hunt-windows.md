@@ -20,8 +20,8 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **168** after the TextProcessor audit). As the hunt adds regression tests this number only grows;
-  it must never go down or go red.
+  now **192** after the TextProcessor + PhoneticMatcher audits). As the hunt adds regression tests this
+  number only grows; it must never go down or go red.
 
 ---
 
@@ -55,8 +55,14 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       fidelity confirmed for the whole file; ported every missing Swift vector (extractCorrections ×5,
       regex-template literal-escape ×3, disfluencies ×9, very-casual ×7, hallucinations, dictionary
       variants, phonetic-in-process) + empty/whitespace edges + a 400-case never-throw/idempotent fuzz.
-- [ ] **PhoneticMatcher** — `…/Text/PhoneticMatcher.cs` + `PhoneticMatcherTests.cs`
+- [x] **PhoneticMatcher** — `…/Text/PhoneticMatcher.cs` + `PhoneticMatcherTests.cs`
       ← `…/Services/PhoneticMatcher.swift` / `PhoneticMatcherTests.swift`
+      — 2026-06-23 · +24 tests · **0 bugs**. Line-by-line fidelity confirmed (Metaphone digraph table,
+      prefix rules, bounded Levenshtein DP + early-exit, smallest-window-first probing, initial-sound
+      guard, maxWindow camelCase estimate). Ported every missing Swift vector (phoneticKey ×6,
+      levenshtein ×3, the "whisper cat"→WhisperKit compound, all false-positive guards incl. the
+      "JVoice is"→swallow regression, short-word ignore) + empty-text/idempotency edges + a 400-case
+      Levenshtein symmetry/bounded invariant + a 400-case Correct/PhoneticKey never-throw fuzz.
 - [ ] **VocabularyPrompt** — `…/Text/VocabularyPrompt.cs` + `VocabularyPromptTests.cs`
       ← `…/Services/VocabularyPrompt.swift` / `VocabularyPromptTests.swift`
 - [ ] **RepetitionGuard** — `…/Text/RepetitionGuard.cs` + `RepetitionGuardTests.cs`
@@ -158,6 +164,14 @@ _(none yet)_
   tests).
 - TextProcessor C#↔Swift fidelity confirmed line-by-line (constants, branch order, tone formatting,
   filler regex, hallucination sentinel list, phrase-pattern `\b…\s+…\b`, terminal-punctuation rules).
+- **PhoneticMatcher C#↔Swift fidelity confirmed line-by-line** — Metaphone digraph map, prefix
+  simplifications (kn/wr/ps/wh), g↔j merge, bounded Levenshtein DP with row-min early-exit, the
+  smallest-window-first token probing + exact-spelling short-circuit, the initial-sound guard, and the
+  camelCase-aware `maxWindow`. All Swift correctness vectors reproduce identically in C#.
+- **Bounded Levenshtein is symmetric, non-negative, and ≤ limit+1** — 400-case seeded fuzz.
+- **`PhoneticMatcher.Correct` / `PhoneticKey` never throw** on adversarial input (empty/punctuation-only
+  tokens, digits, over-long windows, unicode, 0–3 random vocab entries) — 400-case seeded fuzz; `Correct`
+  is idempotent on the common exact-spelling case.
 
 ---
 
