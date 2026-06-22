@@ -293,6 +293,35 @@ These are real corrections discovered during execution — preserve them.
     - Verified by driving the real GUI (synthetic Ctrl+Shift+Space) end-to-end: pre-fix → `TargetRejected`;
       post-fix → `PasteOutcome.Ok` with `SendInput` injecting 4/4 events (and correct `AccessDenied` when
       the foreground target is an elevated window like Task Manager). `dotnet test` still 122/122.
+14. **Global hotkey hardened against silent loss (`Platform/GlobalHotkey.cs`) — David reported "the
+    keybind isn't working even though I'm pressing the right keys."** Systematic investigation (a new
+    `windows/tools/hotkey-probe` that compiles the *real* `GlobalHotkey` source and drives it via
+    `SendInput`/`keybd_event`, plus env-gated tracing to `%TEMP%\jvoice-hotkey.log`) established:
+    - The chord-matching logic is **correct** — it fires for both generic (`0x11/0x10`) and the
+      left-specific (`0xA2/0xA0`) modifier vk codes a *physical* keyboard actually emits (the hook reads
+      modifiers via `GetAsyncKeyState(VK_CONTROL/VK_SHIFT)`, which report down for either L/R). A fresh
+      launch records on the first injected chord, and the hook keeps firing through a full LargeTurbo GPU
+      transcription. So neither the matching nor the down-stream `ToggleRecording` path is broken.
+    - **Root failure mode: a `WH_KEYBOARD_LL` hook can stop delivering events.** `HKCU\Control Panel\
+      Desktop\LowLevelHooksTimeout` is **1000 ms** on this machine; if the hook callback (or its thread)
+      ever exceeds that — e.g. the hook thread is starved while the GPU/CPU is pegged by transcription —
+      Windows drops the event (and on some configs silently *removes* the hook entirely, leaving the
+      hotkey dead for the rest of the session with no notification or re-arm).
+    - **Fix (defense-in-depth, all verified with the probe):** (a) the hook thread runs at
+      `ThreadPriority.Highest` so the trivial callback is scheduled promptly and returns within the
+      timeout even under load (prevention); (b) a **self-healing watchdog** — a thread `WM_TIMER` every
+      1 s compares `GetLastInputInfo()` (system-wide last-input tick) against the hook's last-callback
+      tick; if the system saw input >3 s newer than our hook did, the hook is presumed lost and is
+      **re-installed** (new hook installed *before* the old is removed, so there's no gap; the 150 ms
+      debounce absorbs any overlap). Probe confirmed: re-arm fires and the chord still triggers afterward.
+    - **Diagnostics kept in-tree (zero cost when off):** `JVOICE_HOTKEY_LOG=1` traces hook install +
+      every main-key match decision + watchdog re-arms to `%TEMP%\jvoice-hotkey.log`. If the hotkey ever
+      misbehaves again, relaunch with that env set and the trace pins it (hook received the key? matched?
+      modifier mismatch? re-armed?). Test seams `JVOICE_HOTKEY_TEST_STALL_MS` / `JVOICE_HOTKEY_NO_WATCHDOG`
+      drive the probe's `recovery`/`watchdog` modes. NOTE: the *exact* trigger David hit was not
+      deterministically reproducible (this machine *skips*, not removes, on a >1 s stall), so this is
+      hardening of the proven failure modes + a recovery path + a trace for next time, not a one-line bug.
+      `dotnet test` still **122/122**; full solution builds 0 errors.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;

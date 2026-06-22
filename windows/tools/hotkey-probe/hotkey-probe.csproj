@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>JVoice.Tools.HotkeyProbe</RootNamespace>
+    <AssemblyName>hotkey-probe</AssemblyName>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!-- Compile the REAL GlobalHotkey source (not a copy) so the probe tests the
+       actual production hook + chord-matching logic. -->
+  <ItemGroup>
+    <Compile Include="..\..\JVoice.App\Platform\GlobalHotkey.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\JVoice.Core\JVoice.Core.csproj" />
+  </ItemGroup>
+
+</Project>

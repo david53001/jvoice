@@ -30,6 +30,7 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] HUD shows **Transcribing** (cyan) briefly, then **Done** (green check), then auto-dismisses (~1s).
 - [ ] The transcribed, tone-styled text is **pasted into the previously-focused app**, and your clipboard is restored to its prior contents after ~300ms.
 - [ ] Mash the hotkey rapidly → it fires at most once per 150ms (debounce).
+- [ ] **Hotkey stays alive across many dictations / heavy GPU use** (the global hook is hardened: high-priority hook thread + a self-healing watchdog that re-installs the hook if Windows ever silently drops it — see HANDOFF-WINDOWS §7 #14). If it *ever* seems unresponsive, relaunch from a terminal with `set JVOICE_HOTKEY_LOG=1` (or `$env:JVOICE_HOTKEY_LOG='1'`) and reproduce — `%TEMP%\jvoice-hotkey.log` will show whether the hook received the key, matched, or re-armed. Send me that file.
 - [ ] First dictation after picking a not-yet-downloaded model shows **Downloading Model** (purple, %) then **Preparing Model**, then proceeds.
 
 ## HUD visual fidelity (vs docs/demo-video/DESIGN-TOKENS.md)
