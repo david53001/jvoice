@@ -22,7 +22,7 @@ A native **Windows** port of JVoice. JVoice is a hotkey-driven voice-dictation a
 - **00 overview** — anchor doc.
 - **01 core-brain** — `JVoice.Core` + `JVoice.Tests`. **EXECUTED & GREEN this session** (see below).
 - **02 whisper-engine** — Whisper.net engine + GGML model store + `--bench` CLI. **EXECUTED & VERIFIED this session** (see "Phase 2 progress" below — real on-device transcription on Windows, all invariants proven).
-- **03 platform** — audio capture, BT-safe device pick, global hotkey, paste, persistence, launch-at-login. (Plan only.)
+- **03 platform** — audio capture, BT-safe device pick, global hotkey, paste, persistence, launch-at-login. **EXECUTED & VERIFIED this session** (see "Phase 3 progress" below).
 - **04 ui** — WPF tray + HUD pill + 320×520 settings + the "J" `.ico` + `VoiceCoordinator`. (Plan only.)
 - **05 packaging** — single-file publish, Inno Setup, SmartScreen docs, Windows CI, verify-transcription harness, docs, dogfood checklist. (Plan only.)
 
@@ -132,6 +132,41 @@ Run on the dev machine (RTX 3060 Ti, i5-12400). Test WAVs generated via Windows 
 **Net: all Phase 2 invariants proven on real audio. The two WhisperKit workarounds stay dropped,
 empirically confirmed.** (Speed note: first GPU decode pays a one-time Vulkan shader-compile cost
 — ~14s on the first prompted decode, then 2-4s on subsequent decodes; not a correctness issue.)
+
+## Phase 3 progress (Platform services — this session)
+
+All under `JVoice.App/Platform/` (Win32/WASAPI/registry/WPF-clipboard), with the pure
+testable bits in `JVoice.Core`. **`dotnet build windows/JVoice.sln -c Release` = 0/0;
+`dotnet test` = 109/109 green; `JVoice.Core` has NO package references (stayed pure).**
+NuGet pinned: **NAudio 2.3.0** (on `JVoice.App`).
+
+Built: PlatformPaths; SettingsStateJson + StatsMath + BluetoothDevicePolicy + HotkeyChord
+(pure, in Core, 36 new xUnit tests); SystemActions; SettingsStore (debounced + corruption/
+forward-version recovery); StatsStore; LastTranscriptStore; LaunchAtLogin; SingleInstance;
+SettingsUris; PermissionError; AudioInputRouter; IAudioRecorder + NAudioRecorder;
+ForegroundWindowTracker; GlobalHotkey; Paster.
+
+### Verified on the dev machine (throwaway consoles, since net9.0-windows can't be unit-tested from net9.0 JVoice.Tests):
+- **SettingsStore**: fresh-write, reload, corruption→backup+reset, forward-version refusal. PASS.
+- **StatsStore / LastTranscriptStore**: record/guard/reload, UTF-8 round-trip. PASS.
+- **SingleInstance**: real cross-process — child got `child-blocked` while parent held the mutex; re-acquire after release. PASS.
+- **LaunchAtLogin**: enable→true, disable→false, first-run idempotent enable→true; **registry reverted** (Run\JVoice + init flag confirmed absent). PASS.
+- **PermissionError/SettingsUris**: deep link == `ms-settings:privacy-microphone`, message non-empty. PASS.
+- **AudioInputRouter**: default device "Microphone (Yeti Classic)" (non-BT) → `PreferredCaptureDeviceId()` returns null (record from default). PASS.
+- **NAudioRecorder**: orphan sweep (jvoice-*.wav deleted, non-ours kept), usable check (2000B=true/10B=false), mic permission True, **growing WAV readable by WavTailReader at ~16000 samples/sec** (15680→31520→47520 over 3s), final header **16000/1/2**. PASS — the critical Phase 1↔Phase 3 streaming contract holds.
+- **Paster**: Paste("")→TargetRejected, Paste(_, IntPtr.Zero)→TargetRejected, Stage() clipboard round-trip. PASS.
+- **ForegroundWindowTracker**: GetForegroundWindowNow() non-zero. PASS.
+
+### Deferred to interactive dogfood (Phase 4/5 — cannot run in this non-interactive session):
+- **GlobalHotkey live global-fire**: SendInput-injected keystrokes are NOT delivered to a `WH_KEYBOARD_LL` hook in a non-interactive/headless run (LL hooks + synthetic input are bound to an interactive desktop). The code builds and installs/tears-down the hook cleanly; chord matching is covered by HotkeyChord unit tests. David should confirm Ctrl+Shift+Space fires globally + the 150ms debounce when running the Phase 4 app.
+- **Paster live paste into another app** (Ctrl+V landing in Notepad + 300ms clipboard restore) and **ForegroundWindowTracker live tracking** (needs a message pump) — verified end-to-end once the Phase 4 UI exists.
+
+### Phase 3 deviations from the plan (logged)
+- **NAudioRecorder: `BufferedWaveProvider.ReadFully = false`** — the plan omitted this; its default (`true`) makes `Read()` zero-pad to the requested count forever, so the `PumpToWriter` `while (read > 0)` loop became an **infinite zero-writing busy loop** (caught in verification — two runaway processes at >130s CPU). Setting `ReadFully = false` makes `Read` return only buffered bytes (0 when drained). Root-cause fix, not a workaround.
+- **AudioInputRouter form factor via property store** — NAudio 2.3.0 has no `MMDevice.AudioEndpointFormFactor`; read `PKEY_AudioEndpoint_FormFactor` from `MMDevice.Properties` instead (Headset=5/Headphones=3 → BT signal, Microphone=4 → built-in). BTHENUM enumerator name remains the load-bearing BT signal.
+- **`ISampleProvider.WaveFormat.SampleRate`** used instead of the plan's `sampleSource.SampleRate` (ISampleProvider exposes rate via WaveFormat).
+- **SettingsStoreJson invalid-JSON test** relaxed to `Assert.ThrowsAny<JsonException>` (JsonDocument.Parse throws the JsonReaderException subclass).
+- All `JVoice.App` Platform files need explicit `using System.IO;` (WindowsDesktop SDK trims it from implicit usings — see Phase 2 note).
 
 ## Verification commands (reference)
 
