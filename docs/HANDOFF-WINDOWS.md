@@ -78,6 +78,21 @@ Reflected the installed assembly. **The plan's assumed names mostly hold, with k
 - Runtime selection: `Whisper.net.LibraryLoader.RuntimeOptions.LoadedLibrary` is a typed static `RuntimeLibrary?` (null until first factory load). `RuntimeLibrary` enum = `Cpu, Cuda, Cuda12, Vulkan, CoreML, OpenVino, CpuNoAvx`. `WhisperRuntime.Describe()` reads this typed property (after prewarm).
 - Bonus: a built-in `Whisper.net.Ggml.WhisperGgmlDownloader` exists, but we keep the custom `WhisperModelStore` (atomic `.part` + size/SHA verification + the `%LOCALAPPDATA%\JVoice\models\` layout the plan specifies).
 
+### GGML model manifest (Task 2) — recorded from Hugging Face `ggerganov/whisper.cpp`
+
+| Model | File | ExpectedBytes | SHA-256 |
+| --- | --- | --- | --- |
+| Tiny | `ggml-tiny.bin` | 77,691,713 | `be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21` |
+| Base | `ggml-base.bin` | 147,951,465 | null (size-only) |
+| Small | `ggml-small.bin` | 487,601,967 | null (size-only) |
+| Large | `ggml-large-v3-turbo-q5_0.bin` | 574,041,195 | null (size-only) |
+
+Tiny's SHA matches the published whisper.cpp hash; it was pre-placed in `%LOCALAPPDATA%\JVoice\models\ggml-tiny.bin` (verified) so Task 6 reuses it without re-downloading. `CompleteModelPath` checks existence + exact size (cheap); the full SHA is verified once, right after download, before the atomic `.part`→final rename.
+
+### Build gotcha (logged): WindowsDesktop SDK trims implicit usings
+
+`net9.0-windows` + `<UseWPF>true</UseWPF>` uses the WindowsDesktop SDK, whose implicit-usings set is REDUCED vs the base `Microsoft.NET.Sdk`: it includes `System`, `System.Collections.Generic`, `System.Linq`, `System.Threading`, `System.Threading.Tasks` but NOT `System.IO` or `System.Net.Http` (stripped to avoid `Path` ambiguity with `System.Windows.Shapes.Path`). The plan's `JVoice.App` code snippets assumed the base set, so engine/store/bench files need explicit `using System.IO;` (and `using System.Net.Http;` where used). `JVoice.Core` (plain `net9.0`) keeps the full implicit set, so its code is unaffected. (Did NOT add a project-level global `System.IO` using — that would re-introduce the `Path` ambiguity in Phase 4 UI files.)
+
 ### Deviations from the plan (logged)
 
 - **Temperature fallback (`temperatureFallbackCount = 2`)**: mapped to `WithTemperature(0.0f)` + `WithTemperatureInc(0.2f)` (these equal whisper.cpp defaults; Whisper.net exposes no exact "fallback count" knob, so the macOS `=2` is approximated — the plan calls this `≈`). Entropy/logprob thresholds left at whisper.cpp defaults.
