@@ -17,13 +17,17 @@ public static class WavTail
         if (bytes.Length < 12 || FourCC(bytes, 0) != "RIFF" || FourCC(bytes, 8) != "WAVE")
             return null;
 
-        int offset = 12;
+        // `offset`/`size` are 64-bit like Swift's `Int`: a 32-bit chunk size with the high bit set
+        // (a stale/garbage header) must jump FORWARD past EOF so the loop exits and we return null —
+        // never wrap to a negative Int32 (which would drive `offset` negative and throw on the slice).
+        long offset = 12;
         (int rate, int channels, int bits)? format = null;
         while (offset + 8 <= bytes.Length)
         {
-            string? id = FourCC(bytes, offset);
-            int size = (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(offset + 4, 4));
-            int payload = offset + 8;
+            int off = (int)offset; // safe: offset + 8 <= bytes.Length, so offset is in range
+            string? id = FourCC(bytes, off);
+            long size = BinaryPrimitives.ReadUInt32LittleEndian(bytes.Slice(off + 4, 4));
+            int payload = off + 8;
             if (id == "fmt ")
             {
                 if (payload + 16 > bytes.Length) return null;

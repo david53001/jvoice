@@ -20,9 +20,9 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **222** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
-  RegurgitationRecovery audits). As the hunt adds regression tests this number only grows; it must
-  never go down or go red.
+  now **233** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  RegurgitationRecovery + WavTail audits). As the hunt adds regression tests this number only grows;
+  it must never go down or go red.
 
 ---
 
@@ -92,8 +92,13 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       async throw). Added edges: prompt-off result is still scrubbed, first call is prompted, recovery's
       second decode is prompt-free, recovery output is itself scrubbed, all-loop recovery → "" (no silent
       loop fallback), and decode-throws propagates on both the first and the recovery decode.
-- [ ] **WavTail / WavTailReader** — `…/Audio/WavTail.cs` + `WavTailTests.cs`
+- [x] **WavTail / WavTailReader** — `…/Audio/WavTail.cs` + `WavTailTests.cs`
       ← `…/Services/WavTail.swift` / `WavTailTests.swift` (FLLR padding, stale size, growing WAV)
+      — 2026-06-23 · +11 tests · **1 bug** (#3 chunk-size Int32 overflow → throw). Line-by-line fidelity
+      confirmed (RIFF/WAVE gate, chunk-walk, fmt/data validation 16k/mono/16-bit, word-alignment, the
+      [dataOffset,EOF) payload model, FloatSamples /32768, the reader's odd-trailing-byte + past-EOF
+      handling). Added the high-bit/max-uint size regression, a 600-case ParseHeader never-throw fuzz,
+      truncated/empty/data-before-fmt/odd-size-word-aligned header edges + reader odd-byte/past-EOF.
 - [ ] **ChunkPlanner** — `…/Audio/ChunkPlanner.cs` + `ChunkPlannerTests.cs`
       ← `…/Services/ChunkPlanner.swift` / `ChunkPlannerTests.swift` (silence-cut, min/max constants)
 - [ ] **StreamingTranscriptionSession** — `…/Audio/StreamingTranscriptionSession.cs` + `StreamingSessionTests.cs`
@@ -185,6 +190,23 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
   stripped to the coherent prefix).
 - *Commit:* see this firing's `test(win-bughunt): RepetitionGuard …` commit.
 
+**#3 [WavTail.ParseHeader] a chunk size with the high bit set overflowed Int32 → uncaught throw.**
+- *Symptom:* `ParseHeader` of a header containing a chunk whose 32-bit size field is `>= 0x80000000`
+  (e.g. a stale/garbage byte run in the probed header of a file being written) threw
+  `ArgumentOutOfRangeException` from `FourCC`/`Slice`. `WavTailReader.Open` only catches
+  `IOException`/`UnauthorizedAccessException`, so it would crash the caller instead of falling back.
+- *Root cause:* C# read the size as `(int)BinaryPrimitives.ReadUInt32LittleEndian(...)` and used `int`
+  for `offset`. A size with the high bit set became a negative `Int32`, driving `offset` hugely
+  negative; the `while (offset + 8 <= bytes.Length)` check passes for negatives, so the next slice
+  indexed out of range. Swift reads the size as a 64-bit `Int`, so a huge size jumps `offset` FORWARD
+  past EOF and the loop simply exits → `nil`.
+- *Fix:* `offset` and `size` are now `long` (matching Swift's `Int`); `size` is the widened `uint32`
+  (no sign wrap), and the in-bounds `int off = (int)offset` cast is only taken when `offset + 8 <=
+  bytes.Length` (so it is always in range). Huge sizes now jump past EOF → `null`, never a throw.
+- *Regression tests:* `ParseHeader_HighBitChunkSize_ReturnsNull_DoesNotThrow` (red: threw → green:
+  null), `ParseHeader_MaxUintChunkSize_…`, and a 600-case `Fuzz_ParseHeader_NeverThrows`.
+- *Commit:* see this firing's `test(win-bughunt): WavTail …` commit.
+
 ## Open bugs needing David (could not be safely auto-fixed)
 *(HIGH PRIORITY — these are surfaced here AND the failing test is `[Fact(Skip="BUG: see #N")]` so the
 suite stays green+committed while the bug stays visible. Empty = good.)*
@@ -229,6 +251,11 @@ _(none yet)_
   `useVocabularyPrompt && (removedRegurgitation || empty)`; the recovery decode is always prompt-free
   and is itself scrubbed (no silent fallback to a loop — all-loop recovery → ""); the prompt-off path
   still scrubs; decode exceptions propagate on both the first and recovery decode.
+- **WavTail.ParseHeader never throws on arbitrary header bytes** (600-case seeded fuzz, half with a
+  valid RIFF/WAVE prefix to exercise the chunk-walk) and C#↔Swift fidelity confirmed: RIFF/WAVE gate,
+  chunk-walk with word-alignment, fmt/data format validation (PCM/16k/mono/16-bit), the deliberately-
+  ignored stale RIFF/data sizes ([dataOffset,EOF) payload model), FLLR tolerance, `FloatSamples` /32768,
+  and the reader's odd-trailing-byte drop + past-EOF → empty.
 
 ---
 
