@@ -9,6 +9,15 @@ privacy-first: **zero network calls at runtime except the one-time speech-model 
 This is the Windows sibling of the macOS Swift app (under `../Sources/`), which remains the
 read-only reference for the accuracy "brain" and its invariants.
 
+## Status
+
+All five port phases are implemented. `dotnet build windows/JVoice.sln -c Release` = **0 errors**,
+`dotnet test` = **122/122**, on-device transcription is verified (Vulkan GPU + CPU), and **the app
+launches to the system tray**. What's left is David's interactive **dogfood** of the live dictation
+loop + HUD/Settings visual fidelity (`../docs/launch/windows-dogfood-checklist.md`), plus two optional
+extras (Inno installer, accuracy harness). The authoritative, complete state — pinned versions, every
+deviation, and the gotchas a new contributor must know — is in **`../docs/HANDOFF-WINDOWS.md`**.
+
 ## Solution layout (`windows/`)
 
 | Project | Target | What it is |

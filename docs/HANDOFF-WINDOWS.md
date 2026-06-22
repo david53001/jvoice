@@ -1,257 +1,313 @@
-# HANDOFF-WINDOWS — Windows port state (as of 2026-06-22)
+# HANDOFF-WINDOWS — Windows port status
 
-Audience: David + the next Claude session. Read `CLAUDE.md` (incl. the new "Windows port" section) for the rules; this file is the mutable status for the **Windows** port. The macOS Swift app is unchanged and remains the reference.
+**Last updated:** 2026-06-22. **Branch:** `windows-port` (local only — never pushed).
+**Audience:** David + the next zero-context Claude session.
 
-## What this is
+This is the single source of truth for the **state** of the JVoice Windows port. Read
+`CLAUDE.md` (the "Windows port" section) for the hard rules. The macOS Swift app under
+`Sources/` is the **read-only reference** for the accuracy "brain" and its invariants — never
+modify `Sources/`, `Tests/`, `Package.swift`, or `Resources/`.
 
-A native **Windows** port of JVoice. JVoice is a hotkey-driven voice-dictation app: press a hotkey → record mic → on-device Whisper transcription → tone-styled, custom-word-accurate text pasted into the focused app. The macOS app (Swift, WhisperKit/CoreML, AppKit) lives under `Sources/`. The Windows app is being built under `windows/` as a separate .NET solution.
+---
 
-## Decisions (locked this session, autonomous)
+## 1. TL;DR — where the port stands
 
-- **Stack: C# / .NET 9 / WPF** (`win-x64`, WinExe). Speech via **Whisper.net** (managed whisper.cpp bindings, **GGML** models) with **CUDA** GPU acceleration (dev machine: RTX 3060 Ti) + a CPU fallback. NAudio for capture, H.NotifyIcon.Wpf for the tray, SkiaSharp for the icon. This replaces macOS-only WhisperKit/CoreML — see the rejected alternatives (Swift-on-Windows / WinUI3 / Tauri / Electron) in the overview §2.4.
-- **The accuracy "brain" ports faithfully** (model-agnostic): TextProcessor, PhoneticMatcher, VocabularyPrompt, RepetitionGuard, RegurgitationRecovery, ChunkPlanner, WavTail, StreamingTranscriptionSession — every constant verbatim, locked by xUnit tests translated from the Swift suite. The two WhisperKit-1.0.0-specific workarounds (SuppressBlankFilter prompt trap; single-window timestamp truncation) are **dropped** — whisper.cpp doesn't have those bugs.
-- **GGML model map:** Tiny→`ggml-tiny.bin`, Base→`ggml-base.bin`, Small→`ggml-small.bin`, Large→`ggml-large-v3-turbo-q5_0.bin` (~547 MB, closest to the macOS ~630 MB turbo build). Downloaded on first use to `%LOCALAPPDATA%\JVoice\models\`.
-- **Default hotkey: Ctrl+Shift+Space** (⌥Space has no clean Windows equivalent; Alt+Space is the system window menu). Rebindable.
-- **"Actual app UI":** tray-first (faithful to the macOS menu-bar model) + a real focusable Settings window + first-run shows Settings once. The floating HUD pill remains the overlay.
-- **$0 / unsigned:** no paid code-signing → unsigned `.exe`; document the SmartScreen "More info → Run anyway" step (the Gatekeeper analog). Privacy unchanged: zero runtime network except the one-time model download. GPL-3.0; all NuGet deps MIT-compatible.
-- **Repo layout:** macOS app stays in place (read-only reference); Windows app under `windows/` (`JVoice.Core` pure-logic library + `JVoice.App` WPF + `JVoice.Tests` xUnit + `windows/tools/`).
+JVoice is a hotkey-driven voice-dictation app: press a hotkey → record mic → on-device Whisper
+transcription → tone-styled, custom-word-accurate text pasted into the focused app. This is a
+**native Windows port** (the macOS app is Swift/WhisperKit/AppKit; this is C#/.NET 9/WPF/Whisper.net).
 
-## The plan (zero-context, phase-by-phase)
+**All five phases are implemented.** Current verified state:
 
-`docs/superpowers/plans/2026-06-22-windows-port-0{0..5}-*.md`. Read **00 (overview)** first — architecture, canonical names (§4), global constraints (§5), gotchas (§6), and the cross-phase reconciliation (§10).
-- **00 overview** — anchor doc.
-- **01 core-brain** — `JVoice.Core` + `JVoice.Tests`. **EXECUTED & GREEN this session** (see below).
-- **02 whisper-engine** — Whisper.net engine + GGML model store + `--bench` CLI. **EXECUTED & VERIFIED this session** (see "Phase 2 progress" below — real on-device transcription on Windows, all invariants proven).
-- **03 platform** — audio capture, BT-safe device pick, global hotkey, paste, persistence, launch-at-login. **EXECUTED & VERIFIED this session** (see "Phase 3 progress" below).
-- **04 ui** — WPF tray + HUD pill + 320×520 settings + the "J" `.ico` + `VoiceCoordinator`. **CODE-COMPLETE & BUILDS this session** (visual/dictation = David's dogfood; see "Phase 4 progress").
-- **05 packaging** — publish config, Inno Setup, SmartScreen docs, Windows CI, verify-transcription harness, docs, dogfood checklist. **MOSTLY EXECUTED this session** (Tasks 1,2,4,5,7,8 done; Tasks 3 Inno + 6 verify-transcription harness remain — see "Phase 5 progress").
+- `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **122 / 122 passing**.
+- `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
+  (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
+- **The GUI launches** to the system tray with the "J" icon + first-run Settings window
+  (confirmed running; two startup crashes were found & fixed — see §7).
 
-## What was DONE this session (autonomous)
+**What still needs a human (David's interactive dogfood):** the *live* dictation loop and the
+*visual* fidelity of the HUD/Settings can only be checked by a person at the desktop with a mic
+and keyboard. Walk `docs/launch/windows-dogfood-checklist.md`. Everything an autonomous/headless
+session can verify, is verified.
 
-1. **Explored** the whole macOS app (architecture, brain, UI design tokens, platform services, icon geometry, build/test harnesses, transcription gotchas).
-2. **Wrote the complete plan** (6 docs above) — zero-context, task-by-task, with real code. Phases 2–5 drafted by parallel subagents against the overview's canonical names + Phase 1 interfaces, then reconciled (overview §10).
-3. **Executed Phase 1**: scaffolded `windows/JVoice.sln` (+ `Directory.Build.props`, `.editorconfig`), created `JVoice.Core` (Models, Text, Audio, Transcription) and `JVoice.Tests`, and **verified**:
-   - `dotnet build windows/JVoice.sln -c Debug` → **Build succeeded, 0 warnings, 0 errors**.
-   - `dotnet test windows/JVoice.Tests` → **Passed! 73 / 73** (PhoneticKey vectors jvoice/gvoice→jfs & whisperkit→wsprkt; tone/filler/correction/sentinel text processing; RepetitionGuard 36-case loop-dominated fuzz + single-mention controls; RegurgitationRecovery 4 cases; WavTail header (incl. FLLR padding); ChunkPlanner silence cuts; StreamingTranscriptionSession data-loss guarantees incl. finish-once/cancel-join; FileBackedTranscriptionEngine).
-4. **Updated docs:** `CLAUDE.md` (new "Windows port" section), `.gitignore` (.NET ignores), this handoff.
+**Optional remaining work** (does NOT block a working app): an Inno Setup installer and a
+corpus-level accuracy harness — see §8.
 
-## Assumptions made (logged)
+---
 
-- Stack chosen autonomously (no stack was specified) — see overview §2/§9. If David prefers Tauri/WinUI, Phase 1 (Core brain) + Phase 2 (engine choice) are ~80% reusable; only the UI/platform shells change.
-- Hotkey default Ctrl+Shift+Space; "Large" = quantized turbo GGML; tray-first UI; CUDA runtime bundled (NVIDIA dev box) + CPU fallback always.
-- `SettingsState` has no persisted hotkey field yet (rebind is session-only until a v2 schema adds it) — noted in Phase 4.
+## 2. How to build / run / test / dogfood / publish (zero-context)
 
-## Needs David's eyes
+Prereqs: .NET 9 SDK (dev box has 9.0.304), Windows 10/11 x64. From the repo root:
 
-- **The stack decision** is the big one. Everything downstream assumes .NET 9 + WPF + Whisper.net. Confirm before Phases 2–5 are executed.
-- Whether the public Windows build should bundle Vulkan (broad non-NVIDIA GPU support) in addition to CPU + CUDA (Phase 2 decision).
-- Whether "Large" should be the quantized turbo (`q5_0`, ~547 MB) or the full `ggml-large-v3-turbo.bin` (~1.5 GB) — Phase 2 verifies accuracy on real audio before locking.
+```bash
+# Build everything (Release):
+dotnet build windows/JVoice.sln -c Release            # expect: Build succeeded, 0 errors
 
-## Next steps
+# Run the unit suite (the brain + pure helpers):
+dotnet test windows/JVoice.Tests/JVoice.Tests.csproj  # expect: Passed! 122/122
 
-Phases 1–3 are executed + verified; Phase 4 (UI) is code-complete + builds; Phase 5 is mostly
-done (publish config, manifest, CI, docs, dogfood checklist). Remaining:
+# Run the actual app (tray + first-run Settings window):
+dotnet run --project windows/JVoice.App
+#   - First run only: the dark 320x520 Settings window opens + a one-time info dialog.
+#   - Tray "J" icon → right-click for: Start/Stop Dictation, Settings…, Launch at Login, Quit.
+#   - Press Ctrl+Shift+Space to dictate (first dictation downloads the Tiny model ~74 MB once).
+#   - Quit via the tray menu (the app has no main window; it lives in the tray).
+#   - To replay the first-run experience: delete HKCU\Software\JVoice\UiFirstRunShown.
 
-1. **Dogfood the GUI** on the dev machine — run `docs/launch/windows-dogfood-checklist.md`
-   (the live hotkey/dictation/paste loop + HUD/Settings visual fidelity, which can't be verified headlessly).
-2. **(Optional) Phase 5 Task 6** — port the `verify-transcription.py` accuracy harness to
-   `windows/tools/verify-transcription` for corpus-level word-retention / spurious-vocab scoring.
-3. **(Optional) Phase 5 Task 3** — an Inno Setup installer (`windows/installer/JVoice.iss`);
-   the zipped self-contained folder is already a complete distributable without it.
-4. Address anything the dogfood surfaces (esp. HUD pixel fidelity tweaks, glyph/waveform polish).
-5. **Do NOT publish/push** without David's explicit go-ahead (same rule as the macOS side).
+# Transcribe a WAV with NO GUI (fastest engine check):
+dotnet run --project windows/tools/whisper-smoke -- <file.wav> --model tiny
 
-## Phase 2 progress (Whisper engine — this session)
+# Hidden bench CLI (also on the app exe; bypasses the UI entirely):
+#   JVoice.exe --bench <file.wav> [--model tiny|base|small|large] [--lang en|ro]
+#              [--vocab "A,B"] [--stream] [--no-prompt]
+#   exit codes: 64 usage, 66 no-file, 65 not-a-wav, 70 engine-unavailable, 1 failed, 0 ok.
 
-### Pinned NuGet versions (Task 1)
+# Regenerate the app icon + tray PNGs (only if the squircle-J art changes):
+dotnet run --project windows/tools/generate-icon
+```
 
-All resolved + pinned at the current stable **1.9.1** (in `windows/JVoice.App/JVoice.App.csproj`, and copied to `windows/tools/whisper-smoke/whisper-smoke.csproj`):
+A bench/smoke WAV must be **16 kHz / mono / 16-bit PCM**. Generate one with Windows TTS:
+```powershell
+Add-Type -AssemblyName System.Speech
+$fmt = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo(16000,[System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen,[System.Speech.AudioFormat.AudioChannel]::Mono)
+$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$s.SetOutputToWaveFile("$env:TEMP\jv.wav",$fmt); $s.Speak('Testing JVoice on Windows.'); $s.Dispose()
+```
 
-- `Whisper.net` `1.9.1` (MIT)
-- `Whisper.net.Runtime` `1.9.1` — CPU (MIT)
-- `Whisper.net.Runtime.Cuda` `1.9.1` — NVIDIA GPU (MIT)
-- `Whisper.net.Runtime.Vulkan` `1.9.1` — cross-GPU (MIT). Restored fine; bundled.
+**Publish a distributable** (ship a zipped self-contained folder, NOT a single-file exe — see §7):
+```bash
+# CPU-only "lite" folder (small; runs on CPU):
+dotnet publish windows/JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=cpu \
+  -p:PublishSingleFile=false -p:SelfContained=true -p:PublishTrimmed=false \
+  -p:PublishReadyToRun=true -o out/cpu
+# GPU folder (bundles CUDA+Vulkan+CPU native runtimes):
+dotnet publish windows/JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=gpu \
+  -p:SelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=true -o out/gpu
+# then: Copy-Item LICENSE out/<flavor>/LICENSE.txt ; Compress-Archive out/<flavor>/* JVoice-<flavor>-win-x64.zip
+```
 
-### Whisper.net 1.9.1 API probe results (Task 1 Step 7) — what the engine code uses
+---
 
-Reflected the installed assembly. **The plan's assumed names mostly hold, with key deviations recorded here so future sessions don't re-derive them:**
+## 3. Repository layout
 
-- `WhisperFactory.FromPath(string)` ✓ (also `FromPath(string, WhisperFactoryOptions)`); `WhisperFactory.CreateBuilder()` ✓; `WhisperFactory.GetRuntimeInfo()` (instance, returns string).
-- `WhisperProcessorBuilder`: `WithLanguage(string)` ✓, `WithPrompt(string)` ✓ (NOT `WithPromptText`), `WithTemperature(float)` ✓, `WithTemperatureInc(float)` ✓, `WithEntropyThreshold(float)` ✓, `WithLogProbThreshold(float)` ✓ (NOT `WithProbabilityThreshold`), `WithGreedySamplingStrategy(Action)` / `WithBeamSearchSamplingStrategy(Action)` exist.
-- **`WithoutTimestamps()` does NOT exist in 1.9.1.** There is no decoder no-timestamps flag on the builder (only `WithPrintTimestamps(bool)`, `WithTokenTimestamps()`, `WithSingleSegment()` — none is the right thing). **Resolution:** the engine does NOT disable timestamps; it just concatenates `SegmentData.Text` across segments. whisper.cpp does its own 30s windowing with context carry, so the full transcript is produced and is NOT truncated (verified in Task 6 Step 5). This is effectively the "timestamps on" position, which was already the documented Task 3 Step 9 fallback — so we're at the safe end and the `isSingleWindowClip` WhisperKit gate stays dropped. (Do NOT add `WithSingleSegment()` — it would force one segment and could truncate long audio.)
-- **`WithoutSuppressBlank()` exists** → confirms `suppress_blank` is ON by default in whisper.cpp/Whisper.net. We do NOT call it, so the SuppressBlankFilter workaround stays dropped (§6.3 confirmed; empirically re-checked in Task 6 Step 4).
-- `WhisperProcessor.ProcessAsync(float[], CancellationToken)` ✓ — also `(ReadOnlyMemory<float>, CT)` and `(Stream, CT)`. The CancellationToken is a REQUIRED positional arg (not defaulted) — always pass `ct`.
-- `SegmentData.Text` (string) ✓ — segments also carry `Start`/`End` (TimeSpan), `Probability`, `NoSpeechProbability`, `Tokens`.
-- Runtime selection: `Whisper.net.LibraryLoader.RuntimeOptions.LoadedLibrary` is a typed static `RuntimeLibrary?` (null until first factory load). `RuntimeLibrary` enum = `Cpu, Cuda, Cuda12, Vulkan, CoreML, OpenVino, CpuNoAvx`. `WhisperRuntime.Describe()` reads this typed property (after prewarm).
-- Bonus: a built-in `Whisper.net.Ggml.WhisperGgmlDownloader` exists, but we keep the custom `WhisperModelStore` (atomic `.part` + size/SHA verification + the `%LOCALAPPDATA%\JVoice\models\` layout the plan specifies).
+The macOS app stays in place (reference). The Windows app is the `windows/` .NET solution.
 
-### GGML model manifest (Task 2) — recorded from Hugging Face `ggerganov/whisper.cpp`
+```
+windows/
+├── JVoice.sln
+├── Directory.Build.props          LangVersion latest, Nullable+ImplicitUsings enable, Version 1.0.0
+├── JVoice.Core/                   net9.0 — PURE brain + pure decision helpers (no UI/native deps)
+│   ├── Models/                    ToneStyle, TranscriptionLanguage, WhisperModelOption, SettingsState,
+│   │                              HudState, HotkeyChord, SettingsStateJson
+│   ├── Text/                      TextProcessor, PhoneticMatcher, VocabularyPrompt, RepetitionGuard,
+│   │                              RegurgitationRecovery
+│   ├── Audio/                     WavTail(+WavTailReader), ChunkPlanner, StreamingTranscriptionSession,
+│   │                              BluetoothDevicePolicy
+│   ├── Transcription/             ITranscriptionEngine, TranscriptionException, FileBackedTranscriptionEngine
+│   ├── AppTimings.cs  StatsMath.cs  CoordinatorDecisions.cs
+├── JVoice.App/                    net9.0-windows, WinExe, UseWPF — the app
+│   ├── App.xaml(.cs)              [STAThread] Main (bench short-circuit → single-instance →
+│   │                              WhisperRuntime.EnsureLoaded → Run); OnStartup wires it all
+│   ├── app.manifest               asInvoker, PerMonitorV2 DPI, longPathAware, UTF-8, Win10/11 supportedOS
+│   ├── VoiceCoordinator.cs        the orchestrator (port of VoiceCoordinator.swift)
+│   ├── Whisper/                   WhisperRuntime, WhisperModelStore, WhisperNetTranscriptionEngine, BenchRunner
+│   ├── Platform/                  PlatformPaths, SettingsStore, StatsStore, LastTranscriptStore, SystemActions,
+│   │                              LaunchAtLogin, SingleInstance, SettingsUris, PermissionError,
+│   │                              AudioInputRouter, IAudioRecorder, NAudioRecorder, ForegroundWindowTracker,
+│   │                              GlobalHotkey, Paster
+│   ├── UI/                        App-level: HudWindow + HudView, SettingsWindow + SettingsView, DarkSection,
+│   │   │                          HotkeyRecorder, TrayIcon, Converters, Styles/JVoicePalette.xaml
+│   └── Assets/                    JVoice.ico + tray-idle/recording/transcribing.png (generated, committed)
+├── JVoice.Tests/                  net9.0 xUnit — 122 tests locking JVoice.Core
+└── tools/
+    ├── whisper-smoke/             net9.0 console — WPF-free end-to-end transcription harness
+    └── generate-icon/             net9.0 console (SkiaSharp) — writes Assets/JVoice.ico + tray PNGs
+```
 
+**Why the split:** `JVoice.Core` is pure `net9.0` (no UI/native deps) so `JVoice.Tests` (also
+`net9.0`) can lock every accuracy/decision invariant on CI without Windows audio/GPU/clipboard.
+Anything OS-bound lives in `JVoice.App` and is verified by build + the dogfood checklist. Pure
+testable value types that conceptually belong to the platform/UI (HotkeyChord, SettingsStateJson,
+BluetoothDevicePolicy, StatsMath, CoordinatorDecisions) live in Core so the tests can reach them
+(overview §10).
+
+---
+
+## 4. Locked decisions
+
+- **Stack: C# / .NET 9 / WPF** (`win-x64`, WinExe). Speech via **Whisper.net** (managed whisper.cpp
+  bindings, **GGML** models) with GPU accel (CUDA→Vulkan→CPU auto-select) + CPU fallback. NAudio
+  (capture), H.NotifyIcon.Wpf (tray), SkiaSharp (icon tool). Rejected alternatives (Swift-on-Windows
+  / WinUI3 / Tauri / Electron) in overview §2.4. **This was an autonomous choice and is now fully
+  executed** — revisiting it means re-doing the UI/platform shells (the Core brain + engine choice
+  are ~80% reusable regardless).
+- **The brain ports 1:1**, every constant verbatim, locked by xUnit. The two WhisperKit-1.0.0
+  workarounds (SuppressBlankFilter prompt trap; single-window timestamp truncation) are **dropped** —
+  whisper.cpp doesn't have those bugs (empirically reconfirmed, §6).
+- **GGML model map:** Tiny→`ggml-tiny.bin`, Base→`ggml-base.bin`, Small→`ggml-small.bin`,
+  Large→`ggml-large-v3-turbo-q5_0.bin` (~547 MB). Downloaded on first use to `%LOCALAPPDATA%\JVoice\models\`.
+- **Default hotkey Ctrl+Shift+Space** (Alt+Space is the Windows window menu). Rebindable in Settings;
+  the rebind is **session-only** (SettingsState has no hotkey field yet — resets to default on relaunch).
+- **Tray-first UI** + a real focusable Settings window + first-run shows Settings once + the floating
+  HUD pill overlay. `AudioInputRouter` does NOT change the system default device — it picks a non-BT
+  capture endpoint only when the default is Bluetooth (keeps the user's headset music in A2DP).
+- **$0 / unsigned:** no code-signing → unsigned download; document SmartScreen "More info → Run anyway"
+  (`docs/launch/windows-distribution.md`). Privacy: zero runtime network except the one-time model
+  download. GPL-3.0; all NuGet deps MIT.
+- **NO publishing / pushing / PRs / remotes** without David's explicit go-ahead (same as macOS side).
+
+## 5. Pinned NuGet versions
+
+| Package | Version | Where | Notes |
+| --- | --- | --- | --- |
+| `Whisper.net` | 1.9.1 | JVoice.App, whisper-smoke | engine |
+| `Whisper.net.Runtime` (CPU) | 1.9.1 | JVoice.App, whisper-smoke | always |
+| `Whisper.net.Runtime.Cuda` | 1.9.1 | JVoice.App (cond.), whisper-smoke | **conditional** in App (omitted for `cpu` publish flavor) |
+| `Whisper.net.Runtime.Vulkan` | 1.9.1 | JVoice.App (cond.), whisper-smoke | conditional in App |
+| `NAudio` | 2.3.0 | JVoice.App | capture |
+| `H.NotifyIcon.Wpf` | **2.3.0** | JVoice.App | tray. **NOT 2.4.1** (2.4.1 ships only net10.0/net462 → broke on net9) |
+| `SkiaSharp` | 3.119.4 | tools/generate-icon | icon rendering only |
+
+xUnit + runner + Microsoft.NET.Test.Sdk in JVoice.Tests. `JVoice.Core` has **zero** package refs.
+
+---
+
+## 6. What was verified (evidence)
+
+### Engine / transcription (Phase 2) — real on-device runs on the dev machine
+- **Runtime selected = Vulkan** (the bundled CUDA runtime needs the CUDA toolkit DLLs, which aren't
+  installed; Vulkan is the GPU path on the 3060 Ti; CPU is the fallback). The CPU-only publish flavor
+  correctly reports `whisper.cpp (Cpu)`.
+- **Model download/locate:** `ggml-tiny.bin` (77,691,713 bytes, SHA `be07e048…c6e1b21`, matches the
+  published whisper.cpp hash) downloads to `%LOCALAPPDATA%\JVoice\models\`, verified by size+SHA, and
+  is reused with no re-download; no `.part` leftovers.
+- **Prompted decode is non-empty** (proves SuppressBlankFilter is unneeded): `--vocab "VS Code,JVoice"`
+  → raw `"I am editing Code in VS Code with J Voice Today."` → processed `"…with JVoice Today"`.
+  `--no-prompt` is also non-empty; the prompt biased "VS Code" (capital C) vs "VS code" — biasing works.
+- **>30s clip not truncated** (proves the single-window timestamp trap is unneeded): a ~125s clip
+  returned all 12 numbered sentences in 3.73s.
+- **Streaming** (`--stream`): a short clip falls back to whole-file losslessly (correct — under the 15s
+  min chunk); a long clip streams with all content present (no data loss); whole-file corroborates.
+- **`--bench` exit codes** 64/66/0 verified.
+
+### GGML model manifest (in `WhisperModelStore`)
 | Model | File | ExpectedBytes | SHA-256 |
 | --- | --- | --- | --- |
-| Tiny | `ggml-tiny.bin` | 77,691,713 | `be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21` |
-| Base | `ggml-base.bin` | 147,951,465 | null (size-only) |
-| Small | `ggml-small.bin` | 487,601,967 | null (size-only) |
-| Large | `ggml-large-v3-turbo-q5_0.bin` | 574,041,195 | null (size-only) |
+| Tiny | ggml-tiny.bin | 77,691,713 | `be07e048e1e599ad46341c8d2a135645097a538221678b7acdd1b1919c6e1b21` |
+| Base | ggml-base.bin | 147,951,465 | null (size-only) |
+| Small | ggml-small.bin | 487,601,967 | null (size-only) |
+| Large | ggml-large-v3-turbo-q5_0.bin | 574,041,195 | null (size-only) |
+`CompleteModelPath` checks existence+size (cheap); full SHA verified once after download before the
+atomic `.part`→final rename.
 
-Tiny's SHA matches the published whisper.cpp hash; it was pre-placed in `%LOCALAPPDATA%\JVoice\models\ggml-tiny.bin` (verified) so Task 6 reuses it without re-downloading. `CompleteModelPath` checks existence + exact size (cheap); the full SHA is verified once, right after download, before the atomic `.part`→final rename.
+### Platform services (Phase 3) — verified via throwaway consoles on the dev machine
+- **SettingsStore**: fresh-write, reload, corruption→backup+reset, forward-version refusal.
+- **StatsStore / LastTranscriptStore**: record/guard/reload, UTF-8 round-trip.
+- **SingleInstance**: real cross-process — a child process got "blocked" while the parent held the mutex.
+- **LaunchAtLogin**: enable/disable/first-run-idempotent registry round-trip, then **reverted** (clean).
+- **NAudioRecorder**: orphan sweep, usable-check, mic-permission probe true, and a **growing WAV
+  readable by `WavTailReader` at ~16000 samples/sec, final header 16000/1/2** — the critical Phase 1↔3
+  streaming contract.
+- **AudioInputRouter / Paster / ForegroundWindowTracker / PermissionError**: non-BT pick = null on a
+  normal default mic; Paste no-target → TargetRejected; Stage clipboard round-trip; foreground HWND non-zero.
 
-### Build gotcha (logged): WindowsDesktop SDK trims implicit usings
+### Engine/UI build + tests (Phase 4/5)
+- Full Release build 0 errors; **122 xUnit tests** (73 brain + 36 platform helpers + 13 coordinator helpers).
+- `JVoice.exe --bench` exits 64 (bench branch still short-circuits before WPF through the new App.Main).
+- generate-icon produced a valid 6-frame `.ico` + 3 tray PNGs.
+- **The app launches to the tray and stays alive** (confirmed running; see §7 for the two fixes that got it there).
 
-`net9.0-windows` + `<UseWPF>true</UseWPF>` uses the WindowsDesktop SDK, whose implicit-usings set is REDUCED vs the base `Microsoft.NET.Sdk`: it includes `System`, `System.Collections.Generic`, `System.Linq`, `System.Threading`, `System.Threading.Tasks` but NOT `System.IO` or `System.Net.Http` (stripped to avoid `Path` ambiguity with `System.Windows.Shapes.Path`). The plan's `JVoice.App` code snippets assumed the base set, so engine/store/bench files need explicit `using System.IO;` (and `using System.Net.Http;` where used). `JVoice.Core` (plain `net9.0`) keeps the full implicit set, so its code is unaffected. (Did NOT add a project-level global `System.IO` using — that would re-introduce the `Path` ambiguity in Phase 4 UI files.)
+### Whisper.net 1.9.1 API facts (so a future session doesn't re-derive them)
+- `WhisperFactory.FromPath(string)` ✓, `.CreateBuilder()` ✓; builder has `WithLanguage`, `WithPrompt`
+  (NOT `WithPromptText`), `WithTemperature`, `WithTemperatureInc`, `WithEntropyThreshold`,
+  `WithLogProbThreshold` (NOT `WithProbabilityThreshold`).
+- **No `WithoutTimestamps()`** in 1.9.1 — the engine just concatenates `SegmentData.Text`; whisper.cpp
+  windows internally so long audio isn't truncated. **`WithoutSuppressBlank()` exists** → suppress_blank
+  is ON by default (we never call it).
+- `WhisperProcessor.ProcessAsync(float[], CancellationToken)` — CT is required (not defaulted).
+- Runtime selection read via `Whisper.net.LibraryLoader.RuntimeOptions.LoadedLibrary` (typed
+  `RuntimeLibrary?`, null until first factory load).
 
-### Deviations from the plan (logged)
+---
 
-- **Temperature fallback (`temperatureFallbackCount = 2`)**: mapped to `WithTemperature(0.0f)` + `WithTemperatureInc(0.2f)` (these equal whisper.cpp defaults; Whisper.net exposes no exact "fallback count" knob, so the macOS `=2` is approximated — the plan calls this `≈`). Entropy/logprob thresholds left at whisper.cpp defaults.
-- **`Program.cs` ordering**: created as a runnable no-op in Task 1 (no `BenchRunner` reference) so Tasks 1–4 each build green; the `BenchRunner.ShouldRun/RunAndExit` branch is wired in during Task 5 (matches the plan's end-state Program.cs). Phase 4 replaces this with the WPF `App.xaml` `[STAThread]` entry but must keep the bench branch before any UI.
+## 7. Deviations & gotchas a new session MUST know
 
-### Phase 2 E2E verification (Task 6) — REAL on-device transcription on Windows
+These are real corrections discovered during execution — preserve them.
 
-Run on the dev machine (RTX 3060 Ti, i5-12400). Test WAVs generated via Windows TTS
-(System.Speech, 16 kHz mono 16-bit PCM): `jv-known.wav` (~6.5s), `jv-long.wav` (~125s),
-`jv-vocab.wav` (~3.6s). `dotnet build windows/JVoice.sln -c Release` = **succeeded, 0/0**;
-`dotnet test` = **73/73 green** (Phase 1 unaffected).
+1. **WindowsDesktop SDK trims implicit usings.** `net9.0-windows` + `UseWPF` omits `System.IO` and
+   `System.Net.Http` from implicit usings (to avoid `Path` ambiguity with `System.Windows.Shapes.Path`).
+   Every `JVoice.App` file using files/HTTP needs an explicit `using System.IO;` / `using System.Net.Http;`.
+   `JVoice.Core` (plain net9.0) keeps the full implicit set.
+2. **Two GUI startup crashes (found by actually launching; now fixed in `UI/TrayIcon.cs`):**
+   - `TaskbarIcon.ForceCreate()` defaults `enablesEfficiencyMode=true`, which calls
+     `SetProcessInformation` (process QoS) and throws `COMException 0x80070001` on this Windows build →
+     **fixed with `ForceCreate(enablesEfficiencyMode: false)`**.
+   - The tray used a **PNG `IconSource`**, but H.NotifyIcon feeds it to `new System.Drawing.Icon(stream)`,
+     which only accepts `.ico` bytes → `ArgumentException` → **fixed by converting the PNGs to
+     `System.Drawing.Icon` via `Bitmap.GetHicon()` and setting the `Icon` property** instead.
+3. **`NAudioRecorder` `BufferedWaveProvider.ReadFully = false`** (root-cause fix, not in the plan): the
+   default `true` makes `Read()` zero-pad forever, turning the flush pump into an infinite busy loop
+   (caught when two processes pinned the CPU at >130s). `false` makes it return only buffered bytes.
+4. **Single-file publish doesn't work for the engine.** A CPU single-file builds (~75 MB) but **fails
+   native load (exit 70)** — Whisper.net 1.9.1 resolves natives via `Assembly.Location`, which is empty
+   for bundled single-file assemblies. **Ship a self-contained FOLDER zip** (the CPU folder build is
+   verified working). WPF also can't be trimmed (`PublishTrimmed=false` is pinned).
+5. **CUDA/Vulkan runtime packages are CONDITIONAL** in `JVoice.App.csproj` (`Condition="$(JVoiceFlavor) != 'cpu'"`)
+   — `ExcludeAssets` was insufficient (the runtime `.targets` copy natives regardless, ballooning the
+   build to 418 MB). The `cpu` flavor omits them entirely.
+6. **`H.NotifyIcon.Wpf` pinned at 2.3.0** (2.4.1 ships only net10.0/net462 → falls back to net462 on
+   net9, which breaks WPF). 2.3.0 has a `net9.0-windows7.0` asset.
+7. **`App.xaml` is build-action `Page`, not `ApplicationDefinition`** — otherwise the SDK auto-generates
+   a `Main` that collides with our explicit bench-aware `[STAThread] Main` (CS0017).
+8. **`DarkSection` is a templated `ContentControl`, not a `UserControl`** — a UserControl creates its own
+   namescope, making `x:Name`d children inside a section illegal (MC3093). The ContentControl keeps
+   section content in the declaring file's namescope. Its visual is the implicit `DarkSection` style in
+   JVoicePalette.xaml; HeaderText is coerced to upper-case so the `TemplateBinding` shows it uppercased.
+9. **Icon tool uses SkiaSharp 3.x `SKFont`+`DrawText`+`MeasureText`** (the plan assumed the 2.x
+   `SKPaint.GetTextPath`; SKPaint lost its text members in 3.x).
+10. **HUD `ShowRing` simplified** to `ShowRing(string glyph)`; Transcribing uses the MDL2 Volume glyph
+    (E767) — there's no clean waveform glyph (a drawn-Path waveform is a noted polish item). HUD center
+    glyphs are MDL2 code points E720/E713/E896/E767/E73E/E7BA (byte-verified).
+11. **Temperature fallback** (`temperatureFallbackCount=2`) maps to `WithTemperature(0)+WithTemperatureInc(0.2)`
+    (≈ the macOS behavior; Whisper.net has no exact fallback-count knob).
+12. Benign **CS4014** warnings on intentional fire-and-forget `_ = …PrewarmAsync()/…Cancel()`
+    (`TreatWarningsAsErrors` is false).
 
-- **Selected runtime: `whisper.cpp (Vulkan)`.** Whisper.net's loader fell CUDA → **Vulkan**
-  (the CUDA *runtime* package is bundled, but the CUDA toolkit DLLs (`cudart`) aren't installed
-  on this box, so it used the Vulkan GPU path — still GPU-accelerated on the 3060 Ti; CPU is the
-  universal fallback). All four runtime packages' natives land under `bin/.../runtimes/` (cuda,
-  vulkan, win-x64). To force CUDA later, install the CUDA toolkit or set
-  `RuntimeOptions.RuntimeLibraryOrder`.
-- **(a) Download/locate** — `ggml-tiny.bin` (size 77,691,713, SHA verified) reused from
-  `%LOCALAPPDATA%\JVoice\models\` with NO re-download on repeat runs; no `.part` leftovers.
-- **(b) Prompted decode is NON-EMPTY** (the SuppressBlankFilter-not-needed proof). `--bench
-  jv-vocab.wav --vocab "VS Code,JVoice"`:
-  - prompted (`decoderPrompt: on`): raw `"I am editing Code in VS Code with J Voice Today."` → processed `"I am editing Code in VS Code with JVoice Today"` (exit 0)
-  - `--no-prompt` (`decoderPrompt: off`): raw `"I am editing code in VS code with J Voice Today."` → processed `"I am editing code in VS Code with JVoice Today"` (exit 0)
-  - Both non-empty ⇒ the prompt neither breaks decoding nor is load-bearing; and the prompt
-    biased "VS Code" (capital C) vs no-prompt "VS code" — vocabulary biasing works at the source.
-- **(c) >30s clip NOT truncated** (the dropped single-window-timestamp-trap proof). `--bench
-  jv-long.wav` (~125s) returned all 12 numbered sentences (1→12), tail intact, in 3.73s on Vulkan.
-  Confirms whisper.cpp's internal 30s windowing handles long audio with no `WithoutTimestamps()`.
-- **(d) `--bench` exit codes**: 64 (missing file arg), 66 (no such file), 0 (success) — verified.
-- **(e) Streaming corroborated**: `--bench jv-known.wav --stream` → `streamed: nil (session fell
-  back)` (CORRECT — 6.5s < ChunkPlanner.MinChunkSeconds 15s, so it never cuts and falls back to
-  whole-file losslessly), wholefile corroborates, exit 0. On `jv-long.wav --stream` (forces 25s
-  MaxChunkSeconds cuts): `streamed` non-null with all 12 sentences (1→12) — **no data loss** in the
-  streaming path; whole-file corroborates.
+### Persistence paths (overview §4.9)
+`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
+registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`;
+temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on launch); models `%LOCALAPPDATA%\JVoice\models\`.
 
-**Net: all Phase 2 invariants proven on real audio. The two WhisperKit workarounds stay dropped,
-empirically confirmed.** (Speed note: first GPU decode pays a one-time Vulkan shader-compile cost
-— ~14s on the first prompted decode, then 2-4s on subsequent decodes; not a correctness issue.)
+---
 
-## Phase 3 progress (Platform services — this session)
+## 8. What remains
 
-All under `JVoice.App/Platform/` (Win32/WASAPI/registry/WPF-clipboard), with the pure
-testable bits in `JVoice.Core`. **`dotnet build windows/JVoice.sln -c Release` = 0/0;
-`dotnet test` = 109/109 green; `JVoice.Core` has NO package references (stayed pure).**
-NuGet pinned: **NAudio 2.3.0** (on `JVoice.App`).
+1. **Dogfood the GUI (David, interactive):** run `docs/launch/windows-dogfood-checklist.md` — the live
+   Ctrl+Shift+Space → record → transcribe → paste loop, HUD pill states/animation vs DESIGN-TOKENS, the
+   320×520 Settings round-trip, BT device routing, mic-permission flow, elevated-window UIPI. The app is
+   confirmed to *launch*; the live input/visual paths are what a person must confirm.
+2. **(Optional) Phase 5 Task 6** — port `scripts/verify-transcription.py` to
+   `windows/tools/verify-transcription` (corpus-level word-retention / spurious-vocab scoring across
+   many generated clips). `whisper-smoke` + `--bench` already prove end-to-end transcription; this is the
+   larger scripted accuracy harness.
+3. **(Optional) Phase 5 Task 3** — an Inno Setup installer (`windows/installer/JVoice.iss`). The zipped
+   self-contained folder is already a complete distributable, so this is convenience only (and needs
+   Inno Setup installed to compile).
+4. **Polish from dogfooding:** HUD pixel fidelity, the waveform glyph, per-section selected-segment accent.
+5. **Do NOT publish/push** without David's explicit go-ahead.
 
-Built: PlatformPaths; SettingsStateJson + StatsMath + BluetoothDevicePolicy + HotkeyChord
-(pure, in Core, 36 new xUnit tests); SystemActions; SettingsStore (debounced + corruption/
-forward-version recovery); StatsStore; LastTranscriptStore; LaunchAtLogin; SingleInstance;
-SettingsUris; PermissionError; AudioInputRouter; IAudioRecorder + NAudioRecorder;
-ForegroundWindowTracker; GlobalHotkey; Paster.
+---
 
-### Verified on the dev machine (throwaway consoles, since net9.0-windows can't be unit-tested from net9.0 JVoice.Tests):
-- **SettingsStore**: fresh-write, reload, corruption→backup+reset, forward-version refusal. PASS.
-- **StatsStore / LastTranscriptStore**: record/guard/reload, UTF-8 round-trip. PASS.
-- **SingleInstance**: real cross-process — child got `child-blocked` while parent held the mutex; re-acquire after release. PASS.
-- **LaunchAtLogin**: enable→true, disable→false, first-run idempotent enable→true; **registry reverted** (Run\JVoice + init flag confirmed absent). PASS.
-- **PermissionError/SettingsUris**: deep link == `ms-settings:privacy-microphone`, message non-empty. PASS.
-- **AudioInputRouter**: default device "Microphone (Yeti Classic)" (non-BT) → `PreferredCaptureDeviceId()` returns null (record from default). PASS.
-- **NAudioRecorder**: orphan sweep (jvoice-*.wav deleted, non-ours kept), usable check (2000B=true/10B=false), mic permission True, **growing WAV readable by WavTailReader at ~16000 samples/sec** (15680→31520→47520 over 3s), final header **16000/1/2**. PASS — the critical Phase 1↔Phase 3 streaming contract holds.
-- **Paster**: Paste("")→TargetRejected, Paste(_, IntPtr.Zero)→TargetRejected, Stage() clipboard round-trip. PASS.
-- **ForegroundWindowTracker**: GetForegroundWindowNow() non-zero. PASS.
+## 9. The phase plans (reference)
 
-### Deferred to interactive dogfood (Phase 4/5 — cannot run in this non-interactive session):
-- **GlobalHotkey live global-fire**: SendInput-injected keystrokes are NOT delivered to a `WH_KEYBOARD_LL` hook in a non-interactive/headless run (LL hooks + synthetic input are bound to an interactive desktop). The code builds and installs/tears-down the hook cleanly; chord matching is covered by HotkeyChord unit tests. David should confirm Ctrl+Shift+Space fires globally + the 150ms debounce when running the Phase 4 app.
-- **Paster live paste into another app** (Ctrl+V landing in Notepad + 300ms clipboard restore) and **ForegroundWindowTracker live tracking** (needs a message pump) — verified end-to-end once the Phase 4 UI exists.
+`docs/superpowers/plans/2026-06-22-windows-port-0{0..5}-*.md` — the original zero-context, task-by-task
+plans that were executed. Read **00 (overview)** first (architecture, canonical names §4, constraints
+§5, gotchas §6, cross-phase reconciliation §10 — §10 wins over §4 on conflicts). These are historical
+plan docs; **this HANDOFF reflects the as-built state** (which deviates from the plans where §7 above says so).
 
-### Phase 3 deviations from the plan (logged)
-- **NAudioRecorder: `BufferedWaveProvider.ReadFully = false`** — the plan omitted this; its default (`true`) makes `Read()` zero-pad to the requested count forever, so the `PumpToWriter` `while (read > 0)` loop became an **infinite zero-writing busy loop** (caught in verification — two runaway processes at >130s CPU). Setting `ReadFully = false` makes `Read` return only buffered bytes (0 when drained). Root-cause fix, not a workaround.
-- **AudioInputRouter form factor via property store** — NAudio 2.3.0 has no `MMDevice.AudioEndpointFormFactor`; read `PKEY_AudioEndpoint_FormFactor` from `MMDevice.Properties` instead (Headset=5/Headphones=3 → BT signal, Microphone=4 → built-in). BTHENUM enumerator name remains the load-bearing BT signal.
-- **`ISampleProvider.WaveFormat.SampleRate`** used instead of the plan's `sampleSource.SampleRate` (ISampleProvider exposes rate via WaveFormat).
-- **SettingsStoreJson invalid-JSON test** relaxed to `Assert.ThrowsAny<JsonException>` (JsonDocument.Parse throws the JsonReaderException subclass).
-- All `JVoice.App` Platform files need explicit `using System.IO;` (WindowsDesktop SDK trims it from implicit usings — see Phase 2 note).
+## 10. Other docs
 
-## Phase 4 progress (WPF UI + VoiceCoordinator — this session)
-
-**Code-complete.** `dotnet build windows/JVoice.sln -c Release` = 0 errors across all 5
-projects (JVoice.Core, JVoice.App, JVoice.Tests, whisper-smoke, generate-icon);
-`dotnet test` = **122/122** (13 new CoordinatorDecisions tests). NuGet pinned this phase:
-**H.NotifyIcon.Wpf 2.3.0** (tray) and **SkiaSharp 3.119.4** (icon tool only).
-
-Built (all 10 plan tasks): generate-icon tool → `Assets/JVoice.ico` (6-frame) + 3 tray
-PNGs; JVoicePalette.xaml (colors/brushes/button+segment+switch styles, DarkSection
-template, converters); App.xaml/App.xaml.cs (STAThread Main preserving --bench +
-single-instance + WhisperRuntime.EnsureLoaded; OnStartup wires coordinator/HUD/tray +
-first-run Settings; OnExit flush); HudWindow + HudView (all 7 pills, orbital ring,
-click-through overlay); HotkeyRecorder; DarkSection (templated ContentControl);
-SettingsView/SettingsWindow (9 sections bound to the coordinator); TrayIcon (3-state +
-live menu); CoordinatorDecisions (pure, tested); VoiceCoordinator (full pipeline port).
-
-### Verified (this non-interactive session)
-- Full Release build 0 errors; 122 xUnit tests green.
-- `JVoice.exe --bench` → exit 64 (the bench CLI still short-circuits before WPF, through the new App.Main).
-- generate-icon produced a structurally-valid 6-frame .ico (15KB, header `00 00 01 00 06 00`) + 3 PNGs; HUD glyph code points byte-verified (E720/E713/E896/E767/E73E/E7BA).
-
-### Deferred to David's interactive dogfood (Phase 4 Task 10 — manual, can't run headless)
-- Launching the GUI: the first-run `MessageBox` blocks and the tray/HUD/global-hook need an interactive desktop, so I did NOT launch `dotnet run --project windows/JVoice.App` here.
-- Visual fidelity of the HUD pills (colors/animation/orbital ring) and the 320×520 Settings panel vs DESIGN-TOKENS.
-- End-to-end live dictation: Ctrl+Shift+Space → record → transcribe → paste into the focused app; HUD state transitions; tray menu; settings round-trip; first-run flow.
-  - To re-test first-run: delete `HKCU\Software\JVoice\UiFirstRunShown`.
-
-### Phase 4 deviations from the plan (logged)
-- **H.NotifyIcon.Wpf 2.3.0, not 2.4.1** — 2.4.1 ships only `net10.0-windows7.0` + `net462`, so on net9 it fell back to net462 (broken WPF). 2.3.0 has a `net9.0-windows7.0` asset. Pinned 2.3.0.
-- **App.xaml is build-action `Page`, not `ApplicationDefinition`** — otherwise the SDK auto-generates a `Main` that collides with our explicit bench-aware `Main` (CS0017). `InitializeComponent` is still generated for the Page.
-- **DarkSection is a templated `ContentControl`, not a `UserControl`** — a UserControl creates its own namescope, making `x:Name`d children (Recorder, NewWordBox) inside a section illegal (MC3093). The ContentControl keeps section content in SettingsView's namescope. Its visual is the implicit `DarkSection` style in JVoicePalette.xaml; HeaderText is coerced to upper-case so the TemplateBinding shows it uppercased.
-- **Icon tool uses SkiaSharp 3.x `SKFont`+`DrawText`+`MeasureText`** (the plan's `SKPaint.GetTextPath` is 2.x; 3.x dropped SKPaint text members).
-- **HUD `ShowRing` overloads simplified** to a single `ShowRing(string glyph)`; Transcribing uses the Volume glyph (E767) as the closest MDL2 audio glyph (no clean waveform glyph; a drawn-Path waveform is a noted polish item).
-- Benign CS4014 warnings on intentional fire-and-forget `_ = …PrewarmAsync()/…Cancel()` (TreatWarningsAsErrors is false).
-
-## Phase 5 progress (packaging / CI / docs — this session)
-
-**Done:** Task 1 (publish config), Task 2 (manifest + metadata + AppUserModelID), Task 4
-(`docs/launch/windows-distribution.md` — unsigned + SmartScreen), Task 5
-(`.github/workflows/windows.yml` — CI), Task 7 (docs: `windows/README.md`, this handoff;
-CLAUDE.md already has a Windows section), Task 8 (`docs/launch/windows-dogfood-checklist.md`).
-
-- **Publish** (`JVoice.App.csproj`, keyed on `JVoiceFlavor`): CUDA+Vulkan runtime packages are
-  CONDITIONAL (absent for `cpu`) — `ExcludeAssets` was insufficient. **Verified: the CPU FOLDER
-  build (161 MB) runs `--bench` → `runtime: whisper.cpp (Cpu)`, accurate transcript, exit 0.**
-- **Single-file caveat (decision):** the CPU single-file build (~75 MB, no CUDA) *builds* but
-  **fails native load (exit 70)** — Whisper.net 1.9.1 resolves natives via `Assembly.Location`,
-  empty for bundled single-file assemblies. → **Ship a zipped self-contained FOLDER, not a
-  single-file exe.** (The CI `build-artifact` job still produces the single-file for inspection;
-  it should be switched to a folder-zip if that job is ever used for real distribution.)
-- **CI:** windows-latest, .NET 9, build Release + `dotnet test` + a trx count-guard (fails on
-  0-executed or any failure). Locally reproduced: 122/122 executed, guard PASS. No GUI, no push.
-- **win-arm64:** CUDA is x64-only; an arm64 build is CPU-runtime-only (swap the RID; verify
-  `Whisper.net.Runtime` has a win-arm64 asset first).
-
-**Remaining Phase 5 (optional, not blocking a working app):**
-- **Task 3 — Inno Setup installer** (`windows/installer/JVoice.iss`): not written (needs Inno
-  Setup installed to compile; the zipped folder is a complete distributable without it).
-- **Task 6 — `windows/tools/verify-transcription`** harness (port of `verify-transcription.py`,
-  the accuracy-scoring corpus tool): not written. The existing `whisper-smoke` + `--bench`
-  already prove end-to-end transcription; this is the larger scripted accuracy harness.
-- A user-facing top-level `README-WINDOWS.md` (Task 7) was folded into `windows/README.md`
-  (developer-facing); a marketing README can be split out at publish time.
-
-## Phase 4/5 dogfood (David)
-
-Phases 1–3 are verified. Phase 4 (UI) is code-complete + builds but its visual fidelity and the
-live dictation loop need an interactive desktop — run `docs/launch/windows-dogfood-checklist.md`
-on the dev machine. The global-hotkey live-fire and live paste-into-app (deferred from Phase 3)
-are covered there too.
-
-## Verification commands (reference)
-
-- Build: `dotnet build windows/JVoice.sln -c Release`
-- Test:  `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj`
-- Run the app (GUI): `dotnet run --project windows/JVoice.App`  (tray + first-run Settings)
-- Regenerate icons: `dotnet run --project windows/tools/generate-icon`
-- Transcribe (no GUI): `dotnet run --project windows/tools/whisper-smoke -- <wav> --model tiny`
-- Bench: `windows/JVoice.App/bin/<cfg>/net9.0-windows/JVoice.exe --bench <wav> [--model …] [--vocab …] [--stream] [--no-prompt]`
-- (Later) Run: `dotnet run --project windows/JVoice.App`
+- `windows/README.md` — developer guide (layout, build/test/run, engine/models, publish).
+- `docs/launch/windows-distribution.md` — unsigned distribution + the SmartScreen "Run anyway" flow.
+- `docs/launch/windows-dogfood-checklist.md` — the interactive verification checklist (David runs this).
+- `CLAUDE.md` "Windows port" section — the hard rules + a one-line status.

@@ -7,6 +7,12 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 > Automated coverage already green: `dotnet test windows/JVoice.Tests` = 122/122 (the brain +
 > pure platform/coordinator helpers); `JVoice.exe --bench <wav>` proves on-device transcription
 > end-to-end (Phase 2). This list covers only the GUI + live-input paths.
+>
+> **Startup is already verified working** — the app launches to the tray and stays alive. Two
+> startup crashes were found and fixed when first launching it (`TaskbarIcon.ForceCreate`
+> efficiency-mode `COMException`, and a PNG→`System.Drawing.Icon` conversion); see
+> `../HANDOFF-WINDOWS.md` §7. So if the app fails to *launch* now, that's a new regression — but the
+> items below (live input, visuals, devices, permissions) are the real point of this pass.
 
 ## Launch & tray
 - [ ] `dotnet run --project windows/JVoice.App` (or run the published `JVoice.exe`).
