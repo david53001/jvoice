@@ -20,9 +20,9 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **233** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
-  RegurgitationRecovery + WavTail audits). As the hunt adds regression tests this number only grows;
-  it must never go down or go red.
+  now **242** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  RegurgitationRecovery + WavTail + ChunkPlanner audits). As the hunt adds regression tests this number
+  only grows; it must never go down or go red.
 
 ---
 
@@ -99,8 +99,15 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       [dataOffset,EOF) payload model, FloatSamples /32768, the reader's odd-trailing-byte + past-EOF
       handling). Added the high-bit/max-uint size regression, a 600-case ParseHeader never-throw fuzz,
       truncated/empty/data-before-fmt/odd-size-word-aligned header edges + reader odd-byte/past-EOF.
-- [ ] **ChunkPlanner** — `…/Audio/ChunkPlanner.cs` + `ChunkPlannerTests.cs`
+- [x] **ChunkPlanner** — `…/Audio/ChunkPlanner.cs` + `ChunkPlannerTests.cs`
       ← `…/Services/ChunkPlanner.swift` / `ChunkPlannerTests.swift` (silence-cut, min/max constants)
+      — 2026-06-23 · +9 tests · **0 bugs**. Line-by-line fidelity confirmed (all 6 Config constants;
+      minSamples/maxSamples/window int-truncation; the candidate filter; `min(by:)` first-minimum
+      tie-break == the C# strict-`<` loop; silence-vs-forced cut branches; `windowRMS` partial-final
+      window). Relaxed `WindowRms`/`WindowEnergy` to `internal` (matching Swift's testable access) to
+      port the partial-window vector. Added empty→wait, continuous-speech→wait, cut-not-silent,
+      forced-cut-range, all-silence→silent-cut, isSilent([]) , quiet-speech-not-silence + a 300-case
+      Plan never-throw / cut-in-bounds fuzz.
 - [ ] **StreamingTranscriptionSession** — `…/Audio/StreamingTranscriptionSession.cs` + `StreamingSessionTests.cs`
       ← `…/Services/StreamingTranscriptionSession.swift` / `StreamingTranscriptionSessionTests.swift`
       (the data-loss guarantee: empty non-silent chunk → fallback, NEVER a silent drop; finish-once; cancel-join)
@@ -256,6 +263,10 @@ _(none yet)_
   chunk-walk with word-alignment, fmt/data format validation (PCM/16k/mono/16-bit), the deliberately-
   ignored stale RIFF/data sizes ([dataOffset,EOF) payload model), FLLR tolerance, `FloatSamples` /32768,
   and the reader's odd-trailing-byte drop + past-EOF → empty.
+- **ChunkPlanner C#↔Swift fidelity confirmed** — all 6 Config constants, the silence-only cut policy
+  (cut at the quietest sub-threshold window past minChunk, else wait, else force at the maxChunk cap),
+  the first-minimum tie-break, the absolute+relative silence thresholds, and the partial-final-window
+  RMS. `Plan` never throws and any Cut lands in (0, length] — 300-case seeded fuzz.
 
 ---
 

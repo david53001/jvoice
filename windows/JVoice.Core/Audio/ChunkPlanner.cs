@@ -60,10 +60,11 @@ public static class ChunkPlanner
     private static Decision MakeCut(ReadOnlySpan<short> unconsumed, int sample, Config config)
         => Decision.Cut(sample, IsSilent(unconsumed[..sample], config));
 
-    private readonly record struct WindowEnergy(int Start, float Rms);
+    internal readonly record struct WindowEnergy(int Start, float Rms);
 
     /// Non-overlapping RMS windows; the last (partial) window is included.
-    private static List<WindowEnergy> WindowRms(ReadOnlySpan<short> samples, int window)
+    /// `internal` (not `private`) to mirror Swift's testable `windowRMS`.
+    internal static List<WindowEnergy> WindowRms(ReadOnlySpan<short> samples, int window)
     {
         var result = new List<WindowEnergy>();
         if (samples.Length == 0 || window <= 0) return result;
