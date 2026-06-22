@@ -20,8 +20,8 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **192** after the TextProcessor + PhoneticMatcher audits). As the hunt adds regression tests this
-  number only grows; it must never go down or go red.
+  now **202** after the TextProcessor + PhoneticMatcher + VocabularyPrompt audits). As the hunt adds
+  regression tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -63,8 +63,14 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       levenshtein ×3, the "whisper cat"→WhisperKit compound, all false-positive guards incl. the
       "JVoice is"→swallow regression, short-word ignore) + empty-text/idempotency edges + a 400-case
       Levenshtein symmetry/bounded invariant + a 400-case Correct/PhoneticKey never-throw fuzz.
-- [ ] **VocabularyPrompt** — `…/Text/VocabularyPrompt.cs` + `VocabularyPromptTests.cs`
+- [x] **VocabularyPrompt** — `…/Text/VocabularyPrompt.cs` + `VocabularyPromptTests.cs`
       ← `…/Services/VocabularyPrompt.swift` / `VocabularyPromptTests.swift`
+      — 2026-06-23 · +10 tests · **0 bugs**. Line-by-line fidelity confirmed (MaxWords=40,
+      MaxPromptTokens=96, leading-space, `", "` join, empty→null). Verified C# `Trim()` and Swift
+      `.whitespacesAndNewlines` resolve to the **same** char set (so trimming is identical). Added the
+      precise Swift cap vector (word39 kept / word40 dropped / not ending word99), the 39/40/41 boundary,
+      duplicate-not-deduped, order-preserved, comma-in-entry-not-escaped, tab/newline trim, + a 300-case
+      never-throw/well-formed fuzz (null iff no non-blank entry, else starts with a single space).
 - [ ] **RepetitionGuard** — `…/Text/RepetitionGuard.cs` + `RepetitionGuardTests.cs`
       ← `…/Services/RepetitionGuard.swift` / `RepetitionGuardTests.swift` (incl. the 120-case fuzz)
 - [ ] **RegurgitationRecovery** — `…/Text/RegurgitationRecovery.cs` + `RegurgitationRecoveryTests.cs`
@@ -172,6 +178,11 @@ _(none yet)_
 - **`PhoneticMatcher.Correct` / `PhoneticKey` never throw** on adversarial input (empty/punctuation-only
   tokens, digits, over-long windows, unicode, 0–3 random vocab entries) — 400-case seeded fuzz; `Correct`
   is idempotent on the common exact-spelling case.
+- **VocabularyPrompt C#↔Swift fidelity confirmed** — MaxWords=40, MaxPromptTokens=96, leading-space +
+  `", "` join, the 40-word cap (word39 kept, word40+ dropped), order preserved, duplicates not deduped,
+  commas in entries not escaped, and trimming identical to Swift's `.whitespacesAndNewlines`.
+- **`VocabularyPrompt.Text` never throws and is well-formed** — null iff every entry trims to empty,
+  else starts with exactly one leading space — 300-case seeded fuzz.
 
 ---
 
