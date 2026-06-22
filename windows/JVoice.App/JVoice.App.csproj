@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <RootNamespace>JVoice.App</RootNamespace>
+    <AssemblyName>JVoice</AssemblyName>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!-- Phase 4 sets the WPF StartupObject / App.xaml entry. For now Program.Main is the entry. -->
+    <StartupObject>JVoice.App.Program</StartupObject>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JVoice.Core\JVoice.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
+  </ItemGroup>
+
+  <!-- Whisper.net packages — versions written + pinned by `dotnet add package` (Task 1 Step 6). -->
+
+</Project>

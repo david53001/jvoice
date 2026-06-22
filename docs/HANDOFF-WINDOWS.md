@@ -21,7 +21,7 @@ A native **Windows** port of JVoice. JVoice is a hotkey-driven voice-dictation a
 `docs/superpowers/plans/2026-06-22-windows-port-0{0..5}-*.md`. Read **00 (overview)** first — architecture, canonical names (§4), global constraints (§5), gotchas (§6), and the cross-phase reconciliation (§10).
 - **00 overview** — anchor doc.
 - **01 core-brain** — `JVoice.Core` + `JVoice.Tests`. **EXECUTED & GREEN this session** (see below).
-- **02 whisper-engine** — Whisper.net engine + GGML model store + `--bench` CLI. (Plan only — not executed.)
+- **02 whisper-engine** — Whisper.net engine + GGML model store + `--bench` CLI. **IN PROGRESS this session** (see "Phase 2 progress" below).
 - **03 platform** — audio capture, BT-safe device pick, global hotkey, paste, persistence, launch-at-login. (Plan only.)
 - **04 ui** — WPF tray + HUD pill + 320×520 settings + the "J" `.ico` + `VoiceCoordinator`. (Plan only.)
 - **05 packaging** — single-file publish, Inno Setup, SmartScreen docs, Windows CI, verify-transcription harness, docs, dogfood checklist. (Plan only.)
@@ -53,6 +53,35 @@ A native **Windows** port of JVoice. JVoice is a hotkey-driven voice-dictation a
 2. Execute **Phase 2** (whisper engine) — first real transcription on Windows; verify a prompted vocab decode is non-empty and a >30 s clip isn't truncated (the two whisper.cpp-vs-WhisperKit checks).
 3. Execute **Phase 3** (platform), **Phase 4** (UI + coordinator), **Phase 5** (packaging).
 4. Dogfood (Phase 5 checklist). **Do NOT publish/push** without David's explicit go-ahead (same rule as the macOS side).
+
+## Phase 2 progress (Whisper engine — this session)
+
+### Pinned NuGet versions (Task 1)
+
+All resolved + pinned at the current stable **1.9.1** (in `windows/JVoice.App/JVoice.App.csproj`, and copied to `windows/tools/whisper-smoke/whisper-smoke.csproj`):
+
+- `Whisper.net` `1.9.1` (MIT)
+- `Whisper.net.Runtime` `1.9.1` — CPU (MIT)
+- `Whisper.net.Runtime.Cuda` `1.9.1` — NVIDIA GPU (MIT)
+- `Whisper.net.Runtime.Vulkan` `1.9.1` — cross-GPU (MIT). Restored fine; bundled.
+
+### Whisper.net 1.9.1 API probe results (Task 1 Step 7) — what the engine code uses
+
+Reflected the installed assembly. **The plan's assumed names mostly hold, with key deviations recorded here so future sessions don't re-derive them:**
+
+- `WhisperFactory.FromPath(string)` ✓ (also `FromPath(string, WhisperFactoryOptions)`); `WhisperFactory.CreateBuilder()` ✓; `WhisperFactory.GetRuntimeInfo()` (instance, returns string).
+- `WhisperProcessorBuilder`: `WithLanguage(string)` ✓, `WithPrompt(string)` ✓ (NOT `WithPromptText`), `WithTemperature(float)` ✓, `WithTemperatureInc(float)` ✓, `WithEntropyThreshold(float)` ✓, `WithLogProbThreshold(float)` ✓ (NOT `WithProbabilityThreshold`), `WithGreedySamplingStrategy(Action)` / `WithBeamSearchSamplingStrategy(Action)` exist.
+- **`WithoutTimestamps()` does NOT exist in 1.9.1.** There is no decoder no-timestamps flag on the builder (only `WithPrintTimestamps(bool)`, `WithTokenTimestamps()`, `WithSingleSegment()` — none is the right thing). **Resolution:** the engine does NOT disable timestamps; it just concatenates `SegmentData.Text` across segments. whisper.cpp does its own 30s windowing with context carry, so the full transcript is produced and is NOT truncated (verified in Task 6 Step 5). This is effectively the "timestamps on" position, which was already the documented Task 3 Step 9 fallback — so we're at the safe end and the `isSingleWindowClip` WhisperKit gate stays dropped. (Do NOT add `WithSingleSegment()` — it would force one segment and could truncate long audio.)
+- **`WithoutSuppressBlank()` exists** → confirms `suppress_blank` is ON by default in whisper.cpp/Whisper.net. We do NOT call it, so the SuppressBlankFilter workaround stays dropped (§6.3 confirmed; empirically re-checked in Task 6 Step 4).
+- `WhisperProcessor.ProcessAsync(float[], CancellationToken)` ✓ — also `(ReadOnlyMemory<float>, CT)` and `(Stream, CT)`. The CancellationToken is a REQUIRED positional arg (not defaulted) — always pass `ct`.
+- `SegmentData.Text` (string) ✓ — segments also carry `Start`/`End` (TimeSpan), `Probability`, `NoSpeechProbability`, `Tokens`.
+- Runtime selection: `Whisper.net.LibraryLoader.RuntimeOptions.LoadedLibrary` is a typed static `RuntimeLibrary?` (null until first factory load). `RuntimeLibrary` enum = `Cpu, Cuda, Cuda12, Vulkan, CoreML, OpenVino, CpuNoAvx`. `WhisperRuntime.Describe()` reads this typed property (after prewarm).
+- Bonus: a built-in `Whisper.net.Ggml.WhisperGgmlDownloader` exists, but we keep the custom `WhisperModelStore` (atomic `.part` + size/SHA verification + the `%LOCALAPPDATA%\JVoice\models\` layout the plan specifies).
+
+### Deviations from the plan (logged)
+
+- **Temperature fallback (`temperatureFallbackCount = 2`)**: mapped to `WithTemperature(0.0f)` + `WithTemperatureInc(0.2f)` (these equal whisper.cpp defaults; Whisper.net exposes no exact "fallback count" knob, so the macOS `=2` is approximated — the plan calls this `≈`). Entropy/logprob thresholds left at whisper.cpp defaults.
+- **`Program.cs` ordering**: created as a runnable no-op in Task 1 (no `BenchRunner` reference) so Tasks 1–4 each build green; the `BenchRunner.ShouldRun/RunAndExit` branch is wired in during Task 5 (matches the plan's end-state Program.cs). Phase 4 replaces this with the WPF `App.xaml` `[STAThread]` entry but must keep the bench branch before any UI.
 
 ## Verification commands (reference)
 
