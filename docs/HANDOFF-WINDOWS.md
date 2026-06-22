@@ -21,7 +21,7 @@ A native **Windows** port of JVoice. JVoice is a hotkey-driven voice-dictation a
 `docs/superpowers/plans/2026-06-22-windows-port-0{0..5}-*.md`. Read **00 (overview)** first — architecture, canonical names (§4), global constraints (§5), gotchas (§6), and the cross-phase reconciliation (§10).
 - **00 overview** — anchor doc.
 - **01 core-brain** — `JVoice.Core` + `JVoice.Tests`. **EXECUTED & GREEN this session** (see below).
-- **02 whisper-engine** — Whisper.net engine + GGML model store + `--bench` CLI. **IN PROGRESS this session** (see "Phase 2 progress" below).
+- **02 whisper-engine** — Whisper.net engine + GGML model store + `--bench` CLI. **EXECUTED & VERIFIED this session** (see "Phase 2 progress" below — real on-device transcription on Windows, all invariants proven).
 - **03 platform** — audio capture, BT-safe device pick, global hotkey, paste, persistence, launch-at-login. (Plan only.)
 - **04 ui** — WPF tray + HUD pill + 320×520 settings + the "J" `.ico` + `VoiceCoordinator`. (Plan only.)
 - **05 packaging** — single-file publish, Inno Setup, SmartScreen docs, Windows CI, verify-transcription harness, docs, dogfood checklist. (Plan only.)
@@ -98,8 +98,45 @@ Tiny's SHA matches the published whisper.cpp hash; it was pre-placed in `%LOCALA
 - **Temperature fallback (`temperatureFallbackCount = 2`)**: mapped to `WithTemperature(0.0f)` + `WithTemperatureInc(0.2f)` (these equal whisper.cpp defaults; Whisper.net exposes no exact "fallback count" knob, so the macOS `=2` is approximated — the plan calls this `≈`). Entropy/logprob thresholds left at whisper.cpp defaults.
 - **`Program.cs` ordering**: created as a runnable no-op in Task 1 (no `BenchRunner` reference) so Tasks 1–4 each build green; the `BenchRunner.ShouldRun/RunAndExit` branch is wired in during Task 5 (matches the plan's end-state Program.cs). Phase 4 replaces this with the WPF `App.xaml` `[STAThread]` entry but must keep the bench branch before any UI.
 
+### Phase 2 E2E verification (Task 6) — REAL on-device transcription on Windows
+
+Run on the dev machine (RTX 3060 Ti, i5-12400). Test WAVs generated via Windows TTS
+(System.Speech, 16 kHz mono 16-bit PCM): `jv-known.wav` (~6.5s), `jv-long.wav` (~125s),
+`jv-vocab.wav` (~3.6s). `dotnet build windows/JVoice.sln -c Release` = **succeeded, 0/0**;
+`dotnet test` = **73/73 green** (Phase 1 unaffected).
+
+- **Selected runtime: `whisper.cpp (Vulkan)`.** Whisper.net's loader fell CUDA → **Vulkan**
+  (the CUDA *runtime* package is bundled, but the CUDA toolkit DLLs (`cudart`) aren't installed
+  on this box, so it used the Vulkan GPU path — still GPU-accelerated on the 3060 Ti; CPU is the
+  universal fallback). All four runtime packages' natives land under `bin/.../runtimes/` (cuda,
+  vulkan, win-x64). To force CUDA later, install the CUDA toolkit or set
+  `RuntimeOptions.RuntimeLibraryOrder`.
+- **(a) Download/locate** — `ggml-tiny.bin` (size 77,691,713, SHA verified) reused from
+  `%LOCALAPPDATA%\JVoice\models\` with NO re-download on repeat runs; no `.part` leftovers.
+- **(b) Prompted decode is NON-EMPTY** (the SuppressBlankFilter-not-needed proof). `--bench
+  jv-vocab.wav --vocab "VS Code,JVoice"`:
+  - prompted (`decoderPrompt: on`): raw `"I am editing Code in VS Code with J Voice Today."` → processed `"I am editing Code in VS Code with JVoice Today"` (exit 0)
+  - `--no-prompt` (`decoderPrompt: off`): raw `"I am editing code in VS code with J Voice Today."` → processed `"I am editing code in VS Code with JVoice Today"` (exit 0)
+  - Both non-empty ⇒ the prompt neither breaks decoding nor is load-bearing; and the prompt
+    biased "VS Code" (capital C) vs no-prompt "VS code" — vocabulary biasing works at the source.
+- **(c) >30s clip NOT truncated** (the dropped single-window-timestamp-trap proof). `--bench
+  jv-long.wav` (~125s) returned all 12 numbered sentences (1→12), tail intact, in 3.73s on Vulkan.
+  Confirms whisper.cpp's internal 30s windowing handles long audio with no `WithoutTimestamps()`.
+- **(d) `--bench` exit codes**: 64 (missing file arg), 66 (no such file), 0 (success) — verified.
+- **(e) Streaming corroborated**: `--bench jv-known.wav --stream` → `streamed: nil (session fell
+  back)` (CORRECT — 6.5s < ChunkPlanner.MinChunkSeconds 15s, so it never cuts and falls back to
+  whole-file losslessly), wholefile corroborates, exit 0. On `jv-long.wav --stream` (forces 25s
+  MaxChunkSeconds cuts): `streamed` non-null with all 12 sentences (1→12) — **no data loss** in the
+  streaming path; whole-file corroborates.
+
+**Net: all Phase 2 invariants proven on real audio. The two WhisperKit workarounds stay dropped,
+empirically confirmed.** (Speed note: first GPU decode pays a one-time Vulkan shader-compile cost
+— ~14s on the first prompted decode, then 2-4s on subsequent decodes; not a correctness issue.)
+
 ## Verification commands (reference)
 
 - Build: `dotnet build windows/JVoice.sln -c Release`
 - Test:  `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj`
+- Transcribe (no GUI): `dotnet run --project windows/tools/whisper-smoke -- <wav> --model tiny`
+- Bench: `windows/JVoice.App/bin/<cfg>/net9.0-windows/JVoice.exe --bench <wav> [--model …] [--vocab …] [--stream] [--no-prompt]`
 - (Later) Run: `dotnet run --project windows/JVoice.App`
