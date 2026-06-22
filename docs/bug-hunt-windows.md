@@ -20,9 +20,10 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **254** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
-  RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState audits).
-  As the hunt adds regression tests this number only grows; it must never go down or go red.
+  now **258** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
+  SettingsStateJson audits). As the hunt adds regression tests this number only grows; it must never
+  go down or go red.
 
 ---
 
@@ -139,8 +140,16 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       the schema==current boundary, the `with` pattern, + a 400-case decode fuzz (only ForwardVersion
       throws; valid blobs always normalize the version forward). See new intentional-deviation note re:
       per-field/wrong-type leniency + record equality.
-- [ ] **SettingsStateJson** — `…/Models/SettingsStateJson.cs` + `SettingsStoreJsonTests.cs`
+- [x] **SettingsStateJson** — `…/Models/SettingsStateJson.cs` + `SettingsStoreJsonTests.cs`
       ← `…/Services/SettingsStore.swift` / `SettingsStoreCorruptionTests.swift` (forward-version refusal, per-field fallback)
+      — 2026-06-23 · +4 tests · **0 bugs**. Decode side already exhaustively covered (firing #9). This
+      firing audited the Serialize side: emits exactly the 6 Swift CodingKeys (schemaVersion/mode/model/
+      language/customWords/removeFillerWords), writes enum names, JSON-special chars (`"` `\` tab newline
+      unicode) survive a round-trip, + a 400-case Serialize→Deserialize identity fuzz. NOTE: the store-
+      level corruption→backup+reset / debounce coalescing (SettingsStoreCorruptionTests.swift) lives in
+      `JVoice.App/Platform/SettingsStore.cs` — JVoice.Tests (net9.0) can't reference JVoice.App
+      (net9.0-windows), so it's deferred to the Tier 3 "SettingsStore/StatsStore/LastTranscriptStore"
+      row (verify via throwaway console).
 - [ ] **WhisperModelOption (+GGML map)** — `…/Models/WhisperModelOption.cs` + `ModelTests.cs`
       ← `…/Models/WhisperModelOption.swift` / `WhisperModelOptionTests.swift`
 - [ ] **HudState** — `…/Models/HudState.cs` ← `…/Models/HUDState.swift` (+ `DownloadingModel` is new)
@@ -273,6 +282,9 @@ _(none yet)_
   commas in entries not escaped, and trimming identical to Swift's `.whitespacesAndNewlines`.
 - **`VocabularyPrompt.Text` never throws and is well-formed** — null iff every entry trims to empty,
   else starts with exactly one leading space — 300-case seeded fuzz.
+- **SettingsStateJson Serialize↔Deserialize is a faithful round-trip** — emits exactly the 6 Swift
+  CodingKeys, writes enum names, JSON-special chars (`"`/`\`/tab/newline/unicode/empty) survive intact,
+  and Serialize→Deserialize is an identity on all fields for any valid SettingsState — 400-case fuzz.
 - **RepetitionGuard C#↔Swift fidelity confirmed** — all 5 constants (MinLoopTokens=8, TailWindow=12,
   DensityThreshold=0.7, MinRepeatCount=3, NonLoopyTolerance=1), the 3-step strip pipeline, `IsDegenerate`,
   the `loopy()` predicate, the 68-word stopwords list (verbatim), `VocabularyCores` camelCase splitting,
