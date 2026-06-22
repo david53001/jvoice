@@ -20,9 +20,9 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **242** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
-  RegurgitationRecovery + WavTail + ChunkPlanner audits). As the hunt adds regression tests this number
-  only grows; it must never go down or go red.
+  now **247** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession audits). As the hunt
+  adds regression tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -108,9 +108,17 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       port the partial-window vector. Added empty→wait, continuous-speech→wait, cut-not-silent,
       forced-cut-range, all-silence→silent-cut, isSilent([]) , quiet-speech-not-silence + a 300-case
       Plan never-throw / cut-in-bounds fuzz.
-- [ ] **StreamingTranscriptionSession** — `…/Audio/StreamingTranscriptionSession.cs` + `StreamingSessionTests.cs`
+- [x] **StreamingTranscriptionSession** — `…/Audio/StreamingTranscriptionSession.cs` + `StreamingSessionTests.cs`
       ← `…/Services/StreamingTranscriptionSession.swift` / `StreamingTranscriptionSessionTests.swift`
       (the data-loss guarantee: empty non-silent chunk → fallback, NEVER a silent drop; finish-once; cancel-join)
+      — 2026-06-23 · +5 tests · **0 bugs**. Line-by-line fidelity confirmed: the Start guard, the
+      finish-once gate, the join-before-read pattern (C# `await _pollTask` after `_cts.Cancel()` gives
+      the same happens-before as Swift's actor + `await pollTask?.value`), the drain loop (terminates —
+      every cut shrinks tail), consumed-samples advancement (no gap/overlap), empty-non-silent→fail,
+      silent→drop, cancelled-mid-decode→don't-consume, transcriber-throw→fail. Ported the Swift
+      fast-config vectors (in-order chunks+tail with **sum == total, no loss/dup**; transcriber-throws;
+      one-empty-chunk-anywhere→fallback; silent-region-dropped; vanished-file→null). Verified non-flaky
+      (3× clean full runs).
 - [ ] **SettingsState (+migration)** — `…/Models/SettingsState.cs` + `SettingsStateTests.cs`
       ← `…/Models/SettingsState.swift` / `SettingsStateMigrationTests.swift`
 - [ ] **SettingsStateJson** — `…/Models/SettingsStateJson.cs` + `SettingsStoreJsonTests.cs`
@@ -267,6 +275,13 @@ _(none yet)_
   (cut at the quietest sub-threshold window past minChunk, else wait, else force at the maxChunk cap),
   the first-minimum tie-break, the absolute+relative silence thresholds, and the partial-final-window
   RMS. `Plan` never throws and any Cut lands in (0, length] — 300-case seeded fuzz.
+- **StreamingTranscriptionSession data-loss guarantee holds and C#↔Swift fidelity confirmed** — chunks
+  + tail transcribed in order with **sum-of-samples == total (no loss, no duplication)**; an
+  empty-but-non-silent chunk anywhere fails the session → whole-file fallback (never a silent drop); a
+  transcriber throw fails safely; a genuinely silent region is dropped without failing; a vanished file
+  fails to null; finish-once (a 2nd finish returns null, no backlog re-drain); cancel discards
+  everything. The C# join-before-read (`await _pollTask` after cancel) replicates Swift's actor
+  serialization. Verified non-flaky (3× clean full runs).
 
 ---
 
