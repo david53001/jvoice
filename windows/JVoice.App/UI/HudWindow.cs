@@ -26,6 +26,13 @@ public sealed class HudWindow : Window
         SizeToContent = SizeToContent.WidthAndHeight;
         Content = _view;
         SourceInitialized += OnSourceInitialized;
+        // Re-center whenever the realized size changes. On the FIRST show (and whenever the
+        // pill grows/shrinks between states, e.g. the recording stop-button or a shorter
+        // "Pasted") ActualWidth/Height are only valid after layout — so positioning solely
+        // from Update() would run against a 0×0 size and leave the pill shoved to the right
+        // and below the work area. SizeChanged fires during the arrange pass (before the
+        // first paint), so the pill's first visible frame is already correctly centered.
+        SizeChanged += (_, _) => PositionBottomCenter();
     }
 
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -68,6 +75,11 @@ public sealed class HudWindow : Window
 
     private void PositionBottomCenter()
     {
+        // Before the window is realized/laid out, ActualWidth/Height are 0 — positioning then
+        // would center against a 0-size box (pill shoved right of center and hanging below the
+        // work area). Skip until we have a real size; SizeChanged re-invokes us once we do.
+        if (ActualWidth <= 0 || ActualHeight <= 0) return;
+
         var wa = SystemParameters.WorkArea; // DIPs, primary screen
         Left = wa.Left + (wa.Width - ActualWidth) / 2;
         // 24px above the bottom of the work area (Swift visibleFrame.minY + 24).
