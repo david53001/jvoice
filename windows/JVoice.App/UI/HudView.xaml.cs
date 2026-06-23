@@ -30,15 +30,17 @@ public partial class HudView : UserControl
     private const double MaxBarHeight = 40;    // == Bars.Height; tall lines that nearly fill the pill
     private const double MinBarHeight = 3;     // == BarWidth → resting bar is a round dot
 
-    // Live-level shaping: gate out room noise, then lift speech so it fills the bars.
-    // David's mic captures quiet — his speech peaks ≈0.05 (very quiet ≈0.02) where a normal
-    // mic peaks ≈0.2–0.5 (measured in tools/nospeech-probe). The old gain (3.6) left the bars
-    // at ~16% on his voice; gain 20 maps his real 0.02–0.10 range onto a lively ~0.3–1.0 sweep.
-    // This is a VISUAL meter boost ONLY — it does not touch the audio sent to whisper, which
-    // already decodes his quiet speech correctly (see WhisperNetTranscriptionEngine). Digital
-    // gain would amplify room noise equally (no SNR gain), so it is deliberately NOT applied.
-    private const double LevelGate = 0.004;
-    private const double LevelGain = 20.0;
+    // Live-level shaping: gate out room noise, then lift speech HARD so the bars slam to the
+    // top. David's mic captures very quiet — his live speech peaks well under 0.05 where a
+    // normal mic peaks ≈0.2–0.5 (tools/nospeech-probe). With gain 38 / gate 0.003, anything
+    // from ~0.015 (quiet) to ~0.04 (normal speech) sweeps _smoothLevel across ~0.45→1.0, so
+    // his voice pegs the meter while room tone (~0.008) stays near the floor. The bar SHAPE
+    // floors are also raised (weight 0.45→0.62, osc 0.55→0.72) so a pegged level fills the
+    // bars to ~full instead of ~half. This is a VISUAL meter boost ONLY — it does not touch
+    // the audio sent to whisper, which already decodes his quiet speech correctly (see
+    // WhisperNetTranscriptionEngine); digital gain would amplify room noise equally (no SNR).
+    private const double LevelGate = 0.003;
+    private const double LevelGain = 38.0;
     private const double AttackRate = 0.55;    // fast rise toward a louder target
     private const double DecayRate = 0.18;     // slow fall when it goes quiet
 
@@ -85,7 +87,7 @@ public partial class HudView : UserControl
         for (int i = 0; i < BarCount; i++)
         {
             double bell = Math.Sin(Math.PI * (i + 0.5) / BarCount); // 0..1, peak at centre
-            _weight[i] = 0.45 + 0.55 * bell;
+            _weight[i] = 0.62 + 0.38 * bell;  // raised floor so edge bars also pump up, not just the centre
             _phase[i] = i * 0.7;
             _speed[i] = 6.5 + (i % 3) * 2.3;    // varied speeds so the bars swerve independently
             _barLevel[i] = 0;
@@ -222,7 +224,7 @@ public partial class HudView : UserControl
     {
         double osc = 0.5 + 0.5 * Math.Sin(t * _speed[i] + _phase[i]);
         double idle = 0.05 + 0.04 * Math.Sin(t * 1.6 + _phase[i]);
-        double energy = _smoothLevel * _weight[i] * (0.55 + 0.45 * osc);
+        double energy = _smoothLevel * _weight[i] * (0.72 + 0.28 * osc); // higher floor → bars stay tall, still wobble
         return Math.Max(idle, energy);
     }
 
