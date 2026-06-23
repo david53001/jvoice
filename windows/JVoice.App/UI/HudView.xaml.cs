@@ -30,24 +30,9 @@ public partial class HudView : UserControl
     private const double MaxBarHeight = 40;    // == Bars.Height; tall lines that nearly fill the pill
     private const double MinBarHeight = 3;     // == BarWidth → resting bar is a round dot
 
-    // Live-level shaping: gate out room noise, then lift speech HARD so the bars slam to the
-    // top. David's mic captures very quiet — his live speech peaks well under 0.05 where a
-    // normal mic peaks ≈0.2–0.5 (tools/nospeech-probe). With gain 38 / gate 0.003, anything
-    // from ~0.015 (quiet) to ~0.04 (normal speech) sweeps _smoothLevel across ~0.45→1.0, so
-    // his voice pegs the meter while room tone (~0.008) stays near the floor. The bar SHAPE
-    // floors are also raised (weight 0.45→0.62, osc 0.55→0.72) so a pegged level fills the
-    // bars to ~full instead of ~half. This is a VISUAL meter boost ONLY — it does not touch
-    // the audio sent to whisper, which already decodes his quiet speech correctly (see
-    // WhisperNetTranscriptionEngine); digital gain would amplify room noise equally (no SNR).
-    private const double LevelGate = 0.003;
-    private const double LevelGain = 38.0;
-    private const double AttackRate = 0.55;    // fast rise toward a louder target
-    private const double DecayRate = 0.18;     // slow fall when it goes quiet
-
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private bool _animating;
     private BarMode _mode = BarMode.Hidden;
-    private double _smoothLevel;
 
     private Rectangle[] _bars = [];
     private double[] _barLevel = [];           // current (smoothed) 0..1 height of each bar
@@ -55,7 +40,11 @@ public partial class HudView : UserControl
     private double[] _speed = [];
     private double[] _weight = [];             // centre-weighted bell (tallest in the middle)
 
-    /// Supplies the live mic level (0..1 peak). Set by App via HudWindow. Null => bars idle.
+    /// Supplies the live mic level (0..1 peak). Set by App via HudWindow. Currently UNUSED:
+    /// the recording bars are a continuous, mic-independent animation (David preferred a
+    /// constant up/down flow over mic-reactive bars, which stuttered on his words). Kept —
+    /// like HudWindow.OnStop — so the existing wiring compiles and a mic-reactive mode could
+    /// be re-enabled without re-threading the callback.
     public Func<float>? InputLevelProvider { get; set; }
 
     public HudView()
@@ -189,7 +178,6 @@ public partial class HudView : UserControl
         if (!_animating) return;
         _animating = false;
         CompositionTarget.Rendering -= OnRendering;
-        _smoothLevel = 0;
         for (int i = 0; i < _bars.Length; i++)
         {
             _barLevel[i] = 0;
@@ -197,18 +185,10 @@ public partial class HudView : UserControl
         }
     }
 
-    /// Per-frame tick: update the smoothed mic level, then drive every bar's height.
+    /// Per-frame tick: drive every bar's height from its time-based wave (no mic input).
     private void OnRendering(object? sender, EventArgs e)
     {
         double t = _clock.Elapsed.TotalSeconds;
-
-        if (_mode == BarMode.Live)
-        {
-            double raw = InputLevelProvider?.Invoke() ?? 0f;
-            double target = Math.Clamp((raw - LevelGate) * LevelGain, 0, 1);
-            double rate = target > _smoothLevel ? AttackRate : DecayRate;
-            _smoothLevel += (target - _smoothLevel) * rate;
-        }
 
         for (int i = 0; i < _bars.Length; i++)
         {
@@ -218,14 +198,17 @@ public partial class HudView : UserControl
         }
     }
 
-    /// Recording: bar height = smoothed mic energy, centre-weighted and given an independent
-    /// per-bar wobble so the row "swerves"; never fully flat (a gentle breathing at silence).
+    /// Recording: a continuous, mic-INDEPENDENT waveform — every bar rises and falls on its own
+    /// phase/speed so the whole row is always flowing up and down. David preferred this constant
+    /// motion over mic-reactive bars, which stuttered on his words. Two summed sines at different
+    /// rates give an organic, non-repetitive swell; the per-bar phase gradient (_phase = i*0.7)
+    /// makes the motion travel across the row like a wave; _weight keeps the centre tallest.
     private double LiveBar(int i, double t)
     {
-        double osc = 0.5 + 0.5 * Math.Sin(t * _speed[i] + _phase[i]);
-        double idle = 0.05 + 0.04 * Math.Sin(t * 1.6 + _phase[i]);
-        double energy = _smoothLevel * _weight[i] * (0.72 + 0.28 * osc); // higher floor → bars stay tall, still wobble
-        return Math.Max(idle, energy);
+        double w1 = Math.Sin(t * _speed[i] + _phase[i]);
+        double w2 = Math.Sin(t * _speed[i] * 0.41 - _phase[i] * 1.3);
+        double v = 0.5 + 0.5 * (0.62 * w1 + 0.38 * w2);   // smooth 0..1 swell
+        return (0.28 + 0.72 * v) * _weight[i];            // tall, always moving, never flat
     }
 
     /// Transcribing / preparing / downloading (no live mic): a soft pulse that sweeps back
