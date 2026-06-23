@@ -517,6 +517,59 @@ These are real corrections discovered during execution — preserve them.
       (+7) lock the hum-vs-speech separation; `dotnet test` **402/402**, build 0 errors. A TEMP diagnostic
       attaches `hpRms/rawRms` to the gated exception (logged by the coordinator) so the floor can be re-tuned
       to David's mic from a real session if needed.
+20. **High-pass gate, second pass — spectral-ratio gate so David's *real* quiet/short dictation passes
+    (David-reported 2026-06-23, follow-up to #19; this is the THIRD no-speech-gate iteration).** After #19
+    shipped, David still hit "No speech detected." on short dictations. This time the TEMP diagnostic paid
+    off — his `%APPDATA%\JVoice\diagnostic.log` showed the *actual* gated values from his mic, and they were
+    far lower than #19's **synthesized-clip** tuning assumed:
+
+    | recSecs | rawRMS | hpRMS | hp/raw ratio | #19 gate (hp<0.0012) | outcome |
+    |--------:|-------:|------:|-------------:|:--------------------:|---------|
+    | 2.38 | 0.0014 | 0.0006 | **0.43** | gated | real speech, wrongly rejected |
+    | 1.51 | 0.0017 | 0.0009 | **0.53** | gated | real speech, wrongly rejected |
+    | 0.89 | 0.0027 | 0.0003 | 0.11 | gated | low-freq tap, correctly rejected |
+    | 0.45 | 0.0017 | 0.0002 | 0.12 | gated | low-freq tap, correctly rejected |
+
+    His longer dictations (5–63 s) all transcribed perfectly. The single absolute hpRMS floor from #19
+    couldn't be lowered enough to pass his quiet speech without also passing pure hum/silence: the
+    synthesized "quiet speech hpRMS ≈ 0.0023" anchor simply does **not** hold on his hardware/voice — a
+    first-difference high-pass crushes a low-pitched male voice's low-frequency fundamental, so even his real
+    speech reads at digital-silence absolute level. **The separator that *does* survive is spectral, not
+    absolute: speech stays broadband (high hp/raw ratio ≈ 0.4–0.5) even when quiet; hum/rumble does not
+    (ratio ≈ 0.02–0.12).** Confirmed why the gate can't just be removed: a `--bench` repro showed whisper.cpp
+    (large-v3-turbo) hallucinating **`"you're welcome."`** on a low-energy tone — it sailed through the fixed
+    text blocklist and would have been pasted, so the gate is genuinely protective.
+    - **Fix: `JVoice.Core/Audio/HighPassSilence.cs`** — dual-criterion gate. `hpRMS ≥ SpeechFloor (0.0012)`
+      ⇒ pass unconditionally (**exactly the old pass set — zero regression to working dictation**);
+      `hpRMS < HardFloor (0.0002)` ⇒ silent (digital silence / pure hum); in the ambiguous zone between,
+      decide by the high-passed/raw **ratio** vs `SpeechRatioFloor (0.20)`. New `IsSilent(float hp, float raw)`
+      overload encodes the policy so it's unit-tested against David's exact logged numbers. **Monotonic by
+      construction:** the gate now reports silent for a strict *subset* of what #19 did, so it can only
+      *reduce* false rejections, never add one.
+    - **Wiring:** `WhisperNetTranscriptionEngine.TranscribeAsync` computes `hp`/`raw` once, calls the new
+      overload, and the TEMP diagnostic now also logs `ratio` + all three thresholds. Removed the engine's
+      duplicate `PeakWindowRms` (now on `HighPassSilence`).
+    - **Verified:** `dotnet test` **412/412** (the +10 new `HighPassSilenceTests` lock the policy to David's
+      real-mic anchors). `--bench --model large` end-to-end: digital silence / 60 Hz hum / a *loud* 150 Hz
+      rumble (raw 0.012, ratio 0.06) → all still gated; a **quiet broadband clip (hpRMS 0.0011, ratio 0.54)
+      that the #19 gate rejected now passes** to whisper. Build 0 errors.
+    - **⚠ RESIDUAL — needs David's dogfood:** his failing recordings sit at rawRMS 0.0014–0.0027 (≈ −55 dBFS,
+      *below* his own room tone), i.e. **20–30 dB below even quiet speech**. The two with broadband character
+      (2.38 s / 1.51 s) now pass and should transcribe; but the two very-short taps (0.45 s / 0.89 s,
+      ratio 0.11–0.12) are still gated — correctly *if* they were accidental, but if he genuinely spoke a
+      quick word whose consonants were attenuated below the noise floor, the gate can't recover it. That
+      points to a deeper **capture-level** cause (most likely Windows shared-mode WASAPI **audio enhancements
+      / AGC ramp** attenuating short/early audio — long recordings survive because the loud middle clears the
+      gate). That can't be verified without his live mic, so it's **not** attempted here. The enriched
+      diagnostic (`ratio=…`) will reveal it: if his next short-dictation failures log a *high* ratio they're
+      real speech captured too quietly (chase the capture path / raw-capture mode); a *low* ratio means no
+      speech was captured. The TEMP diagnostic + `DiagnosticLog` call sites **stay** until this is confirmed
+      on his mic.
+    - **Note:** I stopped his running `JVoice.exe` (PID-locked the output DLL) to rebuild — **he must relaunch
+      the rebuilt app to get the fix** (`dotnet run --project windows/JVoice.App`, or the refreshed
+      `bin\Release\net9.0-windows\JVoice.exe` / `bin\x64\Release\…`; both were rebuilt). Also observed in the
+      bench: the runtime selected **Vulkan**, not CUDA, on his RTX 3060 Ti — unrelated to this bug, flagged
+      for later.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;

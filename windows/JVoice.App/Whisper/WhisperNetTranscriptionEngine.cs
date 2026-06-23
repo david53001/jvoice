@@ -180,18 +180,23 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         short[] pcm = ReadWavPcm(audioPath);
 
         // No-speech gate. Real-mic "silence" is faint room tone (mains hum + self-noise) at
-        // the SAME raw level as quiet speech, so the old raw-RMS gate rejected quiet/short
-        // utterances as "No speech detected." HighPassSilence measures high-passed (broadband)
-        // energy instead: hum is crushed, speech survives — so quiet speech transcribes while
-        // true silence still never reaches whisper.cpp (which hallucinates "you"/"thank you"
-        // on it). See HighPassSilence + HighPassSilenceTests.
-        // TEMP diagnostic (2026-06-23): attach hp/raw RMS to the exception so the coordinator's
-        // DiagnosticLog shows the real mic level behind a "No speech detected." Remove once the
-        // floor is confirmed tuned to David's mic.
-        if (HighPassSilence.IsSilent(pcm))
+        // the SAME raw level as quiet speech, so a level-only gate rejected quiet/short
+        // utterances as "No speech detected." HighPassSilence judges SPECTRAL character
+        // instead: above SpeechFloor it's clearly broadband speech (passes, never regresses
+        // working dictation); in the quiet zone it passes only when the high-passed/raw ratio
+        // looks like speech, so hum/rumble/silence is still gated (whisper.cpp hallucinates
+        // "you"/"thank you"/"you're welcome." on it). See HighPassSilence + HighPassSilenceTests.
+        // TEMP diagnostic (2026-06-23): attach hp/raw RMS + ratio to the exception so the
+        // coordinator's DiagnosticLog shows the real mic spectrum behind a "No speech detected."
+        // Remove once the gate is confirmed tuned to David's mic.
+        float hpRms = HighPassSilence.PeakHighPassRms(pcm);
+        float rawRms = HighPassSilence.PeakWindowRms(pcm);
+        if (HighPassSilence.IsSilent(hpRms, rawRms))
             throw TranscriptionException.EmptyTranscript(
-                $"silence-gated hpRms={HighPassSilence.PeakHighPassRms(pcm):0.0000} " +
-                $"floor={HighPassSilence.DefaultFloor:0.0000} rawRms={PeakWindowRms(pcm):0.0000}");
+                $"silence-gated hpRms={hpRms:0.0000} rawRms={rawRms:0.0000} " +
+                $"ratio={(rawRms > 0 ? hpRms / rawRms : 0):0.00} " +
+                $"speechFloor={HighPassSilence.SpeechFloor:0.0000} hardFloor={HighPassSilence.HardFloor:0.0000} " +
+                $"ratioFloor={HighPassSilence.SpeechRatioFloor:0.00}");
 
         var factory = await LoadFactoryAsync(ct).ConfigureAwait(false);
         var vocabulary = await CurrentVocabularyAsync().ConfigureAwait(false);
@@ -207,25 +212,8 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
 
         if (guarded.Length == 0)
             throw TranscriptionException.EmptyTranscript(
-                $"empty-decode peakRms={PeakWindowRms(pcm):0.0000}");
+                $"empty-decode peakRms={HighPassSilence.PeakWindowRms(pcm):0.0000}");
         return guarded;
-    }
-
-    /// Peak 0.3 s-window RMS (0..1) of the recording — the same metric ChunkPlanner's
-    /// silence gate uses, surfaced for the WholeFileGate diagnostic only.
-    private static double PeakWindowRms(short[] pcm)
-    {
-        const int window = 4800; // 0.3 s @ 16 kHz
-        double peak = 0;
-        for (int start = 0; start < pcm.Length; start += window)
-        {
-            int end = Math.Min(start + window, pcm.Length);
-            double sum = 0;
-            for (int i = start; i < end; i++) { double v = pcm[i] / 32768.0; sum += v * v; }
-            double rms = Math.Sqrt(sum / Math.Max(1, end - start));
-            if (rms > peak) peak = rms;
-        }
-        return peak;
     }
 
     // ---- the single shared sample decode ------------------------------------

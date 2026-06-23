@@ -3,10 +3,12 @@ using Xunit;
 
 namespace JVoice.Tests;
 
-/// The key property: mains-hum room tone and quiet speech can sit at the SAME raw RMS, yet
-/// HighPassSilence must call the hum silent and the speech not-silent (so quiet/short
-/// dictation transcribes while true silence still can't reach whisper.cpp). Signals are
-/// generated at a representative room-tone level (~0.0044 RMS) to lock that separation.
+/// The gate must call mains-hum room tone, low-frequency rumble and silence "silent" so a
+/// whisper.cpp hallucination never reaches the user, while calling a person's speech —
+/// including quiet/short dictation at the SAME raw level as hum — "not silent" so it
+/// transcribes. Level alone can't separate them; spectral character (high-passed vs raw
+/// energy) can. Sample-based tests lock the DSP; the metric-based tests lock the policy to
+/// the real-mic anchor points measured on David's hardware (2026-06-23).
 public class HighPassSilenceTests
 {
     private const int Sr = 16000;
@@ -40,6 +42,8 @@ public class HighPassSilenceTests
         return s;
     }
 
+    // ---- sample-based: the DSP separates speech from hum/silence ----------------------
+
     [Fact]
     public void MainsHum_AtRoomToneLevel_IsSilent()
         => Assert.True(HighPassSilence.IsSilent(Tone(60, 0.0044)));
@@ -64,15 +68,58 @@ public class HighPassSilenceTests
     public void NormalSpeech_IsNotSilent()
         => Assert.False(HighPassSilence.IsSilent(Broadband(0.05)));
 
-    // The discriminator: at equal raw level, high-passed RMS is far higher for speech than hum,
-    // and the floor sits between them.
+    // The discriminator: at equal raw level, high-passed RMS is far higher for speech than
+    // hum, and the SpeechFloor sits between them.
     [Fact]
     public void HighPassRms_SeparatesHumFromSpeech_AtEqualRawLevel()
     {
         float hum = HighPassSilence.PeakHighPassRms(Tone(60, 0.0044));
         float speech = HighPassSilence.PeakHighPassRms(Broadband(0.0044));
-        Assert.True(hum < HighPassSilence.DefaultFloor, $"hum hpRMS {hum} should be below floor");
-        Assert.True(speech > HighPassSilence.DefaultFloor, $"speech hpRMS {speech} should be above floor");
+        Assert.True(hum < HighPassSilence.SpeechFloor, $"hum hpRMS {hum} should be below floor");
+        Assert.True(speech > HighPassSilence.SpeechFloor, $"speech hpRMS {speech} should be above floor");
         Assert.True(speech > hum * 3, $"speech ({speech}) should dwarf hum ({hum})");
+    }
+
+    // ---- metric-based: policy locked to David's real-mic anchors ----------------------
+    // The original gate (single hpRMS < 0.0012 floor, tuned on synthesized clips) rejected
+    // these REAL quiet/short dictations as "No speech detected." The (hp, raw) pairs below
+    // are the exact values logged from his mic; the gate must pass real speech and still
+    // gate his accidental taps, hum and silence.
+
+    [Theory]
+    [InlineData(0.0006f, 0.0014f)] // 2.38 s real dictation, ratio 0.43
+    [InlineData(0.0009f, 0.0017f)] // 1.51 s real dictation, ratio 0.53
+    public void RealMicQuietDictation_IsNotSilent(float hp, float raw)
+        => Assert.False(HighPassSilence.IsSilent(hp, raw));
+
+    [Theory]
+    [InlineData(0.0002f, 0.0017f)] // 0.45 s tap, ratio 0.12 — low-frequency, no speech
+    [InlineData(0.0003f, 0.0027f)] // 0.89 s tap, ratio 0.11 — low-frequency, no speech
+    [InlineData(0.0001f, 0.0044f)] // mains hum at room tone, ratio 0.02
+    [InlineData(0.0000f, 0.0000f)] // digital silence
+    public void RealMicNonSpeech_IsSilent(float hp, float raw)
+        => Assert.True(HighPassSilence.IsSilent(hp, raw));
+
+    [Fact]
+    public void LoudClearSpeech_IsNotSilent() // unambiguous broadband energy, passes via SpeechFloor
+        => Assert.False(HighPassSilence.IsSilent(0.05f, 0.10f));
+
+    [Fact]
+    public void AmbiguousZone_LowFrequencyDominated_IsSilentByRatio()
+        // hp in [HardFloor, SpeechFloor) but ratio 0.045 « SpeechRatioFloor → rumble, gated.
+        => Assert.True(HighPassSilence.IsSilent(0.0009f, 0.0200f));
+
+    [Fact]
+    public void AmbiguousZone_Broadband_IsNotSilentByRatio()
+        // hp in [HardFloor, SpeechFloor) with ratio 0.50 ≥ SpeechRatioFloor → quiet speech, passes.
+        => Assert.False(HighPassSilence.IsSilent(0.0010f, 0.0020f));
+
+    [Fact]
+    public void Gate_IsMonotonic_NeverGatesAboveOldFloor()
+    {
+        // Above the old single-threshold floor the answer is always "not silent" regardless
+        // of ratio, so no working dictation can regress.
+        Assert.False(HighPassSilence.IsSilent(HighPassSilence.SpeechFloor, 1.0f));
+        Assert.False(HighPassSilence.IsSilent(HighPassSilence.SpeechFloor + 0.001f, 0.0001f));
     }
 }
