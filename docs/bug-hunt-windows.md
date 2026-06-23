@@ -20,11 +20,11 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **352** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  now **354** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
   RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
   SettingsStateJson + WhisperModelOption + HudState + HotkeyChord + StatsMath + CoordinatorDecisions +
-  BluetoothDevicePolicy audits). As the hunt adds regression tests this number only grows; it must
-  never go down or go red.
+  BluetoothDevicePolicy + FileBackedTranscriptionEngine audits). As the hunt adds regression tests this
+  number only grows; it must never go down or go red.
 
 ---
 
@@ -202,8 +202,13 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       device id, which is unreachable). Added default-not-BT short-circuit edges, multiple-built-ins→
       first, single-built-in, and a 400-case fuzz (a non-null pick is always a non-BT endpoint in the
       list, only when default is BT, built-in preferred when present).
-- [ ] **FileBackedTranscriptionEngine** — `…/Transcription/FileBackedTranscriptionEngine.cs` + `FileBackedEngineTests.cs`
+- [x] **FileBackedTranscriptionEngine** — `…/Transcription/FileBackedTranscriptionEngine.cs` + `FileBackedEngineTests.cs`
       ← `FileBackedTranscriptionEngine` in `…/Services/TranscriptionManager.swift`
+      — 2026-06-23 · +2 tests · **1 bug** (#5 lenient vs strict UTF-8). Now reads bytes + strict-UTF-8
+      decodes (matches Swift's `String(data:encoding:.utf8)` → unsupportedAudioFile on invalid bytes).
+      file-missing / empty-transcript paths match; non-ASCII valid UTF-8 round-trips. (Minor remaining
+      divergence: a read IO error is wrapped as UnsupportedAudioFile, where Swift propagates the raw
+      error — kept as the safer fallback-engine behaviour; noted.)
 - [ ] **Swift-test parity sweep** — enumerate EVERY case in each `Tests/JVoiceTests/*.swift` brain test
       and confirm a C# equivalent assertion exists. Any Swift vector with no C# counterpart = a coverage
       gap → add the C# test; if it fails, that's a port-fidelity bug → fix `JVoice.Core` to match Swift.
@@ -301,6 +306,21 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
   is an accumulated real duration, never NaN in practice — but it's a clear fidelity divergence.)
 - *Regression test:* `NaN_Seconds_ReturnsZero` (red `NaN` → green `0`).
 - *Commit:* see this firing's `test(win-bughunt): StatsMath …` commit.
+
+**#5 [FileBackedTranscriptionEngine] read leniently as UTF-8 → the unsupportedAudioFile path was dead.**
+- *Symptom:* a non-UTF-8 "audio" file (e.g. a real WAV fed to the fallback engine) was read with U+FFFD
+  replacement chars and returned as a garbage transcript, instead of throwing `UnsupportedAudioFile`.
+- *Root cause:* C# used `File.ReadAllTextAsync` (lenient UTF-8 — never throws on bad bytes, replaces
+  them), so the `UnsupportedAudioFile` branch only ever fired on IO errors, never on its intended
+  "not decodable text" case. Swift uses strict `String(data:encoding:.utf8)` (returns nil → throws
+  `unsupportedAudioFile`).
+- *Fix:* read raw bytes (`File.ReadAllBytesAsync`) then decode with `UTF8Encoding(throwOnInvalidBytes:
+  true)`; a `DecoderFallbackException` → `UnsupportedAudioFile`. Valid UTF-8 (incl. non-ASCII) is
+  unchanged; file-missing/empty paths unchanged. (This also keeps a leading BOM as U+FEFF like Swift,
+  vs the old StreamReader BOM-strip.)
+- *Regression test:* `InvalidUtf8File_ThrowsUnsupportedAudioFile` (bytes `41 FF 42`; red: no throw →
+  green: `UnsupportedAudioFile`) + `ValidUtf8_NonAscii_Decodes`.
+- *Commit:* see this firing's `test(win-bughunt): FileBackedTranscriptionEngine …` commit.
 
 ## Open bugs needing David (could not be safely auto-fixed)
 *(HIGH PRIORITY — these are surfaced here AND the failing test is `[Fact(Skip="BUG: see #N")]` so the
