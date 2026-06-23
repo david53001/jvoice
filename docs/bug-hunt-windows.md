@@ -247,8 +247,15 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       resumed; a corrupt (wrong-size) existing file → re-fetch attempted, throws (broken path never
       returned); and the SUCCESS path streaming the **real** tiny model → size+SHA verified → atomic
       rename, no `.part` leftover. Probe deleted after the run (tree clean).
-- [ ] **Bench/smoke CLI** — arg parsing edge cases (missing args, bad flags, `--vocab` quoting, `--lang`,
+- [x] **Bench/smoke CLI** — arg parsing edge cases (missing args, bad flags, `--vocab` quoting, `--lang`,
       `--no-prompt`, unknown model) → documented exit codes, never an unhandled exception.
+      — 2026-06-23 · engine-harness runs + code-review · **0 bugs**. whisper-smoke: no-args→64,
+      no-file→66, valid+`--vocab "VS Code,JVoice"`→0 (comma-split/quoting), `--no-prompt`→0, `--lang ro`→0,
+      empty `--vocab ""`→0 — no unhandled exceptions. x64 `--bench`: unknown `--model`→64, unknown
+      `--lang`→64, `--bench --model tiny` (no wav, flag taken as the missing path)→66; no-wav→64,
+      missing-file→66 (firing #19). Every parse uses Array.IndexOf + Split + switch-with-default, so a
+      malformed/partial arg can only yield a defined exit code (64/65/66/70/1/0), never a throw. No GUI
+      spawned for any bad-arg run (process count unchanged).
 
 ### Tier 3 — headless-verifiable platform (review + throwaway-console harnesses; NO GUI/mic/paste E2E)
 - [ ] **NAudioRecorder** — `JVoice.App/Platform/NAudioRecorder.cs`. Orphan-WAV sweep correctness,
@@ -388,6 +395,14 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **MILESTONE — Tier 2 (engine) is fully audited (2026-06-23).** All 3 Tier-2 rows are `[x]`: the
+  WhisperNet engine never crashes on adversarial audio, WhisperModelStore only ever exposes a complete
+  (size+SHA-verified) model, and the bench/smoke CLI maps every arg edge to a defined exit code with no
+  unhandled exception. **0 bugs in Tier 2.** Next: Tier 3 (headless-verifiable platform code).
+- **Bench/smoke CLI never throws on malformed args** — every flag is parsed via Array.IndexOf + Split +
+  switch-with-default, so missing/bad/partial flags resolve to a documented exit code (64/65/66/70/1/0);
+  verified across whisper-smoke (no-args/no-file/vocab/no-prompt/lang/empty-vocab) and x64 `--bench`
+  (unknown model/lang, flag-as-path). No bad-arg run launches the GUI.
 - **WhisperModelStore only ever exposes a complete model** — size+SHA gate, no-redownload-when-present,
   stale-`.part` never resumed, wrong-size/corrupt → throw + `.part` cleaned (never a broken final), and
   the real-tiny success path passes size+SHA before the atomic rename — 11-check temp-dir probe (no network).
