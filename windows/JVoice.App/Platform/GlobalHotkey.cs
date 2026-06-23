@@ -188,8 +188,8 @@ public sealed class GlobalHotkey : IDisposable
         var lii = new LASTINPUTINFO { cbSize = (uint)Marshal.SizeOf<LASTINPUTINFO>() };
         if (!GetLastInputInfo(ref lii)) return;
         int sysLast = (int)lii.dwTime;                       // GetTickCount domain (32-bit ms)
-        int gap = unchecked(sysLast - _lastCallbackTick);    // wrap-safe difference
-        if (gap > HookStaleThresholdMs)
+        int gap = unchecked(sysLast - _lastCallbackTick);    // wrap-safe difference (for the log)
+        if (HotkeyGate.HookIsStale(sysLast, _lastCallbackTick, HookStaleThresholdMs))
         {
             Log($"watchdog: hook appears evicted (gap={gap}ms) -> re-arming");
             RearmHook();
@@ -236,7 +236,7 @@ public sealed class GlobalHotkey : IDisposable
         bool wantShift = chord.Modifiers.HasFlag(HotkeyModifiers.Shift);
         bool wantWin = chord.Modifiers.HasFlag(HotkeyModifiers.Win);
 
-        bool match = ctrl == wantCtrl && alt == wantAlt && shift == wantShift && win == wantWin;
+        bool match = HotkeyGate.ModifiersMatch(ctrl, alt, shift, win, chord.Modifiers);
         Log($"main-key down vk=0x{vkCode:X2} ctrl={ctrl}/{wantCtrl} alt={alt}/{wantAlt} shift={shift}/{wantShift} win={win}/{wantWin} -> match={match}");
         return match;
     }
@@ -246,7 +246,7 @@ public sealed class GlobalHotkey : IDisposable
         long now = Environment.TickCount64;
         lock (_gate)
         {
-            if (now - _lastFiredTicks < AppTimings.HotkeyDebounceMs) return false;
+            if (!HotkeyGate.DebounceAllows(now, _lastFiredTicks, AppTimings.HotkeyDebounceMs)) return false;
             _lastFiredTicks = now;
             return true;
         }

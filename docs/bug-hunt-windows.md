@@ -24,8 +24,8 @@ never start from a blank slate; never redo a `DONE` row.**
   RepetitionGuard, RegurgitationRecovery, WavTail, ChunkPlanner, StreamingTranscriptionSession,
   SettingsState, SettingsStateJson, WhisperModelOption, HudState, HotkeyChord, StatsMath,
   CoordinatorDecisions, BluetoothDevicePolicy, FileBackedTranscriptionEngine, + the Swift-test parity
-  sweep) plus Tier 3 (StatsMath.ShouldRecord — bug #6). As the hunt adds regression tests this number
-  only grows; it must never go down or go red.
+  sweep) plus Tier 3 (StatsMath.ShouldRecord — bug #6; HotkeyGate debounce/staleness/modifier match).
+  As the hunt adds regression tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -299,8 +299,21 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       already-foreground early-return + AttachThreadInput foreground workaround reviewed. E2E paste is
       David's dogfood (commit 434adef "make dictation paste actually work" already fixed it live). Probe
       deleted (tree clean).
-- [ ] **GlobalHotkey** — `JVoice.App/Platform/GlobalHotkey.cs` via `windows/tools/hotkey-probe`
+- [x] **GlobalHotkey** — `JVoice.App/Platform/GlobalHotkey.cs` via `windows/tools/hotkey-probe`
       (chord-match, 150 ms debounce, watchdog re-arm, recovery modes). Drive its `chord`/`watchdog`/`recovery` paths.
+      — 2026-06-23 · +17 xUnit (HotkeyGate) · **0 bugs**. Extracted the three pure decision predicates to
+      `JVoice.Core/HotkeyGate.cs` (behavior-preserving; the bug-#6 Core-helper pattern) and rewired
+      GlobalHotkey to call them, giving permanent coverage of: **DebounceAllows** (150 ms gate, `>=` so a
+      press exactly 150 ms later fires; first-fire with lastTicks=0 fires), **HookIsStale** (watchdog:
+      `unchecked(sysLast - lastCallback) > 3000`, incl. two 32-bit GetTickCount wrap-around cases), and
+      **ModifiersMatch** (EXACT set — extra Alt or missing Shift rejects; None-wanted/None-held matches).
+      Code-review confirmed the hook lifecycle is faithful + correct: dedicated STA thread w/ message
+      pump (required for WH_KEYBOARD_LL), `ThreadPriority.Highest` to dodge the LowLevelHooksTimeout
+      eviction, gap-free re-arm (install fresh hook BEFORE unhooking old), Unregister posts WM_QUIT +
+      Join(1000), Triggered raised on the hook thread (Phase 4 marshals). The live-injection probe
+      (match/recovery/watchdog modes) is **intentionally NOT run unattended** — it SendInputs system-wide
+      Ctrl+Shift+Space (would toggle David's running JVoice + could paste into his focused window) and
+      jiggles the mouse; it's the dogfood-time tool (the self-heal it validates shipped in commit 68db2d3).
 - [ ] **AudioInputRouter / ForegroundWindowTracker / LaunchAtLogin / SingleInstance / PermissionError /
       SettingsUris** — `JVoice.App/Platform/*.cs`. Review for races/leaks; verify registry round-trips
       **revert cleanly** (never leave `HKCU\…\Run\JVoice` set), cross-process mutex actually blocks.
@@ -447,6 +460,10 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **GlobalHotkey's decision logic is correct** — 150 ms debounce gate (`>=`, first-fire allowed),
+  watchdog hook-staleness (`unchecked` 32-bit-wrap-safe `> 3000 ms`), and EXACT modifier matching (extra
+  or missing modifier rejects) — all unit-tested via the extracted `HotkeyGate` helpers; the hook
+  lifecycle (STA pump, highest-priority callback, gap-free re-arm, WM_QUIT teardown) verified by review.
 - **Paster's SendInput marshalling is correct** — `sizeof(INPUT)==40` on x64 (union carries the largest
   member, MOUSEINPUT=32; type+pad=8), confirmed by reflecting the real private structs; and the
   outcome/restore-delay flow (success 300 ms / failure 50 ms, restore-cancellation, empty-clipboard→no-restore)
