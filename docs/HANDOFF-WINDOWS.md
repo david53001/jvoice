@@ -19,8 +19,8 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **402 / 402 passing** (grew from 122 during
-  the bug-hunt, the no-speech fix, the Corrections feature, and the high-pass silence gate below).
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **434 / 434 passing** (grew from 122 during
+  the bug-hunt, the Corrections feature, and the no-speech/sentence-tail work below).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
 - **The GUI launches** to the system tray with the "J" icon + first-run Settings window
@@ -28,20 +28,16 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 - **The full dictation loop works:** hotkey → record (real mic) → transcribe (LargeTurbo on Vulkan) →
   paste into the focused app. Two paste bugs that made *every* transcription end in "Something Went
   Wrong" were found & fixed — see §7 #13. Verified by driving the real GUI with a synthetic hotkey.
-- **Silence no longer pastes a hallucination** (David-reported, fixed 2026-06-23 — see §7 #15): saying
-  nothing → faint room tone → whisper.cpp hallucinated a short phrase (`"you"`, `"(birds chirping)"`)
-  that got pasted. The whole-file decode now gates on `ChunkPlanner.IsSilent` → silence shows
-  **"No speech detected."** instead. Reproduced + fix verified on-device with Tiny.
 - **Paste now lands where you clicked, including in a terminal** (David-reported, fixed 2026-06-23 — see
   §7 #16): the paste target was matched against a stale window handle snapshotted at launch (the terminal
   JVoice was started from), so dictating into that terminal mis-fired. Target is now resolved by **process
-  ownership** of the live foreground (matching macOS `ownPID`), not a frozen HWND. Unit-verified
-  (383/383); live terminal path is on the dogfood checklist.
+  ownership** of the live foreground (matching macOS `ownPID`), not a frozen HWND. Unit-verified;
+  live terminal path is on the dogfood checklist.
 - **User-editable "Corrections" list** (David-requested, 2026-06-23 — see §7 #17): a Windows-only Settings
   section of opt-in `heard phrase → replacement` rules for systematic recognizer mishearings (David's case:
   "web app" → "web api"). Applied in post-processing via `TextProcessor`'s existing `extraDictionary`
   (the brain is untouched / still 1:1 with Swift). Recommended as a *phrase* (`web api → web app`) so
-  legitimate standalone "API" stays intact. Unit-verified (395/395); UI visuals on the dogfood checklist.
+  legitimate standalone "API" stays intact. Unit-verified; UI visuals on the dogfood checklist.
 - **Black-&-white UI redesign + HUD voice bars** (David-requested, 2026-06-23 — see §7 #18): the HUD is now
   a **text-free, pure-black pill showing white voice-activity bars** that react to the live mic level
   (an indeterminate shimmer while transcribing/preparing/downloading); **errors are the only text**; a
@@ -49,16 +45,14 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   (Settings, all "pills", tray glyphs — every blue/cyan/purple/teal/orange/pink/green accent → white/gray).
   The bars also **fix the HUD blur** David saw at his non-native 1600×1080 gaming resolution: solid shapes
   don't suffer the layered-window grayscale-AA softness the old small glowy text did, and the existing
-  `DisplayMetrics.HudScale` still enlarges the pill by the resolution stretch ratio. Verified by screenshot
-  via `--hud-preview` / `--settings-render`. A **follow-up the same day** slimmed the pill (height ~halved,
-  baseline scale 1.1→1.0) per David's "too big/fat" feedback. **A later 2026-06-23 reshape** ("too thick and
-  short → slim and tall", David chose "narrower + taller, keep horizontal bars"): the pill went from a wide
-  thin strip (~132×28, 4.7:1) to a compact taller pill (~94×58, 1.6:1) — `HudView.xaml` PillBody MinWidth
-  118→92 / MinHeight 28→58 / CornerRadius 13→20, inner padding `22,6`→`11,12`, `Bars.Height` 16→34; code-behind
-  `BarCount` 11→9 and `MaxBarHeight` 16→34 (kept in sync with `Bars.Height`). New hidden flag **`--hud-render
-  [path]`** renders the pill off-screen to a PNG (headless/CI, immune to a fullscreen game covering the
-  overlay — the analog of `--settings-render`; `HudView.PrepareStaticCapture()` poses the bars). Build 0
-  errors; `dotnet test` 412/412.
+  `DisplayMetrics.HudScale` still enlarges the pill by the resolution stretch ratio. **The pill went through
+  six same-day shape iterations** (David tuning by eye — see §7 #18 for the full numeric arc); the **final
+  as-built look** is a **140 × 46 px black pill (CornerRadius 22)** holding **19 white round-capped lines**
+  (3 px wide, 3 px gap, 3 px resting "dot" → 40 px at full level). The pivotal fix mid-arc was switching the
+  bars from a `ScaleTransform` (which squashed the rounded caps into cubic corners at low levels) to a
+  **direct `Height` animation** with a fixed `BarWidth/2` corner radius, so every bar is a true vertical
+  capsule at any height. Verified by screenshot via `--hud-preview` / `--hud-render` / `--settings-render`.
+  Build 0 errors; `dotnet test` **434/434**.
 - **Quiet/short dictation transcribes, and sentence tails are no longer cut off** (David-reported
   2026-06-23 — see §7 #21, which RETIRES the #15/#19/#20 gates). His real speech and room hum overlap in
   BOTH level and spectral ratio, so no signal-level gate could separate them — every prior gate (tuned on
@@ -88,7 +82,7 @@ Prereqs: .NET 9 SDK (dev box has 9.0.304), Windows 10/11 x64. From the repo root
 dotnet build windows/JVoice.sln -c Release            # expect: Build succeeded, 0 errors
 
 # Run the unit suite (the brain + pure helpers):
-dotnet test windows/JVoice.Tests/JVoice.Tests.csproj  # expect: Passed! 122/122
+dotnet test windows/JVoice.Tests/JVoice.Tests.csproj  # expect: Passed! 434/434
 
 # Run the actual app (tray + first-run Settings window):
 dotnet run --project windows/JVoice.App
@@ -144,9 +138,9 @@ windows/
 │   ├── Models/                    ToneStyle, TranscriptionLanguage, WhisperModelOption, SettingsState,
 │   │                              HudState, HotkeyChord, SettingsStateJson
 │   ├── Text/                      TextProcessor, PhoneticMatcher, VocabularyPrompt, RepetitionGuard,
-│   │                              RegurgitationRecovery
+│   │                              RegurgitationRecovery, NonSpeechAnnotation (Win-only no-speech detector)
 │   ├── Audio/                     WavTail(+WavTailReader), ChunkPlanner, StreamingTranscriptionSession,
-│   │                              BluetoothDevicePolicy
+│   │                              BluetoothDevicePolicy, HighPassSilence (Win-only; now metrics-only, §7 #21)
 │   ├── Transcription/             ITranscriptionEngine, TranscriptionException, FileBackedTranscriptionEngine
 │   ├── AppTimings.cs  StatsMath.cs  CoordinatorDecisions.cs
 ├── JVoice.App/                    net9.0-windows, WinExe, UseWPF — the app
@@ -162,10 +156,13 @@ windows/
 │   ├── UI/                        App-level: HudWindow + HudView, SettingsWindow + SettingsView, DarkSection,
 │   │   │                          HotkeyRecorder, TrayIcon, Converters, Styles/JVoicePalette.xaml
 │   └── Assets/                    JVoice.ico + tray-idle/recording/transcribing.png (generated, committed)
-├── JVoice.Tests/                  net9.0 xUnit — 122 tests locking JVoice.Core
+├── JVoice.Tests/                  net9.0 xUnit — 434 tests locking JVoice.Core
 └── tools/
     ├── whisper-smoke/             net9.0 console — WPF-free end-to-end transcription harness
     ├── generate-icon/             net9.0 console (SkiaSharp) — writes Assets/JVoice.ico + tray PNGs
+    ├── nospeech-probe/            net9.0-windows console — runs silence/hum/noise/quiet-speech clips
+    │                              through the real engine to lock the no-speech behaviour (§7 #21);
+    │                              self-generates a SAPI clip, `--muffle` matches David's low-ratio mic
     └── hotkey-probe/              net9.0 console — compiles the REAL GlobalHotkey source and drives
                                    it via SendInput/keybd_event (chord-match / watchdog re-arm / recovery
                                    modes); the diagnostic harness behind §7 #14
@@ -259,7 +256,8 @@ atomic `.part`→final rename.
   normal default mic; Paste no-target → TargetRejected; Stage clipboard round-trip; foreground HWND non-zero.
 
 ### Engine/UI build + tests (Phase 4/5)
-- Full Release build 0 errors; **122 xUnit tests** (73 brain + 36 platform helpers + 13 coordinator helpers).
+- Full Release build 0 errors; **434 xUnit tests** (Phase 4/5 was 122 = 73 brain + 36 platform helpers +
+  13 coordinator helpers; the rest came from the bug-hunt, Corrections, and the no-speech/tail work in §7).
 - `JVoice.exe --bench` exits 64 (bench branch still short-circuits before WPF through the new App.Main).
 - generate-icon produced a valid 6-frame `.ico` + 3 tray PNGs.
 - **The app launches to the tray and stays alive** (confirmed running; see §7 for the two fixes that got it there).
@@ -274,6 +272,11 @@ atomic `.part`→final rename.
 - `WhisperProcessor.ProcessAsync(float[], CancellationToken)` — CT is required (not defaulted).
 - Runtime selection read via `Whisper.net.LibraryLoader.RuntimeOptions.LoadedLibrary` (typed
   `RuntimeLibrary?`, null until first factory load).
+- **No-speech (§7 #21):** `SegmentData` exposes `Text`, `Probability` / `MinProbability` / `MaxProbability`
+  (avg token logprobs), `Tokens`, `Start`/`End` — but **NOT** a per-segment `no_speech_prob` (Whisper.net
+  1.9.1 doesn't surface it; not in the DLL). `WithNoSpeechThreshold(float)` exists but is `[EXPERIMENTAL]`
+  and had **no observable effect** on-device — so the no-speech decision is made from whisper's TEXT output
+  (it emits a strippable annotation like `[BLANK_AUDIO]`/`(birds chirping)` on silence), not a probability.
 
 ---
 
@@ -368,7 +371,8 @@ These are real corrections discovered during execution — preserve them.
       deterministically reproducible (this machine *skips*, not removes, on a >1 s stall), so this is
       hardening of the proven failure modes + a recovery path + a trace for next time, not a one-line bug.
       `dotnet test` still **122/122**; full solution builds 0 errors.
-15. **Silence pasted a whisper hallucination instead of saying "nothing heard" (`Whisper/
+15. **[SUPERSEDED by #21 — the RMS no-speech gate this added was later RETIRED; kept for history.]
+    Silence pasted a whisper hallucination instead of saying "nothing heard" (`Whisper/
     WhisperNetTranscriptionEngine.cs` + `VoiceCoordinator.cs`) — David reported "when I don't say
     anything it defaults to pasting."** Root cause: real-mic "silence" is faint room tone (mains hum +
     mic self-noise), NOT digital zero. The whole-file decode path ran whisper.cpp on it unconditionally,
@@ -455,9 +459,10 @@ These are real corrections discovered during execution — preserve them.
     swervy lines / bars that show voice activity"), no paste confirmation, a fully **black & white** theme,
     and the HUD to **not be blurry** at his non-native 1600×1080 gaming resolution.
     - **HUD = voice bars (`UI/HudView.xaml` + `.xaml.cs`, full rewrite).** A pure-black rounded pill holds a
-      centred row of 11 white bars (built in code). They grow/shrink **symmetrically about centre via a
-      per-bar `ScaleTransform`** (RenderTransform, not Height — no per-frame layout, pill never resizes),
-      driven from the `CompositionTarget.Rendering` loop. **Recording** → bars track the smoothed live mic
+      centred row of white bars (built in code), driven from the `CompositionTarget.Rendering` loop. *(As
+      first shipped this was 11 bars animated by a per-bar `ScaleTransform`; the count/sizing and the
+      animation method were refined the same day — see the "Shape refinement → final as-built" bullet below.
+      Final: 19 round-capped bars driven by a direct `Height` animation.)* **Recording** → bars track the smoothed live mic
       level (centre-weighted bell + an independent per-bar wobble so they "swerve"; a gentle breathing at
       silence). **Transcribing / preparing / downloading** → an indeterminate left-right shimmer (no live
       mic). **Error** → the only text state: white ⚠ (MDL2 E7BA) + the specific message. **Done/Idle** →
@@ -488,15 +493,32 @@ These are real corrections discovered during execution — preserve them.
       immune to a fullscreen game covering the desktop, CI-friendly); `--hud-render <path>` (the HUD analog of
       `--settings-render` — renders the pill off-screen to a PNG with the bars posed in a static frame). All
       bypass the single-instance lock.
-    - **Gotcha for the next session:** building `JVoice.App.csproj` **alone** outputs to
-      `bin\Release\net9.0-windows\`, but the **solution** build outputs to `bin\x64\Release\net9.0-windows\`
-      (the sln sets `Platform=x64`). Run/screenshot the exe from the path matching how you built, or you'll
-      launch a stale binary. Also: a running `JVoice.exe` locks the output DLL — `Stop-Process -Name JVoice`
-      before rebuilding.
+    - **Shape refinement → final as-built (six same-day iterations, David tuning by eye).** The pill aspect
+      ratio, bar count and cap shape were tuned across `1af6627` → `8ebf441` → `2ef1587` → `bb6721e` →
+      `77c93ff` → `510e108`. The arc (PillBody `MinWidth × MinHeight` / CornerRadius · `BarCount` / `BarWidth`
+      / `MaxBarHeight`):
+      `1af6627` 120×50 r18 · 11/4/26 (initial; ScaleTransform) → `8ebf441` slimmer 118×28 r13 · 11/4/16
+      (baseScale 1.1→1.0) → `2ef1587` "slim & tall" 92×58 r20 · 9/4/34 → `bb6721e` "wide + many slim lines"
+      180×70 r30 · 21/3/44 → **`77c93ff` the pivotal fix: dropped `ScaleTransform` for a direct `Height`
+      animation** with a fixed `BarWidth/2` corner radius (ScaleTransform had squashed the rounded caps into
+      cubic corners at low levels) → 114×46 r22 · 15/3/26, `MinBarHeight == BarWidth` so a resting bar is a
+      perfect round dot → `510e108` final settle **140×46 r22 · 19/3/40**. Live-level shaping (recording):
+      `LevelGate` 0.004, `LevelGain` 20× (a **visual** meter boost for David's quiet mic — see #22), attack
+      0.55, decay 0.18, per-bar smoothing 0.5, centre-weighted bell + per-bar wobble; idle breathing so bars
+      are never fully still. Constants live at the top of `HudView.xaml.cs`.
+    - **Gotcha — which binary actually runs (this bit David 2026-06-23).** Two output paths coexist:
+      `bin\Release\net9.0-windows\` and `bin\x64\Release\net9.0-windows\` (depending on whether the build
+      resolved `Platform=x64` or AnyCPU). It is easy to *run a stale exe from one path while you rebuilt the
+      other.* After any code change: **fully quit the app and relaunch**, and confirm which exe is live with
+      `(Get-Process JVoice).Path`. A running `JVoice.exe` also **locks its loaded DLL**, so a rebuild of that
+      same path fails with a file-in-use error — quit first (`Stop-Process -Name JVoice`) or build the other
+      path. To verify a built DLL contains a given change without launching it, search its bytes: type names
+      are UTF-8, string literals are UTF-16LE in the `#US` heap (e.g. `model empty/annotation` for §7 #21).
     - **Verified:** `--hud-preview` screenshots of recording (lively centre-weighted bars), transcribing
       (sweep), error (white text); `--settings-render` PNG (all-monochrome panel). `dotnet build` 0 errors;
       `dotnet test` **395/395**. Live-mic bar reactivity + the on-desktop look are on David's dogfood checklist.
-19. **High-pass no-speech gate — quiet/short dictation stopped being rejected as "No speech detected"
+19. **[SUPERSEDED by #21 — this gate was RETIRED; kept for history.]
+    High-pass no-speech gate — quiet/short dictation stopped being rejected as "No speech detected"
     (David-reported 2026-06-23, follow-up to #15).** After the redesign surfaced the *real* error text,
     David saw "No speech detected." on short test utterances. Investigation (his `%APPDATA%\JVoice\
     diagnostic.log` + local `--bench` repro) proved it was **not** the UI change and **not** the engine:
@@ -616,6 +638,19 @@ These are real corrections discovered during execution — preserve them.
       Residual (minor, unchanged): a stray mixed-case `[Music]` *mid*-sentence isn't stripped (whole-transcript
       only); and the WASAPI/​resampler stop drops ≤ ~one buffer period (~10–30 ms, sub-syllable) — neither is
       David's reported bug.
+22. **HUD meter gain for David's low mic (VISUAL only) + the standing "don't gain the transcription audio"
+    guard (2026-06-23).** David's mic peaks ≈0.05 on normal speech (≈0.02 very quiet) where a typical mic
+    peaks ≈0.2–0.5, so the HUD voice-bars barely moved (~16%) on his voice. `HudView.xaml.cs` `LevelGain`
+    `3.6→20` and `LevelGate` `0.006→0.004` — a **purely visual** boost so the bars actually react to his quiet
+    mic. **This touches ONLY the HUD meter (`IAudioRecorder.CurrentLevel` → bars); it does NOT change the
+    audio sent to whisper.**
+    - **GUARD — do NOT add digital makeup gain to the *transcription* audio to "fix accuracy."** It is
+      tempting (his levels are low), but it's theater: whisper.cpp normalizes log-mel energy and decodes his
+      quiet audio correctly (engine verified down to rawRMS ≈ 0.001, #21), and no gate drops quiet speech
+      anymore. Linear gain scales his room noise **equally** (no SNR gain) and risks clipping. He's already on
+      the most accurate model (**LargeTurbo**); the only real accuracy levers left are **mic SNR** (quieter
+      room / consistent close mic / raising the Windows capture level / mic-boost at the OS-analog stage) and
+      **diction** — nothing in-app. See memory `win-mic-low-capture-level`.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
@@ -639,9 +674,10 @@ temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on launch); models `%LOCALAPPD
 3. **(Optional) Phase 5 Task 3** — an Inno Setup installer (`windows/installer/JVoice.iss`). The zipped
    self-contained folder is already a complete distributable, so this is convenience only (and needs
    Inno Setup installed to compile).
-4. **Polish from dogfooding:** tune the bar count/heights/level gain to taste once seen with a real mic
-   (constants live at the top of `HudView.xaml.cs`); optionally style the Settings scrollbar (still the
-   default WPF grey). (The old "waveform glyph" / "per-section accent" polish items are obsolete — #18.)
+4. **Polish from dogfooding:** the HUD shape + meter gain have already been tuned to David's real mic over
+   several same-day iterations (#18, #22) — further tweaks are by-eye taste (constants at the top of
+   `HudView.xaml.cs`). The Settings scrollbar is now monochrome (done, commit `990ba76`). (The old
+   "waveform glyph" / "per-section accent" / "default-grey scrollbar" polish items are obsolete — #18/#22.)
 5. **Do NOT publish/push** without David's explicit go-ahead.
 
 ---

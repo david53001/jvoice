@@ -1,8 +1,13 @@
 # JVoice Design Tokens
 
-Extracted verbatim from the JVoice Swift sources. Every visual in the demo video
+Extracted verbatim from the JVoice **macOS** Swift sources. Every visual in the demo video
 traces to a value here. Source files are cited per section. SwiftUI `Color(red:green:blue:)`
 uses 0–1 sRGB components; CSS equivalents are `round(component * 255)`.
+
+> **macOS only.** This is the colored macOS UI (orbital ring, accents, text states). The **Windows**
+> port has a *separate, intentionally different* HUD — a text-free black pill of white voice-activity
+> bars, fully monochrome Settings/tray — which does NOT follow these tokens. For the Windows look see
+> `docs/HANDOFF-WINDOWS.md` §7 #18 (redesign) and #22 (meter gain).
 
 ---
 

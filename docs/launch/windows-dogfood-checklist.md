@@ -4,9 +4,9 @@ Manual verification that an autonomous/headless session **cannot** perform (it n
 interactive desktop, a microphone, keypresses, and human eyes). Run through this on the dev
 machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each item.
 
-> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 402/402 (the brain +
-> pure platform/coordinator helpers); `JVoice.exe --bench <wav>` proves on-device transcription
-> end-to-end (Phase 2). This list covers only the GUI + live-input paths.
+> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 434/434 (the brain +
+> pure platform/coordinator helpers); `JVoice.exe --bench <wav>` and `tools/nospeech-probe` prove
+> on-device transcription + no-speech behaviour end-to-end. This list covers only the GUI + live-input paths.
 >
 > **Startup is already verified working** — the app launches to the tray and stays alive. Two
 > startup crashes were found and fixed when first launching it (`TaskbarIcon.ForceCreate`
@@ -40,7 +40,8 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 > The HUD no longer follows `docs/demo-video/DESIGN-TOKENS.md` (that's the macOS color design).
 > The Windows HUD is intentionally a minimal **black & white** pill. Screenshot any state without a
 > mic via `JVoice.exe --hud-preview recording|transcribing|preparing|downloading|error`.
-- [ ] **Recording / transcribing / preparing / downloading:** a pure-black rounded pill with white bars, no text. Bars are crisp (solid shapes, not the old glowy text) — **not blurry**, even at the non-native 1600×1080 desktop (the bars sidestep the layered-window text softness, and `DisplayMetrics.HudScale` enlarges the pill by the resolution stretch ratio).
+- [ ] **Recording / transcribing / preparing / downloading:** a pure-black rounded pill (140×46) with 19 white round-capped bars, no text. Bars are crisp (solid shapes, not the old glowy text) — **not blurry**, even at the non-native 1600×1080 desktop (the bars sidestep the layered-window text softness, and `DisplayMetrics.HudScale` enlarges the pill by the resolution stretch ratio).
+- [ ] **Bars visibly react to YOUR (quiet) voice** — the meter gain was boosted for your low mic (`LevelGain` 3.6→20, `LevelGate` 0.006→0.004; HANDOFF §7 #22), so the bars should clearly rise/fall as you speak, not sit nearly flat. This is a **visual** meter only — it does not change what whisper hears. If the bars feel too jumpy or too flat, the constants at the top of `HudView.xaml.cs` are the dial.
 - [ ] **Error only:** a white ⚠ glyph + white message (e.g. "No speech detected.", "Something went wrong") on the same black pill — the one state that shows text. Auto-dismisses after ~3s.
 - [ ] **Success is silent:** a normal paste shows **no** confirmation pill — the HUD just vanishes.
 - [ ] The pill is **always click-through** (click the desktop behind it any time — clicks pass through; there's no interactive affordance on it now) and never steals focus from your target app (non-activating overlay).
