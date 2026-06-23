@@ -225,11 +225,19 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       LastTranscriptTests (store level) → Tier 3 (platform, throwaway-console verification).
 
 ### Tier 2 — engine + streaming on real audio (machine-verifiable via bench/smoke; needs Tiny model)
-- [ ] **WhisperNetTranscriptionEngine — adversarial WAVs** — `JVoice.App/Whisper/WhisperNetTranscriptionEngine.cs`.
+- [x] **WhisperNetTranscriptionEngine — adversarial WAVs** — `JVoice.App/Whisper/WhisperNetTranscriptionEngine.cs`.
       Run crafted 16 kHz/mono/16-bit WAVs through `whisper-smoke` and `JVoice.exe --bench` (+`--stream`):
       empty/near-empty, pure silence, < 1 s, very long (>120 s), full-scale clipping, DC offset, all-noise,
       and a non-16 kHz file (expect a clean rejection, not a crash). Invariants: never crashes, never a
       silent drop (streaming falls back to whole-file), correct exit codes (64/65/66/70/1/0).
+      — 2026-06-23 · 0 new xUnit (engine harness) · **0 bugs**. Ran Tiny through whisper-smoke on 8
+      crafted WAVs: baseline→`"Testing J voice on Windows 1 2 3"`; silence/0.3 s/clipping/DC →
+      clean **"No transcript was produced"** (exit 1, no garbage); white-noise → a benign Whisper
+      hallucination `"(engine revving)"` (raw engine output — the brain's hallucination-stripping handles
+      this downstream); 125 s clip → exit 0 in ~2 s (no truncation/crash); **non-16 kHz (44.1 kHz) →
+      clean "Unsupported audio file"** (exit 1). NEVER crashed on any input. `JVoice.exe --bench` (x64
+      build) bad-arg exit codes verified: no-wav→64, missing-file→66, bad-model→64 (short-circuit before
+      model/WPF; 65/70 confirmed by code-review of BenchRunner). HARNESS GOTCHA logged below.
 - [ ] **WhisperModelStore** — `JVoice.App/Whisper/WhisperModelStore.cs`. Verify size+SHA gate, atomic
       `.part`→final rename, no re-download when present, no `.part` leftovers, corrupt-file re-fetch.
 - [ ] **Bench/smoke CLI** — arg parsing edge cases (missing args, bad flags, `--vocab` quoting, `--lang`,
@@ -373,6 +381,17 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **WhisperNetTranscriptionEngine never crashes on adversarial audio** — verified on-device (Tiny, via
+  whisper-smoke) over silence, <1 s, full-scale clipping, DC offset, white noise, a 125 s clip, and a
+  non-16 kHz file: no crash, no hang, no silent drop; empty results surface as a clean "No transcript"
+  (exit 1) and a wrong-format file as "Unsupported audio file" (exit 1). White-noise can yield a benign
+  Whisper hallucination at the raw-engine layer (handled downstream by the brain's hallucination strip).
+- **HARNESS GOTCHA (for future Tier-2/3 firings):** run the app exe from
+  `windows/JVoice.App/bin/**x64**/Release/net9.0-windows/JVoice.exe`. A stale non-bench-aware exe at
+  `bin/Release/net9.0-windows/` (predates the App.xaml→Page/bench-Main fix) launches the **GUI** for
+  every arg incl. `--bench` — running it spawns a tray instance. The x64 exe correctly short-circuits
+  `--bench` (no-wav→64, missing→66) before WPF. Always cap exe runs with a timeout and check the JVoice
+  process count before/after; never kill David's running instance (identify by StartTime).
 - **MILESTONE — Tier 1 (the pure brain) is fully audited (2026-06-23).** All 18 Tier-1 rows are `[x]`.
   Every `JVoice.Core` component was compared line-by-line against its read-only Swift reference and the
   Swift brain test vectors were ported; **5 real port-fidelity bugs were found and fixed** (#1
