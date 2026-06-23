@@ -563,7 +563,7 @@ _(none yet)_
 ---
 
 ## Loop control
-- **Consecutive iterations with no new bug AND no new coverage:** 2
+- **Consecutive iterations with no new bug AND no new coverage:** 3  → **stop condition met.**
 - **ALL coverage-map rows are now `[x]`** (Tier 1 brain · Tier 2 engine · Tier 3 platform, completed
   2026-06-23). 6 real port-fidelity bugs found & fixed (#1–#6); suite 122 → 380; green every firing.
   Remaining work = the wind-down: each subsequent firing does a completeness-critic pass (look for any
@@ -582,6 +582,57 @@ _(none yet)_
     a Levenshtein property fuzz + idempotence. Only theoretical divergence = C# `char` vs Swift
     `Character` (grapheme cluster) for DECOMPOSED/astral input — immaterial: Whisper output is NFC BMP,
     where char≡Character, and the fuzz proves no-throw on arbitrary input. **No bug, nothing missing → quiet.**
-- **STATUS:** IN PROGRESS (winding down — 2 of 3 quiet firings done)
+  - 3/3 (2026-06-23): re-read CoordinatorDecisions.cs vs Swift VoiceCoordinator (target resolution, HUD→tray
+    mirror, HUD reset delay) + its tests — faithful and EXHAUSTIVELY tested: `ResolveTargetWindow` ≡
+    `frontmost-if-not-self else lastNonSelfFrontmostPID` (all branches); `HudToTray` ≡ `updateActivity`
+    (all 7 kinds); `HudResetDelayMs` ≡ 3 s error / 1 s default (all-kinds theory + enum-completeness fact).
+    **No bug, nothing missing → quiet. Countdown reaches 3.**
+- **STATUS:** ✅ **DONE** (2026-06-23) — every coverage-map row `[x]` and 3 consecutive quiet wind-down
+  firings. See "## FINAL SUMMARY" below.
 - **Stop when:** every coverage-map row is `[x]` **and** the last 3 iterations added neither a new bug
-  nor new coverage → set STATUS to `DONE` and report `DONE — nothing left`.
+  nor new coverage → set STATUS to `DONE` and report `DONE — nothing left`.  ← MET.
+
+---
+
+## FINAL SUMMARY (bug-hunt complete — 2026-06-23)
+
+The autonomous bug-hunt of the JVoice **Windows** port is complete: the entire machine-verifiable
+surface has been audited, every coverage-map row is `[x]`, and the suite is green and committed.
+
+**6 real port-fidelity bugs found & fixed** (each with a fails-before/passes-after regression test):
+- **#1 TextProcessor.ExtractCorrections** — split words with `char.IsWhiteSpace` (splits newlines) instead
+  of Swift's `.whitespaces` (tab + Zs only). Fixed: `SplitOnWhitespacesOnly`/`IsSwiftWhitespace`.
+- **#2 RepetitionGuard.Core alphanumerics** — `char.IsLetterOrDigit` (L*+Nd) vs Swift `.alphanumerics`
+  (L*+M*+N*). Fixed: `EnumerateRunes` + `UnicodeCategory` matching L*/M*/N*.
+- **#3 WavTail chunk-size Int32 overflow** — a >2 GB / garbage 32-bit chunk size could overflow `int` and
+  throw. Fixed: 64-bit `long` offsets/sizes, narrow to `int` only when in-bounds.
+- **#4 StatsMath.AverageWpm NaN guard** — `totalSeconds <= 0` let NaN through (`NaN<=0` is false). Fixed:
+  `!(totalSeconds > 0)` (rejects ≤0 AND NaN), matching Swift's `guard totalSeconds > 0`.
+- **#5 FileBackedTranscriptionEngine** — lenient UTF-8 read made the `UnsupportedAudioFile` path dead.
+  Fixed: strict `UTF8Encoding(throwOnInvalidBytes:true)` → `DecoderFallbackException` → unsupported.
+- **#6 StatsStore.Record NaN guard** — sibling of #4 in a second location (`durationSeconds <= 0` let NaN
+  through). Fixed: extracted `StatsMath.ShouldRecord` (rejects NaN) in Core + rewired Record.
+
+**Coverage:** Tier 1 (pure brain) — every component compared 1:1 vs the read-only Swift oracle + seeded
+fuzz loops + Swift-test parity sweep. Tier 2 (engine) — adversarial 16 kHz WAVs through whisper-smoke
+(silence/clipping/DC/noise/125 s/non-16 kHz never crash), WhisperModelStore size+SHA+atomic-rename probe,
+bench/smoke CLI exit-code matrix. Tier 3 (platform) — NAudioRecorder orphan-sweep scoping, the three
+stores' corruption/round-trip contracts, Paster `sizeof(INPUT)==40` marshalling, GlobalHotkey
+debounce/staleness/modifier logic (extracted to `HotkeyGate`), and the misc helpers (SingleInstance
+mutex, LaunchAtLogin registry round-trip + revert, PermissionError/SettingsUris, ForegroundWindowTracker,
+AudioInputRouter) — all via throwaway probes (deleted) or extracted Core helpers + code-review.
+
+**Test growth:** 122 → **380** xUnit cases, green every firing; build 0 errors throughout.
+
+**Intentional C#↔Swift deviations** (documented above, NOT bugs): dropped WhisperKit workarounds,
+`DownloadingModel` HUD kind, session-only hotkey, Core-located pure helpers, file-store
+corruption-normalize-on-next-write, SettingsStateJson per-field leniency, `MaxPromptTokens` not
+re-trimmed in the engine, PhoneticMatcher char-vs-grapheme NFD edge (immaterial on NFC BMP), Windows UI
+copy for HudState/WhisperModelOption.
+
+**Open bugs needing David:** none.
+
+**What remains (cannot be done headlessly):** David's live interactive **dogfood** of the running app —
+the GUI/tray, mic capture, the dictation hotkey→record→transcribe→paste loop, and the HUD/Settings
+visuals — per `docs/launch/windows-dogfood-checklist.md`. The bot never disturbed his running instance,
+registry, or clipboard during the hunt.
