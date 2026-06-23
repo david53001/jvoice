@@ -90,7 +90,7 @@
                             <TextBlock Text="Strip um, uh, er, ah, hmm from output" FontSize="10" Foreground="{StaticResource Text.W38}" Margin="0,2,0,0" />
                         </StackPanel>
                         <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
-                                  Style="{StaticResource TealSwitch}"
+                                  Style="{StaticResource MonoSwitch}"
                                   IsChecked="{Binding RemoveFillerWords, Mode=TwoWay}" />
                     </Grid>
                 
@@ -128,7 +128,7 @@
                                             <Button HorizontalAlignment="Right" Style="{StaticResource PressableButton}"
                                                     Click="OnRemoveWord" Tag="{Binding}"
                                                     FontFamily="Segoe MDL2 Assets" Content="&#xECC9;"
-                                                    Foreground="#CCFF6060" />
+                                                    Foreground="#B3FFFFFF" />
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -172,7 +172,7 @@
                                             <Button HorizontalAlignment="Right" Style="{StaticResource PressableButton}"
                                                     Click="OnRemoveCorrection" Tag="{Binding}"
                                                     FontFamily="Segoe MDL2 Assets" Content="&#xECC9;"
-                                                    Foreground="#CCFF6060" />
+                                                    Foreground="#B3FFFFFF" />
                                         </Grid>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
@@ -214,7 +214,7 @@
                             <TextBlock Text="{Binding TotalWordsSpoken}" FontSize="26" FontWeight="Bold" Foreground="White"
                                        FontFamily="Consolas" HorizontalAlignment="Center">
                                 <TextBlock.Effect>
-                                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#4A9EFF" Opacity="0.45" />
+                                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
                                 </TextBlock.Effect>
                             </TextBlock>
                             <TextBlock Text="total words" FontSize="10" Foreground="{StaticResource Text.W38}" HorizontalAlignment="Center" />
@@ -224,7 +224,7 @@
                             <TextBlock Text="{Binding AverageWpmDisplay}" FontSize="26" FontWeight="Bold" Foreground="White"
                                        FontFamily="Consolas" HorizontalAlignment="Center">
                                 <TextBlock.Effect>
-                                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#4ADEA0" Opacity="0.45" />
+                                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
                                 </TextBlock.Effect>
                             </TextBlock>
                             <TextBlock Text="avg WPM" FontSize="10" Foreground="{StaticResource Text.W38}" HorizontalAlignment="Center" />

@@ -2,172 +2,150 @@ using System.Diagnostics;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
-using System.Windows.Threading;
+using System.Windows.Shapes;
+using JVoice.App.Platform;
 using JVoice.Core.Models;
 
 namespace JVoice.App.UI;
 
 public partial class HudView : UserControl
 {
-    // The HUD lives in an AllowsTransparency (layered) window. Storyboards started
-    // while that window is hidden don't reliably drive it, so the ring used to render
-    // frozen. We instead animate from CompositionTarget.Rendering — the WPF per-frame
-    // render loop (the analog of the macOS TimelineView(.animation)); subscribing keeps
-    // the loop ticking and writing the transforms each frame forces the layered window
-    // to repaint. A single free-running clock keeps the phase continuous across states.
+    // The HUD lives in an AllowsTransparency (layered) window. Storyboards started while
+    // that window is hidden don't reliably drive it, so we animate from
+    // CompositionTarget.Rendering — the WPF per-frame render loop (the analog of macOS
+    // TimelineView(.animation)): subscribing keeps it ticking and writing the bars each
+    // frame forces the layered window to repaint. A single free-running clock keeps the
+    // phase continuous across states.
+    private enum BarMode { Hidden, Live, Indeterminate }
+
+    // ---- voice-bar visualizer config (all pre-scale; HudRootScale enlarges the whole pill) ----
+    private const int BarCount = 11;
+    private const double BarWidth = 4;
+    private const double BarGap = 4;           // applied as Margin = BarGap/2 each side
+    private const double MaxBarHeight = 26;    // == Bars.Height in the XAML
+    private const double MinBarHeight = 3;
+    private static readonly double MinScale = MinBarHeight / MaxBarHeight;
+
+    // Live-level shaping: gate out room noise, then lift speech so it fills the bars.
+    private const double LevelGate = 0.006;
+    private const double LevelGain = 3.6;
+    private const double AttackRate = 0.55;    // fast rise toward a louder target
+    private const double DecayRate = 0.18;     // slow fall when it goes quiet
+
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private bool _animating;
-    private readonly DispatcherTimer _elapsedTimer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private DateTime _preparingStart;
-    private Action? _onStop;
+    private BarMode _mode = BarMode.Hidden;
+    private double _smoothLevel;
 
-    // Segoe MDL2 Assets glyphs (ship with Windows 10/11).
-    private const string GlyphMic = "";       // Microphone
-    private const string GlyphGear = "";      // Settings
-    private const string GlyphDownload = "";  // Download
-    private const string GlyphWaveform = "";  // Volume (closest audio glyph for Transcribing)
-    private const string GlyphCheck = "";     // CheckMark
-    private const string GlyphWarning = "";   // Warning
+    private Rectangle[] _bars = [];
+    private ScaleTransform[] _barScale = [];
+    private double[] _barLevel = [];           // current (smoothed) 0..1 height of each bar
+    private double[] _phase = [];
+    private double[] _speed = [];
+    private double[] _weight = [];             // centre-weighted bell (tallest in the middle)
+
+    /// Supplies the live mic level (0..1 peak). Set by App via HudWindow. Null => bars idle.
+    public Func<float>? InputLevelProvider { get; set; }
 
     public HudView()
     {
         InitializeComponent();
-        BuildArcGeometry();
-        StopButton.Click += (_, _) => _onStop?.Invoke();
-        _elapsedTimer.Tick += (_, _) => UpdateElapsed();
+        // Enlarge the pill to stay crisp: 1.1 at native resolution; more when the desktop
+        // runs below native (the monitor's scaler interpolates the framebuffer). The new
+        // bars are solid shapes, so they survive that interpolation far better than the old
+        // glowy text did. See DisplayMetrics.
+        HudRootScale.ScaleX = HudRootScale.ScaleY = DisplayMetrics.HudScale;
+        BuildBars();
     }
 
-    /// 28x28 circle, trim 0..0.28 -> an arc of 100.8 degrees starting at 12 o'clock.
-    private void BuildArcGeometry()
+    /// Create the bar Rectangles once. Each grows/shrinks symmetrically about its centre
+    /// via a ScaleTransform (RenderTransform, not Height) so the per-frame animation never
+    /// triggers a layout pass and the pill never resizes while recording.
+    private void BuildBars()
     {
-        const double size = 28, r = size / 2 - 0.75; // inset by half the stroke (1.5)
-        var c = new Point(size / 2, size / 2);
-        double sweep = 0.28 * 360.0; // 100.8 degrees
-        double a0 = -90 * Math.PI / 180.0;            // top
-        double a1 = (-90 + sweep) * Math.PI / 180.0;
-        var p0 = new Point(c.X + r * Math.Cos(a0), c.Y + r * Math.Sin(a0));
-        var p1 = new Point(c.X + r * Math.Cos(a1), c.Y + r * Math.Sin(a1));
-        var fig = new PathFigure { StartPoint = p0 };
-        fig.Segments.Add(new ArcSegment(p1, new Size(r, r), 0, sweep > 180, SweepDirection.Clockwise, true));
-        var geo = new PathGeometry();
-        geo.Figures.Add(fig);
-        RingArc.Data = geo;
+        _bars = new Rectangle[BarCount];
+        _barScale = new ScaleTransform[BarCount];
+        _barLevel = new double[BarCount];
+        _phase = new double[BarCount];
+        _speed = new double[BarCount];
+        _weight = new double[BarCount];
+
+        var fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+        fill.Freeze();
+
+        for (int i = 0; i < BarCount; i++)
+        {
+            double bell = Math.Sin(Math.PI * (i + 0.5) / BarCount); // 0..1, peak at centre
+            _weight[i] = 0.45 + 0.55 * bell;
+            _phase[i] = i * 0.7;
+            _speed[i] = 6.5 + (i % 3) * 2.3;    // varied speeds so the bars swerve independently
+            _barLevel[i] = 0;
+
+            var scale = new ScaleTransform(1, MinScale);
+            var bar = new Rectangle
+            {
+                Width = BarWidth,
+                Height = MaxBarHeight,
+                RadiusX = BarWidth / 2,
+                RadiusY = BarWidth / 2,
+                Fill = fill,
+                VerticalAlignment = VerticalAlignment.Center,
+                Margin = new Thickness(BarGap / 2, 0, BarGap / 2, 0),
+                Opacity = 0.55 + 0.45 * bell,    // brightest in the centre, fading to the edges
+                RenderTransformOrigin = new Point(0.5, 0.5),
+                RenderTransform = scale,
+            };
+            _barScale[i] = scale;
+            _bars[i] = bar;
+            Bars.Children.Add(bar);
+        }
     }
 
-    /// Apply a HUD state: recolor, pick layout, run/stop animations.
-    public void Apply(HudState state, Action? onStop)
+    /// Apply a HUD state: pick the layout (bars / error / hidden) and start or stop the loop.
+    public void Apply(HudState state)
     {
-        _onStop = onStop;
-
         switch (state.Kind)
         {
             case HudStateKind.Recording:
-                Recolor("#4A9EFF", "#D1E8FF", subtitleOpacity: 0.55);
-                ShowRing(GlyphMic);
-                SetText("Recording", "Listening...");
-                StopButton.Visibility = Visibility.Visible;
-                break;
-
-            case HudStateKind.PreparingModel:
-                Recolor("#8060FF", "#CABBFF", subtitleOpacity: 0.62);
-                ShowRing(GlyphGear);
-                SetText("Preparing Model", "One-time setup - keep JVoice open - 0:00");
-                StopButton.Visibility = Visibility.Collapsed;
-                _preparingStart = DateTime.UtcNow;
-                _elapsedTimer.Start();
-                break;
-
-            case HudStateKind.DownloadingModel:
-                Recolor("#8060FF", "#CABBFF", subtitleOpacity: 0.62);
-                ShowRing(GlyphDownload);
-                int pct = (int)Math.Round((state.Progress ?? 0) * 100);
-                SetText("Downloading Model", $"Downloading the speech model... {pct}%");
-                StopButton.Visibility = Visibility.Collapsed;
+                SetMode(BarMode.Live);
                 break;
 
             case HudStateKind.Transcribing:
-                Recolor("#00D4E0", "#A0F0F7", subtitleOpacity: 0.55);
-                ShowRing(GlyphWaveform);
-                SetText("Transcribing", "Processing...");
-                StopButton.Visibility = Visibility.Collapsed;
-                break;
-
-            case HudStateKind.Done:
-                Recolor("#6EE7B7", "#B1FCB7", subtitleOpacity: 0);
-                ShowDisc(GlyphCheck);
-                SetText(state.Headline, null);
-                StopButton.Visibility = Visibility.Collapsed;
+            case HudStateKind.PreparingModel:
+            case HudStateKind.DownloadingModel:
+                SetMode(BarMode.Indeterminate);
                 break;
 
             case HudStateKind.Error:
-                Recolor("#FAA060", "#FFD1A0", subtitleOpacity: 0);
-                ShowDisc(GlyphWarning);
-                SetText(state.Headline, state.Subtitle);
-                StopButton.Visibility = Visibility.Collapsed;
+                // The only state with text. Show the specific message ("No speech detected.",
+                // a paste failure, …) so the user knows what happened; fall back to a generic
+                // line if there's no payload.
+                ShowError(state.Subtitle ?? "Something went wrong");
                 break;
 
-            default: // Idle - view is hidden by the window; nothing to draw.
-                StopAnimations();
+            default: // Idle / Done — nothing to draw; the window hides the HUD entirely.
+                SetMode(BarMode.Hidden);
                 break;
         }
-
-        if (state.Kind != HudStateKind.PreparingModel)
-            _elapsedTimer.Stop();
     }
 
-    private void UpdateElapsed()
+    private void SetMode(BarMode mode)
     {
-        int s = Math.Max(0, (int)(DateTime.UtcNow - _preparingStart).TotalSeconds);
-        Subtitle.Text = $"One-time setup - keep JVoice open - {s / 60}:{s % 60:D2}";
+        _mode = mode;
+        bool barsVisible = mode is BarMode.Live or BarMode.Indeterminate;
+        Bars.Visibility = barsVisible ? Visibility.Visible : Visibility.Collapsed;
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        if (barsVisible) StartAnimations();
+        else StopAnimations();
     }
 
-    private void SetText(string title, string? subtitle)
+    private void ShowError(string message)
     {
-        Title.Text = title;
-        if (subtitle is null) { Subtitle.Visibility = Visibility.Collapsed; }
-        else { Subtitle.Visibility = Visibility.Visible; Subtitle.Text = subtitle; }
-    }
-
-    private void Recolor(string accentHex, string textHex, double subtitleOpacity)
-    {
-        var accent = (Color)ColorConverter.ConvertFromString(accentHex)!;
-        var text = (Color)ColorConverter.ConvertFromString(textHex)!;
-
-        PillBorderBrush.Color = accent;          // opacity 0.22 already set in XAML
-        OverlayStop0.Color = MakeColor(accent, 0.06);
-        GlowInnerFx.Color = accent;
-        GlowOuterFx.Color = accent;
-        AuraStop0.Color = MakeColor(accent, 0.18);
-        RingArcBrush.Color = accent;
-        RingArcGlow.Color = accent;
-        RingGlyphBrush.Color = accent;
-        DiscFillBrush.Color = accent;
-        DiscStrokeBrush.Color = accent;
-        DiscGlyphBrush.Color = accent;
-        DiscGlow.Color = accent;
-        TitleBrush.Color = text;
-        TitleGlow.Color = accent;
-        SubtitleBrush.Color = accent;
-        SubtitleBrush.Opacity = subtitleOpacity;
-    }
-
-    private static Color MakeColor(Color c, double a)
-        => Color.FromArgb((byte)Math.Round(a * 255), c.R, c.G, c.B);
-
-    private void ShowRing(string glyph)
-    {
-        Ring.Visibility = Visibility.Visible;
-        Disc.Visibility = Visibility.Collapsed;
-        RingGlyph.Text = glyph;
-        StartAnimations();
-    }
-
-    private void ShowDisc(string glyph)
-    {
-        Ring.Visibility = Visibility.Collapsed;
-        Disc.Visibility = Visibility.Visible;
-        DiscGlyph.Text = glyph;
+        _mode = BarMode.Hidden;
         StopAnimations();
+        Bars.Visibility = Visibility.Collapsed;
+        ErrorText.Text = message;
+        ErrorPanel.Visibility = Visibility.Visible;
     }
 
     private void StartAnimations()
@@ -182,20 +160,53 @@ public partial class HudView : UserControl
         if (!_animating) return;
         _animating = false;
         CompositionTarget.Rendering -= OnRendering;
-        RingArcRotate.Angle = 0;
-        AuraScale.ScaleX = AuraScale.ScaleY = 0.9;
+        _smoothLevel = 0;
+        for (int i = 0; i < _bars.Length; i++)
+        {
+            _barLevel[i] = 0;
+            _barScale[i].ScaleY = MinScale;
+        }
     }
 
-    /// Per-frame tick (mirrors the macOS OrbitalRing animations exactly):
-    ///   • spinning arc — a full 360° every 4.0s (linear),
-    ///   • pulsing aura — scale eased between 0.9 and 1.05 over 1.8s each way
-    ///     (3.6s round trip), via a cosine so the ends ease in/out like SwiftUI.
+    /// Per-frame tick: update the smoothed mic level, then drive every bar's height.
     private void OnRendering(object? sender, EventArgs e)
     {
         double t = _clock.Elapsed.TotalSeconds;
-        RingArcRotate.Angle = t % 4.0 / 4.0 * 360.0;
-        double s = 0.975 - 0.075 * Math.Cos(2 * Math.PI * (t / 3.6));
-        AuraScale.ScaleX = s;
-        AuraScale.ScaleY = s;
+
+        if (_mode == BarMode.Live)
+        {
+            double raw = InputLevelProvider?.Invoke() ?? 0f;
+            double target = Math.Clamp((raw - LevelGate) * LevelGain, 0, 1);
+            double rate = target > _smoothLevel ? AttackRate : DecayRate;
+            _smoothLevel += (target - _smoothLevel) * rate;
+        }
+
+        for (int i = 0; i < _bars.Length; i++)
+        {
+            double target01 = _mode == BarMode.Live ? LiveBar(i, t) : IndeterminateBar(i, t);
+            _barLevel[i] += (Math.Clamp(target01, 0, 1) - _barLevel[i]) * 0.5; // per-bar smoothing
+            _barScale[i].ScaleY = MinScale + (1 - MinScale) * _barLevel[i];
+        }
+    }
+
+    /// Recording: bar height = smoothed mic energy, centre-weighted and given an independent
+    /// per-bar wobble so the row "swerves"; never fully flat (a gentle breathing at silence).
+    private double LiveBar(int i, double t)
+    {
+        double osc = 0.5 + 0.5 * Math.Sin(t * _speed[i] + _phase[i]);
+        double idle = 0.05 + 0.04 * Math.Sin(t * 1.6 + _phase[i]);
+        double energy = _smoothLevel * _weight[i] * (0.55 + 0.45 * osc);
+        return Math.Max(idle, energy);
+    }
+
+    /// Transcribing / preparing / downloading (no live mic): a soft pulse that sweeps back
+    /// and forth across the row — a quiet "working" shimmer, still text-free.
+    private double IndeterminateBar(int i, double t)
+    {
+        double pos = 0.5 + 0.5 * Math.Sin(t * 1.7);              // sweep centre, ping-pong
+        double d = (double)i / (BarCount - 1) - pos;
+        double bump = Math.Exp(-(d * d) / (2 * 0.05));
+        double flicker = 0.05 * Math.Sin(t * 9 + _phase[i]);
+        return 0.12 + 0.72 * bump * _weight[i] + flicker;
     }
 }

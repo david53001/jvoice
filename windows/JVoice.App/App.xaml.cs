@@ -1,9 +1,13 @@
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using Microsoft.Win32;
 using JVoice.App.Platform;
 using JVoice.App.UI;
 using JVoice.App.Whisper;
+using JVoice.Core.Models;
 
 namespace JVoice.App;
 
@@ -29,15 +33,25 @@ public partial class App : Application
         if (BenchRunner.ShouldRun(args))
             return BenchRunner.RunAndExit(args);
 
-        if (!SingleInstance.TryAcquire())
+        // Hidden dev aids for inspecting/screenshotting the real rendering, both bypassing
+        // the single-instance lock so they can run alongside a normal instance:
+        //   `--hud-preview [state]`  — shows ONLY the HUD pill (no tray/mic/whisper).
+        //   `--settings-preview`     — shows ONLY the Settings window (coordinator, no prewarm).
+        bool preview = Array.Exists(args,
+            a => string.Equals(a, "--hud-preview", StringComparison.OrdinalIgnoreCase)
+              || string.Equals(a, "--settings-preview", StringComparison.OrdinalIgnoreCase)
+              || string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase));
+
+        if (!preview && !SingleInstance.TryAcquire())
             return 0;
 
-        try { WhisperRuntime.EnsureLoaded(); } catch { /* lazy retry in engine */ }
+        if (!preview)
+            try { WhisperRuntime.EnsureLoaded(); } catch { /* lazy retry in engine */ }
 
         var app = new App();
         app.InitializeComponent();
         int code = app.Run();
-        SingleInstance.Release();
+        if (!preview) SingleInstance.Release();
         return code;
     }
 
@@ -48,11 +62,35 @@ public partial class App : Application
 
         base.OnStartup(e);
 
+        // Hidden dev aids (see Main): show just one surface and stop.
+        if (Array.Exists(e.Args, a => string.Equals(a, "--hud-preview", StringComparison.OrdinalIgnoreCase)))
+        {
+            ShowHudPreview(e.Args);
+            return;
+        }
+        if (Array.Exists(e.Args, a => string.Equals(a, "--settings-preview", StringComparison.OrdinalIgnoreCase)))
+        {
+            // A coordinator is the DataContext, but we never call Start() → no prewarm,
+            // no hotkey, no mic — just the styled Settings window for visual inspection.
+            var previewCoordinator = new VoiceCoordinator();
+            var previewSettings = new SettingsWindow(previewCoordinator);
+            previewSettings.ShowOrActivate();
+            previewSettings.Topmost = true; // keep it above other windows for inspection
+            return;
+        }
+        if (Array.Exists(e.Args, a => string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase)))
+        {
+            RenderSettingsToFile(e.Args);
+            return;
+        }
+
         // 1) Coordinator (must be created on the UI thread — captures the dispatcher).
         _coordinator = new VoiceCoordinator();
 
-        // 2) HUD overlay window.
+        // 2) HUD overlay window. Feed it the live mic level so the voice-activity bars
+        //    react to speech while recording.
         _hud = new HudWindow { OnStop = () => _coordinator.ToggleRecording() };
+        _hud.InputLevelProvider = () => _coordinator.CurrentInputLevel;
         _coordinator.Hud = _hud;
 
         // 3) Tray icon + menu wiring.
@@ -81,6 +119,60 @@ public partial class App : Application
                 "JVoice is running in your system tray — press Ctrl + Shift + Space to dictate.",
                 "JVoice", MessageBoxButton.OK, MessageBoxImage.Information);
         }
+    }
+
+    /// Show a single static HUD pill for visual inspection (`--hud-preview [state]`).
+    private void ShowHudPreview(string[] args)
+    {
+        var idx = Array.FindIndex(args,
+            a => string.Equals(a, "--hud-preview", StringComparison.OrdinalIgnoreCase));
+        var name = (idx >= 0 && idx + 1 < args.Length) ? args[idx + 1].ToLowerInvariant() : "recording";
+        var state = name switch
+        {
+            "transcribing" => HudState.Transcribing,
+            "preparing"    => HudState.PreparingModel,
+            "downloading"  => HudState.DownloadingModel(0.42),
+            "error"        => HudState.Error("Something went wrong"),
+            _              => HudState.Recording,
+        };
+        _hud = new HudWindow { OnStop = () => { } };
+        // No coordinator/mic in preview, so feed the recording bars a steady synthetic level
+        // (the per-bar wobble still varies them) — otherwise they'd just idle at the floor.
+        if (state.Kind == HudStateKind.Recording)
+            _hud.InputLevelProvider = () => 0.32f;
+        _hud.Update(state);
+    }
+
+    /// Render the Settings view off-screen to a PNG (`--settings-render [path]`) so its
+    /// real styling can be inspected headlessly — immune to whatever (e.g. a fullscreen
+    /// game) is covering the desktop, and usable from CI. Renders the visible viewport at 2×.
+    private void RenderSettingsToFile(string[] args)
+    {
+        var idx = Array.FindIndex(args,
+            a => string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase));
+        var path = (idx >= 0 && idx + 1 < args.Length)
+            ? args[idx + 1]
+            : Path.Combine(Path.GetTempPath(), "jvoice-settings.png");
+
+        var coordinator = new VoiceCoordinator();
+        var view = new SettingsView { DataContext = coordinator };
+
+        const double scale = 2.0;
+        var size = new Size(320, 520); // SettingsView's declared size (one screenful)
+        view.Measure(size);
+        view.Arrange(new Rect(size));
+        view.UpdateLayout();
+
+        var rtb = new RenderTargetBitmap(
+            (int)(size.Width * scale), (int)(size.Height * scale),
+            96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        rtb.Render(view);
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(rtb));
+        using (var fs = File.Create(path)) encoder.Save(fs);
+
+        Shutdown();
     }
 
     protected override void OnExit(ExitEventArgs e)

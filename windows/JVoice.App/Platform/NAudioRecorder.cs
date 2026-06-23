@@ -26,10 +26,19 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
     private SampleToWaveProvider16? _to16;
     private System.Threading.Timer? _pumpTimer;
     private MMDevice? _device;
+    private WaveFormat? _captureFormat;
+
+    // Live input level (0..1 peak) for the HUD visualizer. Written from the capture
+    // thread in OnDataAvailable, read from the UI render loop — `volatile` so the read
+    // always sees the latest write without a lock (a single float is torn-read-safe).
+    private volatile float _level;
 
     public string? CurrentPath { get; private set; }
     public bool IsRecording { get; private set; }
     public DateTime? StartedAt { get; private set; }
+
+    /// Latest microphone peak level (0..1). 0 when not recording.
+    public float CurrentLevel => _level;
 
     public event Action<string>? Failed;
 
@@ -48,6 +57,8 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
                 CurrentPath = path;
 
                 var captureFormat = _capture.WaveFormat;
+                _captureFormat = captureFormat;
+                _level = 0f;
                 _buffer = new BufferedWaveProvider(captureFormat)
                 {
                     DiscardOnBufferOverflow = true,
@@ -148,12 +159,50 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
     {
         try
         {
+            // Update the live HUD meter from the raw capture buffer (cheap peak scan,
+            // outside the lock — it only writes the volatile _level).
+            UpdateLevel(e.Buffer, e.BytesRecorded);
             lock (_gate)
             {
                 _buffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
             }
         }
         catch { /* buffered overflow is discarded; ignore */ }
+    }
+
+    /// Compute the peak amplitude (0..1) of a raw capture buffer and publish it for the
+    /// visualizer. Handles the two formats WASAPI shared-mode capture actually delivers:
+    /// 32-bit IEEE float (the usual mix format) and 16-bit PCM. Unknown formats leave the
+    /// level at 0 (the visualizer just idles), never throwing on the capture thread.
+    private void UpdateLevel(byte[] buffer, int bytes)
+    {
+        var fmt = _captureFormat;
+        if (fmt is null || bytes <= 0) return;
+
+        float peak = 0f;
+        if (fmt.Encoding == WaveFormatEncoding.IeeeFloat || fmt.BitsPerSample == 32)
+        {
+            int n = bytes / 4;
+            for (int i = 0; i < n; i++)
+            {
+                float s = BitConverter.ToSingle(buffer, i * 4);
+                float a = Math.Abs(s);
+                if (a > peak) peak = a;
+            }
+        }
+        else if (fmt.BitsPerSample == 16)
+        {
+            int n = bytes / 2;
+            for (int i = 0; i < n; i++)
+            {
+                short s = BitConverter.ToInt16(buffer, i * 2);
+                float a = Math.Abs(s) / 32768f;
+                if (a > peak) peak = a;
+            }
+        }
+        else return; // unknown sample format — leave the meter idle
+
+        _level = peak > 1f ? 1f : peak;
     }
 
     private void OnRecordingStopped(object? sender, StoppedEventArgs e)
@@ -215,6 +264,8 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
         _buffer = null;
         _resampledMono = null;
         _to16 = null;
+        _captureFormat = null;
+        _level = 0f; // meter goes quiet the instant recording ends
     }
 
     private void DisposeCaptureLocked()

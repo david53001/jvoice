@@ -2,36 +2,45 @@
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                     xmlns:ui="clr-namespace:JVoice.App.UI">
 
-    <!-- ============ HUD pill colors ============ -->
-    <SolidColorBrush x:Key="Pill.Fill"           Color="#FF07070E" />
-    <SolidColorBrush x:Key="Accent.Recording"    Color="#FF4A9EFF" />
-    <SolidColorBrush x:Key="Text.Recording"      Color="#FFD1E8FF" />
-    <SolidColorBrush x:Key="Accent.Transcribing" Color="#FF00D4E0" />
-    <SolidColorBrush x:Key="Text.Transcribing"   Color="#FFA0F0F7" />
-    <SolidColorBrush x:Key="Accent.Preparing"    Color="#FF8060FF" />
-    <SolidColorBrush x:Key="Text.Preparing"      Color="#FFCABBFF" />
-    <SolidColorBrush x:Key="Accent.Done"         Color="#FF6EE7B7" />
-    <SolidColorBrush x:Key="Text.Done"           Color="#FFB1FCB7" />
-    <SolidColorBrush x:Key="Accent.Error"        Color="#FFFAA060" />
-    <SolidColorBrush x:Key="Text.Error"          Color="#FFFFD1A0" />
-    <SolidColorBrush x:Key="Stop.Red"            Color="#FFFF6060" />
+    <!-- ============ Monochrome theme ============
+         The whole app is black & white now. The HUD pill renders its own literal colors
+         (see HudView.xaml); these HUD keys remain only so nothing dangles, recolored to
+         match. Every former per-section accent (blue/indigo/purple/teal/cyan/orange/green/
+         pink/red) collapses to white so the Settings dots, buttons, and highlights read as
+         one cohesive black-and-white set. Grayscale hierarchy comes from the Text.W* keys
+         and Settings.Gray. -->
 
-    <!-- ============ Settings palette ============ -->
-    <SolidColorBrush x:Key="Settings.PanelBg"    Color="#FF0D0D16" />
-    <SolidColorBrush x:Key="Settings.SectionBg"  Color="#FF0F0F1A" />
-    <SolidColorBrush x:Key="Settings.Border"     Color="#FF1E1E2C" />
-    <SolidColorBrush x:Key="Settings.HeaderText" Color="#FF4A80CC" />
-    <SolidColorBrush x:Key="Settings.InputBg"    Color="#FF0A0A14" />
-    <SolidColorBrush x:Key="Settings.Blue"       Color="#FF4A9EFF" />
-    <SolidColorBrush x:Key="Settings.Gray"       Color="#FF878787" />
-    <SolidColorBrush x:Key="Settings.Indigo"     Color="#FF60A0FF" />
-    <SolidColorBrush x:Key="Settings.Purple"     Color="#FF8060FF" />
-    <SolidColorBrush x:Key="Settings.Cyan"       Color="#FF20D8FF" />
-    <SolidColorBrush x:Key="Settings.Orange"     Color="#FFF0A030" />
-    <SolidColorBrush x:Key="Settings.Green"      Color="#FF4ADEA0" />
-    <SolidColorBrush x:Key="Settings.Teal"       Color="#FF20C0A0" />
-    <SolidColorBrush x:Key="Settings.Red"        Color="#FFFF6060" />
-    <SolidColorBrush x:Key="Settings.Pink"       Color="#FFFF7AB0" />
+    <!-- ============ HUD pill colors (legacy keys, monochrome) ============ -->
+    <SolidColorBrush x:Key="Pill.Fill"           Color="#FF000000" />
+    <SolidColorBrush x:Key="Accent.Recording"    Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Recording"      Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Transcribing" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Transcribing"   Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Preparing"    Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Preparing"      Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Done"         Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Done"           Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Error"        Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Error"          Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Stop.Red"            Color="#FFFFFFFF" />
+
+    <!-- ============ Settings palette (black & white) ============ -->
+    <SolidColorBrush x:Key="Settings.PanelBg"    Color="#FF000000" />
+    <SolidColorBrush x:Key="Settings.SectionBg"  Color="#FF0E0E0E" />
+    <SolidColorBrush x:Key="Settings.Border"     Color="#FF262626" />
+    <SolidColorBrush x:Key="Settings.HeaderText" Color="#FF9A9A9A" />
+    <SolidColorBrush x:Key="Settings.InputBg"    Color="#FF080808" />
+    <!-- former accents — all white now -->
+    <SolidColorBrush x:Key="Settings.Blue"       Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Gray"       Color="#FF8A8A8A" />
+    <SolidColorBrush x:Key="Settings.Indigo"     Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Purple"     Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Cyan"       Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Orange"     Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Green"      Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Teal"       Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Red"        Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Pink"       Color="#FFFFFFFF" />
 
     <!-- White-with-opacity text brushes (SwiftUI Color(white:x)) -->
     <SolidColorBrush x:Key="Text.W85" Color="#FFD9D9D9" />
@@ -127,7 +136,8 @@
     </Style>
 
     <!-- ============ DarkDestructiveButton (port of DarkDestructiveButtonStyle) ============
-         red foreground, r7 fill red@0.10 border red@0.24. -->
+         monochrome now: white foreground, r7 fill white@0.10 border white@0.24. The
+         OK/Cancel confirmation dialog (not color) guards the destructive actions. -->
     <Style x:Key="DarkDestructiveButton" TargetType="Button" BasedOn="{StaticResource DarkPrimaryButton}">
         <Setter Property="Foreground" Value="{StaticResource Settings.Red}" />
         <Setter Property="Tag" Value="{StaticResource Settings.Red}" />
@@ -136,10 +146,10 @@
                 <ControlTemplate TargetType="Button">
                     <Border x:Name="Bg" CornerRadius="7" BorderThickness="1" Padding="12,6">
                         <Border.Background>
-                            <SolidColorBrush Color="#FFFF6060" Opacity="0.10" />
+                            <SolidColorBrush Color="#FFFFFFFF" Opacity="0.10" />
                         </Border.Background>
                         <Border.BorderBrush>
-                            <SolidColorBrush Color="#FFFF6060" Opacity="0.24" />
+                            <SolidColorBrush Color="#FFFFFFFF" Opacity="0.24" />
                         </Border.BorderBrush>
                         <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
                     </Border>
@@ -208,7 +218,7 @@
                         <Trigger Property="IsChecked" Value="True">
                             <Setter TargetName="Seg" Property="Background">
                                 <Setter.Value>
-                                    <SolidColorBrush Color="#4A9EFF" Opacity="0.22" />
+                                    <SolidColorBrush Color="#FFFFFFFF" Opacity="0.16" />
                                 </Setter.Value>
                             </Setter>
                             <Setter Property="Foreground" Value="White" />
@@ -228,19 +238,21 @@
         <Setter Property="Tag" Value="0,6,6,0" />
     </Style>
 
-    <!-- ===== teal switch (CheckBox rendered as a macOS-style switch) ===== -->
-    <Style x:Key="TealSwitch" TargetType="CheckBox">
+    <!-- ===== mono switch (CheckBox rendered as a macOS-style switch) =====
+         OFF: dark track + light-gray knob. ON: white track + black knob. -->
+    <Style x:Key="MonoSwitch" TargetType="CheckBox">
         <Setter Property="Template">
             <Setter.Value>
                 <ControlTemplate TargetType="CheckBox">
                     <Border x:Name="Track" Width="38" Height="22" CornerRadius="11"
                             Background="{StaticResource Settings.Border}">
-                        <Ellipse x:Name="Knob" Width="18" Height="18" Fill="White"
+                        <Ellipse x:Name="Knob" Width="18" Height="18" Fill="#FFCFCFCF"
                                  HorizontalAlignment="Left" Margin="2,0,0,0" />
                     </Border>
                     <ControlTemplate.Triggers>
                         <Trigger Property="IsChecked" Value="True">
-                            <Setter TargetName="Track" Property="Background" Value="{StaticResource Settings.Teal}" />
+                            <Setter TargetName="Track" Property="Background" Value="#FFFFFFFF" />
+                            <Setter TargetName="Knob" Property="Fill" Value="#FF000000" />
                             <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
                             <Setter TargetName="Knob" Property="Margin" Value="0,0,2,0" />
                         </Trigger>

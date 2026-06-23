@@ -161,6 +161,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private HudState _hudState = HudState.Idle;
     public HudState HudState { get => _hudState; private set { _hudState = value; Raise(); } }
 
+    /// Live microphone level (0..1 peak) for the HUD voice-activity bars. The HUD's
+    /// per-frame render loop polls this; it reads 0 whenever we're not recording.
+    public float CurrentInputLevel => _recorder.CurrentLevel;
+
     // ---- derived flags for the segmented pickers + visibility binders ----
     public bool HasTranscript => !string.IsNullOrEmpty(LastTranscript);
     public bool HasCustomWords => CustomWords.Count > 0;
@@ -397,6 +401,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     private void UpdateHud(HudState state)
     {
+        if (state.Kind == HudStateKind.Error)
+            DiagnosticLog.Write($"HUD Error  payload=\"{state.Payload}\"\n{Environment.StackTrace}");
+        else
+            DiagnosticLog.Write($"HUD {state.Kind}");
         HudState = state;
         Hud?.Update(state);
         Tray?.SetActivity((TrayIcon.Activity)CoordinatorDecisions.HudToTray(state.Kind));
@@ -501,6 +509,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         var session = _streamingSession;
         _streamingSession = null;
 
+        DiagnosticLog.Write($"StopRecording  audioPath={(audioPath ?? "<null>")}  " +
+            $"exists={(audioPath is not null && File.Exists(audioPath))}  " +
+            $"bytes={(audioPath is not null && File.Exists(audioPath) ? new FileInfo(audioPath).Length : -1)}  " +
+            $"recSecs={_lastRecordingSeconds:0.00}  hasStreamingSession={session is not null}");
+
         // The paste target is the live foreground window — unless it is one of OUR own
         // windows (HUD/Settings), decided by process ownership, not a stale HWND snapshot.
         // This is what makes "click a window, then dictate" land where the user clicked,
@@ -508,6 +521,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         IntPtr current = ForegroundWindowTracker.GetForegroundWindowNow();
         bool currentIsSelf = ForegroundWindowTracker.IsOwnedByCurrentProcess(current);
         IntPtr target = CoordinatorDecisions.ResolveTargetWindow(current, currentIsSelf, _foreground.LastForegroundWindow);
+
+        DiagnosticLog.Write($"ResolveTarget  current={current}  currentIsSelf={currentIsSelf}  " +
+            $"lastNonSelf={_foreground.LastForegroundWindow}  -> target={target}");
 
         if (target == IntPtr.Zero)
         {
@@ -563,6 +579,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             if (streamed is not null) transcript = streamed;
             else transcript = await _engine.TranscribeAsync(audioPath, ct);
 
+            DiagnosticLog.Write($"Transcribed  source={(streamed is not null ? "stream" : "wholefile")}  " +
+                $"raw=\"{transcript}\"");
+
             if (ct.IsCancellationRequested) return;
 
             var vocab = CustomWords.ToList();
@@ -605,12 +624,14 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 _statsStore.Record(wordCount, _lastRecordingSeconds);
                 TotalWordsSpoken = _statsStore.TotalWords;
                 AverageWpm = _statsStore.AverageWpm;
-                UpdateHud(HudState.Done(processed));
-                ScheduleHudReset(AppTimings.HudResetDelay);
+                // Silent success: the text is already in the user's app, so the HUD just
+                // disappears — no "Pasted" confirmation pill (per the bars-only redesign).
+                UpdateHud(HudState.Idle);
             });
         }
         catch (TranscriptionException tex)
         {
+            DiagnosticLog.Write($"CATCH TranscriptionException  kind={tex.Kind}  msg=\"{tex.Message}\"");
             // A silent/empty recording is "no speech", not a failure — surface the same
             // "No speech detected." HUD the post-processing empty-result path uses (above),
             // so "I didn't say anything" never looks like an error or pastes a hallucination.
@@ -629,6 +650,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         }
         catch (Exception ex)
         {
+            DiagnosticLog.Write($"CATCH {ex.GetType().Name}  msg=\"{ex.Message}\"\n{ex}");
             await _dispatcher.InvokeAsync(() => ShowError(ex.Message));
         }
         finally

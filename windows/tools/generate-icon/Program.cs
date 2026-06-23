@@ -4,7 +4,7 @@ namespace JVoice.Tools.GenerateIcon;
 
 /// Port of scripts/generate-icon.swift geometry to SkiaSharp 3.x. Draws the
 /// squircle-"J" app icon (multi-size .ico) plus the three tray glyphs
-/// (white J / red mic / cyan waveform) into windows/JVoice.App/Assets.
+/// (all white — black & white theme: J / mic / waveform) into windows/JVoice.App/Assets.
 ///
 /// Uses SKFont + SKCanvas.DrawText + SKFont.MeasureText (SkiaSharp 3.x dropped the
 /// 2.x SKPaint text members the original plan snippet assumed).
@@ -97,14 +97,14 @@ internal static class Program
         return bmp;
     }
 
-    // ---- Tray recording: red mic; transcribing: cyan waveform. Vector glyphs (no font). ----
+    // ---- Tray recording: mic; transcribing: waveform. White (monochrome). Vector glyphs (no font). ----
     private static SKBitmap RenderTrayMic(int px)
     {
         var bmp = NewTransparent(px);
         using var canvas = new SKCanvas(bmp);
-        var red = new SKColor(0xFF, 0x60, 0x60);
-        using var fill = new SKPaint { IsAntialias = true, Color = red, Style = SKPaintStyle.Fill };
-        using var stroke = new SKPaint { IsAntialias = true, Color = red, Style = SKPaintStyle.Stroke, StrokeWidth = px * 0.07f, StrokeCap = SKStrokeCap.Round };
+        var white = SKColors.White;
+        using var fill = new SKPaint { IsAntialias = true, Color = white, Style = SKPaintStyle.Fill };
+        using var stroke = new SKPaint { IsAntialias = true, Color = white, Style = SKPaintStyle.Stroke, StrokeWidth = px * 0.07f, StrokeCap = SKStrokeCap.Round };
         float cx = px / 2f;
         float bw = px * 0.30f, bh = px * 0.42f, bt = px * 0.16f;
         var body = new SKRect(cx - bw / 2, bt, cx + bw / 2, bt + bh);
@@ -125,8 +125,8 @@ internal static class Program
     {
         var bmp = NewTransparent(px);
         using var canvas = new SKCanvas(bmp);
-        var cyan = new SKColor(0x00, 0xD4, 0xE0); // HUD transcribing accent
-        using var p = new SKPaint { IsAntialias = true, Color = cyan, Style = SKPaintStyle.Stroke, StrokeWidth = px * 0.09f, StrokeCap = SKStrokeCap.Round };
+        var white = SKColors.White;
+        using var p = new SKPaint { IsAntialias = true, Color = white, Style = SKPaintStyle.Stroke, StrokeWidth = px * 0.09f, StrokeCap = SKStrokeCap.Round };
         float cx = px / 2f, mid = px / 2f;
         float[] hs = { 0.14f, 0.30f, 0.46f, 0.30f, 0.14f };
         float step = px * 0.16f;

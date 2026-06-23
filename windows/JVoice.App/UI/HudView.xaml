@@ -7,144 +7,60 @@
              TextOptions.TextRenderingMode="ClearType"
              RenderOptions.BitmapScalingMode="HighQuality"
              RenderOptions.ClearTypeHint="Enabled">
-    <!-- 32px margin all around = the Swift .padding(32) glow margin. -->
-    <Grid Margin="32">
-        <!-- ===== shared glow layers (behind the pill) ===== -->
-        <Border x:Name="GlowOuter" CornerRadius="22" Background="{StaticResource Pill.Fill}">
-            <Border.Effect>
-                <DropShadowEffect x:Name="GlowOuterFx" BlurRadius="64" ShadowDepth="0" Color="#4A9EFF" Opacity="0.07" />
-            </Border.Effect>
-        </Border>
-        <Border x:Name="GlowInner" CornerRadius="22" Background="{StaticResource Pill.Fill}">
-            <Border.Effect>
-                <DropShadowEffect x:Name="GlowInnerFx" BlurRadius="32" ShadowDepth="0" Color="#4A9EFF" Opacity="0.18" />
-            </Border.Effect>
-        </Border>
+    <!-- ===== Voice-bars HUD (black & white) =====
+         A deliberately minimal, text-free pill: a black rounded rectangle holding a row
+         of white bars that rise and fall with the live microphone level while recording
+         (an indeterminate shimmer while transcribing/preparing/downloading). There is no
+         "Recording"/"Listening…" copy and no paste confirmation — only the error state
+         carries text. Solid bars also sidestep the layered-window blur that softened the
+         old glowy text: WPF renders ClearType-less grayscale AA inside an AllowsTransparency
+         window, so small text read as low-resolution; flat rectangles don't.
 
-        <!-- ===== the pill body ===== -->
-        <Border x:Name="PillBody" CornerRadius="22" Background="{StaticResource Pill.Fill}"
-                MinWidth="220" MinHeight="50" BorderThickness="1">
-            <Border.BorderBrush>
-                <SolidColorBrush x:Name="PillBorderBrush" Color="#4A9EFF" Opacity="0.22" />
-            </Border.BorderBrush>
-            <Border.Effect>
-                <DropShadowEffect BlurRadius="24" ShadowDepth="6" Direction="270" Color="#000000" Opacity="0.35" />
-            </Border.Effect>
+         HudRootScale (LayoutTransform) enlarges the whole pill so it stays crisp: 1.1 at
+         native resolution, more when the desktop runs below native (the monitor's scaler
+         interpolates the framebuffer — see DisplayMetrics.HudScale, applied in the
+         constructor). LayoutTransform re-runs layout at the larger size, so shapes/text
+         stay vector-crisp rather than bitmap-blurred. -->
+    <Grid>
+        <Grid.LayoutTransform>
+            <ScaleTransform x:Name="HudRootScale" ScaleX="1.1" ScaleY="1.1" />
+        </Grid.LayoutTransform>
+        <!-- 22px margin all around = breathing room for the pill's drop shadow. -->
+        <Grid Margin="22">
+            <!-- ===== the pill body: pure black ===== -->
+            <Border x:Name="PillBody" CornerRadius="18" Background="#FF000000"
+                    MinWidth="120" MinHeight="50" BorderThickness="1">
+                <Border.BorderBrush>
+                    <!-- a hairline so the black pill's edge reads against a dark desktop -->
+                    <SolidColorBrush Color="#FFFFFFFF" Opacity="0.10" />
+                </Border.BorderBrush>
+                <Border.Effect>
+                    <!-- a real (black) drop shadow to float the pill — not a colored glow -->
+                    <DropShadowEffect BlurRadius="22" ShadowDepth="5" Direction="270"
+                                      Color="#000000" Opacity="0.55" />
+                </Border.Effect>
 
-            <Grid>
-                <!-- top-leading gradient overlay accent@0.06 -> clear -->
-                <Border CornerRadius="22">
-                    <Border.Background>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0.5,0.5">
-                            <GradientStop x:Name="OverlayStop0" Color="#0F4A9EFF" Offset="0" />
-                            <GradientStop Color="#004A9EFF" Offset="1" />
-                        </LinearGradientBrush>
-                    </Border.Background>
-                </Border>
+                <Grid Margin="22,13">
+                    <!-- ===== voice-activity bars (recording / transcribing / preparing) =====
+                         Rectangles are added in code so the count/size is tunable in one
+                         place; each bar's Height is driven per frame from the render loop.
+                         Fixed Height + vertically-centered bars makes them grow symmetrically
+                         about the mid-line (a mirrored visualizer). -->
+                    <StackPanel x:Name="Bars" Orientation="Horizontal"
+                                Height="26" HorizontalAlignment="Center" VerticalAlignment="Center" />
 
-                <!-- content: [ring/disc] [text block] [stop?] -->
-                <StackPanel Orientation="Horizontal" Margin="10,7" VerticalAlignment="Center">
-
-                    <!-- ===== Orbital ring (Recording/Preparing/Downloading/Transcribing) ===== -->
-                    <Grid x:Name="Ring" Width="36" Height="36" VerticalAlignment="Center">
-                        <Ellipse x:Name="RingAura" Width="36" Height="36" RenderTransformOrigin="0.5,0.5">
-                            <Ellipse.Fill>
-                                <RadialGradientBrush>
-                                    <GradientStop x:Name="AuraStop0" Color="#2E4A9EFF" Offset="0" />
-                                    <GradientStop Color="#004A9EFF" Offset="1" />
-                                </RadialGradientBrush>
-                            </Ellipse.Fill>
-                            <Ellipse.RenderTransform>
-                                <ScaleTransform x:Name="AuraScale" ScaleX="0.9" ScaleY="0.9" />
-                            </Ellipse.RenderTransform>
-                        </Ellipse>
-                        <Path x:Name="RingArc" Width="28" Height="28" RenderTransformOrigin="0.5,0.5"
-                              StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round">
-                            <Path.Stroke>
-                                <SolidColorBrush x:Name="RingArcBrush" Color="#4A9EFF" />
-                            </Path.Stroke>
-                            <Path.Effect>
-                                <DropShadowEffect x:Name="RingArcGlow" BlurRadius="6" ShadowDepth="0" Color="#4A9EFF" Opacity="0.85" />
-                            </Path.Effect>
-                            <Path.RenderTransform>
-                                <RotateTransform x:Name="RingArcRotate" Angle="0" />
-                            </Path.RenderTransform>
-                        </Path>
-                        <TextBlock x:Name="RingGlyph" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" Text="&#xE720;">
-                            <TextBlock.Foreground>
-                                <SolidColorBrush x:Name="RingGlyphBrush" Color="#4A9EFF" />
-                            </TextBlock.Foreground>
-                            <TextBlock.Effect>
-                                <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#4A9EFF" Opacity="0.6" />
-                            </TextBlock.Effect>
-                        </TextBlock>
-                    </Grid>
-
-                    <!-- ===== Static disc (Done/Error) ===== -->
-                    <Grid x:Name="Disc" Width="28" Height="28" VerticalAlignment="Center" Visibility="Collapsed">
-                        <Ellipse x:Name="DiscFill" Width="28" Height="28" StrokeThickness="1">
-                            <Ellipse.Fill>
-                                <SolidColorBrush x:Name="DiscFillBrush" Color="#1F6EE7B7" Opacity="0.12" />
-                            </Ellipse.Fill>
-                            <Ellipse.Stroke>
-                                <SolidColorBrush x:Name="DiscStrokeBrush" Color="#6EE7B7" Opacity="0.30" />
-                            </Ellipse.Stroke>
-                            <Ellipse.Effect>
-                                <DropShadowEffect x:Name="DiscGlow" BlurRadius="12" ShadowDepth="0" Color="#6EE7B7" Opacity="0.22" />
-                            </Ellipse.Effect>
-                        </Ellipse>
-                        <TextBlock x:Name="DiscGlyph" FontFamily="Segoe MDL2 Assets" FontSize="13"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center" Text="&#xE73E;">
-                            <TextBlock.Foreground>
-                                <SolidColorBrush x:Name="DiscGlyphBrush" Color="#6EE7B7" />
-                            </TextBlock.Foreground>
-                        </TextBlock>
-                    </Grid>
-
-                    <!-- ===== text block ===== -->
-                    <StackPanel Margin="10,0,0,0" VerticalAlignment="Center">
-                        <TextBlock x:Name="Title" FontSize="12" FontWeight="SemiBold" Text="Recording">
-                            <TextBlock.Foreground>
-                                <SolidColorBrush x:Name="TitleBrush" Color="#D1E8FF" />
-                            </TextBlock.Foreground>
-                            <TextBlock.Effect>
-                                <DropShadowEffect BlurRadius="12" ShadowDepth="0" x:Name="TitleGlow" Color="#4A9EFF" Opacity="0.55" />
-                            </TextBlock.Effect>
-                        </TextBlock>
-                        <TextBlock x:Name="Subtitle" FontSize="10" FontWeight="Medium" Text="Listening…" Margin="0,2,0,0">
-                            <TextBlock.Foreground>
-                                <SolidColorBrush x:Name="SubtitleBrush" Color="#4A9EFF" Opacity="0.55" />
-                            </TextBlock.Foreground>
-                        </TextBlock>
+                    <!-- ===== error layout (the only state with text) ===== -->
+                    <StackPanel x:Name="ErrorPanel" Orientation="Horizontal" Visibility="Collapsed"
+                                HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <TextBlock x:Name="ErrorGlyph" FontFamily="Segoe MDL2 Assets" FontSize="15"
+                                   Foreground="#FFFFFFFF" VerticalAlignment="Center" Text="&#xE7BA;" />
+                        <TextBlock x:Name="ErrorText" FontSize="12.5" FontWeight="SemiBold"
+                                   Foreground="#FFFFFFFF" VerticalAlignment="Center"
+                                   Margin="9,0,0,0" MaxWidth="240" TextWrapping="Wrap"
+                                   Text="Something went wrong" />
                     </StackPanel>
-
-                    <!-- ===== stop button (recording only) ===== -->
-                    <Button x:Name="StopButton" Style="{StaticResource PressableButton}"
-                            Margin="14,0,0,0" VerticalAlignment="Center" Visibility="Collapsed"
-                            Width="22" Height="22">
-                        <Grid Width="22" Height="22">
-                            <Border CornerRadius="6" BorderThickness="1">
-                                <Border.Background>
-                                    <SolidColorBrush Color="#FF6060" Opacity="0.12" />
-                                </Border.Background>
-                                <Border.BorderBrush>
-                                    <SolidColorBrush Color="#FF6060" Opacity="0.30" />
-                                </Border.BorderBrush>
-                                <Border.Effect>
-                                    <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#FF6060" Opacity="0.20" />
-                                </Border.Effect>
-                            </Border>
-                            <Border CornerRadius="2" Width="7" Height="7" Background="{StaticResource Stop.Red}"
-                                    HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <Border.Effect>
-                                    <DropShadowEffect BlurRadius="6" ShadowDepth="0" Color="#FF6060" Opacity="0.80" />
-                                </Border.Effect>
-                            </Border>
-                        </Grid>
-                    </Button>
-                </StackPanel>
-            </Grid>
-        </Border>
+                </Grid>
+            </Border>
+        </Grid>
     </Grid>
 </UserControl>

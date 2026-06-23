@@ -4,7 +4,7 @@ Manual verification that an autonomous/headless session **cannot** perform (it n
 interactive desktop, a microphone, keypresses, and human eyes). Run through this on the dev
 machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each item.
 
-> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 122/122 (the brain +
+> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 395/395 (the brain +
 > pure platform/coordinator helpers); `JVoice.exe --bench <wav>` proves on-device transcription
 > end-to-end (Phase 2). This list covers only the GUI + live-input paths.
 >
@@ -25,29 +25,33 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 
 ## Global hotkey + dictation (the core loop)
 - [ ] Focus a text field in another app (Notepad, browser, etc.).
-- [ ] Press **Ctrl+Shift+Space** → the HUD pill shows **Recording** (blue, mic glyph, spinning ring, pulsing aura, red stop button). The pill is bottom-center, ~24px above the taskbar.
-- [ ] Speak a sentence. Press **Ctrl+Shift+Space** again (or click the stop button).
-- [ ] HUD shows **Transcribing** (cyan) briefly, then **Done** (green check), then auto-dismisses (~1s).
+- [ ] Press **Ctrl+Shift+Space** → the HUD pill appears bottom-center (~24px above the taskbar): a **pure-black pill with a row of white voice-activity bars** that rise and fall with your voice. **No text, no spinning ring, no stop button** (the 2026-06-23 black-&-white redesign — see HANDOFF-WINDOWS §7 #18).
+- [ ] Speak — the bars react to your volume (taller/livelier when you talk, settling when quiet). Press **Ctrl+Shift+Space** again to stop (there is no on-pill stop button anymore — use the hotkey or the tray menu).
+- [ ] The bars switch to a gentle left-right **shimmer while transcribing**, then the HUD **just disappears** — there is **no "Pasted"/Done confirmation** (silent success, by design).
 - [ ] The transcribed, tone-styled text is **pasted into the previously-focused app**, and your clipboard is restored to its prior contents after ~300ms.
 - [ ] **Click directly into a terminal (Windows Terminal / PowerShell / cmd), then dictate → text lands in that terminal.** Crucially, also test the terminal JVoice was *launched from* — the paste target is now resolved by process ownership of the live foreground (HANDOFF-WINDOWS §7), not a stale launch-time window handle, so dictating into the launching terminal no longer mis-fires.
 - [ ] Mash the hotkey rapidly → it fires at most once per 150ms (debounce).
 - [ ] **Hotkey stays alive across many dictations / heavy GPU use** (the global hook is hardened: high-priority hook thread + a self-healing watchdog that re-installs the hook if Windows ever silently drops it — see HANDOFF-WINDOWS §7 #14). If it *ever* seems unresponsive, relaunch from a terminal with `set JVOICE_HOTKEY_LOG=1` (or `$env:JVOICE_HOTKEY_LOG='1'`) and reproduce — `%TEMP%\jvoice-hotkey.log` will show whether the hook received the key, matched, or re-armed. Send me that file.
-- [ ] First dictation after picking a not-yet-downloaded model shows **Downloading Model** (purple, %) then **Preparing Model**, then proceeds.
+- [ ] First dictation after picking a not-yet-downloaded model shows the same **bar shimmer** while it downloads/prepares the model (no text/percentage — the redesign is text-free except errors), then proceeds.
 
-## HUD visual fidelity (vs docs/demo-video/DESIGN-TOKENS.md)
-- [ ] Recording = blue `#4A9EFF`; Transcribing = cyan `#00D4E0`; Preparing/Downloading = purple `#8060FF`; Done = green `#6EE7B7`; Error = orange `#FAA060`. Pill fill near-black `#07070E`.
-- [ ] The pill is click-through **except** while recording (click the desktop behind it when idle/transcribing — clicks pass through; the stop button is clickable while recording).
-- [ ] The pill never steals focus from your target app (it's a non-activating overlay).
-- [ ] Crisp on a high-DPI monitor; positioned correctly on a secondary monitor's primary work area.
+## HUD visual fidelity (black & white redesign — 2026-06-23)
+> The HUD no longer follows `docs/demo-video/DESIGN-TOKENS.md` (that's the macOS color design).
+> The Windows HUD is intentionally a minimal **black & white** pill. Screenshot any state without a
+> mic via `JVoice.exe --hud-preview recording|transcribing|preparing|downloading|error`.
+- [ ] **Recording / transcribing / preparing / downloading:** a pure-black rounded pill with white bars, no text. Bars are crisp (solid shapes, not the old glowy text) — **not blurry**, even at the non-native 1600×1080 desktop (the bars sidestep the layered-window text softness, and `DisplayMetrics.HudScale` enlarges the pill by the resolution stretch ratio).
+- [ ] **Error only:** a white ⚠ glyph + white message (e.g. "No speech detected.", "Something went wrong") on the same black pill — the one state that shows text. Auto-dismisses after ~3s.
+- [ ] **Success is silent:** a normal paste shows **no** confirmation pill — the HUD just vanishes.
+- [ ] The pill is **always click-through** (click the desktop behind it any time — clicks pass through; there's no interactive affordance on it now) and never steals focus from your target app (non-activating overlay).
+- [ ] Positioned correctly on a secondary monitor's primary work area.
 
-## Settings panel (320×520, dark)
-- [ ] Header "JVoice" + "Voice dictation controls". 10 sections in order: Last Transcript, Keyboard Shortcut, Language, Voice Style, Processing, Whisper Model, Custom Words, Corrections, Stats, footer (Restore/Quit).
-- [ ] Each section card matches the dark tokens (accent dot + UPPERCASED title + divider).
+## Settings panel (320×520, black & white)
+- [ ] Header "JVoice" + "Voice dictation controls". 10 sections in order: Last Transcript, Keyboard Shortcut, Language, Voice Style, Processing, Whisper Model, Custom Words, Corrections, Stats, footer (Restore/Quit). (Screenshot headlessly via `JVoice.exe --settings-render out.png`, or show it with `--settings-preview`.)
+- [ ] **All monochrome:** pure-black background, dark cards with gray hairline borders, **white** section accent dots (the keyboard section's dot is a subtle gray), gray UPPERCASED titles. No blue/cyan/purple/teal/orange/pink/green anywhere.
 - [ ] **Keyboard Shortcut:** the recorder shows "Ctrl+Shift+Space"; click it, press a new chord → it updates and the new chord triggers dictation (old one no longer does). Backspace resets to default; Esc cancels.
-- [ ] **Language / Voice Style / Whisper Model:** segmented pickers select correctly and persist (close + relaunch → choice retained).
-- [ ] **Processing:** the teal switch toggles Remove Filler Words; "um/uh/er" disappear from output when on.
+- [ ] **Language / Voice Style / Whisper Model:** segmented pickers select correctly (selected segment = white-tint fill, white text) and persist (close + relaunch → choice retained).
+- [ ] **Processing:** the switch (white-when-on, black knob) toggles Remove Filler Words; "um/uh/er" disappear from output when on.
 - [ ] **Custom Words:** type a word + Enter (or Add) → it appears in the list and biases transcription; the × removes it.
-- [ ] **Corrections (pink):** add a rule From `web api` → To `web app` (Enter in either box or Add) → it appears as "web api → web app"; the × removes it; choice persists across relaunch. Then dictate so the recognizer produces "web api" → the pasted text reads "web app", while a separate "REST API" dictation stays "REST API" (the phrase rule doesn't touch standalone API). Blank/duplicate input is ignored (no row added).
+- [ ] **Corrections:** add a rule From `web api` → To `web app` (Enter in either box or Add) → it appears as "web api → web app" (the "To" text in white); the × removes it; choice persists across relaunch. Then dictate so the recognizer produces "web api" → the pasted text reads "web app", while a separate "REST API" dictation stays "REST API" (the phrase rule doesn't touch standalone API). Blank/duplicate input is ignored (no row added).
 - [ ] **Last Transcript:** edit the box, **Fix** → new words become custom words; **Revert** undoes the fix + removes those words.
 - [ ] **Stats:** total words + avg WPM update after a dictation.
 - [ ] **Restore Default Settings** → confirm dialog → settings reset (stats untouched). **Quit JVoice** → tray icon disappears, process exits.

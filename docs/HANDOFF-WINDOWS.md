@@ -1,6 +1,6 @@
 # HANDOFF-WINDOWS — Windows port status
 
-**Last updated:** 2026-06-22. **Branch:** `windows-port` (local only — never pushed).
+**Last updated:** 2026-06-23. **Branch:** `windows-port` (local only — never pushed).
 **Audience:** David + the next zero-context Claude session.
 
 This is the single source of truth for the **state** of the JVoice Windows port. Read
@@ -42,6 +42,15 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   "web app" → "web api"). Applied in post-processing via `TextProcessor`'s existing `extraDictionary`
   (the brain is untouched / still 1:1 with Swift). Recommended as a *phrase* (`web api → web app`) so
   legitimate standalone "API" stays intact. Unit-verified (395/395); UI visuals on the dogfood checklist.
+- **Black-&-white UI redesign + HUD voice bars** (David-requested, 2026-06-23 — see §7 #18): the HUD is now
+  a **text-free, pure-black pill showing white voice-activity bars** that react to the live mic level
+  (an indeterminate shimmer while transcribing/preparing/downloading); **errors are the only text**; a
+  **successful paste is silent** (HUD just disappears — no "Pasted" pill). The whole app went **monochrome**
+  (Settings, all "pills", tray glyphs — every blue/cyan/purple/teal/orange/pink/green accent → white/gray).
+  The bars also **fix the HUD blur** David saw at his non-native 1600×1080 gaming resolution: solid shapes
+  don't suffer the layered-window grayscale-AA softness the old small glowy text did, and the existing
+  `DisplayMetrics.HudScale` still enlarges the pill by the resolution stretch ratio. Verified by screenshot
+  via `--hud-preview` / `--settings-render`. Build 0 errors; `dotnet test` still 395/395.
 
 **What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
 the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
@@ -285,9 +294,10 @@ These are real corrections discovered during execution — preserve them.
    JVoicePalette.xaml; HeaderText is coerced to upper-case so the `TemplateBinding` shows it uppercased.
 9. **Icon tool uses SkiaSharp 3.x `SKFont`+`DrawText`+`MeasureText`** (the plan assumed the 2.x
    `SKPaint.GetTextPath`; SKPaint lost its text members in 3.x).
-10. **HUD `ShowRing` simplified** to `ShowRing(string glyph)`; Transcribing uses the MDL2 Volume glyph
-    (E767) — there's no clean waveform glyph (a drawn-Path waveform is a noted polish item). HUD center
-    glyphs are MDL2 code points E720/E713/E896/E767/E73E/E7BA (byte-verified).
+10. **HUD `ShowRing`/orbital-ring glyphs — SUPERSEDED by the 2026-06-23 redesign (#18).** The old HUD was
+    a colored pill with a spinning ring + MDL2 center glyph + "Recording"/"Transcribing"/… text. That whole
+    layout is gone; the HUD is now text-free white voice bars on a black pill (only the error state keeps a
+    glyph + text, MDL2 warning E7BA). Kept here for history.
 11. **Temperature fallback** (`temperatureFallbackCount=2`) maps to `WithTemperature(0)+WithTemperatureInc(0.2)`
     (≈ the macOS behavior; Whisper.net has no exact fallback-count knob).
 12. Benign **CS4014** warnings on intentional fire-and-forget `_ = …PrewarmAsync()/…Cancel()`
@@ -422,6 +432,50 @@ These are real corrections discovered during execution — preserve them.
       standalone "REST API" preserved) + `SettingsStoreJson` round-trip/fuzz/malformed-skip cover the new
       field; `dotnet test` → **395/395**, `dotnet build … -c Release` → 0 errors. The live mic path + the
       Settings UI visuals are on David's dogfood checklist.
+18. **Black-&-white UI redesign + HUD voice bars (David-requested, 2026-06-23) — a Windows-only look; the
+    macOS app and `DESIGN-TOKENS.md` are unchanged.** David asked for a minimal, text-free HUD ("just the
+    swervy lines / bars that show voice activity"), no paste confirmation, a fully **black & white** theme,
+    and the HUD to **not be blurry** at his non-native 1600×1080 gaming resolution.
+    - **HUD = voice bars (`UI/HudView.xaml` + `.xaml.cs`, full rewrite).** A pure-black rounded pill holds a
+      centred row of 11 white bars (built in code). They grow/shrink **symmetrically about centre via a
+      per-bar `ScaleTransform`** (RenderTransform, not Height — no per-frame layout, pill never resizes),
+      driven from the `CompositionTarget.Rendering` loop. **Recording** → bars track the smoothed live mic
+      level (centre-weighted bell + an independent per-bar wobble so they "swerve"; a gentle breathing at
+      silence). **Transcribing / preparing / downloading** → an indeterminate left-right shimmer (no live
+      mic). **Error** → the only text state: white ⚠ (MDL2 E7BA) + the specific message. **Done/Idle** →
+      hidden. The old orbital ring / center glyph / "Recording"/"Listening…" copy / stop button are all gone.
+    - **Live mic level plumbing.** `IAudioRecorder.CurrentLevel` (0..1 peak) — new; `NAudioRecorder` computes
+      it in `OnDataAvailable` (peak of the raw capture buffer; handles 32-bit float and 16-bit PCM; reset to 0
+      on stop). `VoiceCoordinator.CurrentInputLevel` surfaces it; `App` wires `HudWindow.InputLevelProvider`
+      → the HUD render loop polls it each frame (a `volatile float`, no lock — single-float read/write is atomic).
+    - **Silent success + always click-through.** `VoiceCoordinator` success path now calls `UpdateHud(Idle)`
+      instead of `HudState.Done(...)` (stats/last-transcript still recorded). `HudWindow` is **always**
+      click-through now (the old non-click-through-while-recording exception only existed for the stop button).
+      `HudState.Done` is untouched in Core (tests still pass); the coordinator just no longer sends it.
+    - **Monochrome everywhere (`UI/Styles/JVoicePalette.xaml`, `SettingsView.xaml`, tray icons).** Every
+      former accent (blue/indigo/purple/teal/cyan/orange/green/pink/red) → white; backgrounds → pure black,
+      cards `#0E0E0E`, borders `#262626`, headers gray `#9A9A9A`. The teal switch → `MonoSwitch` (white-on,
+      black knob). Segmented "checked" highlight → white@0.16. Destructive buttons → white (the confirm
+      dialog, not colour, guards them). Tray recording/transcribing glyphs regenerated **white** (was red/cyan)
+      via `tools/generate-icon` — all three tray states now match the white "J".
+    - **Blur fix (honours the memory: David runs 1600×1080 on purpose for gaming — fix IN-APP, never tell him
+      to change resolution).** The redesign *is* the fix: the old softness was WPF's grayscale-AA (no ClearType)
+      on small glowy **text** inside the layered HUD window; solid white **bars** don't have that problem.
+      `DisplayMetrics.HudScale` (pre-existing) still enlarges the whole pill by `native/current` so it keeps
+      its device-pixel budget under the monitor's hardware downscale. DPI awareness was already `PerMonitorV2`
+      (`app.manifest`), so WPF itself isn't bitmap-stretching anything.
+    - **New dev aids (hidden flags, like `--hud-preview`):** `--hud-preview recording|transcribing|preparing|
+      downloading|error` (recording gets a synthetic 0.32 level so the bars aren't idle); `--settings-preview`
+      (live Settings window, topmost); `--settings-render <path>` (renders Settings to a PNG **off-screen** —
+      immune to a fullscreen game covering the desktop, CI-friendly). All bypass the single-instance lock.
+    - **Gotcha for the next session:** building `JVoice.App.csproj` **alone** outputs to
+      `bin\Release\net9.0-windows\`, but the **solution** build outputs to `bin\x64\Release\net9.0-windows\`
+      (the sln sets `Platform=x64`). Run/screenshot the exe from the path matching how you built, or you'll
+      launch a stale binary. Also: a running `JVoice.exe` locks the output DLL — `Stop-Process -Name JVoice`
+      before rebuilding.
+    - **Verified:** `--hud-preview` screenshots of recording (lively centre-weighted bars), transcribing
+      (sweep), error (white text); `--settings-render` PNG (all-monochrome panel). `dotnet build` 0 errors;
+      `dotnet test` **395/395**. Live-mic bar reactivity + the on-desktop look are on David's dogfood checklist.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
@@ -433,9 +487,11 @@ temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on launch); models `%LOCALAPPD
 ## 8. What remains
 
 1. **Dogfood the GUI (David, interactive):** run `docs/launch/windows-dogfood-checklist.md` — the live
-   Ctrl+Shift+Space → record → transcribe → paste loop, HUD pill states/animation vs DESIGN-TOKENS, the
-   320×520 Settings round-trip, BT device routing, mic-permission flow, elevated-window UIPI. The app is
-   confirmed to *launch*; the live input/visual paths are what a person must confirm.
+   Ctrl+Shift+Space → record → transcribe → paste loop, the new black-&-white HUD bars reacting to your
+   voice (and the silent-success / error-only-text behaviour), the 320×520 monochrome Settings round-trip,
+   BT device routing, mic-permission flow, elevated-window UIPI. The app is confirmed to *launch* and the
+   HUD/Settings look is screenshot-verified via `--hud-preview`/`--settings-render`; live-mic reactivity is
+   what a person at the desk must confirm.
 2. **(Optional) Phase 5 Task 6** — port `scripts/verify-transcription.py` to
    `windows/tools/verify-transcription` (corpus-level word-retention / spurious-vocab scoring across
    many generated clips). `whisper-smoke` + `--bench` already prove end-to-end transcription; this is the
@@ -443,7 +499,9 @@ temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on launch); models `%LOCALAPPD
 3. **(Optional) Phase 5 Task 3** — an Inno Setup installer (`windows/installer/JVoice.iss`). The zipped
    self-contained folder is already a complete distributable, so this is convenience only (and needs
    Inno Setup installed to compile).
-4. **Polish from dogfooding:** HUD pixel fidelity, the waveform glyph, per-section selected-segment accent.
+4. **Polish from dogfooding:** tune the bar count/heights/level gain to taste once seen with a real mic
+   (constants live at the top of `HudView.xaml.cs`); optionally style the Settings scrollbar (still the
+   default WPF grey). (The old "waveform glyph" / "per-section accent" polish items are obsolete — #18.)
 5. **Do NOT publish/push** without David's explicit go-ahead.
 
 ---

@@ -12,7 +12,17 @@ public sealed class HudWindow : Window
     private readonly HudView _view = new();
     private IntPtr _hwnd;
 
+    /// Unused since the HUD became text/affordance-free (the bars-only pill has no stop
+    /// button — stop with the hotkey or the tray menu). Kept so existing wiring compiles
+    /// and a stop affordance could be re-added without re-threading the callback.
     public Action? OnStop { get; set; }
+
+    /// Live mic level (0..1) for the voice-activity bars. Wired by App to the coordinator.
+    public Func<float>? InputLevelProvider
+    {
+        get => _view.InputLevelProvider;
+        set => _view.InputLevelProvider = value;
+    }
 
     public HudWindow()
     {
@@ -48,10 +58,12 @@ public sealed class HudWindow : Window
     /// Update to a new state (UI thread). Mirrors HUDWindow.update(state:).
     public void Update(HudState state)
     {
-        _view.Apply(state, OnStop);
+        _view.Apply(state);
 
-        // Click-through except while recording (matches ignoresMouseEvents = state != .recording).
-        ApplyClickThrough(clickThrough: state.Kind != HudStateKind.Recording);
+        // Always click-through now: the bars-only HUD has no interactive affordances, so it
+        // should never intercept a click (the old design dropped click-through while recording
+        // only to make its stop button clickable).
+        ApplyClickThrough(clickThrough: true);
 
         if (state.IsVisible)
         {

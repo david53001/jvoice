@@ -12,6 +12,12 @@ public interface IAudioRecorder
     DateTime? StartedAt { get; }
     Task<bool> RequestPermissionAsync();
 
+    /// Live microphone input level (0..1 peak amplitude of the most recent capture
+    /// buffer) for the HUD's voice-activity visualizer. 0 while not recording. Read
+    /// from the UI render loop each frame; written from the capture thread — a single
+    /// float read/write is atomic, so no lock is needed (see NAudioRecorder).
+    float CurrentLevel { get; }
+
     /// Raised when a recording fails mid-stream (device lost, write error). The
     /// partial WAV has already been torn down. Analog of the Swift delegate
     /// failure callbacks (encodeFailure / finishedUnsuccessfully / config change).
