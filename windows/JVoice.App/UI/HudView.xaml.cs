@@ -31,8 +31,14 @@ public partial class HudView : UserControl
     private const double MinBarHeight = 3;     // == BarWidth → resting bar is a round dot
 
     // Live-level shaping: gate out room noise, then lift speech so it fills the bars.
-    private const double LevelGate = 0.006;
-    private const double LevelGain = 3.6;
+    // David's mic captures quiet — his speech peaks ≈0.05 (very quiet ≈0.02) where a normal
+    // mic peaks ≈0.2–0.5 (measured in tools/nospeech-probe). The old gain (3.6) left the bars
+    // at ~16% on his voice; gain 20 maps his real 0.02–0.10 range onto a lively ~0.3–1.0 sweep.
+    // This is a VISUAL meter boost ONLY — it does not touch the audio sent to whisper, which
+    // already decodes his quiet speech correctly (see WhisperNetTranscriptionEngine). Digital
+    // gain would amplify room noise equally (no SNR gain), so it is deliberately NOT applied.
+    private const double LevelGate = 0.004;
+    private const double LevelGain = 20.0;
     private const double AttackRate = 0.55;    // fast rise toward a louder target
     private const double DecayRate = 0.18;     // slow fall when it goes quiet
 
