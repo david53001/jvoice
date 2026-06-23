@@ -19,10 +19,10 @@ public partial class HudView : UserControl
     private enum BarMode { Hidden, Live, Indeterminate }
 
     // ---- voice-bar visualizer config (all pre-scale; HudRootScale enlarges the whole pill) ----
-    private const int BarCount = 11;
+    private const int BarCount = 9;
     private const double BarWidth = 4;
     private const double BarGap = 4;           // applied as Margin = BarGap/2 each side
-    private const double MaxBarHeight = 16;    // == Bars.Height in the XAML (slim pill)
+    private const double MaxBarHeight = 34;    // == Bars.Height in the XAML (slim & tall pill)
     private const double MinBarHeight = 2;
     private static readonly double MinScale = MinBarHeight / MaxBarHeight;
 
@@ -126,6 +126,22 @@ public partial class HudView : UserControl
             default: // Idle / Done — nothing to draw; the window hides the HUD entirely.
                 SetMode(BarMode.Hidden);
                 break;
+        }
+    }
+
+    /// Pose the bars in a representative static recording frame (centre-weighted bell) for a
+    /// headless still capture — see App.RenderHudToFile. No animation loop is started, so a
+    /// single off-screen render shows real bar heights rather than the resting floor.
+    internal void PrepareStaticCapture()
+    {
+        SetMode(BarMode.Hidden);          // tear down any rendering subscription
+        Bars.Visibility = Visibility.Visible;
+        ErrorPanel.Visibility = Visibility.Collapsed;
+        for (int i = 0; i < _bars.Length; i++)
+        {
+            double bell = Math.Sin(Math.PI * (i + 0.5) / BarCount);
+            double level = 0.30 + 0.65 * bell; // a believable mid-level frame
+            _barScale[i].ScaleY = MinScale + (1 - MinScale) * level;
         }
     }
 

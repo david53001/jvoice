@@ -36,9 +36,11 @@ public partial class App : Application
         // Hidden dev aids for inspecting/screenshotting the real rendering, both bypassing
         // the single-instance lock so they can run alongside a normal instance:
         //   `--hud-preview [state]`  — shows ONLY the HUD pill (no tray/mic/whisper).
+        //   `--hud-render [path]`    — renders the HUD pill off-screen to a PNG (headless/CI).
         //   `--settings-preview`     — shows ONLY the Settings window (coordinator, no prewarm).
         bool preview = Array.Exists(args,
             a => string.Equals(a, "--hud-preview", StringComparison.OrdinalIgnoreCase)
+              || string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--settings-preview", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase));
 
@@ -81,6 +83,11 @@ public partial class App : Application
         if (Array.Exists(e.Args, a => string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase)))
         {
             RenderSettingsToFile(e.Args);
+            return;
+        }
+        if (Array.Exists(e.Args, a => string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase)))
+        {
+            RenderHudToFile(e.Args);
             return;
         }
 
@@ -165,6 +172,40 @@ public partial class App : Application
 
         var rtb = new RenderTargetBitmap(
             (int)(size.Width * scale), (int)(size.Height * scale),
+            96 * scale, 96 * scale, PixelFormats.Pbgra32);
+        rtb.Render(view);
+
+        var encoder = new PngBitmapEncoder();
+        encoder.Frames.Add(BitmapFrame.Create(rtb));
+        using (var fs = File.Create(path)) encoder.Save(fs);
+
+        Shutdown();
+    }
+
+    /// Render the HUD pill off-screen to a PNG (`--hud-render [path]`) so its real shape and
+    /// proportions can be inspected headlessly (the live `--hud-preview` can't be captured, and
+    /// a fullscreen game can cover the on-screen overlay). The bars are posed in a representative
+    /// static frame (the per-frame animation loop never runs in this path).
+    private void RenderHudToFile(string[] args)
+    {
+        var idx = Array.FindIndex(args,
+            a => string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase));
+        var path = (idx >= 0 && idx + 1 < args.Length)
+            ? args[idx + 1]
+            : Path.Combine(Path.GetTempPath(), "jvoice-hud.png");
+
+        var view = new HudView();
+        view.PrepareStaticCapture();
+
+        // Let the pill size itself to content (SizeToContent in the real window).
+        view.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var desired = view.DesiredSize;
+        view.Arrange(new Rect(desired));
+        view.UpdateLayout();
+
+        const double scale = 3.0; // crisp enough to judge edges/corners at native + HudScale
+        var rtb = new RenderTargetBitmap(
+            (int)Math.Ceiling(desired.Width * scale), (int)Math.Ceiling(desired.Height * scale),
             96 * scale, 96 * scale, PixelFormats.Pbgra32);
         rtb.Render(view);
 

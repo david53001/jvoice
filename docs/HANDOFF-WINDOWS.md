@@ -51,7 +51,14 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   don't suffer the layered-window grayscale-AA softness the old small glowy text did, and the existing
   `DisplayMetrics.HudScale` still enlarges the pill by the resolution stretch ratio. Verified by screenshot
   via `--hud-preview` / `--settings-render`. A **follow-up the same day** slimmed the pill (height ~halved,
-  baseline scale 1.1→1.0) per David's "too big/fat" feedback. Build 0 errors; `dotnet test` 402/402.
+  baseline scale 1.1→1.0) per David's "too big/fat" feedback. **A later 2026-06-23 reshape** ("too thick and
+  short → slim and tall", David chose "narrower + taller, keep horizontal bars"): the pill went from a wide
+  thin strip (~132×28, 4.7:1) to a compact taller pill (~94×58, 1.6:1) — `HudView.xaml` PillBody MinWidth
+  118→92 / MinHeight 28→58 / CornerRadius 13→20, inner padding `22,6`→`11,12`, `Bars.Height` 16→34; code-behind
+  `BarCount` 11→9 and `MaxBarHeight` 16→34 (kept in sync with `Bars.Height`). New hidden flag **`--hud-render
+  [path]`** renders the pill off-screen to a PNG (headless/CI, immune to a fullscreen game covering the
+  overlay — the analog of `--settings-render`; `HudView.PrepareStaticCapture()` poses the bars). Build 0
+  errors; `dotnet test` 412/412.
 - **Quiet/short dictation no longer wrongly "No speech detected"** (David-reported 2026-06-23 — see §7 #19):
   real-mic room tone (mains hum) and quiet speech sit at the SAME raw RMS (~0.0044), so the raw-0.005 gate
   rejected quiet speech. New `HighPassSilence` gates on high-passed (broadband) energy instead — hum is
@@ -474,7 +481,9 @@ These are real corrections discovered during execution — preserve them.
     - **New dev aids (hidden flags, like `--hud-preview`):** `--hud-preview recording|transcribing|preparing|
       downloading|error` (recording gets a synthetic 0.32 level so the bars aren't idle); `--settings-preview`
       (live Settings window, topmost); `--settings-render <path>` (renders Settings to a PNG **off-screen** —
-      immune to a fullscreen game covering the desktop, CI-friendly). All bypass the single-instance lock.
+      immune to a fullscreen game covering the desktop, CI-friendly); `--hud-render <path>` (the HUD analog of
+      `--settings-render` — renders the pill off-screen to a PNG with the bars posed in a static frame). All
+      bypass the single-instance lock.
     - **Gotcha for the next session:** building `JVoice.App.csproj` **alone** outputs to
       `bin\Release\net9.0-windows\`, but the **solution** build outputs to `bin\x64\Release\net9.0-windows\`
       (the sln sets `Platform=x64`). Run/screenshot the exe from the path matching how you built, or you'll
