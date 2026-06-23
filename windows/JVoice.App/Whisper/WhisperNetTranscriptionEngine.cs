@@ -192,8 +192,12 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         // Gate on the SAME tuned floor the streaming chunker trusts to drop silent chunks:
         // no speech energy → no transcript, so the coordinator says "No speech detected."
         // instead of pasting a hallucination. Also skips a wasted decode on silence.
+        // TEMP diagnostic (2026-06-23): attach the peak-window RMS vs the silence floor to
+        // the exception so the coordinator's DiagnosticLog can trace a "No speech detected."
+        // on real speech back to a too-quiet mic. Remove once mic-level tuning is settled.
         if (ChunkPlanner.IsSilent(pcm, SilenceConfig))
-            throw TranscriptionException.EmptyTranscript();
+            throw TranscriptionException.EmptyTranscript(
+                $"silence-gated peakRms={PeakWindowRms(pcm):0.0000} floor={SilenceConfig.SilenceRmsFloor:0.0000}");
 
         var factory = await LoadFactoryAsync(ct).ConfigureAwait(false);
         var vocabulary = await CurrentVocabularyAsync().ConfigureAwait(false);
@@ -208,8 +212,26 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false);
 
         if (guarded.Length == 0)
-            throw TranscriptionException.EmptyTranscript();
+            throw TranscriptionException.EmptyTranscript(
+                $"empty-decode peakRms={PeakWindowRms(pcm):0.0000}");
         return guarded;
+    }
+
+    /// Peak 0.3 s-window RMS (0..1) of the recording — the same metric ChunkPlanner's
+    /// silence gate uses, surfaced for the WholeFileGate diagnostic only.
+    private static double PeakWindowRms(short[] pcm)
+    {
+        const int window = 4800; // 0.3 s @ 16 kHz
+        double peak = 0;
+        for (int start = 0; start < pcm.Length; start += window)
+        {
+            int end = Math.Min(start + window, pcm.Length);
+            double sum = 0;
+            for (int i = start; i < end; i++) { double v = pcm[i] / 32768.0; sum += v * v; }
+            double rms = Math.Sqrt(sum / Math.Max(1, end - start));
+            if (rms > peak) peak = rms;
+        }
+        return peak;
     }
 
     // ---- the single shared sample decode ------------------------------------

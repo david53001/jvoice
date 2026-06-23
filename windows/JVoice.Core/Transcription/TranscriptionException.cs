@@ -19,8 +19,9 @@ public sealed class TranscriptionException : Exception
         => new(TranscriptionErrorKind.AudioFileMissing, $"Audio file not found at {path}.");
     public static TranscriptionException UnsupportedAudioFile(string path)
         => new(TranscriptionErrorKind.UnsupportedAudioFile, $"Unsupported audio file at {path}.");
-    public static TranscriptionException EmptyTranscript()
-        => new(TranscriptionErrorKind.EmptyTranscript, "No transcript was produced.");
+    public static TranscriptionException EmptyTranscript(string? detail = null)
+        => new(TranscriptionErrorKind.EmptyTranscript,
+            detail is null ? "No transcript was produced." : $"No transcript was produced. ({detail})");
     public static TranscriptionException ModelLoadFailed(string message)
         => new(TranscriptionErrorKind.ModelLoadFailed, message);
 }

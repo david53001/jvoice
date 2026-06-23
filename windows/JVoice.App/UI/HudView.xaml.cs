@@ -22,8 +22,8 @@ public partial class HudView : UserControl
     private const int BarCount = 11;
     private const double BarWidth = 4;
     private const double BarGap = 4;           // applied as Margin = BarGap/2 each side
-    private const double MaxBarHeight = 26;    // == Bars.Height in the XAML
-    private const double MinBarHeight = 3;
+    private const double MaxBarHeight = 16;    // == Bars.Height in the XAML (slim pill)
+    private const double MinBarHeight = 2;
     private static readonly double MinScale = MinBarHeight / MaxBarHeight;
 
     // Live-level shaping: gate out room noise, then lift speech so it fills the bars.
