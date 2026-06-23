@@ -563,7 +563,7 @@ _(none yet)_
 ---
 
 ## Loop control
-- **Consecutive iterations with no new bug AND no new coverage:** 1
+- **Consecutive iterations with no new bug AND no new coverage:** 2
 - **ALL coverage-map rows are now `[x]`** (Tier 1 brain · Tier 2 engine · Tier 3 platform, completed
   2026-06-23). 6 real port-fidelity bugs found & fixed (#1–#6); suite 122 → 380; green every firing.
   Remaining work = the wind-down: each subsequent firing does a completeness-critic pass (look for any
@@ -574,6 +574,14 @@ _(none yet)_
     (MaxWords=40 entry cap, broad-whitespace trim ≡ `.whitespacesAndNewlines`, no dedup, order kept,
     leading space); boundary 39/40/41 already tested. Found + documented the `MaxPromptTokens` engine
     deviation (above). **No bug, no genuinely-missing test → quiet.**
-- **STATUS:** IN PROGRESS (winding down — 1 of 3 quiet firings done)
+  - 2/3 (2026-06-23): re-read PhoneticMatcher line-by-line vs Swift oracle — byte-faithful on EVERY
+    constant/threshold (entry `Letters>=3`; length guard `<= 2 + Letters/3`; initial-sound key guard;
+    `letterDistance <= Max(1, Letters/3)`; the `Letters>=6` key-distance branch; Levenshtein limits 3/1
+    + identical early-exit; all PhoneticKey prefix/digraph/single-letter maps; vowel-drop+dedupe;
+    `maxWindow` camelCase logic). Already has a seeded fuzz (`Fuzz_Correct_AndKey_NeverThrow` 0x5151) +
+    a Levenshtein property fuzz + idempotence. Only theoretical divergence = C# `char` vs Swift
+    `Character` (grapheme cluster) for DECOMPOSED/astral input — immaterial: Whisper output is NFC BMP,
+    where char≡Character, and the fuzz proves no-throw on arbitrary input. **No bug, nothing missing → quiet.**
+- **STATUS:** IN PROGRESS (winding down — 2 of 3 quiet firings done)
 - **Stop when:** every coverage-map row is `[x]` **and** the last 3 iterations added neither a new bug
   nor new coverage → set STATUS to `DONE` and report `DONE — nothing left`.
