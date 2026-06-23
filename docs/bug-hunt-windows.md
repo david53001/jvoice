@@ -238,8 +238,15 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       clean "Unsupported audio file"** (exit 1). NEVER crashed on any input. `JVoice.exe --bench` (x64
       build) bad-arg exit codes verified: no-wav→64, missing-file→66, bad-model→64 (short-circuit before
       model/WPF; 65/70 confirmed by code-review of BenchRunner). HARNESS GOTCHA logged below.
-- [ ] **WhisperModelStore** — `JVoice.App/Whisper/WhisperModelStore.cs`. Verify size+SHA gate, atomic
+- [x] **WhisperModelStore** — `JVoice.App/Whisper/WhisperModelStore.cs`. Verify size+SHA gate, atomic
       `.part`→final rename, no re-download when present, no `.part` leftovers, corrupt-file re-fetch.
+      — 2026-06-23 · throwaway probe (11 checks, all PASS) · **0 bugs**. Verified with a temp-dir probe
+      that compiled the real store + a mock HttpClient (no network): CompleteModelPath size gate
+      (missing/wrong-size→null, exact-size→path); EnsureAsync short-circuits when present (HTTP never
+      called); DownloadAsync wrong-size→throws + `.part` deleted + no final; a stale `.part` is never
+      resumed; a corrupt (wrong-size) existing file → re-fetch attempted, throws (broken path never
+      returned); and the SUCCESS path streaming the **real** tiny model → size+SHA verified → atomic
+      rename, no `.part` leftover. Probe deleted after the run (tree clean).
 - [ ] **Bench/smoke CLI** — arg parsing edge cases (missing args, bad flags, `--vocab` quoting, `--lang`,
       `--no-prompt`, unknown model) → documented exit codes, never an unhandled exception.
 
@@ -381,6 +388,9 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **WhisperModelStore only ever exposes a complete model** — size+SHA gate, no-redownload-when-present,
+  stale-`.part` never resumed, wrong-size/corrupt → throw + `.part` cleaned (never a broken final), and
+  the real-tiny success path passes size+SHA before the atomic rename — 11-check temp-dir probe (no network).
 - **WhisperNetTranscriptionEngine never crashes on adversarial audio** — verified on-device (Tiny, via
   whisper-smoke) over silence, <1 s, full-scale clipping, DC offset, white noise, a 125 s clip, and a
   non-16 kHz file: no crash, no hang, no silent drop; empty results surface as a clean "No transcript"
