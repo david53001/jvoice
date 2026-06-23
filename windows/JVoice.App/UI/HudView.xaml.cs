@@ -24,10 +24,10 @@ public partial class HudView : UserControl
     // and its HEIGHT is animated directly (see SetBarHeight) — NOT a ScaleTransform, which
     // would squash the Y corner radius at low levels and make the caps read as sharp/cubic.
     // MinBarHeight == BarWidth, so a resting bar is a perfect round dot.
-    private const int BarCount = 15;
+    private const int BarCount = 19;
     private const double BarWidth = 3;
     private const double BarGap = 3;           // applied as Margin = BarGap/2 each side
-    private const double MaxBarHeight = 26;    // == Bars.Height in the XAML (slim, compact pill)
+    private const double MaxBarHeight = 40;    // == Bars.Height; tall lines that nearly fill the pill
     private const double MinBarHeight = 3;     // == BarWidth → resting bar is a round dot
 
     // Live-level shaping: gate out room noise, then lift speech so it fills the bars.
