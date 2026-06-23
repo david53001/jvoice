@@ -20,10 +20,10 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **330** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  now **337** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
   RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
-  SettingsStateJson + WhisperModelOption + HudState + HotkeyChord audits). As the hunt adds regression
-  tests this number only grows; it must never go down or go red.
+  SettingsStateJson + WhisperModelOption + HudState + HotkeyChord + StatsMath audits). As the hunt adds
+  regression tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -181,8 +181,11 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       F24=0x87; F0/F25 rejected), modifier ordering (Ctrl+Alt+Shift+Win), whitespace trimming, two-main-
       keys + modifiers-only rejection, no-modifier validity, a 400-case round-trip identity fuzz
       (TryParse(c.Format())==c), and a 400-case TryParse-never-throws-on-garbage fuzz.
-- [ ] **StatsMath** — `…/StatsMath.cs` + `StatsMathTests.cs` ← WPM math in `…/Services/StatsStore.swift`
+- [x] **StatsMath** — `…/StatsMath.cs` + `StatsMathTests.cs` ← WPM math in `…/Services/StatsStore.swift`
       (edge cases: 0 seconds, 0 words, overflow)
+      — 2026-06-23 · +7 tests · **1 bug** (#4 NaN guard). Computation matches Swift 1:1. Fixed the guard
+      to faithfully negate Swift's `guard totalSeconds > 0` (NaN → 0). Added 0-words, tiny-seconds,
+      int.MaxValue no-overflow, ±Infinity edges.
 - [ ] **CoordinatorDecisions** — `…/CoordinatorDecisions.cs` + `CoordinatorDecisionsTests.cs`
       ← decision logic in `…/VoiceCoordinator.swift` (target-window resolution, HUD→tray map, reset-delay map)
 - [ ] **BluetoothDevicePolicy** — `…/Audio/BluetoothDevicePolicy.cs` + `BluetoothDevicePolicyTests.cs`
@@ -275,6 +278,17 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
 - *Regression tests:* `ParseHeader_HighBitChunkSize_ReturnsNull_DoesNotThrow` (red: threw → green:
   null), `ParseHeader_MaxUintChunkSize_…`, and a 600-case `Fuzz_ParseHeader_NeverThrows`.
 - *Commit:* see this firing's `test(win-bughunt): WavTail …` commit.
+
+**#4 [StatsMath.AverageWpm] NaN totalSeconds returned NaN instead of 0 (guard not the exact Swift negation).**
+- *Symptom:* `AverageWpm(100, double.NaN)` returned `NaN`; Swift's `averageWPM` returns `0`.
+- *Root cause:* Swift guards with `guard totalSeconds > 0 else return 0` (so `NaN > 0 == false` → 0),
+  but the C# port guarded with `if (totalSeconds <= 0) return 0` — and `NaN <= 0 == false`, so NaN fell
+  through to `words / NaN * 60 = NaN`. `<= 0` is not the exact negation of Swift's `> 0` for NaN.
+- *Fix:* guard is now `if (!(totalSeconds > 0)) return 0;` — the literal negation of the Swift guard,
+  returning 0 for `<= 0` AND NaN. Finite/±Infinity behaviour is unchanged. (Low severity — totalSeconds
+  is an accumulated real duration, never NaN in practice — but it's a clear fidelity divergence.)
+- *Regression test:* `NaN_Seconds_ReturnsZero` (red `NaN` → green `0`).
+- *Commit:* see this firing's `test(win-bughunt): StatsMath …` commit.
 
 ## Open bugs needing David (could not be safely auto-fixed)
 *(HIGH PRIORITY — these are surfaced here AND the failing test is `[Fact(Skip="BUG: see #N")]` so the
