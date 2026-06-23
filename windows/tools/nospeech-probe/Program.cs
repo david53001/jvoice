@@ -35,6 +35,10 @@ internal static class Program
         if (reader is null) { Console.Error.WriteLine("speech wav not 16k/mono/16-bit"); return 2; }
         short[] speechPcm = reader.Samples(0)!;
         float[] speech = ToFloat(speechPcm);
+        // --muffle: one-pole low-pass to crush the highs so the high-passed/raw ratio drops
+        // to ~0.1–0.2, faithfully matching David's real muffled low-pitched-male mic (his
+        // logged ratio 0.08–0.17) rather than SAPI's clean ~0.76.
+        if (args.Contains("--muffle")) speech = LowPass(speech, 0.10f);
         float speechPeak = AbsPeak(speech);
         Console.WriteLine($"speech clip: {speech.Length} samples ({speech.Length / 16000.0:0.0}s), peak={speechPeak:0.000}");
 
@@ -175,6 +179,13 @@ internal static class Program
         float peak = AbsPeak(src); if (peak <= 0) return (float[])src.Clone();
         float g = targetPeak / peak; var o = new float[src.Length];
         for (int i = 0; i < src.Length; i++) o[i] = src[i] * g; return o;
+    }
+    private static float[] LowPass(float[] src, float alpha)
+    {
+        var o = new float[src.Length];
+        float y = 0;
+        for (int i = 0; i < src.Length; i++) { y += alpha * (src[i] - y); o[i] = y; }
+        return o;
     }
     private static float RmsToAmp(float rms, bool isSine) => isSine ? rms * 1.41421356f : rms;
     private static float[] Sine(double hz, float amp, int n, int sr)
