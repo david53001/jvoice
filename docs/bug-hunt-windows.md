@@ -314,9 +314,20 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       (match/recovery/watchdog modes) is **intentionally NOT run unattended** — it SendInputs system-wide
       Ctrl+Shift+Space (would toggle David's running JVoice + could paste into his focused window) and
       jiggles the mouse; it's the dogfood-time tool (the self-heal it validates shipped in commit 68db2d3).
-- [ ] **AudioInputRouter / ForegroundWindowTracker / LaunchAtLogin / SingleInstance / PermissionError /
+- [x] **AudioInputRouter / ForegroundWindowTracker / LaunchAtLogin / SingleInstance / PermissionError /
       SettingsUris** — `JVoice.App/Platform/*.cs`. Review for races/leaks; verify registry round-trips
       **revert cleanly** (never leave `HKCU\…\Run\JVoice` set), cross-process mutex actually blocks.
+      — 2026-06-23 · throwaway platform-probe (16 checks, all PASS) + code-review · **0 bugs**.
+      SingleInstance: the `createdNew` named-mutex block verified with a FRESH mutex name (first
+      acquirer createdNew==true, second==false) — the app's real mutex (held by David's running
+      instance) untouched. LaunchAtLogin: snapshot→round-trip→restore on the REAL `HKCU\…\Run\JVoice`
+      (David's was enabled) — SetEnabled(true)→IsEnabled + quoted-path value; SetEnabled(false)→removed,
+      no leftover; idempotent; **restored to his exact original value (verified)**. PermissionError/
+      SettingsUris: `ms-settings:privacy-microphone` deep link, Kind/message correct. ForegroundWindowTracker:
+      Start/Stop/restart/double-Dispose no-throw (passive observer hook, no input injected).
+      AudioInputRouter: `PreferredCaptureDeviceId()` enumerated real devices read-only → null (David's
+      default capture isn't Bluetooth) with no throw; the pick logic is BluetoothDevicePolicy (Core-tested).
+      Probe deleted (tree clean). **This completes EVERY coverage-map row.**
 
 ---
 
@@ -460,6 +471,12 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **The misc platform helpers are correct** — SingleInstance's named-mutex `createdNew` block works
+  (fresh-mutex test); LaunchAtLogin's HKCU `Run\JVoice` round-trip enables (quoted path), disables
+  (removes the value, no leftover), is idempotent, and reverts cleanly; PermissionError carries the
+  `ms-settings:privacy-microphone` deep link; ForegroundWindowTracker's hook lifecycle is leak-free
+  (delegate kept alive, unhook on Stop, idempotent Dispose); AudioInputRouter enumerates read-only and
+  defers the pick to the Core-tested BluetoothDevicePolicy. Verified by a 16-check probe + code-review.
 - **GlobalHotkey's decision logic is correct** — 150 ms debounce gate (`>=`, first-fire allowed),
   watchdog hook-staleness (`unchecked` 32-bit-wrap-safe `> 3000 ms`), and EXACT modifier matching (extra
   or missing modifier rejects) — all unit-tested via the extracted `HotkeyGate` helpers; the hook
@@ -537,7 +554,13 @@ _(none yet)_
 ---
 
 ## Loop control
-- **Consecutive iterations with no new bug AND no new coverage:** 0
-- **STATUS:** IN PROGRESS
+- **Consecutive iterations with no new bug AND no new coverage:** 0  (this firing audited the final
+  coverage-map row, so coverage WAS added — countdown resets to 0).
+- **ALL coverage-map rows are now `[x]`** (Tier 1 brain · Tier 2 engine · Tier 3 platform, completed
+  2026-06-23). 6 real port-fidelity bugs found & fixed (#1–#6); suite 122 → 380; green every firing.
+  Remaining work = the wind-down: each subsequent firing does a completeness-critic pass (look for any
+  edge/claim/file missed) + re-verifies green; if 3 consecutive such firings add NO new bug and NO new
+  coverage, set STATUS: DONE.
+- **STATUS:** IN PROGRESS (winding down — 0 of 3 quiet firings done)
 - **Stop when:** every coverage-map row is `[x]` **and** the last 3 iterations added neither a new bug
   nor new coverage → set STATUS to `DONE` and report `DONE — nothing left`.
