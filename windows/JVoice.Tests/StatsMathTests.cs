@@ -58,4 +58,28 @@ public class StatsMathTests
     [Fact]
     public void NegativeInfinitySeconds_IsZero()
         => Assert.Equal(0, StatsMath.AverageWpm(100, double.NegativeInfinity));
+
+    // ===== ShouldRecord — port of StatsStore.record's `guard words > 0, durationSeconds > 0` =====
+
+    [Theory]
+    [InlineData(1, 0.001, true)]    // smallest positive sample is recordable
+    [InlineData(120, 60.0, true)]
+    [InlineData(0, 60.0, false)]    // no words
+    [InlineData(-3, 60.0, false)]   // negative words
+    [InlineData(120, 0.0, false)]   // no duration
+    [InlineData(120, -1.0, false)]  // negative duration
+    public void ShouldRecord_PositiveOnly(int words, double seconds, bool expected)
+        => Assert.Equal(expected, StatsMath.ShouldRecord(words, seconds));
+
+    // bug #6: StatsStore.record's C# guard `durationSeconds <= 0` let NaN through (NaN <= 0 == false),
+    // so a NaN duration was added to totalSeconds (poisoning stats + breaking JSON). Swift's
+    // `durationSeconds > 0` (NaN > 0 == false) rejects it — ShouldRecord must too.
+    [Fact]
+    public void ShouldRecord_NaNDuration_IsFalse()
+        => Assert.False(StatsMath.ShouldRecord(120, double.NaN));
+
+    // Infinity passes `> 0` in both Swift and C# (matches AverageWpm, which then yields 0).
+    [Fact]
+    public void ShouldRecord_PositiveInfinityDuration_IsTrue()
+        => Assert.True(StatsMath.ShouldRecord(120, double.PositiveInfinity));
 }

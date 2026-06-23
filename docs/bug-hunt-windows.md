@@ -20,11 +20,12 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **355** after the full Tier 1 sweep (TextProcessor, PhoneticMatcher, VocabularyPrompt,
+  now **363** after the full Tier 1 sweep (TextProcessor, PhoneticMatcher, VocabularyPrompt,
   RepetitionGuard, RegurgitationRecovery, WavTail, ChunkPlanner, StreamingTranscriptionSession,
   SettingsState, SettingsStateJson, WhisperModelOption, HudState, HotkeyChord, StatsMath,
   CoordinatorDecisions, BluetoothDevicePolicy, FileBackedTranscriptionEngine, + the Swift-test parity
-  sweep). As the hunt adds regression tests this number only grows; it must never go down or go red.
+  sweep) plus Tier 3 (StatsMath.ShouldRecord — bug #6). As the hunt adds regression tests this number
+  only grows; it must never go down or go red.
 
 ---
 
@@ -271,8 +272,18 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       a WAV), `IsUsableRecording` = Exists && Length>=1024 (try/catch→false), and the 16k/mono/16-bit
       WaveFileWriter header (already proven readable by WavTailReader in Tier 1 + handoff §6). Mic
       capture / permission probe need a device (David's dogfood); probe deleted (tree clean).
-- [ ] **SettingsStore / StatsStore / LastTranscriptStore** — `JVoice.App/Platform/*Store.cs`. Corruption→
+- [x] **SettingsStore / StatsStore / LastTranscriptStore** — `JVoice.App/Platform/*Store.cs`. Corruption→
       backup+reset, forward-version refusal, UTF-8 round-trip, debounced-write coalescing, concurrent-write safety.
+      — 2026-06-23 · +8 xUnit (StatsMath.ShouldRecord) + throwaway store-probe (17 checks, all PASS) ·
+      **1 bug (#6, fixed)**. Found & fixed bug #6 (StatsStore.Record NaN guard — see below). Verified via a
+      temp-dir probe driving the real stores: SettingsStore corrupt JSON → Default + corrupt blob backed up;
+      forward-version (`schemaVersion:999`) → Default + backup; missing → Default + default written to disk;
+      Update+Flush round-trip (RemoveFillerWords + CustomWords); StatsStore Record guard (0/neg/NaN rejected,
+      positive recorded), synchronous persistence, corrupt→fresh, Reset; LastTranscriptStore UTF-8 round-trip
+      (é/CJK/em-dash) + missing→"" + no BOM. NOTE (intentional, see deviations): on corruption the Windows
+      store leaves the bad settings.json in place (backed up) and normalizes it on the next Flush/Dispose/Update
+      rather than rewriting defaults immediately like Swift's UserDefaults — the contract (user gets defaults,
+      corrupt blob preserved) holds. Probe deleted (tree clean).
 - [ ] **Paster** — `JVoice.App/Platform/Paster.cs`. Review the `INPUT`/`InputUnion` struct (sizeof==40 on
       x64), `FocusTarget` already-foreground early-return, clipboard save/restore (300 ms / 50 ms-failure).
       Add a unit test for any pure logic (outcome mapping); E2E paste needs the dogfood checklist.
@@ -364,6 +375,26 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
   green: `UnsupportedAudioFile`) + `ValidUtf8_NonAscii_Decodes`.
 - *Commit:* see this firing's `test(win-bughunt): FileBackedTranscriptionEngine …` commit.
 
+**#6 [StatsStore.Record] NaN-duration guard let NaN through (sibling of bug #4).**
+- *Symptom:* `StatsStore.Record(words, NaN)` added `NaN` to `totalSeconds` instead of ignoring the
+  sample. That poisons lifetime stats (every later AverageWpm depends on it — masked to 0 only because
+  bug #4 was fixed) and breaks persistence (System.Text.Json refuses to serialize `NaN` → the save
+  throws → stats silently not written).
+- *Root cause:* the port wrote the guard as `if (words <= 0 || durationSeconds <= 0) return;`. `NaN <= 0`
+  is **false**, so a NaN duration slipped past. Swift's guard is `guard words > 0, durationSeconds > 0`
+  and `NaN > 0` is **false**, so Swift rejects it. Exact same negation flaw as bug #4 (StatsMath), in a
+  second location. Not on the intentional-deviations list.
+- *Fix:* added the pure, testable `StatsMath.ShouldRecord(words, durationSeconds) => words > 0 &&
+  durationSeconds > 0` in `JVoice.Core` (mirrors Swift's guard; rejects NaN) and rewired
+  `StatsStore.Record` to `if (!StatsMath.ShouldRecord(words, durationSeconds)) return;`. Relocating the
+  guard to Core follows the established "Core-located pure helpers" pattern so it gets permanent xUnit
+  coverage (JVoice.Tests can't reference the App-layer StatsStore).
+- *Regression test:* `StatsMathTests.ShouldRecord_NaNDuration_IsFalse` (+ a `ShouldRecord_PositiveOnly`
+  Theory for 0/neg/positive edges + `…PositiveInfinityDuration_IsTrue`). Red on the old inline guard
+  (`NaN <= 0` == false → not rejected); green now. Also empirically confirmed at the StatsStore level via
+  the throwaway store-probe (`Record(10, NaN)` → totalSeconds stays 0, not NaN).
+- *Commit:* see this firing's `test(win-bughunt): Settings/Stats/LastTranscript stores …` commit.
+
 ## Open bugs needing David (could not be safely auto-fixed)
 *(HIGH PRIORITY — these are surfaced here AND the failing test is `[Fact(Skip="BUG: see #N")]` so the
 suite stays green+committed while the bug stays visible. Empty = good.)*
@@ -404,6 +435,12 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **The three platform stores honor their recovery contracts** — SettingsStore: corrupt JSON and
+  forward-version (`schemaVersion`>current) both → defaults with the original blob preserved in
+  `settings.corrupt.bak`; missing → defaults written to disk; Update+Flush round-trips fields; atomic
+  temp-file→move write. StatsStore: Record rejects non-positive AND NaN (bug #6 fixed), persists
+  synchronously, corrupt→fresh, Reset clears. LastTranscriptStore: UTF-8 round-trip (é/CJK/em-dash),
+  missing→"", no BOM. Verified by a 17-check temp-dir probe + the StatsMath.ShouldRecord unit tests.
 - **NAudioRecorder orphan-sweep is correctly scoped** — `jvoice-*.wav` matches the recorder's own
   files and never over-matches unrelated temp files (incl. the legacy `*.wav`→`*.wavXYZ` 8.3 quirk,
   which .NET 9 doesn't exhibit); failure paths always delete the partial WAV (no orphan); `IsUsableRecording`

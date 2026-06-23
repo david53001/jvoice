@@ -33,7 +33,8 @@ public sealed class StatsStore
 
     public void Record(int words, double durationSeconds)
     {
-        if (words <= 0 || durationSeconds <= 0) return; // Swift guard
+        // Swift guard `words > 0, durationSeconds > 0` (rejects NaN; see StatsMath.ShouldRecord).
+        if (!StatsMath.ShouldRecord(words, durationSeconds)) return;
         lock (_gate)
         {
             _data.TotalWords += words;

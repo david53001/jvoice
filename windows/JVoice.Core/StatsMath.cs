@@ -11,4 +11,12 @@ public static class StatsMath
         if (!(totalSeconds > 0)) return 0;
         return (double)totalWords / totalSeconds * 60.0;
     }
+
+    /// Whether a (words, durationSeconds) sample should be recorded — faithful port of
+    /// StatsStore.record's `guard words > 0, durationSeconds > 0`. Crucially `seconds > 0` is
+    /// FALSE for NaN, so a NaN duration is rejected (the old `durationSeconds <= 0` negation let
+    /// NaN through, poisoning totalSeconds and breaking JSON serialization) — same class as the
+    /// AverageWpm guard above.
+    public static bool ShouldRecord(int words, double durationSeconds)
+        => words > 0 && durationSeconds > 0;
 }
