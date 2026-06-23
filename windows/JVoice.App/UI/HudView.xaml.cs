@@ -19,15 +19,16 @@ public partial class HudView : UserControl
     private enum BarMode { Hidden, Live, Indeterminate }
 
     // ---- voice-bar visualizer config (all pre-scale; HudRootScale enlarges the whole pill) ----
-    // A wide pill filled with many slim, tall, rounded lines (a mirrored waveform). Each line is
-    // thin (BarWidth) relative to its full height (MaxBarHeight) and fully round-capped
-    // (RadiusX/Y = BarWidth/2 in BuildBars), so it reads as a rounded line rather than a block.
-    private const int BarCount = 21;
+    // A slim, compact pill holding a mirrored row of thin, fully round-capped lines (a
+    // waveform). Each bar is a vertical capsule: width BarWidth, corner radius BarWidth/2,
+    // and its HEIGHT is animated directly (see SetBarHeight) — NOT a ScaleTransform, which
+    // would squash the Y corner radius at low levels and make the caps read as sharp/cubic.
+    // MinBarHeight == BarWidth, so a resting bar is a perfect round dot.
+    private const int BarCount = 15;
     private const double BarWidth = 3;
-    private const double BarGap = 4;           // applied as Margin = BarGap/2 each side
-    private const double MaxBarHeight = 44;    // == Bars.Height in the XAML (wide pill, tall slim lines)
-    private const double MinBarHeight = 3;
-    private static readonly double MinScale = MinBarHeight / MaxBarHeight;
+    private const double BarGap = 3;           // applied as Margin = BarGap/2 each side
+    private const double MaxBarHeight = 26;    // == Bars.Height in the XAML (slim, compact pill)
+    private const double MinBarHeight = 3;     // == BarWidth → resting bar is a round dot
 
     // Live-level shaping: gate out room noise, then lift speech so it fills the bars.
     private const double LevelGate = 0.006;
@@ -41,7 +42,6 @@ public partial class HudView : UserControl
     private double _smoothLevel;
 
     private Rectangle[] _bars = [];
-    private ScaleTransform[] _barScale = [];
     private double[] _barLevel = [];           // current (smoothed) 0..1 height of each bar
     private double[] _phase = [];
     private double[] _speed = [];
@@ -61,13 +61,13 @@ public partial class HudView : UserControl
         BuildBars();
     }
 
-    /// Create the bar Rectangles once. Each grows/shrinks symmetrically about its centre
-    /// via a ScaleTransform (RenderTransform, not Height) so the per-frame animation never
-    /// triggers a layout pass and the pill never resizes while recording.
+    /// Create the bar Rectangles once. Each is a round-capped vertical capsule whose Height
+    /// is animated per frame (VerticalAlignment.Center → it grows/shrinks symmetrically about
+    /// the mid-line). The parent StackPanel has a fixed Height and the bars never change Width,
+    /// so re-measuring a child's height never resizes the panel or the pill while recording.
     private void BuildBars()
     {
         _bars = new Rectangle[BarCount];
-        _barScale = new ScaleTransform[BarCount];
         _barLevel = new double[BarCount];
         _phase = new double[BarCount];
         _speed = new double[BarCount];
@@ -84,25 +84,27 @@ public partial class HudView : UserControl
             _speed[i] = 6.5 + (i % 3) * 2.3;    // varied speeds so the bars swerve independently
             _barLevel[i] = 0;
 
-            var scale = new ScaleTransform(1, MinScale);
             var bar = new Rectangle
             {
                 Width = BarWidth,
-                Height = MaxBarHeight,
-                RadiusX = BarWidth / 2,
-                RadiusY = BarWidth / 2,
+                Height = MinBarHeight,
+                RadiusX = BarWidth / 2,          // == half width → caps are true semicircles at
+                RadiusY = BarWidth / 2,          //    every height (a vertical capsule / rounded line)
                 Fill = fill,
                 VerticalAlignment = VerticalAlignment.Center,
                 Margin = new Thickness(BarGap / 2, 0, BarGap / 2, 0),
                 Opacity = 0.55 + 0.45 * bell,    // brightest in the centre, fading to the edges
-                RenderTransformOrigin = new Point(0.5, 0.5),
-                RenderTransform = scale,
             };
-            _barScale[i] = scale;
             _bars[i] = bar;
             Bars.Children.Add(bar);
         }
     }
+
+    /// Map a 0..1 level to a bar's pixel height (MinBarHeight..MaxBarHeight). Driving Height
+    /// (not a ScaleTransform) keeps the corner radius — and therefore the round caps —
+    /// undistorted at every height, which a non-uniform scale would flatten into sharp edges.
+    private void SetBarHeight(int i, double level) =>
+        _bars[i].Height = MinBarHeight + (MaxBarHeight - MinBarHeight) * Math.Clamp(level, 0, 1);
 
     /// Apply a HUD state: pick the layout (bars / error / hidden) and start or stop the loop.
     public void Apply(HudState state)
@@ -144,7 +146,7 @@ public partial class HudView : UserControl
         {
             double bell = Math.Sin(Math.PI * (i + 0.5) / BarCount);
             double level = 0.30 + 0.65 * bell; // a believable mid-level frame
-            _barScale[i].ScaleY = MinScale + (1 - MinScale) * level;
+            SetBarHeight(i, level);
         }
     }
 
@@ -183,7 +185,7 @@ public partial class HudView : UserControl
         for (int i = 0; i < _bars.Length; i++)
         {
             _barLevel[i] = 0;
-            _barScale[i].ScaleY = MinScale;
+            SetBarHeight(i, 0);
         }
     }
 
@@ -204,7 +206,7 @@ public partial class HudView : UserControl
         {
             double target01 = _mode == BarMode.Live ? LiveBar(i, t) : IndeterminateBar(i, t);
             _barLevel[i] += (Math.Clamp(target01, 0, 1) - _barLevel[i]) * 0.5; // per-bar smoothing
-            _barScale[i].ScaleY = MinScale + (1 - MinScale) * _barLevel[i];
+            SetBarHeight(i, _barLevel[i]);
         }
     }
 
