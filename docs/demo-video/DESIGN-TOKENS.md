@@ -7,7 +7,8 @@ uses 0–1 sRGB components; CSS equivalents are `round(component * 255)`.
 > **macOS only.** This is the colored macOS UI (orbital ring, accents, text states). The **Windows**
 > port has a *separate, intentionally different* HUD — a text-free black pill of white voice-activity
 > bars, fully monochrome Settings/tray — which does NOT follow these tokens. For the Windows look see
-> `docs/HANDOFF-WINDOWS.md` §7 #18 (redesign) and #22 (meter gain).
+> `docs/HANDOFF-WINDOWS.md` §7 #18 (redesign), #22 (the no-transcription-gain guard) and #23 (the
+> continuous-wave recording bars + final pill geometry).
 
 ---
 

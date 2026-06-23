@@ -9,21 +9,23 @@
              RenderOptions.ClearTypeHint="Enabled">
     <!-- ===== Voice-bars HUD (black & white) =====
          A deliberately minimal, text-free pill: a black rounded rectangle holding a row
-         of slim white rounded lines that rise and fall with the live microphone level while recording
+         of slim white rounded lines that form a continuous, mic-independent wave while recording
+         (David preferred a constant up/down flow over mic-reactive bars, which stuttered on his
+         words — the live-level wiring is kept but UNUSED; see HudView.xaml.cs InputLevelProvider)
          (an indeterminate shimmer while transcribing/preparing/downloading). There is no
          "Recording"/"Listening…" copy and no paste confirmation — only the error state
          carries text. Solid bars also sidestep the layered-window blur that softened the
          old glowy text: WPF renders ClearType-less grayscale AA inside an AllowsTransparency
          window, so small text read as low-resolution; flat rectangles don't.
 
-         HudRootScale (LayoutTransform) enlarges the whole pill so it stays crisp: 1.1 at
+         HudRootScale (LayoutTransform) enlarges the whole pill so it stays crisp: 1.0 at
          native resolution, more when the desktop runs below native (the monitor's scaler
          interpolates the framebuffer — see DisplayMetrics.HudScale, applied in the
          constructor). LayoutTransform re-runs layout at the larger size, so shapes/text
          stay vector-crisp rather than bitmap-blurred. -->
     <Grid>
         <Grid.LayoutTransform>
-            <ScaleTransform x:Name="HudRootScale" ScaleX="1.1" ScaleY="1.1" />
+            <ScaleTransform x:Name="HudRootScale" ScaleX="1.0" ScaleY="1.0" />
         </Grid.LayoutTransform>
         <!-- 16px margin all around = breathing room for the pill's drop shadow. -->
         <Grid Margin="16">

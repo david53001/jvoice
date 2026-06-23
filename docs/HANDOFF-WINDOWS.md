@@ -1,6 +1,6 @@
 # HANDOFF-WINDOWS — Windows port status
 
-**Last updated:** 2026-06-23. **Branch:** `windows-port` (local only — never pushed).
+**Last updated:** 2026-06-24. **Branch:** `windows-port` (local only — never pushed).
 **Audience:** David + the next zero-context Claude session.
 
 This is the single source of truth for the **state** of the JVoice Windows port. Read
@@ -39,16 +39,17 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   (the brain is untouched / still 1:1 with Swift). Recommended as a *phrase* (`web api → web app`) so
   legitimate standalone "API" stays intact. Unit-verified; UI visuals on the dogfood checklist.
 - **Black-&-white UI redesign + HUD voice bars** (David-requested, 2026-06-23 — see §7 #18): the HUD is now
-  a **text-free, pure-black pill showing white voice-activity bars** that react to the live mic level
-  (an indeterminate shimmer while transcribing/preparing/downloading); **errors are the only text**; a
+  a **text-free, pure-black pill showing white voice-activity bars** — a **continuous, mic-independent wave**
+  while recording (David preferred a constant flow over mic-reactive bars; see §7 #23), an indeterminate
+  shimmer while transcribing/preparing/downloading; **errors are the only text**; a
   **successful paste is silent** (HUD just disappears — no "Pasted" pill). The whole app went **monochrome**
   (Settings, all "pills", tray glyphs — every blue/cyan/purple/teal/orange/pink/green accent → white/gray).
   The bars also **fix the HUD blur** David saw at his non-native 1600×1080 gaming resolution: solid shapes
   don't suffer the layered-window grayscale-AA softness the old small glowy text did, and the existing
   `DisplayMetrics.HudScale` still enlarges the pill by the resolution stretch ratio. **The pill went through
-  six same-day shape iterations** (David tuning by eye — see §7 #18 for the full numeric arc); the **final
-  as-built look** is a **140 × 46 px black pill (CornerRadius 22)** holding **19 white round-capped lines**
-  (3 px wide, 3 px gap, 3 px resting "dot" → 40 px at full level). The pivotal fix mid-arc was switching the
+  seven same-day shape iterations** (David tuning by eye — see §7 #18 for the full numeric arc); the **final
+  as-built look** (commit `f59bc0d`) is a **152 × 38 px black pill (CornerRadius 19)** holding **21 white round-capped lines**
+  (3 px wide, 3 px gap, 3 px resting "dot" → 32 px tall). The pivotal fix mid-arc was switching the
   bars from a `ScaleTransform` (which squashed the rounded caps into cubic corners at low levels) to a
   **direct `Height` animation** with a fixed `BarWidth/2` corner radius, so every bar is a true vertical
   capsule at any height. Verified by screenshot via `--hud-preview` / `--hud-render` / `--settings-render`.
@@ -455,7 +456,9 @@ These are real corrections discovered during execution — preserve them.
       field; `dotnet test` → **395/395**, `dotnet build … -c Release` → 0 errors. The live mic path + the
       Settings UI visuals are on David's dogfood checklist.
 18. **Black-&-white UI redesign + HUD voice bars (David-requested, 2026-06-23) — a Windows-only look; the
-    macOS app and `DESIGN-TOKENS.md` are unchanged.** David asked for a minimal, text-free HUD ("just the
+    macOS app and `DESIGN-TOKENS.md` are unchanged.** **[Partly SUPERSEDED by #23 — the recording bars are
+    now a continuous, mic-independent wave (not mic-reactive) and the final pill geometry changed; #23 is the
+    as-built record, #18 below is the redesign rationale + the shape-iteration history.]** David asked for a minimal, text-free HUD ("just the
     swervy lines / bars that show voice activity"), no paste confirmation, a fully **black & white** theme,
     and the HUD to **not be blurry** at his non-native 1600×1080 gaming resolution.
     - **HUD = voice bars (`UI/HudView.xaml` + `.xaml.cs`, full rewrite).** A pure-black rounded pill holds a
@@ -639,7 +642,9 @@ These are real corrections discovered during execution — preserve them.
       only); and the WASAPI/​resampler stop drops ≤ ~one buffer period (~10–30 ms, sub-syllable) — neither is
       David's reported bug.
 22. **HUD meter gain for David's low mic (VISUAL only) + the standing "don't gain the transcription audio"
-    guard (2026-06-23).** David's mic peaks ≈0.05 on normal speech (≈0.02 very quiet) where a typical mic
+    guard (2026-06-23).** **[The meter-gain half is SUPERSEDED by #23 — the recording bars no longer use the
+    mic level at all (the live wave is generated, not metered); the GUARD below still stands, unchanged.]**
+    David's mic peaks ≈0.05 on normal speech (≈0.02 very quiet) where a typical mic
     peaks ≈0.2–0.5, so the HUD voice-bars barely moved (~16%) on his voice. `HudView.xaml.cs` `LevelGain`
     `3.6→20` and `LevelGate` `0.006→0.004` — a **purely visual** boost so the bars actually react to his quiet
     mic. **This touches ONLY the HUD meter (`IAudioRecorder.CurrentLevel` → bars); it does NOT change the
@@ -651,6 +656,37 @@ These are real corrections discovered during execution — preserve them.
       the most accurate model (**LargeTurbo**); the only real accuracy levers left are **mic SNR** (quieter
       room / consistent close mic / raising the Windows capture level / mic-boost at the OS-analog stage) and
       **diction** — nothing in-app. See memory `win-mic-low-capture-level`.
+
+23. **HUD recording bars → a continuous synthetic wave (NOT mic-reactive); final pill geometry
+    (2026-06-23, commits `c8f4a8d` → `526e395` → `f59bc0d`; supersedes the mic-reactive / meter-gain parts of
+    #18 and #22).** The mic-reactive bars (#18/#22) **stuttered on David's words** — he wanted a steady
+    up-and-down flow — so the live-mic drive in `HudView.xaml.cs` was retired.
+    - **`526e395` removed the live-level path entirely** (`LevelGate`/`LevelGain`/attack-decay/`_smoothLevel`
+      and the per-frame `InputLevelProvider.Invoke()`), replacing it with a purely generative `LiveBar` wave:
+      each bar = two summed sines at different rates with a per-bar phase gradient (so the motion *travels*
+      across the row) + an independent per-bar speed + a centre-weighted bell — "tall, always moving, never
+      flat" — driven from `CompositionTarget.Rendering`. **The mic-level wiring is kept but DEAD**
+      (`InputLevelProvider`, `HudWindow.InputLevelProvider`, `VoiceCoordinator.CurrentInputLevel`,
+      `IAudioRecorder.CurrentLevel` all still compile so a mic-reactive mode can be re-enabled without
+      re-threading the callback — `InputLevelProvider`'s XML doc now literally says "Currently UNUSED").
+      `c8f4a8d` was an interim step (slammed the meter to `LevelGain=38`, `LevelGate=0.003`) before `526e395`
+      dropped mic-reactivity altogether.
+    - **⇒ The "bars react to the live mic" / "meter gain (`LevelGain` 20×)" language in #18 and #22 is now
+      FALSE.** #22's **guard still stands** (do NOT add digital makeup gain to the *transcription* audio —
+      that is unchanged and still correct); only its *visual meter-gain* half is moot.
+    - **Final pill geometry (`f59bc0d`, "squeeze shorter & a touch longer"; verbatim from `HudView.xaml`/`.cs`):**
+      PillBody `MinWidth 152 × MinHeight 38`, `CornerRadius 19`, black `#FF000000`, 1 px hairline border
+      `#FFFFFFFF @0.10`, black drop shadow. Bars: `BarCount 21`, `BarWidth 3`, `BarGap 3`, `MaxBarHeight 32`
+      (== `Bars.Height`), `MinBarHeight 3` (== `BarWidth` → a resting bar is a round dot), fully round caps
+      (`RadiusX/Y = BarWidth/2 = 1.5`; **Height** is animated directly, never a `ScaleTransform`).
+      `DisplayMetrics.HudBaseScale` was trimmed **1.1 → 1.0** (the pill read "too big" at 1.1×); `HudScale`
+      still multiplies by the native/current stretch ratio (clamp 1.8) so the pill stays crisp below native
+      resolution. **Transcribing / preparing / downloading** = an `IndeterminateBar` Gaussian "bump"
+      ping-ponging across the row (a text-free shimmer). **Error** = the only text state. **Idle/Done** =
+      window hidden (silent success).
+    - **Visual-only — no brain/engine/test change.** `dotnet test` stays **434/434**, build 0 errors. The
+      stale in-source comments in `HudView.xaml`/`.cs` (the "rise and fall with the live microphone level"
+      header + two "1.1 at native" notes) were corrected to match this as-built state in the 2026-06-24 doc pass.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
@@ -674,8 +710,8 @@ temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on launch); models `%LOCALAPPD
 3. **(Optional) Phase 5 Task 3** — an Inno Setup installer (`windows/installer/JVoice.iss`). The zipped
    self-contained folder is already a complete distributable, so this is convenience only (and needs
    Inno Setup installed to compile).
-4. **Polish from dogfooding:** the HUD shape + meter gain have already been tuned to David's real mic over
-   several same-day iterations (#18, #22) — further tweaks are by-eye taste (constants at the top of
+4. **Polish from dogfooding:** the HUD shape has been tuned over several same-day iterations, and the recording bars are
+   now a continuous, mic-independent wave (#18, #22, #23; no mic meter) — further tweaks are by-eye taste (constants at the top of
    `HudView.xaml.cs`). The Settings scrollbar is now monochrome (done, commit `990ba76`). (The old
    "waveform glyph" / "per-section accent" / "default-grey scrollbar" polish items are obsolete — #18/#22.)
 5. **Do NOT publish/push** without David's explicit go-ahead.

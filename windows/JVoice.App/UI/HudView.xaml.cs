@@ -50,7 +50,7 @@ public partial class HudView : UserControl
     public HudView()
     {
         InitializeComponent();
-        // Enlarge the pill to stay crisp: 1.1 at native resolution; more when the desktop
+        // Enlarge the pill to stay crisp: 1.0 at native resolution; more when the desktop
         // runs below native (the monitor's scaler interpolates the framebuffer). The new
         // bars are solid shapes, so they survive that interpolation far better than the old
         // glowy text did. See DisplayMetrics.

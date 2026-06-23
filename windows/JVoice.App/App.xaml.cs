@@ -94,8 +94,10 @@ public partial class App : Application
         // 1) Coordinator (must be created on the UI thread — captures the dispatcher).
         _coordinator = new VoiceCoordinator();
 
-        // 2) HUD overlay window. Feed it the live mic level so the voice-activity bars
-        //    react to speech while recording.
+        // 2) HUD overlay window. The live mic level is still wired up below but is currently
+        //    UNUSED: the recording bars are a continuous, mic-independent wave (David preferred a
+        //    steady flow; mic-reactive bars stuttered on his words — see HudView.InputLevelProvider).
+        //    Kept so a mic-reactive mode can be re-enabled without re-threading the callback.
         _hud = new HudWindow { OnStop = () => _coordinator.ToggleRecording() };
         _hud.InputLevelProvider = () => _coordinator.CurrentInputLevel;
         _coordinator.Hud = _hud;
