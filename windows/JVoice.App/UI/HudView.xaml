@@ -9,7 +9,7 @@
              RenderOptions.ClearTypeHint="Enabled">
     <!-- ===== Voice-bars HUD (black & white) =====
          A deliberately minimal, text-free pill: a black rounded rectangle holding a row
-         of white bars that rise and fall with the live microphone level while recording
+         of slim white rounded lines that rise and fall with the live microphone level while recording
          (an indeterminate shimmer while transcribing/preparing/downloading). There is no
          "Recording"/"Listening…" copy and no paste confirmation — only the error state
          carries text. Solid bars also sidestep the layered-window blur that softened the
@@ -27,9 +27,9 @@
         </Grid.LayoutTransform>
         <!-- 16px margin all around = breathing room for the pill's drop shadow. -->
         <Grid Margin="16">
-            <!-- ===== the pill body: pure black, slim & tall ===== -->
-            <Border x:Name="PillBody" CornerRadius="20" Background="#FF000000"
-                    MinWidth="92" MinHeight="58" BorderThickness="1">
+            <!-- ===== the pill body: pure black, wide pill ===== -->
+            <Border x:Name="PillBody" CornerRadius="30" Background="#FF000000"
+                    MinWidth="180" MinHeight="70" BorderThickness="1">
                 <Border.BorderBrush>
                     <!-- a hairline so the black pill's edge reads against a dark desktop -->
                     <SolidColorBrush Color="#FFFFFFFF" Opacity="0.10" />
@@ -40,16 +40,16 @@
                                       Color="#000000" Opacity="0.55" />
                 </Border.Effect>
 
-                <!-- slim & tall: tighten the horizontal padding (less "length") and give the
-                     taller bars vertical breathing room -->
-                <Grid Margin="11,12">
+                <!-- wide pill: a row of many slim lines needs generous horizontal room, and
+                     the taller lines want vertical breathing room above/below -->
+                <Grid Margin="16,13">
                     <!-- ===== voice-activity bars (recording / transcribing / preparing) =====
                          Rectangles are added in code so the count/size is tunable in one
                          place; each bar's Height is driven per frame from the render loop.
                          Fixed Height + vertically-centered bars makes them grow symmetrically
                          about the mid-line (a mirrored visualizer). -->
                     <StackPanel x:Name="Bars" Orientation="Horizontal"
-                                Height="34" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                Height="44" HorizontalAlignment="Center" VerticalAlignment="Center" />
 
                     <!-- ===== error layout (the only state with text) ===== -->
                     <StackPanel x:Name="ErrorPanel" Orientation="Horizontal" Visibility="Collapsed"

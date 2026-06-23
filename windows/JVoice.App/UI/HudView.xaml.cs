@@ -19,11 +19,14 @@ public partial class HudView : UserControl
     private enum BarMode { Hidden, Live, Indeterminate }
 
     // ---- voice-bar visualizer config (all pre-scale; HudRootScale enlarges the whole pill) ----
-    private const int BarCount = 9;
-    private const double BarWidth = 4;
+    // A wide pill filled with many slim, tall, rounded lines (a mirrored waveform). Each line is
+    // thin (BarWidth) relative to its full height (MaxBarHeight) and fully round-capped
+    // (RadiusX/Y = BarWidth/2 in BuildBars), so it reads as a rounded line rather than a block.
+    private const int BarCount = 21;
+    private const double BarWidth = 3;
     private const double BarGap = 4;           // applied as Margin = BarGap/2 each side
-    private const double MaxBarHeight = 34;    // == Bars.Height in the XAML (slim & tall pill)
-    private const double MinBarHeight = 2;
+    private const double MaxBarHeight = 44;    // == Bars.Height in the XAML (wide pill, tall slim lines)
+    private const double MinBarHeight = 3;
     private static readonly double MinScale = MinBarHeight / MaxBarHeight;
 
     // Live-level shaping: gate out room noise, then lift speech so it fills the bars.
