@@ -68,9 +68,23 @@ public sealed class StreamingTranscriptionSession
                     return null;
             tail = tail[decision.AtSample..];
         }
-        if (tail.Length > 0 && !ChunkPlanner.IsSilent(tail, _config))
+        if (tail.Length > 0)
+        {
+            // The FINAL tail is the user's last words. WINDOWS DIVERGENCE from Swift
+            // (2026-06-23, bug #2): do NOT drop it on the strength of the absolute
+            // SilenceRmsFloor. On David's low-level mic his quiet trailing clause reads as
+            // "silent" here (rawRMS ≈ 0.004 ≈ his room hum), so dropping it cut off the end
+            // of his sentences. A tail judged silent now returns null → the caller re-covers
+            // the WHOLE recording losslessly via whole-file, where whisper authoritatively
+            // yields empty on true silence and full text on quiet speech. A non-silent tail
+            // decodes as before, so normal-level users (loud tail) are unaffected and keep
+            // the streaming benefit. The never-silently-drop invariant is preserved: an
+            // empty decode also returns null → whole-file fallback.
+            if (ChunkPlanner.IsSilent(tail, _config))
+                return null;
             if (!await AppendPiece(WavTail.FloatSamples(tail)))
                 return null;
+        }
 
         string joined = string.Join(" ", _pieces).Trim();
         return joined.Length == 0 ? null : joined;

@@ -179,24 +179,21 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         // mono 16-bit — exactly what both ChunkPlanner and whisper.cpp expect.
         short[] pcm = ReadWavPcm(audioPath);
 
-        // No-speech gate. Real-mic "silence" is faint room tone (mains hum + self-noise) at
-        // the SAME raw level as quiet speech, so a level-only gate rejected quiet/short
-        // utterances as "No speech detected." HighPassSilence judges SPECTRAL character
-        // instead: above SpeechFloor it's clearly broadband speech (passes, never regresses
-        // working dictation); in the quiet zone it passes only when the high-passed/raw ratio
-        // looks like speech, so hum/rumble/silence is still gated (whisper.cpp hallucinates
-        // "you"/"thank you"/"you're welcome." on it). See HighPassSilence + HighPassSilenceTests.
-        // TEMP diagnostic (2026-06-23): attach hp/raw RMS + ratio to the exception so the
-        // coordinator's DiagnosticLog shows the real mic spectrum behind a "No speech detected."
-        // Remove once the gate is confirmed tuned to David's mic.
+        // No-speech is decided by the MODEL, not by the signal level. whisper.cpp decodes
+        // even very quiet speech correctly (verified on-device down to rawRMS ≈ 0.001 —
+        // below David's real ≈0.004), and on genuine no-speech it emits a NON-SPEECH
+        // ANNOTATION ("[BLANK_AUDIO]", "[Music]", "(birds chirping)") — never a plausible
+        // sentence. So we DECODE first, then map an annotation-only transcript to empty.
+        //
+        // This REPLACES the old absolute-RMS/spectral HighPassSilence pre-gate, which
+        // rejected David's real quiet/short dictation: on his low-level mic his speech and
+        // his room hum sit at the SAME ≈0.004 raw RMS (and 0.08–0.12 spectral ratio), so no
+        // level/ratio floor can separate them — but whisper transcribes the one and
+        // annotates the other. The hp/raw RMS are kept ONLY as diagnostics in the
+        // empty-result message (so the log still records David's mic spectrum).
+        // See NonSpeechAnnotation + docs/superpowers/plans/2026-06-23-windows-nospeech-and-tail-fix.md.
         float hpRms = HighPassSilence.PeakHighPassRms(pcm);
         float rawRms = HighPassSilence.PeakWindowRms(pcm);
-        if (HighPassSilence.IsSilent(hpRms, rawRms))
-            throw TranscriptionException.EmptyTranscript(
-                $"silence-gated hpRms={hpRms:0.0000} rawRms={rawRms:0.0000} " +
-                $"ratio={(rawRms > 0 ? hpRms / rawRms : 0):0.00} " +
-                $"speechFloor={HighPassSilence.SpeechFloor:0.0000} hardFloor={HighPassSilence.HardFloor:0.0000} " +
-                $"ratioFloor={HighPassSilence.SpeechRatioFloor:0.00}");
 
         var factory = await LoadFactoryAsync(ct).ConfigureAwait(false);
         var vocabulary = await CurrentVocabularyAsync().ConfigureAwait(false);
@@ -205,14 +202,16 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         // Same decode-and-recover policy as Swift decodeRecoveringFromRegurgitation:
         // prompted decode; on regurgitation/empty, a prompt-free re-decode. One decode
         // path (DecodeSamplesAsync) serves both whole-file and chunk transcription.
-        string guarded = await RegurgitationRecovery.Decode(
+        // NonSpeechAnnotation.Reduce maps a whole-transcript annotation to "" (no-speech).
+        string guarded = NonSpeechAnnotation.Reduce(await RegurgitationRecovery.Decode(
             _useVocabularyPrompt,
             vocabulary,
-            usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false);
+            usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false));
 
         if (guarded.Length == 0)
             throw TranscriptionException.EmptyTranscript(
-                $"empty-decode peakRms={HighPassSilence.PeakWindowRms(pcm):0.0000}");
+                $"no-speech (model empty/annotation) hpRms={hpRms:0.0000} rawRms={rawRms:0.0000} " +
+                $"ratio={(rawRms > 0 ? hpRms / rawRms : 0):0.00}");
         return guarded;
     }
 
@@ -291,10 +290,12 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     {
         var factory = await LoadFactoryAsync(ct).ConfigureAwait(false);
         var vocabulary = await CurrentVocabularyAsync().ConfigureAwait(false);
-        return await RegurgitationRecovery.Decode(
+        // Reduce a whisper no-speech annotation chunk to "" — the streaming session treats
+        // an empty chunk decode as "fall back to whole-file" (lossless), never a silent drop.
+        return NonSpeechAnnotation.Reduce(await RegurgitationRecovery.Decode(
             _useVocabularyPrompt,
             vocabulary,
-            usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false);
+            usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false));
     }
 
     // ---- streaming session integration (Task 4) -----------------------------

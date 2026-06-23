@@ -1,5 +1,16 @@
 namespace JVoice.Core.Audio;
 
+/// SUPERSEDED AS A GATE (2026-06-23). This was an absolute-level/spectral no-speech gate,
+/// but on David's real low-level mic his quiet speech and his room hum sit at the SAME raw
+/// RMS (~0.004) and spectral ratio (0.08–0.12), so NO threshold here can separate them — it
+/// rejected real quiet/short dictation as "No speech detected." The no-speech decision now
+/// belongs to the MODEL: see <see cref="JVoice.Core.Text.NonSpeechAnnotation"/> (whisper.cpp
+/// transcribes quiet speech and emits an annotation on true silence). <see cref="IsSilent(float,float)"/>
+/// is NO LONGER WIRED as a gate; only <see cref="PeakHighPassRms"/> / <see cref="PeakWindowRms"/>
+/// are still used — to record David's mic spectrum in the diagnostic log. Kept (with its tests)
+/// for those metrics and as a documented dead-end so it is not re-wired.
+///
+/// --- original design notes (for the metrics' meaning) ---
 /// No-speech gate that tells a person speaking apart from room tone / mains hum / silence.
 ///
 /// whisper.cpp hallucinates a short phrase on near-silent audio ("you", "Thank you.",

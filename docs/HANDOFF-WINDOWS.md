@@ -59,12 +59,16 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   [path]`** renders the pill off-screen to a PNG (headless/CI, immune to a fullscreen game covering the
   overlay — the analog of `--settings-render`; `HudView.PrepareStaticCapture()` poses the bars). Build 0
   errors; `dotnet test` 412/412.
-- **Quiet/short dictation no longer wrongly "No speech detected"** (David-reported 2026-06-23 — see §7 #19):
-  real-mic room tone (mains hum) and quiet speech sit at the SAME raw RMS (~0.0044), so the raw-0.005 gate
-  rejected quiet speech. New `HighPassSilence` gates on high-passed (broadband) energy instead — hum is
-  crushed, speech survives. Validated end-to-end: a 0.0044-RMS quiet-speech clip the old gate rejected now
-  transcribes, while same-level mains hum stays gated. The engine was always fine (short synthesized clips
-  bench correctly); only the gate was over-aggressive.
+- **Quiet/short dictation transcribes, and sentence tails are no longer cut off** (David-reported
+  2026-06-23 — see §7 #21, which RETIRES the #15/#19/#20 gates). His real speech and room hum overlap in
+  BOTH level and spectral ratio, so no signal-level gate could separate them — every prior gate (tuned on
+  synthetic clips) rejected his real quiet/short sentences. **The no-speech decision now belongs to the
+  MODEL:** the whole-file engine decodes first, then `NonSpeechAnnotation.Reduce` maps whisper's no-speech
+  output (`[BLANK_AUDIO]`/`[Music]`/`(birds chirping)`) to empty ⇒ "No speech detected.", while real quiet
+  speech (verified on-device down to rawRMS ≈ 0.001) transcribes. **Bug #2 ("cuts off the last part"):**
+  the streaming session dropped his quiet *trailing clause* (it read as "silent" at his low level); it now
+  falls back to the lossless whole-file path instead of dropping the tail. Verified end-to-end (real engine):
+  silence/hum/noise → "No speech detected."; quiet speech at his levels → exact transcript. `dotnet test` 434/434.
 
 **What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
 the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
@@ -570,6 +574,48 @@ These are real corrections discovered during execution — preserve them.
       `bin\Release\net9.0-windows\JVoice.exe` / `bin\x64\Release\…`; both were rebuilt). Also observed in the
       bench: the runtime selected **Vulkan**, not CUDA, on his RTX 3060 Ti — unrelated to this bug, flagged
       for later.
+21. **No-speech gate RETIRED → model decides; + sentence tails no longer cut off (David-reported
+    2026-06-23, the FOURTH and final no-speech iteration; supersedes #15/#19/#20).** David still hit BOTH
+    "No speech detected." on short sentences AND "cuts off the last part of my sentences." His fresh
+    `diagnostic.log` settled it: a **real 3.32 s sentence** logged `silence-gated hpRms=0.0004 rawRms=0.0041
+    ratio=0.10` and a **1.78 s sentence** `ratio=0.08` — both gated by #20 (ratio < 0.20). #20's "speech
+    ratio ≈ 0.4–0.5" anchor was from **synthesized SAPI clips**; his real low-pitched voice + room hum sit
+    at ratio 0.08–0.12, *overlapping* hum. **No absolute level/ratio threshold can separate his speech from
+    his room tone** — every gate iteration (#15 raw, #19 hp, #20 ratio) was tuned on synthetic clips that
+    don't reproduce his real low-level, low-SNR mic. Meanwhile his 19 s/31 s clips transcribed *verbatim*,
+    proving the decoder was never the problem — only the gate.
+    - **On-device experiment (`windows/tools/nospeech-probe`, kept in the solution as a re-runnable harness):**
+      ran silence / 60 Hz hum / low-freq rumble / white noise / SAPI speech scaled peak 0.10→0.008 through
+      Whisper.net 1.9.1 (tiny), ±vocab prompt. **(a)** whisper decodes quiet speech correctly at EVERY level —
+      even peak 0.008 (rawRMS ≈ 0.001, *below* David's). **(b)** On genuine no-speech whisper emits a NON-SPEECH
+      ANNOTATION (`[BLANK_AUDIO]`, `[Music]`, `[Sigh]`, `(birds chirping)`) — never a plausible sentence. So
+      "did the user speak?" is answered by whisper's OUTPUT, not the signal level. `WithNoSpeechThreshold`
+      (`[EXPERIMENTAL]`) had no effect; not used. (This also revealed #15 was a **misdiagnosis** — whisper's
+      silence output was always a strippable annotation; the RMS gate was never needed.)
+    - **Fix — bug #1 (`WhisperNetTranscriptionEngine.TranscribeAsync`):** **removed the `HighPassSilence.IsSilent`
+      rejection.** Decode first; then **new `JVoice.Core/Text/NonSpeechAnnotation.Reduce`** maps a
+      whole-transcript annotation (`[...]`/`(...)`, any case, no real words outside the groups) to `""` ⇒ the
+      existing `EmptyTranscript` ⇒ "No speech detected." Level-independent. `HighPassSilence` is now
+      metrics-only (its `PeakHighPassRms`/`PeakWindowRms` still feed the diagnostic log; `IsSilent` is no
+      longer wired — class doc updated, tests kept).
+    - **Fix — bug #2 (`JVoice.Core/Audio/StreamingTranscriptionSession.Finish()`):** the streaming
+      `ChunkPlanner.IsSilent` (absolute 0.005 floor) dropped David's quiet **trailing clause** (his last words
+      read as "silent" at his level), so earlier chunks pasted but the tail was lost. The final tail judged
+      silent now **returns null → lossless whole-file fallback** (which re-decodes everything with the gate
+      gone) instead of being dropped. Normal-level users (loud tail) are unaffected; the never-silently-drop
+      invariant is preserved. `NonSpeechAnnotation.Reduce` is also applied to chunk decodes. **WINDOWS
+      DIVERGENCE from Swift** (mac mic is normal-level, so its silent-tail drop never misfires).
+    - **Verified:** `dotnet test` **434/434** (new `NonSpeechAnnotationTests`; `StreamingSessionTests` updated:
+      `SilentTail_ForcesWholeFileFallback_NotDropped` + `SubFloorQuietTail_ForcesWholeFileFallback` — both
+      RED before the fix). End-to-end via `whisper-smoke` (REAL engine, tiny): silence/hum/rumble/white-noise →
+      "No speech detected."; **quiet speech at peak 0.05/0.02/0.008 and 0.05+hum → exact transcript** ("Please
+      figure out this issue and fix the last part of my sentence."). Build 0 errors. Full design +
+      evidence: `docs/superpowers/plans/2026-06-23-windows-nospeech-and-tail-fix.md`.
+    - **Note:** the old TEMP `hpRms/rawRms` diagnostic on the no-speech exception is **kept** (now reads
+      `no-speech (model empty/annotation) hpRms=… rawRms=… ratio=…`) so David's mic spectrum is still logged.
+      Residual (minor, unchanged): a stray mixed-case `[Music]` *mid*-sentence isn't stripped (whole-transcript
+      only); and the WASAPI/​resampler stop drops ≤ ~one buffer period (~10–30 ms, sub-syllable) — neither is
+      David's reported bug.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;

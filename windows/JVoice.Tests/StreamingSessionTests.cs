@@ -208,10 +208,16 @@ public class StreamingSessionTests
         finally { File.Delete(path); }
     }
 
-    // A genuinely silent region is dropped (never transcribed) and must NOT fail the session;
-    // the speech still streams through. Mirrors Swift silentRegionIsDroppedNotTreatedAsDataLoss.
+    // A genuinely silent TAIL must not be silently dropped on the strength of an absolute
+    // RMS floor — at a low-level mic (David's, rawRMS≈0.004) the user's quiet trailing
+    // words read here too, and dropping them cuts off the end of the sentence (bug #2,
+    // 2026-06-23). The session now returns null so the caller re-covers the WHOLE recording
+    // losslessly via whole-file (where whisper authoritatively yields empty on true silence
+    // and full text on quiet speech). WINDOWS DIVERGENCE from Swift (mac mic is normal-level
+    // so its silent-tail drop never misfires); see docs HANDOFF-WINDOWS §7 and the
+    // 2026-06-23 no-speech/tail plan. Mid-recording silent-chunk dropping is unchanged.
     [Fact]
-    public async Task SilentRegion_IsDropped_NotDataLoss()
+    public async Task SilentTail_ForcesWholeFileFallback_NotDropped()
     {
         string path = WriteTemp(Concat(LoudN(19200), SilenceN(19200))); // 1.2 s speech + 1.2 s silence
         try
@@ -220,8 +226,29 @@ public class StreamingSessionTests
             session.Start(path);
             await Task.Delay(300);
             var result = await session.Finish();
-            Assert.NotNull(result);
-            Assert.Contains("speech", result!);
+            Assert.Null(result); // tail judged silent → defer to lossless whole-file fallback
+        }
+        finally { File.Delete(path); }
+    }
+
+    // David's exact bug #2: loud speech then a QUIET (sub-floor, NON-zero) trailing clause.
+    // The quiet tail (peak ≈0.003 < SilenceRmsFloor 0.005) must NOT be dropped-and-omitted;
+    // it forces the whole-file fallback (null) so the trailing words are never lost.
+    [Fact]
+    public async Task SubFloorQuietTail_ForcesWholeFileFallback()
+    {
+        // 1.2 s loud + 1.2 s quiet-speech-level audio (~|100|/32768 ≈ 0.003 rms, below the
+        // 0.005 floor — exactly how David's trailing words read on his low-level mic).
+        var quiet = new short[19200];
+        for (int i = 0; i < quiet.Length; i++) quiet[i] = (short)(i % 2 == 0 ? 100 : -100);
+        string path = WriteTemp(Concat(LoudN(19200), quiet));
+        try
+        {
+            var session = new StreamingTranscriptionSession(_ => Task.FromResult("speech"), FastCfg, FastPollMs);
+            session.Start(path);
+            await Task.Delay(300);
+            var result = await session.Finish();
+            Assert.Null(result); // never returns the loud part WITHOUT the quiet tail
         }
         finally { File.Delete(path); }
     }
