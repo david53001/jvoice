@@ -258,10 +258,19 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       spawned for any bad-arg run (process count unchanged).
 
 ### Tier 3 — headless-verifiable platform (review + throwaway-console harnesses; NO GUI/mic/paste E2E)
-- [ ] **NAudioRecorder** — `JVoice.App/Platform/NAudioRecorder.cs`. Orphan-WAV sweep correctness,
+- [x] **NAudioRecorder** — `JVoice.App/Platform/NAudioRecorder.cs`. Orphan-WAV sweep correctness,
       `BufferedWaveProvider.ReadFully=false` (no infinite flush loop), `IsUsableRecording` thresholds,
       growing-WAV header contract (16000/1/2) readable by `WavTailReader`. (Verify with a small console
       that drives the recorder logic where a mic isn't required; review the parts that need a device.)
+      — 2026-06-23 · throwaway sweep-probe (11 checks, all PASS) · **0 bugs**. The orphan-sweep glob
+      (`jvoice-*.wav`) is correctly scoped: matches `jvoice-<guid>.wav` (incl. the recorder's own
+      prefix+ext) and NEVER over-matches — `foo.wav`, `notjvoice-*.wav`, `jvoice-*.txt`, `settings.json`,
+      and crucially `jvoice-x.wavbak` / `jvoice-x.wav.old` are all excluded (.NET 9 has no legacy 8.3
+      `*.wav`→`*.wavXYZ` quirk). Code-review confirmed: `ReadFully=false` (the documented infinite-loop
+      fix), every failure path calls `TearDownLocked(deleteFile:true)` (a broken recording never orphans
+      a WAV), `IsUsableRecording` = Exists && Length>=1024 (try/catch→false), and the 16k/mono/16-bit
+      WaveFileWriter header (already proven readable by WavTailReader in Tier 1 + handoff §6). Mic
+      capture / permission probe need a device (David's dogfood); probe deleted (tree clean).
 - [ ] **SettingsStore / StatsStore / LastTranscriptStore** — `JVoice.App/Platform/*Store.cs`. Corruption→
       backup+reset, forward-version refusal, UTF-8 round-trip, debounced-write coalescing, concurrent-write safety.
 - [ ] **Paster** — `JVoice.App/Platform/Paster.cs`. Review the `INPUT`/`InputUnion` struct (sizeof==40 on
@@ -395,6 +404,10 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **NAudioRecorder orphan-sweep is correctly scoped** — `jvoice-*.wav` matches the recorder's own
+  files and never over-matches unrelated temp files (incl. the legacy `*.wav`→`*.wavXYZ` 8.3 quirk,
+  which .NET 9 doesn't exhibit); failure paths always delete the partial WAV (no orphan); `IsUsableRecording`
+  = Exists && Length>=1024. Verified by an 11-check temp-dir probe + code-review.
 - **MILESTONE — Tier 2 (engine) is fully audited (2026-06-23).** All 3 Tier-2 rows are `[x]`: the
   WhisperNet engine never crashes on adversarial audio, WhisperModelStore only ever exposes a complete
   (size+SHA-verified) model, and the bench/smoke CLI maps every arg edge to a defined exit code with no
