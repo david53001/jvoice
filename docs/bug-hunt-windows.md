@@ -20,11 +20,11 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **354** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
-  RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
-  SettingsStateJson + WhisperModelOption + HudState + HotkeyChord + StatsMath + CoordinatorDecisions +
-  BluetoothDevicePolicy + FileBackedTranscriptionEngine audits). As the hunt adds regression tests this
-  number only grows; it must never go down or go red.
+  now **355** after the full Tier 1 sweep (TextProcessor, PhoneticMatcher, VocabularyPrompt,
+  RepetitionGuard, RegurgitationRecovery, WavTail, ChunkPlanner, StreamingTranscriptionSession,
+  SettingsState, SettingsStateJson, WhisperModelOption, HudState, HotkeyChord, StatsMath,
+  CoordinatorDecisions, BluetoothDevicePolicy, FileBackedTranscriptionEngine, + the Swift-test parity
+  sweep). As the hunt adds regression tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -209,9 +209,20 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       file-missing / empty-transcript paths match; non-ASCII valid UTF-8 round-trips. (Minor remaining
       divergence: a read IO error is wrapped as UnsupportedAudioFile, where Swift propagates the raw
       error — kept as the safer fallback-engine behaviour; noted.)
-- [ ] **Swift-test parity sweep** — enumerate EVERY case in each `Tests/JVoiceTests/*.swift` brain test
+- [x] **Swift-test parity sweep** — enumerate EVERY case in each `Tests/JVoiceTests/*.swift` brain test
       and confirm a C# equivalent assertion exists. Any Swift vector with no C# counterpart = a coverage
       gap → add the C# test; if it fails, that's a port-fidelity bug → fix `JVoice.Core` to match Swift.
+      — 2026-06-23 · +1 test · **0 bugs (this firing)**. Brain (Core-testable) Swift test files all
+      confirmed covered: TextProcessorTests, PhoneticMatcherTests, VocabularyPromptTests,
+      RepetitionGuardTests, RegurgitationRecoveryTests (closed the last vector this firing — prompt-off
+      single decode receives `false`), WavTailTests, ChunkPlannerTests, StreamingTranscriptionSessionTests,
+      SettingsStateMigrationTests, WhisperModelOptionTests, LastTranscriptTests (extractCorrections part),
+      AudioInputRouterTests (pure non-BT pick = BluetoothDevicePolicy). The remaining Swift test files are
+      **App-bound** (JVoice.Tests net9.0 can't reference JVoice.App net9.0-windows) and map to later rows:
+      TranscriptionManagerTests + WhisperModelLocatorTests → Tier 2 (engine); MenuBarIconTests,
+      PasteManagerTests, PermissionErrorTests, RecordingManagerDelegate/Interruption,
+      VoiceCoordinatorHotkeyRaceTests, SettingsStoreCorruptionTests (store level),
+      LastTranscriptTests (store level) → Tier 3 (platform, throwaway-console verification).
 
 ### Tier 2 — engine + streaming on real audio (machine-verifiable via bench/smoke; needs Tiny model)
 - [ ] **WhisperNetTranscriptionEngine — adversarial WAVs** — `JVoice.App/Whisper/WhisperNetTranscriptionEngine.cs`.
@@ -362,6 +373,12 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **MILESTONE — Tier 1 (the pure brain) is fully audited (2026-06-23).** All 18 Tier-1 rows are `[x]`.
+  Every `JVoice.Core` component was compared line-by-line against its read-only Swift reference and the
+  Swift brain test vectors were ported; **5 real port-fidelity bugs were found and fixed** (#1
+  ExtractCorrections newline tokenization, #2 RepetitionGuard.Core alphanumerics, #3 WavTail chunk-size
+  Int32 overflow→throw, #4 StatsMath NaN guard, #5 FileBacked strict-UTF-8). The brain is byte-faithful
+  to Swift modulo the documented intentional deviations above. Next: Tier 2 (engine adversarial WAVs).
 - **RepetitionGuard C#↔Swift fidelity confirmed** — all 5 constants (MinLoopTokens=8, TailWindow=12,
   DensityThreshold=0.7, MinRepeatCount=3, NonLoopyTolerance=1), the 3-step strip pipeline, `IsDegenerate`,
   the `loopy()` predicate, the 68-word stopwords list (verbatim), `VocabularyCores` camelCase splitting,

@@ -123,6 +123,20 @@ public class RegurgitationRecoveryTests
         Assert.Equal("", result);
     }
 
+    // Swift promptDisabledDoesASinglePromptFreeDecode: the single decode receives usePrompt == false.
+    [Fact]
+    public async Task PromptDisabled_SingleDecode_ReceivesFalse()
+    {
+        bool? arg = null;
+        var result = await RegurgitationRecovery.Decode(false, Vocab, usePrompt =>
+        {
+            arg = usePrompt;
+            return Task.FromResult("plain decode result");
+        });
+        Assert.False(arg);
+        Assert.Equal("plain decode result", result);
+    }
+
     // A decode failure propagates (never swallowed) — both on the first decode and on recovery.
     [Fact]
     public async Task FirstDecodeThrows_Propagates()
