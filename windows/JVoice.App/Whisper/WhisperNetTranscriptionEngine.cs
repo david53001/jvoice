@@ -36,12 +36,6 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     private WhisperFactory? _factory;
     private Task<WhisperFactory>? _loadTask;
 
-    // The no-speech floor: the SAME tuned RMS threshold the streaming chunker uses to
-    // drop silent chunks (ChunkPlanner.Config defaults — peak 0.3 s-window RMS < 0.005).
-    // The whole-file decode is gated on it so a silent recording never reaches whisper.cpp
-    // (which hallucinates a short phrase on faint room tone) and never produces a paste.
-    private static readonly ChunkPlanner.Config SilenceConfig = new();
-
     public WhisperNetTranscriptionEngine(
         WhisperModelOption model,
         TranscriptionLanguage language,
@@ -185,19 +179,19 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         // mono 16-bit — exactly what both ChunkPlanner and whisper.cpp expect.
         short[] pcm = ReadWavPcm(audioPath);
 
-        // No-speech gate. Real-mic "silence" is faint room tone (mains hum + self-noise),
-        // NOT digital zero — and whisper.cpp hallucinates a short phrase on it ("you",
-        // "Thank you.", "(birds chirping)") that the brain's fixed blocklist can't strip
-        // without risking real words (reproduced on-device down to peak-window RMS ~0.0035).
-        // Gate on the SAME tuned floor the streaming chunker trusts to drop silent chunks:
-        // no speech energy → no transcript, so the coordinator says "No speech detected."
-        // instead of pasting a hallucination. Also skips a wasted decode on silence.
-        // TEMP diagnostic (2026-06-23): attach the peak-window RMS vs the silence floor to
-        // the exception so the coordinator's DiagnosticLog can trace a "No speech detected."
-        // on real speech back to a too-quiet mic. Remove once mic-level tuning is settled.
-        if (ChunkPlanner.IsSilent(pcm, SilenceConfig))
+        // No-speech gate. Real-mic "silence" is faint room tone (mains hum + self-noise) at
+        // the SAME raw level as quiet speech, so the old raw-RMS gate rejected quiet/short
+        // utterances as "No speech detected." HighPassSilence measures high-passed (broadband)
+        // energy instead: hum is crushed, speech survives — so quiet speech transcribes while
+        // true silence still never reaches whisper.cpp (which hallucinates "you"/"thank you"
+        // on it). See HighPassSilence + HighPassSilenceTests.
+        // TEMP diagnostic (2026-06-23): attach hp/raw RMS to the exception so the coordinator's
+        // DiagnosticLog shows the real mic level behind a "No speech detected." Remove once the
+        // floor is confirmed tuned to David's mic.
+        if (HighPassSilence.IsSilent(pcm))
             throw TranscriptionException.EmptyTranscript(
-                $"silence-gated peakRms={PeakWindowRms(pcm):0.0000} floor={SilenceConfig.SilenceRmsFloor:0.0000}");
+                $"silence-gated hpRms={HighPassSilence.PeakHighPassRms(pcm):0.0000} " +
+                $"floor={HighPassSilence.DefaultFloor:0.0000} rawRms={PeakWindowRms(pcm):0.0000}");
 
         var factory = await LoadFactoryAsync(ct).ConfigureAwait(false);
         var vocabulary = await CurrentVocabularyAsync().ConfigureAwait(false);

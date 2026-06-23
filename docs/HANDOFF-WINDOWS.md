@@ -19,8 +19,8 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **395 / 395 passing** (grew from 122 during
-  the bug-hunt, the no-speech fix, and the Corrections feature below).
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **402 / 402 passing** (grew from 122 during
+  the bug-hunt, the no-speech fix, the Corrections feature, and the high-pass silence gate below).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
 - **The GUI launches** to the system tray with the "J" icon + first-run Settings window
@@ -50,7 +50,14 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   The bars also **fix the HUD blur** David saw at his non-native 1600×1080 gaming resolution: solid shapes
   don't suffer the layered-window grayscale-AA softness the old small glowy text did, and the existing
   `DisplayMetrics.HudScale` still enlarges the pill by the resolution stretch ratio. Verified by screenshot
-  via `--hud-preview` / `--settings-render`. Build 0 errors; `dotnet test` still 395/395.
+  via `--hud-preview` / `--settings-render`. A **follow-up the same day** slimmed the pill (height ~halved,
+  baseline scale 1.1→1.0) per David's "too big/fat" feedback. Build 0 errors; `dotnet test` 402/402.
+- **Quiet/short dictation no longer wrongly "No speech detected"** (David-reported 2026-06-23 — see §7 #19):
+  real-mic room tone (mains hum) and quiet speech sit at the SAME raw RMS (~0.0044), so the raw-0.005 gate
+  rejected quiet speech. New `HighPassSilence` gates on high-passed (broadband) energy instead — hum is
+  crushed, speech survives. Validated end-to-end: a 0.0044-RMS quiet-speech clip the old gate rejected now
+  transcribes, while same-level mains hum stays gated. The engine was always fine (short synthesized clips
+  bench correctly); only the gate was over-aggressive.
 
 **What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
 the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
@@ -476,6 +483,31 @@ These are real corrections discovered during execution — preserve them.
     - **Verified:** `--hud-preview` screenshots of recording (lively centre-weighted bars), transcribing
       (sweep), error (white text); `--settings-render` PNG (all-monochrome panel). `dotnet build` 0 errors;
       `dotnet test` **395/395**. Live-mic bar reactivity + the on-desktop look are on David's dogfood checklist.
+19. **High-pass no-speech gate — quiet/short dictation stopped being rejected as "No speech detected"
+    (David-reported 2026-06-23, follow-up to #15).** After the redesign surfaced the *real* error text,
+    David saw "No speech detected." on short test utterances. Investigation (his `%APPDATA%\JVoice\
+    diagnostic.log` + local `--bench` repro) proved it was **not** the UI change and **not** the engine:
+    short synthesized speech clips (down to 1.27 s "Open") all transcribe correctly, and his own long
+    paragraphs worked. The failures were all recordings whose **peak RMS was below the 0.005 silence floor**
+    — i.e. the raw-RMS no-speech gate (#15) rejecting them. The catch: on real hardware, **mains-hum room
+    tone and quiet speech sit at the SAME raw RMS (~0.0044 measured)**, so no raw-RMS floor can separate
+    them (lowering it re-enables the #15 hallucination; keeping it rejects quiet speech).
+    - **Fix: `JVoice.Core/Audio/HighPassSilence.cs`** — gate on the **high-passed** (first-difference, ~0 at
+      DC, +6 dB/oct) peak 0.3 s-window RMS instead of raw RMS. Low-frequency hum is crushed to a few percent;
+      broadband speech survives. Validated on synthesized clips at equal raw level: room-tone hpRMS ≈ 0.0007,
+      quiet-speech hpRMS ≈ 0.0023, digital silence ≈ 0.0002, normal speech ≈ 0.02–0.08 → a floor of **0.0012**
+      gates hum/silence and passes quiet speech, far below normal speech (no regression).
+    - **Wiring:** `WhisperNetTranscriptionEngine.TranscribeAsync` now gates on `HighPassSilence.IsSilent(pcm)`
+      (replacing `ChunkPlanner.IsSilent` + the now-removed `SilenceConfig`). The streaming chunker still uses
+      `ChunkPlanner.IsSilent` (raw 0.005) for *which sub-chunk to drop* in long recordings — a uniformly-quiet
+      long recording just falls back to the whole-file high-pass gate, so it's covered; only a *mixed* loud/
+      quiet long recording could still drop a quiet passage (pre-existing, rare — noted, not fixed).
+    - **Verified end-to-end (`--bench --model large`):** the 0.0044-RMS quiet-speech clip the old gate rejected
+      now transcribes ("Hello world, this is a quick test."); same-level mains hum → `silence-gated hpRms=0.0007
+      floor=0.0012 rawRms=0.0045`; digital silence → gated; normal speech → transcribes. `HighPassSilenceTests`
+      (+7) lock the hum-vs-speech separation; `dotnet test` **402/402**, build 0 errors. A TEMP diagnostic
+      attaches `hpRms/rawRms` to the gated exception (logged by the coordinator) so the floor can be re-tuned
+      to David's mic from a real session if needed.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;

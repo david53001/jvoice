@@ -4,7 +4,7 @@ Manual verification that an autonomous/headless session **cannot** perform (it n
 interactive desktop, a microphone, keypresses, and human eyes). Run through this on the dev
 machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each item.
 
-> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 395/395 (the brain +
+> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 402/402 (the brain +
 > pure platform/coordinator helpers); `JVoice.exe --bench <wav>` proves on-device transcription
 > end-to-end (Phase 2). This list covers only the GUI + live-input paths.
 >
@@ -30,6 +30,7 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] The bars switch to a gentle left-right **shimmer while transcribing**, then the HUD **just disappears** — there is **no "Pasted"/Done confirmation** (silent success, by design).
 - [ ] The transcribed, tone-styled text is **pasted into the previously-focused app**, and your clipboard is restored to its prior contents after ~300ms.
 - [ ] **Click directly into a terminal (Windows Terminal / PowerShell / cmd), then dictate → text lands in that terminal.** Crucially, also test the terminal JVoice was *launched from* — the paste target is now resolved by process ownership of the live foreground (HANDOFF-WINDOWS §7), not a stale launch-time window handle, so dictating into the launching terminal no longer mis-fires.
+- [ ] **Quiet / short utterances register** (high-pass no-speech gate, HANDOFF §7 #19): say a short, fairly quiet word or phrase → it transcribes (it no longer wrongly shows "No speech detected" the way the old raw-RMS gate did). Pressing the hotkey and saying *nothing* still shows "No speech detected" (true silence/room-hum is still gated — no stray word pasted). If a genuinely-spoken phrase is still rejected, relaunch from a terminal so `%APPDATA%\JVoice\diagnostic.log` captures the `hpRms/rawRms` line and send it — the floor (`HighPassSilence.DefaultFloor`) can be nudged to your mic.
 - [ ] Mash the hotkey rapidly → it fires at most once per 150ms (debounce).
 - [ ] **Hotkey stays alive across many dictations / heavy GPU use** (the global hook is hardened: high-priority hook thread + a self-healing watchdog that re-installs the hook if Windows ever silently drops it — see HANDOFF-WINDOWS §7 #14). If it *ever* seems unresponsive, relaunch from a terminal with `set JVOICE_HOTKEY_LOG=1` (or `$env:JVOICE_HOTKEY_LOG='1'`) and reproduce — `%TEMP%\jvoice-hotkey.log` will show whether the hook received the key, matched, or re-armed. Send me that file.
 - [ ] First dictation after picking a not-yet-downloaded model shows the same **bar shimmer** while it downloads/prepares the model (no text/percentage — the redesign is text-free except errors), then proceeds.
