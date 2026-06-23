@@ -29,6 +29,7 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] Speak a sentence. Press **Ctrl+Shift+Space** again (or click the stop button).
 - [ ] HUD shows **Transcribing** (cyan) briefly, then **Done** (green check), then auto-dismisses (~1s).
 - [ ] The transcribed, tone-styled text is **pasted into the previously-focused app**, and your clipboard is restored to its prior contents after ~300ms.
+- [ ] **Click directly into a terminal (Windows Terminal / PowerShell / cmd), then dictate → text lands in that terminal.** Crucially, also test the terminal JVoice was *launched from* — the paste target is now resolved by process ownership of the live foreground (HANDOFF-WINDOWS §7), not a stale launch-time window handle, so dictating into the launching terminal no longer mis-fires.
 - [ ] Mash the hotkey rapidly → it fires at most once per 150ms (debounce).
 - [ ] **Hotkey stays alive across many dictations / heavy GPU use** (the global hook is hardened: high-priority hook thread + a self-healing watchdog that re-installs the hook if Windows ever silently drops it — see HANDOFF-WINDOWS §7 #14). If it *ever* seems unresponsive, relaunch from a terminal with `set JVOICE_HOTKEY_LOG=1` (or `$env:JVOICE_HOTKEY_LOG='1'`) and reproduce — `%TEMP%\jvoice-hotkey.log` will show whether the hook received the key, matched, or re-armed. Send me that file.
 - [ ] First dictation after picking a not-yet-downloaded model shows **Downloading Model** (purple, %) then **Preparing Model**, then proceeds.

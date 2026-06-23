@@ -6,25 +6,36 @@ namespace JVoice.Tests;
 
 public class CoordinatorDecisionsTests
 {
-    private static readonly IntPtr Self = new(1);
     private static readonly IntPtr AppA = new(2);
     private static readonly IntPtr AppB = new(3);
 
     [Fact]
     public void Resolve_UsesForeground_WhenNotSelf()
-        => Assert.Equal(AppA, CoordinatorDecisions.ResolveTargetWindow(AppA, Self, AppB));
+        => Assert.Equal(AppA, CoordinatorDecisions.ResolveTargetWindow(AppA, currentForegroundIsSelf: false, AppB));
 
     [Fact]
     public void Resolve_FallsBackToLastNonSelf_WhenForegroundIsSelf()
-        => Assert.Equal(AppB, CoordinatorDecisions.ResolveTargetWindow(Self, Self, AppB));
+        => Assert.Equal(AppB, CoordinatorDecisions.ResolveTargetWindow(AppA, currentForegroundIsSelf: true, AppB));
 
     [Fact]
     public void Resolve_FallsBackToLastNonSelf_WhenForegroundIsZero()
-        => Assert.Equal(AppB, CoordinatorDecisions.ResolveTargetWindow(IntPtr.Zero, Self, AppB));
+        => Assert.Equal(AppB, CoordinatorDecisions.ResolveTargetWindow(IntPtr.Zero, currentForegroundIsSelf: false, AppB));
 
     [Fact]
     public void Resolve_ReturnsZero_WhenNothingUsable()
-        => Assert.Equal(IntPtr.Zero, CoordinatorDecisions.ResolveTargetWindow(Self, Self, IntPtr.Zero));
+        => Assert.Equal(IntPtr.Zero, CoordinatorDecisions.ResolveTargetWindow(AppA, currentForegroundIsSelf: true, IntPtr.Zero));
+
+    // Regression for "it didn't paste where I clicked, especially in a terminal": the SAME handle
+    // value resolves differently based purely on whether it belongs to JVoice — proving the
+    // self-decision is by process OWNERSHIP, not handle identity. The old code snapshotted one HWND
+    // at launch and compared handles, so the terminal JVoice was launched from was mis-rejected as
+    // "self" and its (correct, live) foreground handle was thrown away in favour of a stale fallback.
+    [Theory]
+    [InlineData(false)] // a foreign foreground window IS the paste target
+    [InlineData(true)]  // our own window → fall back to the last non-self foreground
+    public void Resolve_SelfDecisionIsByOwnership_NotHandleIdentity(bool isSelf)
+        => Assert.Equal(isSelf ? AppB : AppA,
+            CoordinatorDecisions.ResolveTargetWindow(AppA, currentForegroundIsSelf: isSelf, AppB));
 
     [Theory]
     [InlineData(HudStateKind.Recording, TrayIconActivity.Recording)]
@@ -75,9 +86,9 @@ public class CoordinatorDecisionsTests
     // matches Swift's `resolvedTargetPID = lastNonSelfFrontmostPID`.
     [Fact]
     public void Resolve_DoesNotReCheckLastNonSelf_AgainstSelf()
-        => Assert.Equal(Self, CoordinatorDecisions.ResolveTargetWindow(Self, Self, Self));
+        => Assert.Equal(AppA, CoordinatorDecisions.ResolveTargetWindow(AppA, currentForegroundIsSelf: true, AppA));
 
     [Fact]
     public void Resolve_ForegroundEqualsLastNonSelf_ReturnsForeground()
-        => Assert.Equal(AppA, CoordinatorDecisions.ResolveTargetWindow(AppA, Self, AppA));
+        => Assert.Equal(AppA, CoordinatorDecisions.ResolveTargetWindow(AppA, currentForegroundIsSelf: false, AppA));
 }

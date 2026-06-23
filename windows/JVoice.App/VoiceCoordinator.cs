@@ -45,7 +45,6 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private StreamingTranscriptionSession? _streamingSession;
     private CancellationTokenSource? _transcriptionCts;
     private DispatcherTimer? _hudResetTimer;
-    private IntPtr _selfHwnd;
     private string[] _pendingRevertWords = [];
     private string _preFixTranscript = "";
 
@@ -182,7 +181,6 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     {
         NAudioRecorder.SweepOrphanedRecordings();
 
-        _selfHwnd = ForegroundWindowTracker.GetForegroundWindowNow();
         _foreground.Start();
 
         SystemActions.ErrorHandler = msg => _dispatcher.InvokeAsync(() => ShowError(msg));
@@ -469,8 +467,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         var session = _streamingSession;
         _streamingSession = null;
 
+        // The paste target is the live foreground window — unless it is one of OUR own
+        // windows (HUD/Settings), decided by process ownership, not a stale HWND snapshot.
+        // This is what makes "click a window, then dictate" land where the user clicked,
+        // including the terminal JVoice itself was launched from.
         IntPtr current = ForegroundWindowTracker.GetForegroundWindowNow();
-        IntPtr target = CoordinatorDecisions.ResolveTargetWindow(current, _selfHwnd, _foreground.LastForegroundWindow);
+        bool currentIsSelf = ForegroundWindowTracker.IsOwnedByCurrentProcess(current);
+        IntPtr target = CoordinatorDecisions.ResolveTargetWindow(current, currentIsSelf, _foreground.LastForegroundWindow);
 
         if (target == IntPtr.Zero)
         {

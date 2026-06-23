@@ -32,6 +32,11 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   nothing → faint room tone → whisper.cpp hallucinated a short phrase (`"you"`, `"(birds chirping)"`)
   that got pasted. The whole-file decode now gates on `ChunkPlanner.IsSilent` → silence shows
   **"No speech detected."** instead. Reproduced + fix verified on-device with Tiny.
+- **Paste now lands where you clicked, including in a terminal** (David-reported, fixed 2026-06-23 — see
+  §7 #16): the paste target was matched against a stale window handle snapshotted at launch (the terminal
+  JVoice was started from), so dictating into that terminal mis-fired. Target is now resolved by **process
+  ownership** of the live foreground (matching macOS `ownPID`), not a frozen HWND. Unit-verified
+  (383/383); live terminal path is on the dogfood checklist.
 
 **What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
 the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
@@ -360,6 +365,31 @@ These are real corrections discovered during execution — preserve them.
       (a loud fan, the 0.008 white-noise case) can still hallucinate a paren/lowercase sound-tag that
       slips past the brain. Catching that would need case-insensitive bracket/paren stripping in
       `StripDecoderArtifacts` — a Core/Swift-parity change, left for a deliberate brain edit.
+16. **Dictation pasted into the wrong place / nowhere, "especially in a terminal" (`CoordinatorDecisions.cs`
+    + `ForegroundWindowTracker.cs` + `VoiceCoordinator.cs`) — David reported "I click a box and speak and it
+    sometimes isn't pasted there, like it doesn't recognise that I clicked there."** Root cause: the paste
+    target was resolved by comparing the live foreground HWND against `_selfHwnd`, a **single window handle
+    snapshotted once in `Start()`** via `GetForegroundWindowNow()`. JVoice is a tray app with **no window of
+    its own at startup**, so that snapshot is just whatever app happened to be foreground when JVoice
+    launched — during dev/dogfooding, **the terminal it was launched from**. So whenever the user later
+    dictated *into that same terminal*, `current == _selfHwnd` made `ResolveTargetWindow` conclude "the
+    foreground is myself," throw away the correct live target, and fall back to `lastNonSelf` (often stale,
+    sometimes `Zero` → "No target app"). Intermittent because it only misfired for that one window; "terminal"
+    because that's what launches the app. The macOS source decides this by **process identity**
+    (`frontmost.processIdentifier != ownPID`, `VoiceCoordinator.swift:412-419`); the port had frozen it to one
+    HWND, which also fails to guard our *own* HUD/Settings windows (a real JVoice window wouldn't equal the
+    stale snapshot either).
+    - **Fix:** `ResolveTargetWindow(current, bool currentForegroundIsSelf, lastNonSelf)` now takes a
+      **boolean** the caller computes from process ownership — `ForegroundWindowTracker.IsOwnedByCurrentProcess`
+      (`GetWindowThreadProcessId(hwnd).pid == Environment.ProcessId`), the same primitive the tracker's
+      own self-filter already used. `_selfHwnd` and its `Start()` snapshot are deleted. Now the live foreground
+      is the paste target whenever it's a *foreign* window (exactly when the user clicked into it), and we fall
+      back to `lastNonSelf` only when the foreground is genuinely one of ours — robust regardless of how/where
+      JVoice was launched, and it also closes the HUD/Settings-as-target hole.
+    - **Verified:** new regression test `Resolve_SelfDecisionIsByOwnership_NotHandleIdentity` (same handle
+      resolves differently by ownership, not identity); all `ResolveTargetWindow` tests migrated to the bool
+      contract; `dotnet test` → **383/383**, solution builds 0 errors. Live "dictate into the launching
+      terminal" path is in the dogfood checklist (still needs David's interactive mic confirmation).
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;

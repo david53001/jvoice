@@ -10,10 +10,21 @@ public enum TrayIconActivity { Idle, Recording, Transcribing }
 public static class CoordinatorDecisions
 {
     /// Ports VoiceCoordinator.stopRecordingAndTranscribe's target resolution:
-    /// frontmost-if-not-self else last-non-self frontmost.
-    public static IntPtr ResolveTargetWindow(IntPtr currentForeground, IntPtr self, IntPtr lastNonSelf)
+    /// the live foreground window is the paste target *unless it belongs to JVoice
+    /// itself* (our HUD/Settings), in which case fall back to the last foreground
+    /// window that wasn't ours.
+    ///
+    /// `currentForegroundIsSelf` MUST be computed by the caller from process
+    /// ownership of the live foreground (Environment.ProcessId), mirroring the
+    /// macOS `frontmost.processIdentifier != ownPID` check — NOT by comparing the
+    /// handle against a single HWND snapshot taken at launch. JVoice is a tray app
+    /// with no window of its own at startup, so such a snapshot is just whatever app
+    /// was foreground when JVoice launched (e.g. the terminal it was launched from);
+    /// comparing against it silently mis-rejected real paste targets, which was the
+    /// cause of "it didn't paste where I clicked, especially in a terminal".
+    public static IntPtr ResolveTargetWindow(IntPtr currentForeground, bool currentForegroundIsSelf, IntPtr lastNonSelf)
     {
-        if (currentForeground != IntPtr.Zero && currentForeground != self)
+        if (currentForeground != IntPtr.Zero && !currentForegroundIsSelf)
             return currentForeground;
         return lastNonSelf; // may be Zero → caller surfaces "no target app"
     }

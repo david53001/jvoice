@@ -13,7 +13,6 @@ public sealed class ForegroundWindowTracker : IDisposable
     private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
     private const uint WINEVENT_SKIPOWNPROCESS = 0x0002;
 
-    private readonly uint _ownProcessId = (uint)Environment.ProcessId;
     private WinEventDelegate? _callback; // keep the delegate alive (GC would collect it)
     private IntPtr _hook = IntPtr.Zero;
 
@@ -48,6 +47,19 @@ public sealed class ForegroundWindowTracker : IDisposable
 
     public static IntPtr GetForegroundWindowNow() => GetForegroundWindow();
 
+    /// True when `hwnd` belongs to this (JVoice) process — i.e. it is our own
+    /// HUD/Settings window, never a paste target. Process-ownership check (the
+    /// Windows analog of the macOS `processIdentifier != ownPID` test), so it is
+    /// correct for *every* one of our windows and never goes stale — unlike a single
+    /// HWND captured at launch. Used by VoiceCoordinator to decide whether the live
+    /// foreground is "self" when resolving the paste target.
+    public static bool IsOwnedByCurrentProcess(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero) return false;
+        _ = GetWindowThreadProcessId(hwnd, out uint pid);
+        return pid == (uint)Environment.ProcessId;
+    }
+
     private void OnForegroundChanged(
         IntPtr hWinEventHook, uint eventType, IntPtr hwnd,
         int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
@@ -57,11 +69,7 @@ public sealed class ForegroundWindowTracker : IDisposable
         LastForegroundWindow = hwnd;
     }
 
-    private bool IsOwnWindow(IntPtr hwnd)
-    {
-        _ = GetWindowThreadProcessId(hwnd, out uint pid);
-        return pid == _ownProcessId;
-    }
+    private bool IsOwnWindow(IntPtr hwnd) => IsOwnedByCurrentProcess(hwnd);
 
     // P/Invoke
 
