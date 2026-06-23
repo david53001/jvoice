@@ -573,7 +573,17 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         }
         catch (TranscriptionException tex)
         {
-            await _dispatcher.InvokeAsync(() => ShowError(tex.Message));
+            // A silent/empty recording is "no speech", not a failure — surface the same
+            // "No speech detected." HUD the post-processing empty-result path uses (above),
+            // so "I didn't say anything" never looks like an error or pastes a hallucination.
+            if (tex.Kind == TranscriptionErrorKind.EmptyTranscript)
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    UpdateHud(HudState.Error("No speech detected."));
+                    ScheduleHudReset(AppTimings.HudResetDelay);
+                });
+            else
+                await _dispatcher.InvokeAsync(() => ShowError(tex.Message));
         }
         catch (OperationCanceledException)
         {

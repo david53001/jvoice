@@ -19,7 +19,8 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **122 / 122 passing**.
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **381 / 381 passing** (grew from 122 during
+  the bug-hunt + the no-speech fix below).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
 - **The GUI launches** to the system tray with the "J" icon + first-run Settings window
@@ -27,6 +28,10 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 - **The full dictation loop works:** hotkey → record (real mic) → transcribe (LargeTurbo on Vulkan) →
   paste into the focused app. Two paste bugs that made *every* transcription end in "Something Went
   Wrong" were found & fixed — see §7 #13. Verified by driving the real GUI with a synthetic hotkey.
+- **Silence no longer pastes a hallucination** (David-reported, fixed 2026-06-23 — see §7 #15): saying
+  nothing → faint room tone → whisper.cpp hallucinated a short phrase (`"you"`, `"(birds chirping)"`)
+  that got pasted. The whole-file decode now gates on `ChunkPlanner.IsSilent` → silence shows
+  **"No speech detected."** instead. Reproduced + fix verified on-device with Tiny.
 
 **What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
 the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
@@ -325,6 +330,36 @@ These are real corrections discovered during execution — preserve them.
       deterministically reproducible (this machine *skips*, not removes, on a >1 s stall), so this is
       hardening of the proven failure modes + a recovery path + a trace for next time, not a one-line bug.
       `dotnet test` still **122/122**; full solution builds 0 errors.
+15. **Silence pasted a whisper hallucination instead of saying "nothing heard" (`Whisper/
+    WhisperNetTranscriptionEngine.cs` + `VoiceCoordinator.cs`) — David reported "when I don't say
+    anything it defaults to pasting."** Root cause: real-mic "silence" is faint room tone (mains hum +
+    mic self-noise), NOT digital zero. The whole-file decode path ran whisper.cpp on it unconditionally,
+    and whisper hallucinates a short phrase on near-silence (`"you"`, `"Thank you."`, paren/lowercase
+    sound-tags like `"(birds chirping)"`). Those aren't in the brain's `RemoveWhisperHallucinations`
+    blocklist (and `"you"` *can't* be — it's a real word) nor caught by `StripDecoderArtifacts`
+    (uppercase-bracket only), so the hallucination survived post-processing as non-empty `processed`
+    and got pasted. The streaming path was already silence-safe (it only decodes non-silent chunks and
+    returns null on all-silence → whole-file fallback), so the gap was *only* the whole-file fallback.
+    - **Reproduced on-device (Tiny via `whisper-smoke`):** 60/120 Hz mains-hum room tone at peak-window
+      RMS **0.0035–0.0045 (below the 0.005 floor)** → `transcript: "(birds chirping)"` (exit 0, i.e. it
+      would paste). Synthetic Gaussian white noise was a poor proxy (only hallucinated *above* the floor)
+      — structured low-frequency hum is what reproduces the real-world case.
+    - **Fix:** `TranscribeAsync` now reads the PCM once and, before decoding, gates on
+      `ChunkPlanner.IsSilent(pcm, ChunkPlanner.Config())` — the **same** tuned `SilenceRmsFloor = 0.005`
+      the streaming chunker already trusts to drop silent chunks (so no new threshold to tune, and it
+      can't cut real speech: the verify-transcription harness proved that floor never drops speech).
+      Silence → `throw EmptyTranscript()` (skips a wasted decode too). `VoiceCoordinator`'s
+      `TranscriptionException` catch now maps `EmptyTranscript` → the existing **"No speech detected."**
+      HUD (same copy + `HudResetDelay` as the post-processing empty-result path), not the generic error.
+    - **Verified:** post-fix those hum clips → exit 1 (gated, "No speech detected." in-app); a real SAPI
+      speech clip still transcribes verbatim; above-floor audio (RMS ~0.008) is unchanged. Premise locked
+      by `ChunkPlannerTests.IsSilent_SubFloorRoomTone_IsTrue`. The Core "brain" was deliberately NOT
+      touched (it's 1:1 with Swift) — the gate lives in the Windows engine layer and reuses a Core
+      primitive. `dotnet test` → **381/381**; solution builds 0 errors.
+    - **Known follow-up (out of scope, not a regression):** non-speech audio *above* the 0.005 floor
+      (a loud fan, the 0.008 white-noise case) can still hallucinate a paren/lowercase sound-tag that
+      slips past the brain. Catching that would need case-insensitive bracket/paren stripping in
+      `StripDecoderArtifacts` — a Core/Swift-parity change, left for a deliberate brain edit.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;

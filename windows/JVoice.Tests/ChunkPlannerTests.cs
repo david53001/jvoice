@@ -115,6 +115,17 @@ public class ChunkPlannerTests
     public void IsSilent_QuietSpeechAboveFloor_IsFalse()
         => Assert.False(ChunkPlanner.IsSilent(Wave(3, 1600), Cfg)); // RMS ~0.049 >> 0.005 floor
 
+    // Real-mic "silence" is faint room tone (mains hum + self-noise), NOT digital zero,
+    // and whisper.cpp hallucinates a short phrase on it (observed on-device: low-level
+    // 60/120 Hz hum at peak-window RMS 0.0035–0.0045 → tiny model returns "(birds chirping)"
+    // — a phrase the brain's blocklist can't strip without risking real words). The fix in
+    // WhisperNetTranscriptionEngine gates the whole-file decode on this exact predicate, so
+    // sub-floor ambient must read as silent (RMS ~0.0045 here, just under the 0.005 floor —
+    // the loudest hallucinating level seen on-device).
+    [Fact]
+    public void IsSilent_SubFloorRoomTone_IsTrue()
+        => Assert.True(ChunkPlanner.IsSilent(Wave(3, 147), Cfg)); // RMS ~0.00449 < 0.005 floor
+
     // Non-overlapping RMS windows include the final partial window (Swift: windowRMSCoversPartialFinalWindow).
     [Fact]
     public void WindowRms_CoversPartialFinalWindow()

@@ -36,6 +36,12 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     private WhisperFactory? _factory;
     private Task<WhisperFactory>? _loadTask;
 
+    // The no-speech floor: the SAME tuned RMS threshold the streaming chunker uses to
+    // drop silent chunks (ChunkPlanner.Config defaults — peak 0.3 s-window RMS < 0.005).
+    // The whole-file decode is gated on it so a silent recording never reaches whisper.cpp
+    // (which hallucinates a short phrase on faint room tone) and never produces a paste.
+    private static readonly ChunkPlanner.Config SilenceConfig = new();
+
     public WhisperNetTranscriptionEngine(
         WhisperModelOption model,
         TranscriptionLanguage language,
@@ -175,31 +181,35 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         if (!File.Exists(audioPath))
             throw TranscriptionException.AudioFileMissing(audioPath);
 
+        // Read the PCM once (also validates the WAV). The recorder guarantees 16 kHz
+        // mono 16-bit — exactly what both ChunkPlanner and whisper.cpp expect.
+        short[] pcm = ReadWavPcm(audioPath);
+
+        // No-speech gate. Real-mic "silence" is faint room tone (mains hum + self-noise),
+        // NOT digital zero — and whisper.cpp hallucinates a short phrase on it ("you",
+        // "Thank you.", "(birds chirping)") that the brain's fixed blocklist can't strip
+        // without risking real words (reproduced on-device down to peak-window RMS ~0.0035).
+        // Gate on the SAME tuned floor the streaming chunker trusts to drop silent chunks:
+        // no speech energy → no transcript, so the coordinator says "No speech detected."
+        // instead of pasting a hallucination. Also skips a wasted decode on silence.
+        if (ChunkPlanner.IsSilent(pcm, SilenceConfig))
+            throw TranscriptionException.EmptyTranscript();
+
         var factory = await LoadFactoryAsync(ct).ConfigureAwait(false);
         var vocabulary = await CurrentVocabularyAsync().ConfigureAwait(false);
+        float[] samples = WavTail.FloatSamples(pcm);
 
         // Same decode-and-recover policy as Swift decodeRecoveringFromRegurgitation:
-        // prompted decode; on regurgitation/empty, a prompt-free re-decode.
+        // prompted decode; on regurgitation/empty, a prompt-free re-decode. One decode
+        // path (DecodeSamplesAsync) serves both whole-file and chunk transcription.
         string guarded = await RegurgitationRecovery.Decode(
             _useVocabularyPrompt,
             vocabulary,
-            usePrompt => DecodeFileAsync(audioPath, factory, usePrompt, ct)).ConfigureAwait(false);
+            usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false);
 
         if (guarded.Length == 0)
             throw TranscriptionException.EmptyTranscript();
         return guarded;
-    }
-
-    private Task<string> DecodeFileAsync(
-        string audioPath, WhisperFactory factory, bool usePrompt, CancellationToken ct)
-    {
-        // Decode the whole file by feeding its float samples to the processor, so
-        // there's one decode path (DecodeSamplesAsync) for both whole-file and chunks.
-        // The WAV is always 16 kHz mono 16-bit PCM (the recorder guarantees it), which
-        // is exactly what whisper.cpp wants. WhisperProcessor.ProcessAsync also accepts
-        // a Stream, but the float[] overload keeps the single shared implementation.
-        float[] samples = ReadWavAsFloatSamples(audioPath);
-        return DecodeSamplesAsync(samples, factory, usePrompt, ct);
     }
 
     // ---- the single shared sample decode ------------------------------------
@@ -255,16 +265,15 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             .WithTemperature(0.0f)
             .WithTemperatureInc(0.2f);
 
-    /// Read a 16 kHz mono 16-bit PCM WAV into normalized float samples.
-    /// The recorder (Phase 3) always writes this exact format. We reuse Core's
-    /// WavTail header parser + normalization so there is one WAV truth in the repo.
-    private static float[] ReadWavAsFloatSamples(string audioPath)
+    /// Read a 16 kHz mono 16-bit PCM WAV into raw samples. The recorder (Phase 3)
+    /// always writes this exact format. We reuse Core's WavTail header parser so there
+    /// is one WAV truth in the repo; callers normalize via WavTail.FloatSamples.
+    private static short[] ReadWavPcm(string audioPath)
     {
         var reader = WavTailReader.Open(audioPath)
             ?? throw TranscriptionException.UnsupportedAudioFile(audioPath);
-        short[] pcm = reader.Samples(0)
+        return reader.Samples(0)
             ?? throw TranscriptionException.UnsupportedAudioFile(audioPath);
-        return WavTail.FloatSamples(pcm);
     }
 
     // ---- chunk decode path (used by the streaming session, Task 4) ----------

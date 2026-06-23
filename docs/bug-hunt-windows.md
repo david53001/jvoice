@@ -248,6 +248,25 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       clean "Unsupported audio file"** (exit 1). NEVER crashed on any input. `JVoice.exe --bench` (x64
       build) bad-arg exit codes verified: no-wav→64, missing-file→66, bad-model→64 (short-circuit before
       model/WPF; 65/70 confirmed by code-review of BenchRunner). HARNESS GOTCHA logged below.
+      - **⚠️ 2026-06-23 follow-up — that "the brain's hallucination-stripping handles this downstream"
+        claim was WRONG (real bug, now FIXED).** The brain only strips UPPERCASE bracket sentinels
+        (`StripDecoderArtifacts` = `\[[A-Z_][A-Z_ ]*\]`) plus a small fixed phrase blocklist
+        (`RemoveWhisperHallucinations`). The silence hallucinations whisper.cpp actually emits —
+        `"you"`, lowercase/paren sound-tags like `"(engine revving)"` / `"(birds chirping)"` — are NOT
+        in either, so they survived and got **pasted**. David hit exactly this: "when I don't say
+        anything it defaults to pasting." Root cause: real-mic "silence" is faint room tone (mains
+        hum + self-noise), not digital zero, and the whole-file decode path ran whisper.cpp on it
+        unconditionally. Reproduced on-device with 60/120 Hz hum at peak-window RMS **0.0035–0.0045
+        (below the 0.005 floor)** → Tiny returned `"(birds chirping)"` (exit 0, would paste). **Fix:**
+        `WhisperNetTranscriptionEngine.TranscribeAsync` now gates the whole-file decode on
+        `ChunkPlanner.IsSilent` (the same tuned `SilenceRmsFloor = 0.005` the streaming chunker
+        already trusts) → silent recording throws `EmptyTranscript` → `VoiceCoordinator` shows
+        **"No speech detected."** (the existing empty-result HUD). Post-fix: those clips → exit 1
+        (gated); real speech still transcribes; above-floor audio (RMS ~0.008) unchanged. Locked by
+        `ChunkPlannerTests.IsSilent_SubFloorRoomTone_IsTrue`. NOTE: above-floor non-speech (loud fan,
+        the 0.008 white-noise case) is a *separate*, rarer scenario the brain's stripping still owns —
+        out of scope here (would need case-insensitive bracket/paren stripping; not changed because
+        the Core brain is locked 1:1 to Swift).
 - [x] **WhisperModelStore** — `JVoice.App/Whisper/WhisperModelStore.cs`. Verify size+SHA gate, atomic
       `.part`→final rename, no re-download when present, no `.part` leftovers, corrupt-file re-fetch.
       — 2026-06-23 · throwaway probe (11 checks, all PASS) · **0 bugs**. Verified with a temp-dir probe
