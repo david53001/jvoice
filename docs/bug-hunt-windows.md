@@ -20,10 +20,11 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **347** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  now **352** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
   RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
-  SettingsStateJson + WhisperModelOption + HudState + HotkeyChord + StatsMath + CoordinatorDecisions
-  audits). As the hunt adds regression tests this number only grows; it must never go down or go red.
+  SettingsStateJson + WhisperModelOption + HudState + HotkeyChord + StatsMath + CoordinatorDecisions +
+  BluetoothDevicePolicy audits). As the hunt adds regression tests this number only grows; it must
+  never go down or go red.
 
 ---
 
@@ -193,8 +194,14 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       preparing/downloading/transcribing→Transcribing; idle/done/error→Idle), HudResetDelayMs
       (Error=3000 via showError's 3 s, else 1000 default). Added all-kinds reset-delay, both-maps-
       defined-for-every-kind completeness, and the no-re-check / foreground==lastNonSelf resolve edges.
-- [ ] **BluetoothDevicePolicy** — `…/Audio/BluetoothDevicePolicy.cs` + `BluetoothDevicePolicyTests.cs`
+- [x] **BluetoothDevicePolicy** — `…/Audio/BluetoothDevicePolicy.cs` + `BluetoothDevicePolicyTests.cs`
       ← `…/Services/AudioInputRouter.swift` / `AudioInputRouterTests.swift` (pure non-BT pick policy)
+      — 2026-06-23 · +5 tests · **0 bugs**. Matches Swift `redirectTarget` 1:1 (default-not-BT→null,
+      filter non-BT, prefer built-in else first non-BT, empty→null). The `Id is {Length>0}` guard is the
+      idiomatic struct-`FirstOrDefault` "no built-in found" check (only differs from Swift for an empty
+      device id, which is unreachable). Added default-not-BT short-circuit edges, multiple-built-ins→
+      first, single-built-in, and a 400-case fuzz (a non-null pick is always a non-BT endpoint in the
+      list, only when default is BT, built-in preferred when present).
 - [ ] **FileBackedTranscriptionEngine** — `…/Transcription/FileBackedTranscriptionEngine.cs` + `FileBackedEngineTests.cs`
       ← `FileBackedTranscriptionEngine` in `…/Services/TranscriptionManager.swift`
 - [ ] **Swift-test parity sweep** — enumerate EVERY case in each `Tests/JVoiceTests/*.swift` brain test
