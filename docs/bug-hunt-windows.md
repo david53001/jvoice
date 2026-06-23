@@ -20,10 +20,10 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **269** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  now **307** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
   RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
-  SettingsStateJson + WhisperModelOption audits). As the hunt adds regression tests this number only
-  grows; it must never go down or go red.
+  SettingsStateJson + WhisperModelOption + HudState audits). As the hunt adds regression tests this
+  number only grows; it must never go down or go red.
 
 ---
 
@@ -53,6 +53,12 @@ choices (sources: `docs/HANDOFF-WINDOWS.md` §7, `docs/superpowers/plans/2026-06
 - **`SettingsState` record uses reference equality for `CustomWords`** (Swift's `Equatable` struct is
   value-equal). Immaterial: `SettingsStore.Update` always saves/notifies on every call and never compares
   `SettingsState` for equality, so record equality is never used for a correctness decision.
+- **HudState Windows UI presentation differs from macOS HUDState** (intentional): the per-kind
+  `Subtitle` copy is shorter Windows wording (e.g. Recording "Listening…" vs Swift "Capturing audio for
+  transcription."), and Swift's `systemImageName` (SF Symbols) + `accentRole` + `displayText` are
+  dropped — the Windows HUD renders MDL2 glyphs in `HudView` (handoff §7 #10). All behavioral semantics
+  (Headline / IsVisible / IsBusy / IsTerminal / Payload) match Swift; `DownloadingModel` is the
+  documented new kind. The exact subtitle copy is now test-locked so it can't silently drift.
 - **WhisperModelOption Windows UI text differs from macOS** (test-locked, intentional): `LargeTurbo`
   `DisplayName` is `"Large"` (vs Swift's `"Large v3 Turbo"`) and the `Guidance` strings cite Windows GGML
   download sizes. The whole `whisperKitModelName`/`whisperKitFolderName` (CoreML) concept is replaced by
@@ -162,7 +168,12 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       names never leak a raw id; legacy decode (`large-v3_turbo`/`large-v3-v20240930`→LargeTurbo) + the
       LargeTurbo JSON round-trip covered. Swift largeTurbo.displayName "Large v3 Turbo" → C# "Large" and
       the Guidance strings are deliberate, test-locked Windows UI wording (see deviation note).
-- [ ] **HudState** — `…/Models/HudState.cs` ← `…/Models/HUDState.swift` (+ `DownloadingModel` is new)
+- [x] **HudState** — `…/Models/HudState.cs` ← `…/Models/HUDState.swift` (+ `DownloadingModel` is new)
+      — 2026-06-23 · +38 tests (theories) · **0 bugs**. Behavioral semantics match Swift exactly:
+      Headline (6 Swift kinds + new DownloadingModel), IsVisible/IsBusy/IsTerminal per kind, Payload
+      (only Done/Error), Error empty-subtitle fallback. Locked structural invariants (every kind has a
+      headline; busy∩terminal=∅; visible ⟺ busy∨terminal). Subtitle copy + the dropped systemImageName/
+      accentRole/displayText are intentional Windows UI deviations (see note).
 - [ ] **HotkeyChord** — `…/Models/HotkeyChord.cs` + `HotkeyChordTests.cs` (Windows-only; parse/format/Default)
 - [ ] **StatsMath** — `…/StatsMath.cs` + `StatsMathTests.cs` ← WPM math in `…/Services/StatsStore.swift`
       (edge cases: 0 seconds, 0 words, overflow)
