@@ -20,10 +20,10 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **307** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  now **330** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
   RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
-  SettingsStateJson + WhisperModelOption + HudState audits). As the hunt adds regression tests this
-  number only grows; it must never go down or go red.
+  SettingsStateJson + WhisperModelOption + HudState + HotkeyChord audits). As the hunt adds regression
+  tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -174,7 +174,13 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       (only Done/Error), Error empty-subtitle fallback. Locked structural invariants (every kind has a
       headline; busy∩terminal=∅; visible ⟺ busy∨terminal). Subtitle copy + the dropped systemImageName/
       accentRole/displayText are intentional Windows UI deviations (see note).
-- [ ] **HotkeyChord** — `…/Models/HotkeyChord.cs` + `HotkeyChordTests.cs` (Windows-only; parse/format/Default)
+- [x] **HotkeyChord** — `…/Models/HotkeyChord.cs` + `HotkeyChordTests.cs` (Windows-only; parse/format/Default)
+      — 2026-06-23 · +23 tests · **0 bugs**. Windows-only value type (no Swift ref — macOS uses the
+      KeyboardShortcuts lib). Verified Default=Ctrl+Shift+Space, alias canonicalization (Ctrl/Control,
+      Win/Windows/Cmd, Esc/Escape, Enter/Return, Del/Delete, PgUp/PgDn), digit + function-key (F1=0x70..
+      F24=0x87; F0/F25 rejected), modifier ordering (Ctrl+Alt+Shift+Win), whitespace trimming, two-main-
+      keys + modifiers-only rejection, no-modifier validity, a 400-case round-trip identity fuzz
+      (TryParse(c.Format())==c), and a 400-case TryParse-never-throws-on-garbage fuzz.
 - [ ] **StatsMath** — `…/StatsMath.cs` + `StatsMathTests.cs` ← WPM math in `…/Services/StatsStore.swift`
       (edge cases: 0 seconds, 0 words, overflow)
 - [ ] **CoordinatorDecisions** — `…/CoordinatorDecisions.cs` + `CoordinatorDecisionsTests.cs`
@@ -306,6 +312,10 @@ _(none yet)_
 - **SettingsStateJson Serialize↔Deserialize is a faithful round-trip** — emits exactly the 6 Swift
   CodingKeys, writes enum names, JSON-special chars (`"`/`\`/tab/newline/unicode/empty) survive intact,
   and Serialize→Deserialize is an identity on all fields for any valid SettingsState — 400-case fuzz.
+- **HudState behavioral semantics match Swift** (Headline/IsVisible/IsBusy/IsTerminal/Payload per kind);
+  structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
+- **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
+  ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
 - **RepetitionGuard C#↔Swift fidelity confirmed** — all 5 constants (MinLoopTokens=8, TailWindow=12,
   DensityThreshold=0.7, MinRepeatCount=3, NonLoopyTolerance=1), the 3-step strip pipeline, `IsDegenerate`,
   the `loopy()` predicate, the 68-word stopwords list (verbatim), `VocabularyCores` camelCase splitting,
