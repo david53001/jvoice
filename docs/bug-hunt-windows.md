@@ -20,10 +20,10 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **337** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  now **347** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
   RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
-  SettingsStateJson + WhisperModelOption + HudState + HotkeyChord + StatsMath audits). As the hunt adds
-  regression tests this number only grows; it must never go down or go red.
+  SettingsStateJson + WhisperModelOption + HudState + HotkeyChord + StatsMath + CoordinatorDecisions
+  audits). As the hunt adds regression tests this number only grows; it must never go down or go red.
 
 ---
 
@@ -186,8 +186,13 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       — 2026-06-23 · +7 tests · **1 bug** (#4 NaN guard). Computation matches Swift 1:1. Fixed the guard
       to faithfully negate Swift's `guard totalSeconds > 0` (NaN → 0). Added 0-words, tiny-seconds,
       int.MaxValue no-overflow, ±Infinity edges.
-- [ ] **CoordinatorDecisions** — `…/CoordinatorDecisions.cs` + `CoordinatorDecisionsTests.cs`
+- [x] **CoordinatorDecisions** — `…/CoordinatorDecisions.cs` + `CoordinatorDecisionsTests.cs`
       ← decision logic in `…/VoiceCoordinator.swift` (target-window resolution, HUD→tray map, reset-delay map)
+      — 2026-06-23 · +10 tests · **0 bugs**. All 3 extractions match Swift: ResolveTargetWindow
+      (frontmost-if-not-self else lastNonSelf, no re-check), HudToTray (recording→Recording;
+      preparing/downloading/transcribing→Transcribing; idle/done/error→Idle), HudResetDelayMs
+      (Error=3000 via showError's 3 s, else 1000 default). Added all-kinds reset-delay, both-maps-
+      defined-for-every-kind completeness, and the no-re-check / foreground==lastNonSelf resolve edges.
 - [ ] **BluetoothDevicePolicy** — `…/Audio/BluetoothDevicePolicy.cs` + `BluetoothDevicePolicyTests.cs`
       ← `…/Services/AudioInputRouter.swift` / `AudioInputRouterTests.swift` (pure non-BT pick policy)
 - [ ] **FileBackedTranscriptionEngine** — `…/Transcription/FileBackedTranscriptionEngine.cs` + `FileBackedEngineTests.cs`

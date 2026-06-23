@@ -42,4 +42,42 @@ public class CoordinatorDecisionsTests
     [InlineData(HudStateKind.Error, 3000)]
     public void HudResetDelay(HudStateKind kind, int ms)
         => Assert.Equal(ms, CoordinatorDecisions.HudResetDelayMs(kind));
+
+    // Swift: only the error path (showError) uses the 3 s delay; every other reset uses the 1 s default.
+    [Theory]
+    [InlineData(HudStateKind.Idle, 1000)]
+    [InlineData(HudStateKind.Recording, 1000)]
+    [InlineData(HudStateKind.PreparingModel, 1000)]
+    [InlineData(HudStateKind.DownloadingModel, 1000)]
+    [InlineData(HudStateKind.Transcribing, 1000)]
+    [InlineData(HudStateKind.Done, 1000)]
+    [InlineData(HudStateKind.Error, 3000)]
+    public void HudResetDelay_AllKinds(HudStateKind kind, int ms)
+        => Assert.Equal(ms, CoordinatorDecisions.HudResetDelayMs(kind));
+
+    // Both maps are defined for every kind (never throw), and only the busy kinds map to a non-Idle tray.
+    [Fact]
+    public void HudToTray_And_ResetDelay_DefinedForEveryKind()
+    {
+        foreach (HudStateKind k in Enum.GetValues<HudStateKind>())
+        {
+            var tray = CoordinatorDecisions.HudToTray(k);
+            Assert.True(Enum.IsDefined(tray));
+            int ms = CoordinatorDecisions.HudResetDelayMs(k);
+            Assert.True(ms is 1000 or 3000);
+            bool busy = k is HudStateKind.Recording or HudStateKind.PreparingModel
+                or HudStateKind.DownloadingModel or HudStateKind.Transcribing;
+            Assert.Equal(busy, tray != TrayIconActivity.Idle);
+        }
+    }
+
+    // The function trusts the caller's contract that lastNonSelf is already non-self (no re-check) —
+    // matches Swift's `resolvedTargetPID = lastNonSelfFrontmostPID`.
+    [Fact]
+    public void Resolve_DoesNotReCheckLastNonSelf_AgainstSelf()
+        => Assert.Equal(Self, CoordinatorDecisions.ResolveTargetWindow(Self, Self, Self));
+
+    [Fact]
+    public void Resolve_ForegroundEqualsLastNonSelf_ReturnsForeground()
+        => Assert.Equal(AppA, CoordinatorDecisions.ResolveTargetWindow(AppA, Self, AppA));
 }
