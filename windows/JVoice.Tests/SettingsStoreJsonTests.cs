@@ -15,7 +15,8 @@ public class SettingsStoreJsonTests
             Model: WhisperModelOption.LargeTurbo,
             Language: TranscriptionLanguage.Romanian,
             CustomWords: new[] { "JVoice", "Li-Fraumeni" },
-            RemoveFillerWords: false);
+            RemoveFillerWords: false,
+            Corrections: new[] { new CorrectionRule("web api", "web app") });
 
         string json = SettingsStateJson.Serialize(original);
         var back = SettingsStateJson.Deserialize(json);
@@ -25,6 +26,7 @@ public class SettingsStoreJsonTests
         Assert.Equal(original.Language, back.Language);
         Assert.Equal(original.CustomWords, back.CustomWords);
         Assert.Equal(original.RemoveFillerWords, back.RemoveFillerWords);
+        Assert.Equal(original.Corrections, back.Corrections);
         Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
     }
 
@@ -106,15 +108,17 @@ public class SettingsStoreJsonTests
 
     // ===== Serialize-side fidelity + round-trip fuzz =====
 
-    // Swift's CodingKeys are schemaVersion/mode/model/language/customWords/removeFillerWords - the
-    // C# Serialize must emit exactly those six keys (the on-disk contract).
+    // Swift's CodingKeys are schemaVersion/mode/model/language/customWords/removeFillerWords. The
+    // Windows port adds one extra on-disk key, `corrections` (a Windows-only feature with no macOS
+    // counterpart) — so Serialize emits exactly those seven keys. Older builds / the macOS app simply
+    // ignore the unknown `corrections` key on read; Deserialize tolerates its absence.
     [Fact]
-    public void Serialize_EmitsExactlyTheSixSwiftKeys()
+    public void Serialize_EmitsExactlyTheSevenKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "customWords", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
+            new[] { "corrections", "customWords", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
             keys);
     }
 
@@ -159,13 +163,19 @@ public class SettingsStoreJsonTests
             int wc = rng.Next(0, 6);
             var words = new string[wc];
             for (int w = 0; w < wc; w++) words[w] = RandomWord(rng);
+            int cc = rng.Next(0, 4);
+            var corrections = new CorrectionRule[cc];
+            for (int c = 0; c < cc; c++)
+                corrections[c] = new CorrectionRule(RandomWord(rng), RandomWord(rng));
+
             var state = new SettingsState(
                 SchemaVersion: SettingsState.CurrentSchemaVersion,
                 Mode: modes[rng.Next(modes.Length)],
                 Model: models[rng.Next(models.Length)],
                 Language: langs[rng.Next(langs.Length)],
                 CustomWords: words,
-                RemoveFillerWords: rng.Next(2) == 0);
+                RemoveFillerWords: rng.Next(2) == 0,
+                Corrections: corrections);
 
             var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(state));
             Assert.Equal(state.Mode, back.Mode);
@@ -173,8 +183,63 @@ public class SettingsStoreJsonTests
             Assert.Equal(state.Language, back.Language);
             Assert.Equal(state.CustomWords, back.CustomWords);
             Assert.Equal(state.RemoveFillerWords, back.RemoveFillerWords);
+            Assert.Equal(state.Corrections, back.Corrections);
             Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
         }
+    }
+
+    // ===== corrections field (Windows-only) =====
+
+    [Fact]
+    public void RoundTrip_CorrectionsWithSpecialChars()
+    {
+        var state = SettingsState.Default with
+        {
+            Corrections = new[]
+            {
+                new CorrectionRule("web api", "web app"),
+                new CorrectionRule("a\"b\\c", "d\te\nf"),
+                new CorrectionRule("é", "unicode"),
+            },
+        };
+        var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(state));
+        Assert.Equal(state.Corrections, back.Corrections);
+    }
+
+    [Fact]
+    public void Deserialize_MissingCorrections_DefaultsToEmpty()
+    {
+        // Older build / macOS file with no `corrections` key.
+        var s = SettingsStateJson.Deserialize(
+            """{ "schemaVersion": 1, "mode": "Casual", "customWords": ["X"] }""");
+        Assert.Empty(s.Corrections);
+        Assert.Equal(new[] { "X" }, s.CustomWords);
+    }
+
+    [Fact]
+    public void Deserialize_MalformedCorrectionEntries_AreSkipped()
+    {
+        // Non-object entries, and objects missing a string from/to, are dropped;
+        // only the well-formed pair survives.
+        string json = """
+            { "corrections": [
+                { "from": "web api", "to": "web app" },
+                { "from": "missing-to" },
+                { "to": "missing-from" },
+                { "from": 5, "to": "wrongtype" },
+                "not-an-object",
+                42
+            ] }
+            """;
+        var s = SettingsStateJson.Deserialize(json);
+        Assert.Equal(new[] { new CorrectionRule("web api", "web app") }, s.Corrections);
+    }
+
+    [Fact]
+    public void Deserialize_CorrectionsWrongType_DefaultsToEmpty()
+    {
+        var s = SettingsStateJson.Deserialize("""{ "corrections": "not-an-array" }""");
+        Assert.Empty(s.Corrections);
     }
 
     private static string RandomWord(Random rng)

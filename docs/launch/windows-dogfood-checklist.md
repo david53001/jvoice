@@ -41,12 +41,13 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] Crisp on a high-DPI monitor; positioned correctly on a secondary monitor's primary work area.
 
 ## Settings panel (320×520, dark)
-- [ ] Header "JVoice" + "Voice dictation controls". 9 sections in order: Last Transcript, Keyboard Shortcut, Language, Voice Style, Processing, Whisper Model, Custom Words, Stats, footer (Restore/Quit).
+- [ ] Header "JVoice" + "Voice dictation controls". 10 sections in order: Last Transcript, Keyboard Shortcut, Language, Voice Style, Processing, Whisper Model, Custom Words, Corrections, Stats, footer (Restore/Quit).
 - [ ] Each section card matches the dark tokens (accent dot + UPPERCASED title + divider).
 - [ ] **Keyboard Shortcut:** the recorder shows "Ctrl+Shift+Space"; click it, press a new chord → it updates and the new chord triggers dictation (old one no longer does). Backspace resets to default; Esc cancels.
 - [ ] **Language / Voice Style / Whisper Model:** segmented pickers select correctly and persist (close + relaunch → choice retained).
 - [ ] **Processing:** the teal switch toggles Remove Filler Words; "um/uh/er" disappear from output when on.
 - [ ] **Custom Words:** type a word + Enter (or Add) → it appears in the list and biases transcription; the × removes it.
+- [ ] **Corrections (pink):** add a rule From `web api` → To `web app` (Enter in either box or Add) → it appears as "web api → web app"; the × removes it; choice persists across relaunch. Then dictate so the recognizer produces "web api" → the pasted text reads "web app", while a separate "REST API" dictation stays "REST API" (the phrase rule doesn't touch standalone API). Blank/duplicate input is ignored (no row added).
 - [ ] **Last Transcript:** edit the box, **Fix** → new words become custom words; **Revert** undoes the fix + removes those words.
 - [ ] **Stats:** total words + avg WPM update after a dictation.
 - [ ] **Restore Default Settings** → confirm dialog → settings reset (stats untouched). **Quit JVoice** → tray icon disappears, process exits.

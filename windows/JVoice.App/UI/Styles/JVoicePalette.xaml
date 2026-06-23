@@ -31,6 +31,7 @@
     <SolidColorBrush x:Key="Settings.Green"      Color="#FF4ADEA0" />
     <SolidColorBrush x:Key="Settings.Teal"       Color="#FF20C0A0" />
     <SolidColorBrush x:Key="Settings.Red"        Color="#FFFF6060" />
+    <SolidColorBrush x:Key="Settings.Pink"       Color="#FFFF7AB0" />
 
     <!-- White-with-opacity text brushes (SwiftUI Color(white:x)) -->
     <SolidColorBrush x:Key="Text.W85" Color="#FFD9D9D9" />

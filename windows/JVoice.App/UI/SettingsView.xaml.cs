@@ -40,10 +40,32 @@ public partial class SettingsView : UserControl
             Vm.RemoveCustomWord(word);
     }
 
+    private void OnAddCorrection(object sender, RoutedEventArgs e) => SubmitCorrection();
+    private void OnCorrectionKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { SubmitCorrection(); e.Handled = true; }
+    }
+    private void SubmitCorrection()
+    {
+        // Clear only on a successful add (AddCorrection ignores blank/duplicate input).
+        if (Vm.AddCorrection(CorrectionFromBox.Text, CorrectionToBox.Text))
+        {
+            CorrectionFromBox.Clear();
+            CorrectionToBox.Clear();
+            CorrectionFromBox.Focus();
+        }
+    }
+
+    private void OnRemoveCorrection(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is JVoice.Core.Models.CorrectionRule rule)
+            Vm.RemoveCorrection(rule);
+    }
+
     private void OnRestoreDefaults(object sender, RoutedEventArgs e)
     {
         var r = MessageBox.Show(
-            "Your custom words, model choice, and language will be restored to defaults. Recording statistics will not be affected.",
+            "Your custom words, corrections, model choice, and language will be restored to defaults. Recording statistics will not be affected.",
             "Reset all JVoice settings to defaults?",
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (r == MessageBoxResult.OK) Vm.ResetSettings();

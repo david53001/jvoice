@@ -149,6 +149,58 @@
                 
             </ui:DarkSection>
 
+            <!-- 7b. CORRECTIONS (pink) -->
+            <ui:DarkSection HeaderText="Corrections" AccentBrush="{StaticResource Settings.Pink}">
+
+                    <StackPanel>
+                        <TextBlock FontSize="10" Foreground="{StaticResource Text.W38}" TextWrapping="Wrap"
+                                   Margin="0,0,0,8"
+                                   Text="Replace a misheard word or phrase in the final text. Tip: use the whole phrase (e.g. &quot;web api&quot; &#x2192; &quot;web app&quot;) so other uses of the word (like &quot;REST API&quot;) stay untouched." />
+                        <TextBlock Text="No corrections added." FontSize="11" Foreground="{StaticResource Text.W40}"
+                                   Visibility="{Binding HasCorrections, Converter={StaticResource InverseBoolToVis}}" />
+                        <ScrollViewer MaxHeight="88" VerticalScrollBarVisibility="Auto"
+                                      Visibility="{Binding HasCorrections, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl ItemsSource="{Binding Corrections}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding From}" FontSize="11" Foreground="{StaticResource Text.W75}" />
+                                                <TextBlock Text="&#x2192;" FontSize="11" Foreground="{StaticResource Text.W40}" Margin="6,0,6,0" />
+                                                <TextBlock Text="{Binding To}" FontSize="11" Foreground="{StaticResource Settings.Pink}" />
+                                            </StackPanel>
+                                            <Button HorizontalAlignment="Right" Style="{StaticResource PressableButton}"
+                                                    Click="OnRemoveCorrection" Tag="{Binding}"
+                                                    FontFamily="Segoe MDL2 Assets" Content="&#xECC9;"
+                                                    Foreground="#CCFF6060" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                            <Border CornerRadius="6" Background="{StaticResource Settings.InputBg}"
+                                    BorderBrush="{StaticResource Settings.Border}" BorderThickness="1" Width="100">
+                                <TextBox x:Name="CorrectionFromBox" Background="Transparent" BorderThickness="0"
+                                         Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                         KeyDown="OnCorrectionKeyDown" />
+                            </Border>
+                            <TextBlock Text="&#x2192;" FontSize="12" Foreground="{StaticResource Text.W40}"
+                                       VerticalAlignment="Center" Margin="6,0,6,0" />
+                            <Border CornerRadius="6" Background="{StaticResource Settings.InputBg}"
+                                    BorderBrush="{StaticResource Settings.Border}" BorderThickness="1" Width="100">
+                                <TextBox x:Name="CorrectionToBox" Background="Transparent" BorderThickness="0"
+                                         Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                         KeyDown="OnCorrectionKeyDown" />
+                            </Border>
+                            <Button Content="Add" Style="{StaticResource DarkPrimaryButton}" Margin="6,0,0,0"
+                                    Foreground="{StaticResource Settings.Pink}" Tag="{StaticResource Settings.Pink}"
+                                    Click="OnAddCorrection" />
+                        </StackPanel>
+                    </StackPanel>
+
+            </ui:DarkSection>
+
             <!-- 8. STATS (green) -->
             <ui:DarkSection HeaderText="Stats" AccentBrush="{StaticResource Settings.Green}">
                 

@@ -40,6 +40,9 @@ public static class SettingsStateJson
             language = state.Language.ToString(),
             customWords = state.CustomWords,
             removeFillerWords = state.RemoveFillerWords,
+            // Windows-only field (no macOS counterpart). Absent in files written by
+            // older builds / the macOS app; ParseCorrections falls back to empty.
+            corrections = state.Corrections.Select(c => new { from = c.From, to = c.To }),
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -65,7 +68,8 @@ public static class SettingsStateJson
             Model: ParseModel(TryGetString(root, "model")),
             Language: ParseLanguage(TryGetString(root, "language")),
             CustomWords: ParseCustomWords(root),
-            RemoveFillerWords: TryGetBool(root, "removeFillerWords") ?? true);
+            RemoveFillerWords: TryGetBool(root, "removeFillerWords") ?? true,
+            Corrections: ParseCorrections(root));
     }
 
     // field parsers (each falls back to the field default)
@@ -109,6 +113,25 @@ public static class SettingsStateJson
         foreach (var el in arr.EnumerateArray())
             if (el.ValueKind == JsonValueKind.String && el.GetString() is { } s)
                 list.Add(s);
+        return list;
+    }
+
+    /// Parses the Windows-only `corrections` array: a list of `{ "from", "to" }`
+    /// objects. Absent / wrong-typed array => empty. Individual entries missing a
+    /// string `from` or `to` are skipped (per-field-fallback philosophy), never throwing.
+    private static IReadOnlyList<CorrectionRule> ParseCorrections(JsonElement root)
+    {
+        if (!root.TryGetProperty("corrections", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return Array.Empty<CorrectionRule>();
+        var list = new List<CorrectionRule>();
+        foreach (var el in arr.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            string? from = TryGetString(el, "from");
+            string? to = TryGetString(el, "to");
+            if (from is null || to is null) continue;
+            list.Add(new CorrectionRule(from, to));
+        }
         return list;
     }
 

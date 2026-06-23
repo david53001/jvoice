@@ -16,6 +16,7 @@ public class SettingsStateTests
         Assert.Equal(TranscriptionLanguage.English, s.Language);
         Assert.Empty(s.CustomWords);
         Assert.True(s.RemoveFillerWords);
+        Assert.Empty(s.Corrections);
     }
 
     [Fact]

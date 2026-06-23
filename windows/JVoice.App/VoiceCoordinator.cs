@@ -57,6 +57,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _whisperModel = s.Model;
         _language = s.Language;
         CustomWords = new ObservableCollection<string>(s.CustomWords);
+        Corrections = new ObservableCollection<CorrectionRule>(s.Corrections);
         _removeFillerWords = s.RemoveFillerWords;
         _hotkeyChord = HotkeyChord.Default;
         _totalWordsSpoken = _statsStore.TotalWords;
@@ -119,6 +120,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     public ObservableCollection<string> CustomWords { get; }
 
+    /// User-defined post-processing corrections ("heard phrase" → replacement).
+    /// Unlike CustomWords these don't touch the decoder/vocabulary — they are applied
+    /// to the final text in the transcription path (see ProcessAndPaste), so adding or
+    /// removing one just persists; no engine reload.
+    public ObservableCollection<CorrectionRule> Corrections { get; }
+
     private HotkeyChord _hotkeyChord;
     public HotkeyChord Hotkey => _hotkeyChord;
 
@@ -157,6 +164,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     // ---- derived flags for the segmented pickers + visibility binders ----
     public bool HasTranscript => !string.IsNullOrEmpty(LastTranscript);
     public bool HasCustomWords => CustomWords.Count > 0;
+    public bool HasCorrections => Corrections.Count > 0;
     public bool CanFix => EditedTranscript.Trim() != LastTranscript.Trim();
     public string ModelGuidance => WhisperModel.Guidance();
 
@@ -279,6 +287,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             Language = _language,
             CustomWords = CustomWords.ToList(),
             RemoveFillerWords = _removeFillerWords,
+            Corrections = Corrections.ToList(),
         });
     }
 
@@ -294,11 +303,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         Language = s.Language;
         CustomWords.Clear();
         foreach (var w in s.CustomWords) CustomWords.Add(w);
+        Corrections.Clear();
+        foreach (var c in s.Corrections) Corrections.Add(c);
         RemoveFillerWords = s.RemoveFillerWords;
         _isInitializing = false;
         _settingsStore.Flush();
         RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags();
-        Raise(nameof(RemoveFillerWords)); Raise(nameof(HasCustomWords)); Raise(nameof(ModelGuidance));
+        Raise(nameof(RemoveFillerWords)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(ModelGuidance));
         _engine = MakeEngine(_whisperModel, _language, CustomWords.ToList());
         _ = _engine.PrewarmAsync();
     }
@@ -321,6 +332,29 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         Raise(nameof(HasCustomWords));
         PersistSettings();
         _ = _engine.UpdateVocabularyAsync(CustomWords.ToList());
+    }
+
+    /// Adds a correction rule. Returns false (no-op) when either field is blank or a
+    /// rule with the same heard phrase (case-insensitive) already exists.
+    public bool AddCorrection(string from, string to)
+    {
+        var f = from.Trim();
+        var t = to.Trim();
+        if (f.Length == 0 || t.Length == 0) return false;
+        // Dedupe on the heard phrase (case-insensitive) — same key as the merge.
+        if (Corrections.Any(c => string.Equals(c.From.Trim(), f, StringComparison.OrdinalIgnoreCase))) return false;
+        Corrections.Add(new CorrectionRule(f, t));
+        Raise(nameof(HasCorrections));
+        PersistSettings();
+        // Post-processing only: no engine/vocabulary reload needed.
+        return true;
+    }
+
+    public void RemoveCorrection(CorrectionRule rule)
+    {
+        if (!Corrections.Remove(rule)) return;
+        Raise(nameof(HasCorrections));
+        PersistSettings();
     }
 
     public void SyncEditedTranscriptFromLast() => EditedTranscript = LastTranscript;
@@ -533,8 +567,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
             var vocab = CustomWords.ToList();
             var userDict = TextProcessor.BuildUserDictionary(vocab);
+            var extraDict = UserCorrections.Merge(userDict, Corrections.ToList());
             string processed = TextProcessor.RemoveWhisperHallucinations(
-                TextProcessor.Process(transcript, _toneMode, userDict, _removeFillerWords, vocab));
+                TextProcessor.Process(transcript, _toneMode, extraDict, _removeFillerWords, vocab));
 
             if (string.IsNullOrEmpty(processed))
             {

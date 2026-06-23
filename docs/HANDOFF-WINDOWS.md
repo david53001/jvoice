@@ -19,8 +19,8 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **381 / 381 passing** (grew from 122 during
-  the bug-hunt + the no-speech fix below).
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **395 / 395 passing** (grew from 122 during
+  the bug-hunt, the no-speech fix, and the Corrections feature below).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
 - **The GUI launches** to the system tray with the "J" icon + first-run Settings window
@@ -37,6 +37,11 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   JVoice was started from), so dictating into that terminal mis-fired. Target is now resolved by **process
   ownership** of the live foreground (matching macOS `ownPID`), not a frozen HWND. Unit-verified
   (383/383); live terminal path is on the dogfood checklist.
+- **User-editable "Corrections" list** (David-requested, 2026-06-23 — see §7 #17): a Windows-only Settings
+  section of opt-in `heard phrase → replacement` rules for systematic recognizer mishearings (David's case:
+  "web app" → "web api"). Applied in post-processing via `TextProcessor`'s existing `extraDictionary`
+  (the brain is untouched / still 1:1 with Swift). Recommended as a *phrase* (`web api → web app`) so
+  legitimate standalone "API" stays intact. Unit-verified (395/395); UI visuals on the dogfood checklist.
 
 **What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
 the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
@@ -390,6 +395,33 @@ These are real corrections discovered during execution — preserve them.
       resolves differently by ownership, not identity); all `ResolveTargetWindow` tests migrated to the bool
       contract; `dotnet test` → **383/383**, solution builds 0 errors. Live "dictate into the launching
       terminal" path is in the dogfood checklist (still needs David's interactive mic confirmation).
+17. **User-editable "Corrections" list (David-requested feature, 2026-06-23) — a Windows-only addition; no
+    macOS counterpart.** David hit a systematic recognizer mishearing: dictating "web **app**" sometimes
+    transcribes "web **api**". This is an inherent acoustic ambiguity ("app"/"API" reduce to the same
+    `PhoneticMatcher` key `"ap"`), and the existing accuracy layers can't fix it: the custom-words path maps
+    *spelling variants of the same word* to a canonical form, not one real word → a *different* real word; a
+    blanket `api→app` rule would corrupt every legitimate "API" (which David does use). The fix is a
+    user-controlled, opt-in list of `heard phrase → replacement` rules, applied in post-processing.
+    - **The brain (`TextProcessor`) was NOT modified** (it stays 1:1 with Swift). The rules feed the
+      *existing* `extraDictionary` parameter `TextProcessor.Process` already accepts. New glue:
+      `Models/CorrectionRule.cs` (`record CorrectionRule(From, To)`) and `Text/UserCorrections.cs`
+      (`Merge(spokenVariants, rules)` → folds rules into the spoken-variant dict, lower-cased/trimmed key,
+      skips blank From/To, later rule wins; built-in `CorrectionDictionary` still overrides). `VoiceCoordinator`
+      merges at transcribe time: `UserCorrections.Merge(BuildUserDictionary(vocab), Corrections)`.
+    - **Phrase-capable on purpose:** `TextProcessor` matches multi-word keys (`\s+` between tokens), so the
+      recommended rule for this case is the *phrase* `web api → web app` — it fixes "web app" while leaving
+      standalone "API"/"REST API" untouched. The Settings UI hint says exactly this.
+    - **Persistence:** new `SettingsState.Corrections` field + a 7th on-disk JSON key `corrections`
+      (array of `{from,to}`). **Schema stays v1** (a bump would trip the forward-version guard and wipe all
+      settings on downgrade); absent/malformed `corrections` falls back to empty per the existing
+      per-field-fallback design. The `Serialize_EmitsExactlyThe…Keys` test was updated 6→7 keys.
+    - **UI:** a new pink "Corrections" `DarkSection` in `SettingsView.xaml` (two input boxes `From → To`, a
+      live list with per-row remove), mirroring the Custom Words section. Adding/removing a rule only
+      persists — no engine/vocabulary reload (it's post-processing only). New brush `Settings.Pink`.
+    - **Verified:** new `UserCorrectionsTests.cs` (merge semantics + end-to-end: `web api`→`web app` corrected,
+      standalone "REST API" preserved) + `SettingsStoreJson` round-trip/fuzz/malformed-skip cover the new
+      field; `dotnet test` → **395/395**, `dotnet build … -c Release` → 0 errors. The live mic path + the
+      Settings UI visuals are on David's dogfood checklist.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;

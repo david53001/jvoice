@@ -6,7 +6,8 @@ public sealed record SettingsState(
     WhisperModelOption Model,
     TranscriptionLanguage Language,
     IReadOnlyList<string> CustomWords,
-    bool RemoveFillerWords)
+    bool RemoveFillerWords,
+    IReadOnlyList<CorrectionRule> Corrections)
 {
     public const int CurrentSchemaVersion = 1;
 
@@ -16,5 +17,6 @@ public sealed record SettingsState(
         Model: WhisperModelOption.Tiny,
         Language: TranscriptionLanguage.English,
         CustomWords: Array.Empty<string>(),
-        RemoveFillerWords: true);
+        RemoveFillerWords: true,
+        Corrections: Array.Empty<CorrectionRule>());
 }
