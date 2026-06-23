@@ -284,9 +284,21 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       store leaves the bad settings.json in place (backed up) and normalizes it on the next Flush/Dispose/Update
       rather than rewriting defaults immediately like Swift's UserDefaults — the contract (user gets defaults,
       corrupt blob preserved) holds. Probe deleted (tree clean).
-- [ ] **Paster** — `JVoice.App/Platform/Paster.cs`. Review the `INPUT`/`InputUnion` struct (sizeof==40 on
+- [x] **Paster** — `JVoice.App/Platform/Paster.cs`. Review the `INPUT`/`InputUnion` struct (sizeof==40 on
       x64), `FocusTarget` already-foreground early-return, clipboard save/restore (300 ms / 50 ms-failure).
       Add a unit test for any pure logic (outcome mapping); E2E paste needs the dogfood checklist.
+      — 2026-06-23 · reflection probe (6 checks, all PASS) + code-review vs PasteManager.swift · **0 bugs**.
+      Reflection probe confirmed the P/Invoke marshalling: INPUT=40, InputUnion=32, MOUSEINPUT=32,
+      KEYBDINPUT=24, HARDWAREINPUT=8 — so SendInput's `cbSize=40` is correct (the union carries MOUSEINPUT,
+      the largest member; the prior 32-byte bug is gone). Code-review vs Swift: outcome flow matches
+      (empty→TargetRejected; elevated-target→AccessDenied is the documented Windows analog of macOS
+      `accessibilityDenied`; focus-fail/send-fail→TargetRejected; ok→Ok); restore delays match
+      (success→300 ms = Swift `pasteRestoreDelay`; failure→50 ms = Swift hardcoded `0.05`); empty/locked
+      clipboard→null→no restore matches Swift's `!snapshot.isEmpty` guard; `_restoreCts` cancel+dispose
+      matches `restoreTask?.cancel()` (two pastes in-window don't clobber each other); `FocusTarget`
+      already-foreground early-return + AttachThreadInput foreground workaround reviewed. E2E paste is
+      David's dogfood (commit 434adef "make dictation paste actually work" already fixed it live). Probe
+      deleted (tree clean).
 - [ ] **GlobalHotkey** — `JVoice.App/Platform/GlobalHotkey.cs` via `windows/tools/hotkey-probe`
       (chord-match, 150 ms debounce, watchdog re-arm, recovery modes). Drive its `chord`/`watchdog`/`recovery` paths.
 - [ ] **AudioInputRouter / ForegroundWindowTracker / LaunchAtLogin / SingleInstance / PermissionError /
@@ -435,6 +447,10 @@ _(none yet)_
   structural invariants hold for every kind (busy∩terminal=∅; visible ⟺ busy∨terminal).
 - **HotkeyChord parse/format round-trip is an identity** (`TryParse(c.Format()) == c`), alias/case/
   ordering canonicalize, and `TryParse` never throws on arbitrary input — two 400-case seeded fuzzes.
+- **Paster's SendInput marshalling is correct** — `sizeof(INPUT)==40` on x64 (union carries the largest
+  member, MOUSEINPUT=32; type+pad=8), confirmed by reflecting the real private structs; and the
+  outcome/restore-delay flow (success 300 ms / failure 50 ms, restore-cancellation, empty-clipboard→no-restore)
+  matches PasteManager.swift. The 40-byte cbSize is what made paste work (commit 434adef).
 - **The three platform stores honor their recovery contracts** — SettingsStore: corrupt JSON and
   forward-version (`schemaVersion`>current) both → defaults with the original blob preserved in
   `settings.corrupt.bak`; missing → defaults written to disk; Update+Flush round-trips fields; atomic
