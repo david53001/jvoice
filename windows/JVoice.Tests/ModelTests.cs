@@ -43,4 +43,66 @@ public class ModelTests
         Assert.True(HudState.Transcribing.IsBusy);
         Assert.True(HudState.Error("x").IsTerminal);
     }
+
+    // ===== WhisperModelOption (+GGML map) — parity with WhisperModelOptionTests.swift =====
+
+    // Swift largeTurboIsOfferedAsAModelOption + completeness: exactly the 4 cases exist.
+    [Fact]
+    public void Model_AllFourCasesPresent()
+    {
+        var all = Enum.GetValues<WhisperModelOption>();
+        Assert.Equal(4, all.Length);
+        Assert.Contains(WhisperModelOption.Tiny, all);
+        Assert.Contains(WhisperModelOption.Base, all);
+        Assert.Contains(WhisperModelOption.Small, all);
+        Assert.Contains(WhisperModelOption.LargeTurbo, all);
+    }
+
+    // No two models may map to the same GGML file (a collision would download/cache the wrong model),
+    // and every filename is well-formed (ggml-*.bin).
+    [Fact]
+    public void Model_GgmlFileNames_AreDistinctAndWellFormed()
+    {
+        var files = Enum.GetValues<WhisperModelOption>().Select(m => m.GgmlFileName()).ToArray();
+        Assert.Equal(files.Length, files.Distinct().Count());
+        Assert.All(files, f =>
+        {
+            Assert.StartsWith("ggml-", f);
+            Assert.EndsWith(".bin", f);
+        });
+    }
+
+    // Swift largeTurboHasReadableDisplayName: the raw model identifier must never leak into the UI.
+    // (Windows uses its own wording — "Large" — but the no-raw-id invariant still holds.)
+    [Theory]
+    [InlineData(WhisperModelOption.Tiny)]
+    [InlineData(WhisperModelOption.Base)]
+    [InlineData(WhisperModelOption.Small)]
+    [InlineData(WhisperModelOption.LargeTurbo)]
+    public void Model_DisplayName_DoesNotLeakRawIdentifier(WhisperModelOption m)
+    {
+        var lower = m.DisplayName().ToLowerInvariant();
+        Assert.False(string.IsNullOrWhiteSpace(lower));
+        Assert.DoesNotContain("ggml", lower);
+        Assert.DoesNotContain("q5_0", lower);
+        Assert.DoesNotContain("v20240930", lower);
+        Assert.DoesNotContain(".bin", lower);
+    }
+
+    [Theory]
+    [InlineData(WhisperModelOption.Tiny)]
+    [InlineData(WhisperModelOption.Base)]
+    [InlineData(WhisperModelOption.Small)]
+    [InlineData(WhisperModelOption.LargeTurbo)]
+    public void Model_Guidance_IsNonEmpty(WhisperModelOption m)
+        => Assert.False(string.IsNullOrWhiteSpace(m.Guidance()));
+
+    // Swift largeTurboRoundTripsThroughCodable (C# format): LargeTurbo survives a JSON round-trip.
+    [Fact]
+    public void Model_LargeTurbo_RoundTripsThroughJson()
+    {
+        var state = SettingsState.Default with { Model = WhisperModelOption.LargeTurbo };
+        var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(state));
+        Assert.Equal(WhisperModelOption.LargeTurbo, back.Model);
+    }
 }

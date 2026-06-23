@@ -20,10 +20,10 @@ never start from a blank slate; never redo a `DONE` row.**
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (2 benign CS4014 warnings on
   `VoiceCoordinator.cs:267` are expected — not a finding).
 - `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **Passed! Failed: 0** (started at **122**;
-  now **258** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
+  now **269** after the TextProcessor + PhoneticMatcher + VocabularyPrompt + RepetitionGuard +
   RegurgitationRecovery + WavTail + ChunkPlanner + StreamingTranscriptionSession + SettingsState +
-  SettingsStateJson audits). As the hunt adds regression tests this number only grows; it must never
-  go down or go red.
+  SettingsStateJson + WhisperModelOption audits). As the hunt adds regression tests this number only
+  grows; it must never go down or go red.
 
 ---
 
@@ -53,6 +53,11 @@ choices (sources: `docs/HANDOFF-WINDOWS.md` §7, `docs/superpowers/plans/2026-06
 - **`SettingsState` record uses reference equality for `CustomWords`** (Swift's `Equatable` struct is
   value-equal). Immaterial: `SettingsStore.Update` always saves/notifies on every call and never compares
   `SettingsState` for equality, so record equality is never used for a correctness decision.
+- **WhisperModelOption Windows UI text differs from macOS** (test-locked, intentional): `LargeTurbo`
+  `DisplayName` is `"Large"` (vs Swift's `"Large v3 Turbo"`) and the `Guidance` strings cite Windows GGML
+  download sizes. The whole `whisperKitModelName`/`whisperKitFolderName` (CoreML) concept is replaced by
+  `GgmlFileName` (whisper.cpp) — the documented platform swap (overview §2.5). The no-raw-id-in-UI
+  invariant from Swift still holds.
 
 ---
 
@@ -150,8 +155,13 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       `JVoice.App/Platform/SettingsStore.cs` — JVoice.Tests (net9.0) can't reference JVoice.App
       (net9.0-windows), so it's deferred to the Tier 3 "SettingsStore/StatsStore/LastTranscriptStore"
       row (verify via throwaway console).
-- [ ] **WhisperModelOption (+GGML map)** — `…/Models/WhisperModelOption.cs` + `ModelTests.cs`
+- [x] **WhisperModelOption (+GGML map)** — `…/Models/WhisperModelOption.cs` + `ModelTests.cs`
       ← `…/Models/WhisperModelOption.swift` / `WhisperModelOptionTests.swift`
+      — 2026-06-23 · +11 tests · **0 bugs**. 4 cases (Tiny/Base/Small/LargeTurbo) match Swift; GGML map
+      (the Windows swap for macOS CoreML folders) verified distinct + well-formed (ggml-*.bin); display
+      names never leak a raw id; legacy decode (`large-v3_turbo`/`large-v3-v20240930`→LargeTurbo) + the
+      LargeTurbo JSON round-trip covered. Swift largeTurbo.displayName "Large v3 Turbo" → C# "Large" and
+      the Guidance strings are deliberate, test-locked Windows UI wording (see deviation note).
 - [ ] **HudState** — `…/Models/HudState.cs` ← `…/Models/HUDState.swift` (+ `DownloadingModel` is new)
 - [ ] **HotkeyChord** — `…/Models/HotkeyChord.cs` + `HotkeyChordTests.cs` (Windows-only; parse/format/Default)
 - [ ] **StatsMath** — `…/StatsMath.cs` + `StatsMathTests.cs` ← WPM math in `…/Services/StatsStore.swift`
