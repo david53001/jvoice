@@ -66,6 +66,15 @@ choices (sources: `docs/HANDOFF-WINDOWS.md` §7, `docs/superpowers/plans/2026-06
   download sizes. The whole `whisperKitModelName`/`whisperKitFolderName` (CoreML) concept is replaced by
   `GgmlFileName` (whisper.cpp) — the documented platform swap (overview §2.5). The no-raw-id-in-UI
   invariant from Swift still holds.
+- **`VocabularyPrompt.MaxPromptTokens = 96` is a parity constant but the 96-encoded-token trim is NOT
+  enforced in the C# engine** (verified 2026-06-23). `VocabularyPrompt.Text` itself caps only at
+  `MaxWords = 40` entries in BOTH Swift and C# (identical: trim with the broad whitespace+newlines set,
+  drop blanks, no dedup, order preserved, `", "` join, single leading space). The 96-TOKEN cap was a
+  WhisperKit concern: Swift pre-encoded the prompt to `[Int]` and did `Array(raw.prefix(maxPromptTokens))`.
+  Whisper.net takes the prompt as a STRING and tokenizes internally (the C# engine caches the prompt
+  string, not token IDs — see windows-port-02 §"promptTokens caching"), and whisper.cpp self-limits the
+  prompt to ~`n_text_ctx/2` tokens, so an over-long 40-word vocab can never break — it's trimmed by the
+  runtime. Effect is equivalent; the explicit C# 96-trim is intentionally absent. Not a bug.
 
 ---
 
@@ -554,13 +563,17 @@ _(none yet)_
 ---
 
 ## Loop control
-- **Consecutive iterations with no new bug AND no new coverage:** 0  (this firing audited the final
-  coverage-map row, so coverage WAS added — countdown resets to 0).
+- **Consecutive iterations with no new bug AND no new coverage:** 1
 - **ALL coverage-map rows are now `[x]`** (Tier 1 brain · Tier 2 engine · Tier 3 platform, completed
   2026-06-23). 6 real port-fidelity bugs found & fixed (#1–#6); suite 122 → 380; green every firing.
   Remaining work = the wind-down: each subsequent firing does a completeness-critic pass (look for any
   edge/claim/file missed) + re-verifies green; if 3 consecutive such firings add NO new bug and NO new
   coverage, set STATUS: DONE.
-- **STATUS:** IN PROGRESS (winding down — 0 of 3 quiet firings done)
+- **Wind-down sweep log (rotate angles, don't repeat):**
+  - 1/3 (2026-06-23): re-read VocabularyPrompt vs Swift oracle + its tests — `Text` is byte-faithful
+    (MaxWords=40 entry cap, broad-whitespace trim ≡ `.whitespacesAndNewlines`, no dedup, order kept,
+    leading space); boundary 39/40/41 already tested. Found + documented the `MaxPromptTokens` engine
+    deviation (above). **No bug, no genuinely-missing test → quiet.**
+- **STATUS:** IN PROGRESS (winding down — 1 of 3 quiet firings done)
 - **Stop when:** every coverage-map row is `[x]` **and** the last 3 iterations added neither a new bug
   nor new coverage → set STATUS to `DONE` and report `DONE — nothing left`.
