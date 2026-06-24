@@ -169,8 +169,16 @@ public sealed class GlobalHotkey : IDisposable
                         Log("chord matched + debounce passed -> raising Triggered");
                         Triggered?.Invoke(); // raised on the hook thread; Phase 4 marshals
                     }
-                    // Do NOT swallow the key: keep behavior transparent. If a future
-                    // build wants to suppress it, return (IntPtr)1.
+                    // Swallow the chord's MAIN-key down so it doesn't leak into the focused app
+                    // (e.g. a stray space typed into a terminal/editor on every trigger — the very
+                    // "it just does a space" symptom). We consume only the main key, never the held
+                    // modifiers, and only on an exact chord match — so ordinary Space typing is
+                    // untouched. Returning non-zero short-circuits the chain (no CallNextHookEx).
+                    // Matches the macOS reference, where the global shortcut is consumed. Swallow on
+                    // EVERY match (even when debounce skips the trigger) so a held auto-repeat can't
+                    // dribble spaces through.
+                    Log($"swallowing chord main-key down vk=0x{(int)data.vkCode:X2}");
+                    return (IntPtr)1;
                 }
             }
         }

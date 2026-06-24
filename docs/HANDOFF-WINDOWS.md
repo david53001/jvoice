@@ -782,19 +782,34 @@ These are real corrections discovered during execution — preserve them.
         `--autostart`) never steps aside.
       • `SingleInstance` hardened: a `Mutex` ctor `UnauthorizedAccessException` (the name is owned by a
         higher-integrity instance we can't open) is treated as "another instance is running", not a crash.
+    - **Follow-up (2026-06-25): the hotkey now SWALLOWS its main key.** David re-tested and reported the chord
+      "just types a space in the terminal and does nothing". Two facts: (1) he was still on the **old pre-fix
+      build** (the running PID was the original non-elevated exe — my code wasn't deployed yet), which is why it
+      still didn't trigger in the admin terminal; and (2) the stray **space** exposed a real wart — `GlobalHotkey`
+      historically did **NOT** swallow the chord (the old comment: "keep behavior transparent"), so on **every**
+      trigger the Space leaked through into the focused app. Fix: `HookCallback` now `return (IntPtr)1` on an exact
+      chord match (consuming the **main key only**, never the held modifiers, and on every match even when debounce
+      skips the trigger — so a held auto-repeat can't dribble spaces). This is **global** (helps non-elevated apps
+      too) and is actually **more** faithful to the macOS reference, where the global shortcut is consumed. Ordinary
+      Space typing is untouched (no modifier match → not swallowed). `JVOICE_HOTKEY_LOG` now also logs the swallow.
     - **GOTCHAS / invariants:** (a) creating OR removing the HIGHEST task needs elevation — the non-elevated
       enable/disable paths relaunch elevated to do it. (b) `RelaunchElevated` blocks the UI thread on the UAC
       prompt (fine — the user is deciding); on **cancel** the app keeps running unchanged. (c) enabling the task
       also re-writes the Run-key value (if launch-at-login is on) so it gains the `--autostart` marker — otherwise
       a pre-existing Run entry wouldn't step aside. (d) the relaunch carries the exe from
       `LaunchAtLogin.CurrentExecutablePath` (the host `.exe`), so it's a **release** feature like launch-at-login.
-    - **VERIFICATION: build = 0 errors, `dotnet test` = 434/434** (plumbing only; no testable pure logic added,
-      consistent with the App layer's other P/Invoke services). **The UAC prompt, the elevated relaunch, the
-      `schtasks` task, and the in-elevated-terminal hotkey CANNOT be verified headlessly** — they need David's
-      interactive desktop. Steps are in `docs/launch/windows-dogfood-checklist.md` → "Permissions & edge cases →
-      Elevated-window dictation". **Assumption logged:** the logon-task XML (InteractiveToken + HighestAvailable)
-      is the standard recipe; confirm on first dogfood that the auto-start instance actually comes up elevated
-      and shows the tray.
+    - **VERIFICATION — build 0 errors, `dotnet test` 434/434, and DEPLOYED + verified elevated (2026-06-25).**
+      The plumbing has no testable pure logic (consistent with the App layer's other P/Invoke services). Because
+      David was still running the stale build, this session **rebuilt Release, stopped the old non-elevated
+      instance, and relaunched the new build elevated** (`Start-Process -Verb RunAs`): confirmed the new process is
+      running **elevated** (a non-elevated WMI/Path query across the integrity boundary came back blank — the
+      classic signature) and the **hook installed** (`%TEMP%\jvoice-hotkey.log`: `SetWindowsHookEx -> hook=… err=0`).
+      The in-admin-terminal record→paste loop is the one part only a human at the desk can finish-verify (David's
+      go-ahead to finalize docs indicates it now triggers there). **Still pending an explicit dogfood tick:** the
+      **persisted** path — "Run as Administrator at Login" registering the `schtasks` task and a real
+      logout/login coming up elevated with the tray (the logon-task XML, InteractiveToken + HighestAvailable, is
+      the standard recipe — **assumption logged**). Steps: `docs/launch/windows-dogfood-checklist.md` →
+      "Permissions & edge cases → Elevated-window dictation".
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;

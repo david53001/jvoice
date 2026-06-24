@@ -342,6 +342,11 @@ Each row: **C# under test** ← **Swift reference** / **Swift test** (the fideli
       (match/recovery/watchdog modes) is **intentionally NOT run unattended** — it SendInputs system-wide
       Ctrl+Shift+Space (would toggle David's running JVoice + could paste into his focused window) and
       jiggles the mouse; it's the dogfood-time tool (the self-heal it validates shipped in commit 68db2d3).
+      **2026-06-25 behavior change (HANDOFF §7 #25):** `HookCallback` now **swallows** the chord's main key on
+      an exact match (`return (IntPtr)1`) instead of letting it fall through — kills the stray space that used to
+      leak into the focused app on every trigger, and matches the macOS reference (the global shortcut is
+      consumed). Modifiers and ordinary (unmatched) Space presses are untouched; the `HotkeyGate` decision logic
+      and its 17 tests are unchanged.
 - [x] **AudioInputRouter / ForegroundWindowTracker / LaunchAtLogin / SingleInstance / PermissionError /
       SettingsUris** — `JVoice.App/Platform/*.cs`. Review for races/leaks; verify registry round-trips
       **revert cleanly** (never leave `HKCU\…\Run\JVoice` set), cross-process mutex actually blocks.
