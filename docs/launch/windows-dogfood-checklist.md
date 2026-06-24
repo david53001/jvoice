@@ -21,7 +21,7 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
       "JVoice is running in your system tray — press Ctrl + Shift + Space to dictate."
       (To re-test: delete `HKCU\Software\JVoice\UiFirstRunShown`.)
 - [ ] Subsequent runs start silently to the tray (no window).
-- [ ] Right-click tray → menu shows **Start Dictation**, **Settings…**, **Launch at Login** (✓ state), **Quit JVoice**. The dictation item flips to **Stop Dictation** while recording.
+- [ ] Right-click tray → menu shows **Start Dictation**, **Settings…**, **Launch at Login** (✓ state), **Restart as Administrator** (or a disabled **Running as Administrator ✓** when already elevated), **Run as Administrator at Login** (✓ state), **Quit JVoice**. The dictation item flips to **Stop Dictation** while recording.
 
 ## Global hotkey + dictation (the core loop)
 - [ ] Focus a text field in another app (Notepad, browser, etc.).
@@ -66,8 +66,12 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 ## Permissions & edge cases
 - [ ] Turn OFF Settings → Privacy & security → Microphone → "Let desktop apps access your microphone", then dictate → HUD shows a mic-denied error and the Windows microphone Settings page opens (`ms-settings:privacy-microphone`). Turn it back on.
 - [ ] A very short tap (< ~1s) → "Recording too short" error, no paste.
-- [ ] Dictate into an **elevated (admin)** window → expect an "Can't paste into an elevated window" message (UIPI; JVoice runs non-elevated by design). Pasting into normal windows works.
-- [ ] **Launch at Login:** toggle in the tray menu → verify `HKCU\...\Run\JVoice` appears/disappears (auto-enabled once on first run). Untick it if you don't want a dev build auto-launching.
+- [ ] **Elevated-window dictation (the UIPI fix — HANDOFF-WINDOWS §7 #24).** While JVoice runs **non-elevated** (the default), the hotkey does **nothing** when an **elevated (admin) terminal/app has focus** — a non-elevated global keyboard hook never sees keys destined for a higher-integrity window (UIPI), and it can't paste there either. To fix, run JVoice elevated:
+  - [ ] Tray → **Restart as Administrator** → accept the UAC prompt → JVoice relaunches (tray reappears; the menu now shows a disabled **Running as Administrator ✓**). Focus an **admin** terminal and press **Ctrl+Shift+Space** → the HUD appears and dictation pastes into the admin terminal. (If UAC is declined, the app keeps running non-elevated, unchanged.)
+  - [ ] Tray → **Run as Administrator at Login** → UAC → it registers a Task Scheduler logon task (`schtasks /query /tn "JVoice Elevated Autostart"` shows it). **Log out and back in (or reboot)** → JVoice **auto-starts elevated with NO UAC prompt**, and the hotkey works in admin windows from the start. Untick it to remove the task (`schtasks` no longer lists it).
+  - [ ] With **both** "Launch at Login" and "Run as Administrator at Login" on, logging in starts **one** elevated instance (the non-elevated Run-key copy steps aside) — not two.
+  - [ ] Non-elevated still works as before: with JVoice non-elevated, pasting into **normal** windows works; only elevated targets need the above.
+- [ ] **Launch at Login:** toggle in the tray menu → verify `HKCU\...\Run\JVoice` appears/disappears (auto-enabled once on first run). The value now ends in ` --autostart` (the marker that lets a logon copy step aside for the elevated task — §7 #24); a plain manual launch has no such flag and never steps aside. Untick it if you don't want a dev build auto-launching.
 - [ ] **Single instance:** launching a second `JVoice.exe` is a no-op (the first keeps owning the hotkey).
 - [ ] **`--bench` still bypasses the UI:** `JVoice.exe --bench <wav>` transcribes and exits with no tray/window.
 

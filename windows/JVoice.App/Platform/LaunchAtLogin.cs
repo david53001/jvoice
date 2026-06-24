@@ -50,7 +50,10 @@ public static class LaunchAtLogin
         {
             using RegistryKey run = Registry.CurrentUser.CreateSubKey(RunKeyPath, writable: true);
             if (enabled)
-                run.SetValue(RunValueName, Quote(CurrentExecutablePath), RegistryValueKind.String);
+                // The --autostart marker lets App.Main tell a logon launch from a manual one, so a
+                // non-elevated logon copy can step aside for the elevated logon task (Elevation/
+                // ElevatedAutostart). Harmless to every other code path (it ignores the flag).
+                run.SetValue(RunValueName, $"{Quote(CurrentExecutablePath)} {Elevation.AutostartFlag}", RegistryValueKind.String);
             else if (run.GetValue(RunValueName) is not null)
                 run.DeleteValue(RunValueName, throwOnMissingValue: false);
         }

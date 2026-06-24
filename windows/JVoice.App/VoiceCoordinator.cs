@@ -223,6 +223,100 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     public void ToggleLaunchAtLogin() => SetLaunchAtLogin(!LaunchAtLoginEnabled);
 
+    // ---- elevation (UIPI) — let the hotkey/paste reach "Run as administrator" windows ----
+    // A non-elevated process's global keyboard hook never fires while an elevated window has focus
+    // (UIPI), so JVoice itself must run elevated. For an unsigned app, running elevated is the only
+    // available fix (uiAccess=true needs signing + Program Files). See Elevation / ElevatedAutostart.
+
+    /// True when THIS process is already elevated (full administrator).
+    public bool IsElevated => Elevation.IsElevated;
+
+    /// True when the elevated logon task is registered (JVoice auto-starts elevated at login).
+    public bool RunAsAdminAtLoginEnabled => ElevatedAutostart.IsEnabled;
+
+    /// One-off: relaunch elevated NOW (no persistence) so the hotkey/paste work in elevated apps
+    /// for this session. On success the current (non-elevated) instance quits so the elevated copy
+    /// can take over the single-instance slot.
+    public void RestartAsAdministrator()
+    {
+        if (IsElevated) return; // already elevated — nothing to do
+        var result = Elevation.RelaunchElevated(Elevation.RelaunchFlag);
+        if (result == Elevation.RelaunchResult.Started)
+            QuitApp(); // releases the hotkey hook + single-instance mutex for the elevated copy
+        else
+            Tray?.RebuildMenu(); // UAC cancelled / failed — no state change, just refresh
+    }
+
+    public void ToggleRunAsAdminAtLogin() => SetRunAsAdminAtLogin(!RunAsAdminAtLoginEnabled);
+
+    /// Enable/disable elevated auto-start (the Task Scheduler HIGHEST logon task). Registering or
+    /// removing that task is privileged, so when we're not already elevated we relaunch elevated and
+    /// let the elevated copy apply it on startup (ApplyElevationStartupIntent).
+    public void SetRunAsAdminAtLogin(bool enabled)
+    {
+        if (enabled)
+        {
+            if (IsElevated)
+            {
+                EnableElevatedAutostartInProcess();
+            }
+            else
+            {
+                var result = Elevation.RelaunchElevated(Elevation.EnableAutostartFlag);
+                if (result == Elevation.RelaunchResult.Started) { QuitApp(); return; }
+            }
+        }
+        else
+        {
+            // Try in-process first (works when elevated — the common case after enabling). If it
+            // fails only because we're not elevated, relaunch elevated just to remove the task.
+            if (!ElevatedAutostart.Disable(out var err))
+            {
+                if (!IsElevated)
+                {
+                    var result = Elevation.RelaunchElevated(Elevation.DisableAutostartFlag);
+                    if (result == Elevation.RelaunchResult.Started) { QuitApp(); return; }
+                }
+                else ShowError($"Couldn't disable admin auto-start. {err}");
+            }
+        }
+        Raise(nameof(RunAsAdminAtLoginEnabled));
+        Tray?.RebuildMenu();
+    }
+
+    /// Called once on startup when this (elevated) process was relaunched specifically to register
+    /// or unregister the elevated logon task. No-op for a normal launch.
+    public void ApplyElevationStartupIntent(string[] args)
+    {
+        var flag = Elevation.MatchedFlag(args);
+        if (flag == Elevation.EnableAutostartFlag)
+        {
+            EnableElevatedAutostartInProcess();
+        }
+        else if (flag == Elevation.DisableAutostartFlag)
+        {
+            if (!ElevatedAutostart.Disable(out var err))
+                ShowError($"Couldn't disable admin auto-start. {err}");
+        }
+        else return; // RelaunchFlag (one-off) or normal launch — nothing to persist
+        Raise(nameof(RunAsAdminAtLoginEnabled));
+        Tray?.RebuildMenu();
+    }
+
+    /// Register the elevated logon task (must be called elevated). If non-elevated launch-at-login
+    /// is ALSO on, rewrite its Run-key value so it carries the --autostart marker — that makes the
+    /// logon copy step aside for this elevated task (App.Main) instead of racing it and possibly
+    /// winning as a non-elevated instance, which would silently break the hotkey in elevated apps.
+    private void EnableElevatedAutostartInProcess()
+    {
+        if (!ElevatedAutostart.Enable(out var err))
+        {
+            ShowError($"Couldn't enable admin auto-start. {err}");
+            return;
+        }
+        if (LaunchAtLogin.IsEnabled) LaunchAtLogin.SetEnabled(true);
+    }
+
     public void SetHotkey(HotkeyChord chord)
     {
         _hotkeyChord = chord;
@@ -667,6 +761,28 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     private static void TryDelete(string path)
     {
+        // Calibration mode (JVOICE_KEEP_WAV): keep a copy of each real recording for
+        // no-speech threshold measurement, then still delete the temp WAV (privacy).
+        if (PlatformPaths.KeepRecordings) { TryKeepForCalibration(path); return; }
+        try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort */ }
+    }
+
+    /// Copy the recording into CaptureDirectory (timestamped) before deleting the temp
+    /// file, so on-device clips survive for no-speech calibration. Best-effort: a failure
+    /// here must never disrupt the dictation flow. Only reached when JVOICE_KEEP_WAV is set.
+    private static void TryKeepForCalibration(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                string dest = Path.Combine(PlatformPaths.CaptureDirectory,
+                    $"capture-{DateTime.Now:yyyyMMdd-HHmmss-fff}.wav");
+                File.Copy(path, dest, overwrite: true);
+                DiagnosticLog.Write($"KeptCapture  {dest}");
+            }
+        }
+        catch { /* best-effort: never break dictation for a diagnostic capture */ }
         try { if (File.Exists(path)) File.Delete(path); } catch { /* best-effort */ }
     }
 

@@ -25,9 +25,13 @@ public sealed class TrayIcon : IDisposable
     // Wiring (set by App on construction).
     public Func<bool> IsRecording { get; set; } = () => false;
     public Func<bool> LaunchAtLoginEnabled { get; set; } = () => false;
+    public Func<bool> IsElevated { get; set; } = () => false;
+    public Func<bool> RunAsAdminAtLoginEnabled { get; set; } = () => false;
     public Action OnToggleDictation { get; set; } = () => { };
     public Action OnOpenSettings { get; set; } = () => { };
     public Action OnToggleLaunchAtLogin { get; set; } = () => { };
+    public Action OnRestartAsAdministrator { get; set; } = () => { };
+    public Action OnToggleRunAsAdminAtLogin { get; set; } = () => { };
     public Action OnQuit { get; set; } = () => { };
 
     public TrayIcon()
@@ -92,6 +96,25 @@ public sealed class TrayIcon : IDisposable
         var launch = new MenuItem { Header = "Launch at Login", IsChecked = LaunchAtLoginEnabled() };
         launch.Click += (_, _) => OnToggleLaunchAtLogin();
         menu.Items.Add(launch);
+
+        // ---- elevation (UIPI): needed for the hotkey/paste to work in "Run as administrator"
+        // windows like an admin terminal. A non-elevated process's global hook never sees keys
+        // while an elevated window has focus, so JVoice must run elevated itself.
+        if (IsElevated())
+        {
+            // Informational, non-clickable: confirms the current process is already elevated.
+            menu.Items.Add(new MenuItem { Header = "Running as Administrator", IsChecked = true, IsEnabled = false });
+        }
+        else
+        {
+            var restart = new MenuItem { Header = "Restart as Administrator" };
+            restart.Click += (_, _) => OnRestartAsAdministrator();
+            menu.Items.Add(restart);
+        }
+
+        var adminLogin = new MenuItem { Header = "Run as Administrator at Login", IsChecked = RunAsAdminAtLoginEnabled() };
+        adminLogin.Click += (_, _) => OnToggleRunAsAdminAtLogin();
+        menu.Items.Add(adminLogin);
 
         menu.Items.Add(new Separator());
 

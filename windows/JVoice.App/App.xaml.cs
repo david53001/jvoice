@@ -44,8 +44,24 @@ public partial class App : Application
               || string.Equals(a, "--settings-preview", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase));
 
-        if (!preview && !SingleInstance.TryAcquire())
+        // A logon launch (the Run-key entry carries --autostart) steps aside when the elevated
+        // auto-start task is configured: that task launches an ELEVATED copy — the one that can
+        // receive the hotkey in admin windows (UIPI). Without this, a non-elevated Run-key copy
+        // could win the single-instance slot at logon and silently break the hotkey in elevated
+        // apps. A manual double-click (no --autostart) never steps aside.
+        bool isAutostart = Array.Exists(args,
+            a => string.Equals(a, Elevation.AutostartFlag, StringComparison.OrdinalIgnoreCase));
+        if (!preview && isAutostart && !Elevation.IsElevated && ElevatedAutostart.IsEnabled)
             return 0;
+
+        if (!preview)
+        {
+            // An elevated relaunch must wait for the outgoing instance to release the mutex
+            // (handoff); a normal launch keeps the original single-shot "already running → exit".
+            int acquireTimeoutMs = Elevation.IsRelaunch(args) ? 5000 : 0;
+            if (!SingleInstance.TryAcquire(acquireTimeoutMs))
+                return 0;
+        }
 
         if (!preview)
             try { WhisperRuntime.EnsureLoaded(); } catch { /* lazy retry in engine */ }
@@ -107,9 +123,13 @@ public partial class App : Application
         {
             IsRecording = () => _coordinator.IsRecording,
             LaunchAtLoginEnabled = () => _coordinator.LaunchAtLoginEnabled,
+            IsElevated = () => _coordinator.IsElevated,
+            RunAsAdminAtLoginEnabled = () => _coordinator.RunAsAdminAtLoginEnabled,
             OnToggleDictation = () => _coordinator.ToggleRecording(),
             OnOpenSettings = () => _coordinator.ShowSettings(),
             OnToggleLaunchAtLogin = () => _coordinator.ToggleLaunchAtLogin(),
+            OnRestartAsAdministrator = () => _coordinator.RestartAsAdministrator(),
+            OnToggleRunAsAdminAtLogin = () => _coordinator.ToggleRunAsAdminAtLogin(),
             OnQuit = () => _coordinator.QuitApp(),
         };
         _coordinator.Tray = _tray;
@@ -118,6 +138,10 @@ public partial class App : Application
         // 4) Start the pipeline (sweep orphans, hooks, hotkey, prewarm).
         _coordinator.Start();
         _coordinator.BootstrapLaunchAtLogin();
+
+        // 4b) If we were relaunched elevated specifically to register/unregister the elevated
+        //     logon task, apply that now (we are guaranteed elevated on this path).
+        _coordinator.ApplyElevationStartupIntent(e.Args);
 
         // 5) First-run: show Settings once so the app isn't invisible.
         if (IsFirstRun())

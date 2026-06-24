@@ -11,18 +11,33 @@ public static class SingleInstance
 
     private static Mutex? _mutex;
 
-    public static bool TryAcquire()
+    public static bool TryAcquire() => TryAcquire(0);
+
+    /// Acquire the single-instance slot, optionally retrying for up to `timeoutMs`. The wait is
+    /// used during an elevated relaunch: the outgoing (non-elevated) instance is shutting down and
+    /// releasing the mutex, and the incoming elevated copy must wait for that handoff rather than
+    /// see "already running" and exit. timeoutMs == 0 → the original single-shot behaviour.
+    public static bool TryAcquire(int timeoutMs)
     {
         if (_mutex is not null) return true; // already acquired in this process
-        // createdNew == true means no other instance held it.
-        _mutex = new Mutex(initiallyOwned: true, MutexName, out bool createdNew);
-        if (!createdNew)
+        long deadline = Environment.TickCount64 + Math.Max(0, timeoutMs);
+        while (true)
         {
-            _mutex.Dispose();
-            _mutex = null;
-            return false;
+            try
+            {
+                // createdNew == true means no other instance held it.
+                var m = new Mutex(initiallyOwned: true, MutexName, out bool createdNew);
+                if (createdNew) { _mutex = m; return true; }
+                m.Dispose();
+            }
+            catch (UnauthorizedAccessException)
+            {
+                // The named mutex exists but is owned by a HIGHER-integrity instance whose object
+                // we can't open (an elevated JVoice is already running). Treat as "another instance".
+            }
+            if (Environment.TickCount64 >= deadline) return false;
+            Thread.Sleep(100);
         }
-        return true;
     }
 
     public static void Release()

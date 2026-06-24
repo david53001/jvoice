@@ -64,6 +64,14 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   the streaming session dropped his quiet *trailing clause* (it read as "silent" at his low level); it now
   falls back to the lossless whole-file path instead of dropping the tail. Verified end-to-end (real engine):
   silence/hum/noise → "No speech detected."; quiet speech at his levels → exact transcript. `dotnet test` 434/434.
+- **(OPEN, in progress) Silence sometimes pastes a hallucinated sentence** (David-reported 2026-06-24 — see
+  §7 #24). The no-speech work above fixed the *false negative* (real quiet speech wrongly rejected); this is
+  the *false positive* — on a near-silent short press whisper can emit a confident, plausible sentence (e.g.
+  "you're welcome.", "you can't see it, but you can't see it."), worst with the vocab prompt ON, that the
+  annotation-only `NonSpeechAnnotation` doesn't catch. A **calibrated, model-driven, Windows-only** gate is
+  being built — the capture harness (`JVOICE_KEEP_WAV` + `nospeech-probe --analyze`) is done and verified;
+  it awaits David's real calibration clips. The two must stay **balanced** (don't reject his quiet speech to
+  kill the hallucination), and confidence is NOT the signal (it's inverted — §7 #24).
 
 **What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
 the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
@@ -278,6 +286,12 @@ atomic `.part`→final rename.
   1.9.1 doesn't surface it; not in the DLL). `WithNoSpeechThreshold(float)` exists but is `[EXPERIMENTAL]`
   and had **no observable effect** on-device — so the no-speech decision is made from whisper's TEXT output
   (it emits a strippable annotation like `[BLANK_AUDIO]`/`(birds chirping)` on silence), not a probability.
+- **`Probability`/`MinProbability`/`MaxProbability` read `0` unless `.WithProbabilities()` is set on the
+  builder** (verified 2026-06-24, §7 #24 — cost a debug cycle: they silently return 0, not null). The method
+  is `WhisperProcessorBuilder.WithProbabilities()` (also `WithSuppressRegex`, `WithMaxSegmentLength`,
+  `WithSingleSegment` exist). **Even when populated, segment confidence does NOT cleanly separate a
+  silence-hallucination from quiet speech** — a confident prompt-induced hallucination out-scores real quiet
+  speech (§7 #24), so a naive confidence gate is backwards.
 
 ---
 
@@ -688,33 +702,140 @@ These are real corrections discovered during execution — preserve them.
       stale in-source comments in `HudView.xaml`/`.cs` (the "rise and fall with the live microphone level"
       header + two "1.1 at native" notes) were corrected to match this as-built state in the 2026-06-24 doc pass.
 
+24. **Silence sometimes pastes a PLAUSIBLE hallucinated sentence — David-reported 2026-06-24 (IN PROGRESS;
+    the *inverse* of #21).** #21 fixed the false-NEGATIVE (real quiet speech wrongly rejected as "no speech").
+    This is the false-POSITIVE: on a near-silent short press, whisper.cpp emits a confident, real-looking
+    sentence that gets pasted. **Evidence (`%APPDATA%\JVoice\diagnostic.log`, his own session):** `recSecs=0.65
+    → "you can't see it, but you can't see it."`, `recSecs=1.30 → "you're welcome."`, `recSecs=0.99 → "you
+    can't see it, but you can't see it."` (his bug-report dictation literally quotes one).
+    - **Root cause — #21(b) was only HALF true.** #21 claimed "on no-speech whisper never emits a plausible
+      sentence, only an annotation." That held for the **synthetic** probe clips (digital silence / 60 Hz hum /
+      white noise → `[BLANK_AUDIO]`). But on David's **real** short near-silence (faint mic self-noise / a
+      breath / a click) whisper hallucinates a real sentence — **worst with the vocab prompt ON** (which he
+      runs). A plausible sentence has letters, so `NonSpeechAnnotation.IsAnnotationOnly` returns false and it
+      sails through. `TextProcessor.RemoveWhisperHallucinations` is an EXACT-MATCH blocklist that (a) lacks
+      these phrases and (b) is a **1:1 frozen port of the macOS brain** (`Sources/.../TextProcessor.swift:157`,
+      parity-test-locked) — so it **must not** be extended with Windows-only phrases. The fix has to live in
+      the **Windows-only** layer.
+    - **Why not a blocklist / a confidence gate (both rejected):** a blocklist would also eat "you're welcome."
+      / "thank you" when David *actually says them*. And a confidence gate is **backwards** — smoke test (large-
+      turbo, `.WithProbabilities()`, synthetic): the prompt-induced silence hallucination read `avgConf 0.92 /
+      minConf 0.38`, **higher** than real (SAPI) speech `0.88 / 0.025`. Whisper is *confidently* wrong on
+      silence. Candidate discriminators that DID separate on the smoke test: **prompt-vs-no-prompt agreement**
+      (real speech decoded identically ±prompt; silence decoded to totally different text each way) and **gzip
+      compression ratio** (1.16 vs 0.70; a looped hallucination compresses far better). Must be re-confirmed on
+      David's REAL clips — synthetic silence has no mic self-noise and SAPI ≠ his voice.
+    - **Harness built this session (fix NOT yet shipped — awaiting calibration clips):**
+      • `JVoice.App/Platform/PlatformPaths.cs` — `CaptureDirectory` (`%APPDATA%\JVoice\capture`) + `KeepRecordings`
+        (env var **`JVOICE_KEEP_WAV`**).
+      • `JVoice.App/VoiceCoordinator.cs` — `TryDelete` routes to new `TryKeepForCalibration` when `KeepRecordings`:
+        copies each real recording into the capture dir **before** deleting the temp WAV (privacy preserved;
+        best-effort — never disrupts the dictation flow). Off by default; zero cost when the env var is unset.
+      • `windows/tools/nospeech-probe/Program.cs` — new **`--analyze [wav…]`** mode: reads `settings.json` so it
+        mirrors the LIVE app's model+vocab (**LargeTurbo** + his customWords), decodes each clip **±prompt** with
+        `.WithProbabilities()`, and prints `secs rawRMS hpRMS segs avgConf minConf compR` + the current engine
+        result + text. With no paths it scans the capture dir. (`WithProbabilities()` is REQUIRED or the conf
+        columns are 0 — see §6.)
+    - **Next steps (zero-context):** (1) David records ~5 silent presses + ~5 quiet sentences with the capture
+      build running (launched with `JVOICE_KEEP_WAV=1`). (2) `dotnet run --project
+      windows/tools/nospeech-probe/nospeech-probe.csproj -c Release -- --analyze` (no args → reads
+      `%APPDATA%\JVoice\capture`). (3) Pick the discriminator that cleanly splits the silent rows from the
+      speech rows. (4) Implement a **Windows-only** gate in `WhisperNetTranscriptionEngine` (reduce a
+      hallucination to `""` ⇒ the existing `EmptyTranscript` ⇒ "No speech detected."), with xUnit tests,
+      **balanced against #21** (must NOT reject his real quiet speech). (5) Delete the capture clips; relaunch
+      WITHOUT the env var. Build = 0 errors; capture harness verified working (probabilities populate,
+      large-turbo loads). `dotnet test` still **434/434** (no brain change yet).
+
+25. **Hotkey is DEAD while an elevated (admin) window has focus — David-reported 2026-06-24; FIXED by an
+    opt-in "run JVoice elevated" path.** When David focused an **admin terminal** and pressed Ctrl+Shift+Space,
+    **nothing happened** — no HUD, no recording. Confirmed by his own test: same press worked in a non-elevated
+    Notepad.
+    - **Root cause — UIPI (the SAME rule as the paste-side `PasteOutcome.AccessDenied`, but one step UPSTREAM).**
+      `GlobalHotkey` uses a low-level keyboard hook (`WH_KEYBOARD_LL`). By Windows UIPI design, a hook installed
+      by a **non-elevated** (medium-integrity) process is **not called** for keystrokes destined for a window
+      owned by a **higher-integrity (elevated) foreground** process. JVoice ships `asInvoker` (overview §6.4), so
+      while an admin window has focus the chord is never even seen → the whole trigger is inert. (overview §6.4 had
+      documented only the *paste* half — "can't paste into an elevated app"; the trigger half is more fundamental.)
+    - **Why the fix is "run JVoice itself elevated".** For an UNSIGNED app that's the only option: the
+      `uiAccess="true"` UIPI bypass (what AutoHotkey/screen readers use) requires an Authenticode signing cert
+      **and** install into `Program Files` — both ruled out by the $0/unsigned posture. A high-integrity process's
+      hook DOES receive input to elevated windows, and it can SendInput/paste into them too — so running elevated
+      fixes both the trigger and the paste in one move. **The manifest stays `asInvoker`** (default non-elevated);
+      elevation is **opt-in** via the tray.
+    - **Implementation (App layer only — no brain/Core/test change):**
+      • `Platform/Elevation.cs` — `IsElevated`; `RelaunchElevated(flag)` = ShellExecute `runas` (the UAC prompt),
+        returns Started / UserCancelled (`Win32Exception` 1223) / Failed; relaunch-flag constants.
+      • `Platform/ElevatedAutostart.cs` — registers/removes a **Task Scheduler logon task** "JVoice Elevated
+        Autostart" with **RunLevel=HighestAvailable** + a per-user `LogonTrigger` (built as XML, applied via
+        `schtasks /create … /xml`). This is the **only seamless** elevated-autostart mechanism: the elevation is
+        authorized once (task creation) so logon launches elevated **without a per-boot UAC prompt** — the HKCU
+        Run key **cannot** elevate.
+      • Tray (`UI/TrayIcon.cs`): **Restart as Administrator** (one-off, when non-elevated) / **Running as
+        Administrator ✓** (disabled, when elevated) + **Run as Administrator at Login** (✓ = the task exists).
+      • `VoiceCoordinator`: `RestartAsAdministrator()`, `SetRunAsAdminAtLogin()/Toggle…`,
+        `ApplyElevationStartupIntent(args)` (the elevated relaunch carries `--enable/-disable-admin-autostart` and
+        applies it on startup, since creating/removing a HIGHEST task is itself privileged).
+      • `App.Main`: an elevated **relaunch** waits up to 5 s for the outgoing instance to release the
+        single-instance mutex (`SingleInstance.TryAcquire(timeoutMs)`), and a **logon** launch (the Run-key value
+        now ends in `--autostart`) **steps aside** (`exit 0`) when the elevated task is enabled — so a non-elevated
+        Run-key copy can't win the slot at logon and silently re-break the hotkey. A **manual** launch (no
+        `--autostart`) never steps aside.
+      • `SingleInstance` hardened: a `Mutex` ctor `UnauthorizedAccessException` (the name is owned by a
+        higher-integrity instance we can't open) is treated as "another instance is running", not a crash.
+    - **GOTCHAS / invariants:** (a) creating OR removing the HIGHEST task needs elevation — the non-elevated
+      enable/disable paths relaunch elevated to do it. (b) `RelaunchElevated` blocks the UI thread on the UAC
+      prompt (fine — the user is deciding); on **cancel** the app keeps running unchanged. (c) enabling the task
+      also re-writes the Run-key value (if launch-at-login is on) so it gains the `--autostart` marker — otherwise
+      a pre-existing Run entry wouldn't step aside. (d) the relaunch carries the exe from
+      `LaunchAtLogin.CurrentExecutablePath` (the host `.exe`), so it's a **release** feature like launch-at-login.
+    - **VERIFICATION: build = 0 errors, `dotnet test` = 434/434** (plumbing only; no testable pure logic added,
+      consistent with the App layer's other P/Invoke services). **The UAC prompt, the elevated relaunch, the
+      `schtasks` task, and the in-elevated-terminal hotkey CANNOT be verified headlessly** — they need David's
+      interactive desktop. Steps are in `docs/launch/windows-dogfood-checklist.md` → "Permissions & edge cases →
+      Elevated-window dictation". **Assumption logged:** the logon-task XML (InteractiveToken + HighestAvailable)
+      is the standard recipe; confirm on first dogfood that the auto-start instance actually comes up elevated
+      and shows the tray.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
-registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`;
-temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on launch); models `%LOCALAPPDATA%\JVoice\models\`.
+registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
+(value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
+"Run as Administrator at Login" is on (§7 #25); temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on
+launch); models `%LOCALAPPDATA%\JVoice\models\`.
 
 ---
 
 ## 8. What remains
 
-1. **Dogfood the GUI (David, interactive):** run `docs/launch/windows-dogfood-checklist.md` — the live
+1. **(IN PROGRESS) Silence-hallucination gate — David-reported 2026-06-24 (§7 #24).** On near-silent short
+   presses whisper sometimes pastes a *plausible* hallucinated sentence (e.g. "you're welcome.", "you can't
+   see it, but you can't see it."), worst with the vocab prompt ON. The calibration harness is **built and
+   verified**, and the app is set up to capture real clips. **Next:** (a) David records ~5 silent presses +
+   ~5 quiet sentences with the capture build (launched with `JVOICE_KEEP_WAV=1` → clips land in
+   `%APPDATA%\JVoice\capture\`); (b) `dotnet run --project windows/tools/nospeech-probe/nospeech-probe.csproj
+   -c Release -- --analyze` (no args → reads the capture dir); (c) pick the discriminator (confidence is
+   INVERTED — candidates are **prompt-vs-no-prompt agreement** + **compression ratio**); (d) implement a
+   **Windows-only** gate in `WhisperNetTranscriptionEngine` (NOT the frozen shared `RemoveWhisperHallucinations`
+   blocklist) + xUnit tests, **balanced against #21**; (e) delete the clips, relaunch without the env var.
+2. **Dogfood the GUI (David, interactive):** run `docs/launch/windows-dogfood-checklist.md` — the live
    Ctrl+Shift+Space → record → transcribe → paste loop, the new black-&-white HUD bars reacting to your
    voice (and the silent-success / error-only-text behaviour), the 320×520 monochrome Settings round-trip,
-   BT device routing, mic-permission flow, elevated-window UIPI. The app is confirmed to *launch* and the
+   BT device routing, mic-permission flow, and the new **elevated-window** path (§7 #25: "Restart as
+   Administrator" / "Run as Administrator at Login" → hotkey works in an admin terminal). The app is confirmed to *launch* and the
    HUD/Settings look is screenshot-verified via `--hud-preview`/`--settings-render`; live-mic reactivity is
    what a person at the desk must confirm.
-2. **(Optional) Phase 5 Task 6** — port `scripts/verify-transcription.py` to
+3. **(Optional) Phase 5 Task 6** — port `scripts/verify-transcription.py` to
    `windows/tools/verify-transcription` (corpus-level word-retention / spurious-vocab scoring across
    many generated clips). `whisper-smoke` + `--bench` already prove end-to-end transcription; this is the
    larger scripted accuracy harness.
-3. **(Optional) Phase 5 Task 3** — an Inno Setup installer (`windows/installer/JVoice.iss`). The zipped
+4. **(Optional) Phase 5 Task 3** — an Inno Setup installer (`windows/installer/JVoice.iss`). The zipped
    self-contained folder is already a complete distributable, so this is convenience only (and needs
    Inno Setup installed to compile).
-4. **Polish from dogfooding:** the HUD shape has been tuned over several same-day iterations, and the recording bars are
+5. **Polish from dogfooding:** the HUD shape has been tuned over several same-day iterations, and the recording bars are
    now a continuous, mic-independent wave (#18, #22, #23; no mic meter) — further tweaks are by-eye taste (constants at the top of
    `HudView.xaml.cs`). The Settings scrollbar is now monochrome (done, commit `990ba76`). (The old
    "waveform glyph" / "per-section accent" / "default-grey scrollbar" polish items are obsolete — #18/#22.)
-5. **Do NOT publish/push** without David's explicit go-ahead.
+6. **Do NOT publish/push** without David's explicit go-ahead.
 
 ---
 
