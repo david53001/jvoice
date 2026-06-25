@@ -894,11 +894,17 @@ These are real corrections discovered during execution — preserve them.
       **Foreground-keyed:** a backgrounded/alt-tabbed game does NOT suppress (so dictating into an app on monitor 2
       while a game sits on monitor 1 still works).
     - **Wiring:** `GlobalHotkey.SuppressPredicate` (O(1) volatile read on the hook thread) → on suppress,
-      `return CallNextHookEx(...)` (passthrough), NOT `(IntPtr)1` (swallow). `VoiceCoordinator` constructs the
-      detector in `Start()` (with `_foreground`), sets the predicate before `_hotkey.Register`, pushes `GameMode`
-      from settings, and start-guards `ToggleRecording` (can always STOP, never START while suppressed). Settings
-      adds a monochrome **"Gaming"** segmented picker (Off/Balanced/Aggressive). **`SettingsState` schema v1→v2**
-      adds persisted `GameMode` (default Balanced); a v1 file with no `gameMode` loads as Balanced (backward-compat).
+      `return CallNextHookEx(...)` (passthrough), NOT `(IntPtr)1` (swallow). The predicate is
+      **`() => !IsRecording && _gameDetector?.ShouldSuppress == true`**: it suppresses (passes the chord to the
+      game) only when a game is foreground **and we're not already recording**, so a recording started *before*
+      alt-tabbing into a game can still be **stopped** with the hotkey (and that stop-press is swallowed, not
+      leaked into game chat). `VoiceCoordinator` constructs the detector in `Start()` (with `_foreground`), sets
+      the predicate before `_hotkey.Register`, pushes `GameMode` from settings, and start-guards `ToggleRecording`
+      (covers the tray Start path). Settings adds a monochrome **"Gaming"** segmented picker (Off/Balanced/Aggressive).
+      **`SettingsState` schema v1→v2** adds persisted `GameMode` (default Balanced); a v1 file with no `gameMode`
+      loads as Balanced (backward-compat). **When `GameMode == Off`, `GameDetector.Recompute` short-circuits — it
+      does NOT inspect the foreground at all** (no `OpenProcess`, no registry read): zero process interaction when
+      the feature is disabled.
     - **`--game-probe` dev CLI (`JVoice.exe --game-probe [seconds]`, default 60):** loops `GameDetector.Inspect()`
       once/sec, writing each foreground-window signal snapshot to **`%TEMP%\jvoice-gameprobe.log`** (and console
       under redirection — WinExe) so you can alt-tab into a real game and read the live signals + decision. Runs

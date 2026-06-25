@@ -164,11 +164,16 @@ public sealed class GameDetector : IDisposable
         try { Recompute(); } catch { }
     }
 
-    /// Rebuild the five signals from the live foreground and update _suppress.
+    /// Rebuild the signals from the live foreground and update _suppress.
     /// On any transient Win32 failure, leaves _suppress unchanged (fail-safe: don't
     /// flip the cached decision on a glitch in either direction).
     private void Recompute()
     {
+        // When detection is Off, never inspect the foreground at all — no OpenProcess, no
+        // registry read. The policy returns false regardless, so skip the work entirely and
+        // don't even open a limited-info handle to the focused game while the feature is disabled.
+        // (Force-flags are hard-false in v1; revisit when the v2 per-exe lists need the path in Off.)
+        if (_mode == GameDetectionMode.Off) { _suppress = false; return; }
         try
         {
             IntPtr hwnd = ForegroundWindowTracker.GetForegroundWindowNow();

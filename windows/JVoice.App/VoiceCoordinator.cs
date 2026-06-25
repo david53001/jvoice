@@ -165,7 +165,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     public bool LaunchAtLoginEnabled { get; private set; }
 
-    private bool _isRecording;
+    // volatile: written on the UI thread but read on the hotkey hook thread by
+    // SuppressPredicate (so an in-progress recording can still be stopped while a game
+    // is foreground — see Start()).
+    private volatile bool _isRecording;
     public bool IsRecording { get => _isRecording; private set { _isRecording = value; Raise(); } }
 
     private HudState _hudState = HudState.Idle;
@@ -224,7 +227,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _settingsStore.Changed += _ => _dispatcher.InvokeAsync(() => { /* UI binds live props */ });
         _recorder.Failed += msg => _dispatcher.InvokeAsync(() => ShowError(msg));
         _hotkey.Triggered += () => _dispatcher.InvokeAsync(ToggleRecording);
-        _hotkey.SuppressPredicate = () => _gameDetector?.ShouldSuppress == true;
+        // Suppress (pass the chord through to the game) ONLY when a game is foreground AND
+        // we're NOT already recording. While recording, let the stop-chord reach ToggleRecording
+        // (and be swallowed, not leaked into game chat) so a recording started before alt-tabbing
+        // into a game can always be stopped.
+        _hotkey.SuppressPredicate = () => !IsRecording && _gameDetector?.ShouldSuppress == true;
         _hotkey.Register(_hotkeyChord);
 
         UpdateHud(HudState.Idle);
