@@ -33,6 +33,9 @@ public partial class App : Application
         if (BenchRunner.ShouldRun(args))
             return BenchRunner.RunAndExit(args);
 
+        if (GameProbeRunner.ShouldRun(args))
+            return GameProbeRunner.RunAndExit(args);
+
         // Hidden dev aids for inspecting/screenshotting the real rendering, both bypassing
         // the single-instance lock so they can run alongside a normal instance:
         //   `--hud-preview [state]`  — shows ONLY the HUD pill (no tray/mic/whisper).

@@ -4,7 +4,7 @@ Manual verification that an autonomous/headless session **cannot** perform (it n
 interactive desktop, a microphone, keypresses, and human eyes). Run through this on the dev
 machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each item.
 
-> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 434/434 (the brain +
+> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 490/490 (the brain +
 > pure platform/coordinator helpers); `JVoice.exe --bench <wav>` and `tools/nospeech-probe` prove
 > on-device transcription + no-speech behaviour end-to-end. This list covers only the GUI + live-input paths.
 >
@@ -37,6 +37,22 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] **Hotkey stays alive across many dictations / heavy GPU use** (the global hook is hardened: high-priority hook thread + a self-healing watchdog that re-installs the hook if Windows ever silently drops it — see HANDOFF-WINDOWS §7 #14). If it *ever* seems unresponsive, relaunch from a terminal with `set JVOICE_HOTKEY_LOG=1` (or `$env:JVOICE_HOTKEY_LOG='1'`) and reproduce — `%TEMP%\jvoice-hotkey.log` will show whether the hook received the key, matched, or re-armed. Send me that file.
 - [ ] First dictation after picking a not-yet-downloaded model shows the same **bar shimmer** while it downloads/prepares the model (no text/percentage — the redesign is text-free except errors), then proceeds.
 
+## Game-detection hotkey suppression (HANDOFF-WINDOWS §7 #27)
+> The hotkey goes **silent and fully transparent** while a video game is in focus, so an accidental
+> Ctrl+Shift+Space in a game doesn't pop the HUD or paste into game chat. **Anti-cheat safe:** detection is
+> read-only OS queries — JVoice never reads the game's memory, never injects, never enumerates its modules
+> (the only process access is `PROCESS_QUERY_LIMITED_INFORMATION` for the exe path). Default mode is **Balanced**.
+> Diagnostic tool: run `JVoice.exe --game-probe` (writes live signal snapshots to `%TEMP%\jvoice-gameprobe.log`
+> for 60s), then alt-tab into a game and read that file — each snapshot shows the QUNS state, exe path, the four
+> signals, and the final `ShouldSuppress` decision.
+- [ ] **In each real game** (try **Valorant, Fortnite, GTA V, Minecraft, and a Steam game**): with the game in focus, press **Ctrl+Shift+Space** → **no HUD, no recording**, and the chord **passes through to the game** (JVoice does nothing). Use `--game-probe` to confirm `ShouldSuppress: True` for that game first.
+- [ ] **Minecraft (windowed `javaw.exe`)** specifically: it's caught via Windows' GameConfigStore, not the exe name. If `--game-probe` shows `RegisteredGame: True`, suppression works; if not (Windows never registered it), it only suppresses fullscreen (Balanced) or needs Aggressive — note which.
+- [ ] **Alt-tab out of the game** to a normal app (Notepad/browser) → the hotkey **works again** (dictation normal). A backgrounded game must NOT keep suppressing.
+- [ ] **Stop-while-gaming:** start a dictation in a normal app, **then alt-tab into a game**, and press **Ctrl+Shift+Space** → the recording **still stops** (it does not get stuck), and that keypress does **not** leak into the game (it's swallowed, not passed through). Starting a *new* dictation while the game is focused remains blocked.
+- [ ] **Fullscreen video is NOT a false positive (Balanced):** play a **fullscreen** YouTube/Netflix video → the hotkey **still works** (Balanced deliberately ignores bare fullscreen). 
+- [ ] **Settings → Gaming** segmented picker (Off / Balanced / Aggressive): selects, persists across relaunch. Switch to **Aggressive** → now fullscreen video **does** suppress (any fullscreen app). Switch to **Off** → suppression is fully disabled (hotkey fires even inside a game). Return to **Balanced**.
+- [ ] **No false ban / no anti-cheat warning:** after sessions in kernel-anti-cheat games (Vanguard/EAC/BattlEye) with JVoice running, there is **no anti-cheat flag or ban** — expected, since detection never touches the game process. (If anything ever looks off, the only game-related access is the read-only `--game-probe`/detector path lookup; send `%TEMP%\jvoice-gameprobe.log`.)
+
 ## HUD visual fidelity (black & white redesign — 2026-06-23)
 > The HUD no longer follows `docs/demo-video/DESIGN-TOKENS.md` (that's the macOS color design).
 > The Windows HUD is intentionally a minimal **black & white** pill. Screenshot any state without a
@@ -49,16 +65,16 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] Positioned correctly on a secondary monitor's primary work area.
 
 ## Settings panel (320×520, black & white)
-- [ ] Header "JVoice" + "Voice dictation controls". 10 sections in order: Last Transcript, Keyboard Shortcut, Language, Voice Style, Processing, Whisper Model, Custom Words, Corrections, Stats, footer (Restore/Quit). (Screenshot headlessly via `JVoice.exe --settings-render out.png`, or show it with `--settings-preview`.)
+- [ ] Header "JVoice" + "Voice dictation controls". Sections in order: **Stats, Recent Transcripts, Whisper Model, Processing, Voice Style, Language, Custom Words, Corrections, Keyboard Shortcut**, footer (Restore/Quit). (Reordered 2026-06-25 to mirror the macOS Settings; the old editable **Last Transcript** box was removed — see HANDOFF-WINDOWS §7 #26. Screenshot headlessly via `JVoice.exe --settings-render out.png`, or show it with `--settings-preview`.)
 - [ ] **All monochrome:** pure-black background, dark cards with gray hairline borders, **white** section accent dots (the keyboard section's dot is a subtle gray), gray UPPERCASED titles. No blue/cyan/purple/teal/orange/pink/green anywhere.
 - [ ] **Keyboard Shortcut:** the recorder shows "Ctrl+Shift+Space"; click it, press a new chord → it updates and the new chord triggers dictation (old one no longer does). Backspace resets to default; Esc cancels.
 - [ ] **Language / Voice Style / Whisper Model:** segmented pickers select correctly (selected segment = white-tint fill, white text) and persist (close + relaunch → choice retained).
 - [ ] **Processing:** the switch (white-when-on, black knob) toggles Remove Filler Words; "um/uh/er" disappear from output when on.
 - [ ] **Custom Words:** type a word + Enter (or Add) → it appears in the list and biases transcription; the × removes it.
 - [ ] **Corrections:** add a rule From `web api` → To `web app` (Enter in either box or Add) → it appears as "web api → web app" (the "To" text in white); the × removes it; choice persists across relaunch. Then dictate so the recognizer produces "web api" → the pasted text reads "web app", while a separate "REST API" dictation stays "REST API" (the phrase rule doesn't touch standalone API). Blank/duplicate input is ignored (no row added).
-- [ ] **Last Transcript:** edit the box, **Fix** → new words become custom words; **Revert** undoes the fix + removes those words.
+- [ ] **Recent Transcripts** (read-only history, last 30, newest first — replaces the old editable Last Transcript box, §7 #26): after dictating, the new transcript appears at the **top**; empty state shows muted "No transcripts yet." Each row is **single-line, ellipsis-truncated** (no wrap). **Hover a row** → it highlights and reveals **Copy** + **Delete** icons on the right. **Copy** puts that transcript on the clipboard and flips to a **checkmark for ~1.2s**. **Delete** removes just that row. **Clear all** empties the whole list. The list **survives relaunch** (persisted to `%APPDATA%\JVoice\transcript-history.json`); deleting/corrupting that file → loads empty, no crash. Do ~31 dictations → the list caps at **30** (oldest drops off).
 - [ ] **Stats:** total words + avg WPM update after a dictation.
-- [ ] **Restore Default Settings** → confirm dialog → settings reset (stats untouched). **Quit JVoice** → tray icon disappears, process exits.
+- [ ] **Restore Default Settings** → confirm dialog (now also says **recent transcripts will be cleared**; statistics are not affected) → settings reset, **Recent Transcripts emptied**, stats untouched. **Quit JVoice** → tray icon disappears, process exits.
 
 ## Audio device routing (Bluetooth A2DP preservation)
 - [ ] With a normal mic (built-in/USB) default: dictation records from it (no change).

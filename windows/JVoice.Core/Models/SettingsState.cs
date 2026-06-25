@@ -8,9 +8,10 @@ public sealed record SettingsState(
     IReadOnlyList<string> CustomWords,
     bool RemoveFillerWords,
     IReadOnlyList<CorrectionRule> Corrections,
-    bool DeveloperTerms)
+    GameDetectionMode GameMode = GameDetectionMode.Balanced,
+    bool DeveloperTerms = true)
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public static SettingsState Default => new(
         SchemaVersion: CurrentSchemaVersion,
@@ -20,5 +21,6 @@ public sealed record SettingsState(
         CustomWords: Array.Empty<string>(),
         RemoveFillerWords: true,
         Corrections: Array.Empty<CorrectionRule>(),
+        GameMode: GameDetectionMode.Balanced,
         DeveloperTerms: true);
 }

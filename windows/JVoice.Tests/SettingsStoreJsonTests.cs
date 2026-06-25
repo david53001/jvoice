@@ -17,6 +17,7 @@ public class SettingsStoreJsonTests
             CustomWords: new[] { "JVoice", "Li-Fraumeni" },
             RemoveFillerWords: false,
             Corrections: new[] { new CorrectionRule("web api", "web app") },
+            GameMode: GameDetectionMode.Aggressive,
             DeveloperTerms: false);
 
         string json = SettingsStateJson.Serialize(original);
@@ -28,6 +29,7 @@ public class SettingsStoreJsonTests
         Assert.Equal(original.CustomWords, back.CustomWords);
         Assert.Equal(original.RemoveFillerWords, back.RemoveFillerWords);
         Assert.Equal(original.Corrections, back.Corrections);
+        Assert.Equal(original.GameMode, back.GameMode);
         Assert.Equal(original.DeveloperTerms, back.DeveloperTerms);
         Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
     }
@@ -46,11 +48,11 @@ public class SettingsStoreJsonTests
     public void Deserialize_ForwardVersion_Throws()
     {
         string json = """
-            { "schemaVersion": 2, "mode": "Casual", "model": "Tiny",
+            { "schemaVersion": 3, "mode": "Casual", "model": "Tiny",
               "language": "English", "customWords": [], "removeFillerWords": true }
             """;
         var ex = Assert.Throws<ForwardVersionException>(() => SettingsStateJson.Deserialize(json));
-        Assert.Equal(2, ex.FileVersion);
+        Assert.Equal(3, ex.FileVersion);
         Assert.Equal(SettingsState.CurrentSchemaVersion, ex.CurrentVersion);
     }
 
@@ -111,16 +113,18 @@ public class SettingsStoreJsonTests
     // ===== Serialize-side fidelity + round-trip fuzz =====
 
     // Swift's CodingKeys are schemaVersion/mode/model/language/customWords/removeFillerWords. The
-    // Windows port adds two extra on-disk keys with no macOS counterpart: `corrections` and
-    // `developerTerms` — so Serialize emits exactly those eight keys. Older builds / the macOS app
-    // simply ignore the unknown keys on read; Deserialize tolerates their absence.
+    // Windows port adds three extra on-disk keys with no macOS counterpart: `corrections`,
+    // `developerTerms` (the developer-terms pack toggle), and `gameMode` (the game-detection
+    // suppression setting) — so Serialize emits exactly those nine keys. Older builds / the macOS
+    // app simply ignore the unknown keys on read; Deserialize tolerates their absence (a v1 file
+    // with no `gameMode` defaults to Balanced, and no `developerTerms` defaults to ON).
     [Fact]
-    public void Serialize_EmitsExactlyTheEightKeys()
+    public void Serialize_EmitsExactlyTheNineKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "corrections", "customWords", "developerTerms", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
+            new[] { "corrections", "customWords", "developerTerms", "gameMode", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
             keys);
     }
 
@@ -160,6 +164,7 @@ public class SettingsStoreJsonTests
         var modes = Enum.GetValues<ToneStyle>();
         var models = Enum.GetValues<WhisperModelOption>();
         var langs = Enum.GetValues<TranscriptionLanguage>();
+        var gameModes = Enum.GetValues<GameDetectionMode>();
         for (int i = 0; i < 400; i++)
         {
             int wc = rng.Next(0, 6);
@@ -178,6 +183,7 @@ public class SettingsStoreJsonTests
                 CustomWords: words,
                 RemoveFillerWords: rng.Next(2) == 0,
                 Corrections: corrections,
+                GameMode: gameModes[rng.Next(gameModes.Length)],
                 DeveloperTerms: rng.Next(2) == 0);
 
             var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(state));
@@ -187,6 +193,7 @@ public class SettingsStoreJsonTests
             Assert.Equal(state.CustomWords, back.CustomWords);
             Assert.Equal(state.RemoveFillerWords, back.RemoveFillerWords);
             Assert.Equal(state.Corrections, back.Corrections);
+            Assert.Equal(state.GameMode, back.GameMode);
             Assert.Equal(state.DeveloperTerms, back.DeveloperTerms);
             Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
         }

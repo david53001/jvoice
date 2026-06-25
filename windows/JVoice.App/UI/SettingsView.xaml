@@ -5,85 +5,130 @@
              Width="320" Height="520" Background="{StaticResource Settings.PanelBg}">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="16">
-            <!-- Header -->
+            <!-- 1. Header -->
             <StackPanel Margin="0,0,0,4">
                 <TextBlock Text="JVoice" FontSize="17" FontWeight="Bold" Foreground="White" />
                 <TextBlock Text="Voice dictation controls" FontSize="11" Foreground="{StaticResource Text.W45}" Margin="0,3,0,0" />
             </StackPanel>
 
-            <!-- 1. LAST TRANSCRIPT (blue) -->
-            <ui:DarkSection HeaderText="Last Transcript" AccentBrush="{StaticResource Settings.Blue}">
-                
+            <!-- 2. STATS (green) -->
+            <ui:DarkSection HeaderText="Stats" AccentBrush="{StaticResource Settings.Green}">
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <StackPanel Grid.Column="0" HorizontalAlignment="Center">
+                            <TextBlock Text="{Binding TotalWordsSpoken}" FontSize="26" FontWeight="Bold" Foreground="White"
+                                       FontFamily="Consolas" HorizontalAlignment="Center">
+                                <TextBlock.Effect>
+                                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
+                                </TextBlock.Effect>
+                            </TextBlock>
+                            <TextBlock Text="total words" FontSize="10" Foreground="{StaticResource Text.W38}" HorizontalAlignment="Center" />
+                        </StackPanel>
+                        <Rectangle Grid.Column="1" Width="0.5" Height="44" Fill="{StaticResource Settings.Border}" />
+                        <StackPanel Grid.Column="2" HorizontalAlignment="Center">
+                            <TextBlock Text="{Binding AverageWpmDisplay}" FontSize="26" FontWeight="Bold" Foreground="White"
+                                       FontFamily="Consolas" HorizontalAlignment="Center">
+                                <TextBlock.Effect>
+                                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
+                                </TextBlock.Effect>
+                            </TextBlock>
+                            <TextBlock Text="avg WPM" FontSize="10" Foreground="{StaticResource Text.W38}" HorizontalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+
+            </ui:DarkSection>
+
+            <!-- 3. RECENT TRANSCRIPTS (blue) — read-only history of the last 30 dictations -->
+            <ui:DarkSection HeaderText="Recent Transcripts" AccentBrush="{StaticResource Settings.Blue}">
+
                     <StackPanel>
-                        <TextBlock Text="No transcript yet." FontSize="11"
+                        <TextBlock Text="No transcripts yet." FontSize="11"
                                    Foreground="{StaticResource Text.W40}"
-                                   Visibility="{Binding HasTranscript, Converter={StaticResource InverseBoolToVis}}" />
-                        <Border CornerRadius="6" Background="{StaticResource Settings.InputBg}"
-                                BorderBrush="{StaticResource Settings.Border}" BorderThickness="1" Height="56"
-                                Visibility="{Binding HasTranscript, Converter={StaticResource BoolToVis}}">
-                            <TextBox x:Name="TranscriptBox" Background="Transparent" BorderThickness="0"
-                                     Foreground="{StaticResource Text.W75}" FontSize="11"
-                                     TextWrapping="Wrap" AcceptsReturn="True" VerticalScrollBarVisibility="Auto"
-                                     Text="{Binding EditedTranscript, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                        </Border>
-                        <StackPanel Orientation="Horizontal" Margin="0,8,0,0"
-                                    Visibility="{Binding HasTranscript, Converter={StaticResource BoolToVis}}">
-                            <Button Content="Fix" Style="{StaticResource DarkPrimaryButton}"
-                                    Click="OnFix" IsEnabled="{Binding CanFix}" />
-                            <Button Content="Revert" Style="{StaticResource DarkPrimaryButton}" Margin="8,0,0,0"
-                                    Foreground="{StaticResource Settings.Gray}" Tag="{StaticResource Settings.Gray}"
-                                    Click="OnRevert" IsEnabled="{Binding CanRevert}" />
-                        </StackPanel>
+                                   Visibility="{Binding HasRecentTranscripts, Converter={StaticResource InverseBoolToVis}}" />
+                        <ScrollViewer MaxHeight="150" VerticalScrollBarVisibility="Auto"
+                                      Visibility="{Binding HasRecentTranscripts, Converter={StaticResource BoolToVis}}">
+                            <ItemsControl ItemsSource="{Binding RecentTranscripts}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <!-- Single-line, read-only row. Hover highlights it and reveals Copy + Delete. -->
+                                        <Border CornerRadius="6" Padding="6,3" Margin="0,1">
+                                            <Border.Style>
+                                                <Style TargetType="Border">
+                                                    <!-- Transparent (not null) so the whole row is hit-testable for hover. -->
+                                                    <Setter Property="Background" Value="Transparent" />
+                                                    <Style.Triggers>
+                                                        <Trigger Property="IsMouseOver" Value="True">
+                                                            <Setter Property="Background" Value="#1AFFFFFF" />
+                                                        </Trigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </Border.Style>
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*" />
+                                                    <ColumnDefinition Width="Auto" />
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding Text}" FontSize="11"
+                                                           Foreground="{StaticResource Text.W75}"
+                                                           TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"
+                                                           VerticalAlignment="Center" />
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+                                                            Visibility="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=Border}, Converter={StaticResource BoolToVis}}">
+                                                    <!-- Copy — flips to a checkmark for ~1.2s after a click -->
+                                                    <Button Style="{StaticResource PressableButton}" Click="OnCopyTranscript"
+                                                            Margin="6,0,0,0" ToolTip="Copy" Foreground="#B3FFFFFF">
+                                                        <Grid>
+                                                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE8C8;" FontSize="13"
+                                                                       Visibility="{Binding JustCopied, Converter={StaticResource InverseBoolToVis}}" />
+                                                            <TextBlock FontFamily="Segoe MDL2 Assets" Text="&#xE73E;" FontSize="13"
+                                                                       Visibility="{Binding JustCopied, Converter={StaticResource BoolToVis}}" />
+                                                        </Grid>
+                                                    </Button>
+                                                    <!-- Delete just this row -->
+                                                    <Button Style="{StaticResource PressableButton}" Click="OnDeleteTranscript"
+                                                            Margin="10,0,0,0" ToolTip="Delete"
+                                                            FontFamily="Segoe MDL2 Assets" Content="&#xECC9;" FontSize="13"
+                                                            Foreground="#B3FFFFFF" />
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                        <Button Content="Clear all" Style="{StaticResource DarkPrimaryButton}"
+                                HorizontalAlignment="Left" Margin="0,8,0,0"
+                                Foreground="{StaticResource Settings.Gray}" Tag="{StaticResource Settings.Gray}"
+                                Click="OnClearTranscripts"
+                                Visibility="{Binding HasRecentTranscripts, Converter={StaticResource BoolToVis}}" />
                     </StackPanel>
-                
+
             </ui:DarkSection>
 
-            <!-- 2. KEYBOARD SHORTCUT (gray) -->
-            <ui:DarkSection HeaderText="Keyboard Shortcut" AccentBrush="{StaticResource Settings.Gray}">
-                
+            <!-- 4. WHISPER MODEL (cyan) -->
+            <ui:DarkSection HeaderText="Whisper Model" AccentBrush="{StaticResource Settings.Cyan}">
+
                     <StackPanel>
-                        <StackPanel Orientation="Horizontal">
-                            <TextBlock Text="Toggle Recording:" FontSize="11" Foreground="{StaticResource Text.W75}"
-                                       VerticalAlignment="Center" Margin="0,0,8,0" />
-                            <ui:HotkeyRecorder x:Name="Recorder" MinWidth="120" Padding="8,4"
-                                               Background="{StaticResource Settings.InputBg}"
-                                               Foreground="{StaticResource Text.W75}" />
-                        </StackPanel>
-                        <TextBlock Text="Default: Ctrl + Shift + Space" FontSize="10"
-                                   Foreground="{StaticResource Text.W35}" Margin="0,8,0,0" />
+                        <UniformGrid Rows="1">
+                            <RadioButton Content="Tiny"  GroupName="Model" Style="{StaticResource SegmentLeft}"  IsChecked="{Binding IsTiny, Mode=TwoWay}" />
+                            <RadioButton Content="Base"  GroupName="Model" Style="{StaticResource SegmentMid}"   IsChecked="{Binding IsBase, Mode=TwoWay}" />
+                            <RadioButton Content="Small" GroupName="Model" Style="{StaticResource SegmentMid}"   IsChecked="{Binding IsSmall, Mode=TwoWay}" />
+                            <RadioButton Content="Large" GroupName="Model" Style="{StaticResource SegmentRight}" IsChecked="{Binding IsLarge, Mode=TwoWay}" />
+                        </UniformGrid>
+                        <TextBlock Text="{Binding ModelGuidance}" FontSize="10" Foreground="{StaticResource Text.W38}"
+                                   TextWrapping="Wrap" Margin="0,7,0,0" />
                     </StackPanel>
-                
-            </ui:DarkSection>
 
-            <!-- 3. LANGUAGE (indigo) -->
-            <ui:DarkSection HeaderText="Language" AccentBrush="{StaticResource Settings.Indigo}">
-                
-                    <UniformGrid Rows="1">
-                        <RadioButton Content="English"  GroupName="Lang" Style="{StaticResource SegmentLeft}"
-                                     IsChecked="{Binding IsEnglish, Mode=TwoWay}" />
-                        <RadioButton Content="Romanian" GroupName="Lang" Style="{StaticResource SegmentRight}"
-                                     IsChecked="{Binding IsRomanian, Mode=TwoWay}" />
-                    </UniformGrid>
-                
-            </ui:DarkSection>
-
-            <!-- 4. VOICE STYLE (purple) -->
-            <ui:DarkSection HeaderText="Voice Style" AccentBrush="{StaticResource Settings.Purple}">
-                
-                    <UniformGrid Rows="1">
-                        <RadioButton Content="Casual"      GroupName="Tone" Style="{StaticResource SegmentLeft}"
-                                     IsChecked="{Binding IsCasual, Mode=TwoWay}" />
-                        <RadioButton Content="Formal"      GroupName="Tone" Style="{StaticResource SegmentMid}"
-                                     IsChecked="{Binding IsFormal, Mode=TwoWay}" />
-                        <RadioButton Content="Very Casual" GroupName="Tone" Style="{StaticResource SegmentRight}"
-                                     IsChecked="{Binding IsVeryCasual, Mode=TwoWay}" />
-                    </UniformGrid>
-                
             </ui:DarkSection>
 
             <!-- 5. PROCESSING (teal) -->
             <ui:DarkSection HeaderText="Processing" AccentBrush="{StaticResource Settings.Teal}">
-                
+
                     <StackPanel>
                         <Grid>
                             <StackPanel HorizontalAlignment="Left">
@@ -104,28 +149,38 @@
                                       IsChecked="{Binding DeveloperTermsEnabled, Mode=TwoWay}" />
                         </Grid>
                     </StackPanel>
-                
+
             </ui:DarkSection>
 
-            <!-- 6. WHISPER MODEL (cyan) -->
-            <ui:DarkSection HeaderText="Whisper Model" AccentBrush="{StaticResource Settings.Cyan}">
-                
-                    <StackPanel>
-                        <UniformGrid Rows="1">
-                            <RadioButton Content="Tiny"  GroupName="Model" Style="{StaticResource SegmentLeft}"  IsChecked="{Binding IsTiny, Mode=TwoWay}" />
-                            <RadioButton Content="Base"  GroupName="Model" Style="{StaticResource SegmentMid}"   IsChecked="{Binding IsBase, Mode=TwoWay}" />
-                            <RadioButton Content="Small" GroupName="Model" Style="{StaticResource SegmentMid}"   IsChecked="{Binding IsSmall, Mode=TwoWay}" />
-                            <RadioButton Content="Large" GroupName="Model" Style="{StaticResource SegmentRight}" IsChecked="{Binding IsLarge, Mode=TwoWay}" />
-                        </UniformGrid>
-                        <TextBlock Text="{Binding ModelGuidance}" FontSize="10" Foreground="{StaticResource Text.W38}"
-                                   TextWrapping="Wrap" Margin="0,7,0,0" />
-                    </StackPanel>
-                
+            <!-- 6. VOICE STYLE (purple) -->
+            <ui:DarkSection HeaderText="Voice Style" AccentBrush="{StaticResource Settings.Purple}">
+
+                    <UniformGrid Rows="1">
+                        <RadioButton Content="Casual"      GroupName="Tone" Style="{StaticResource SegmentLeft}"
+                                     IsChecked="{Binding IsCasual, Mode=TwoWay}" />
+                        <RadioButton Content="Formal"      GroupName="Tone" Style="{StaticResource SegmentMid}"
+                                     IsChecked="{Binding IsFormal, Mode=TwoWay}" />
+                        <RadioButton Content="Very Casual" GroupName="Tone" Style="{StaticResource SegmentRight}"
+                                     IsChecked="{Binding IsVeryCasual, Mode=TwoWay}" />
+                    </UniformGrid>
+
             </ui:DarkSection>
 
-            <!-- 7. CUSTOM WORDS (orange) -->
+            <!-- 7. LANGUAGE (indigo) -->
+            <ui:DarkSection HeaderText="Language" AccentBrush="{StaticResource Settings.Indigo}">
+
+                    <UniformGrid Rows="1">
+                        <RadioButton Content="English"  GroupName="Lang" Style="{StaticResource SegmentLeft}"
+                                     IsChecked="{Binding IsEnglish, Mode=TwoWay}" />
+                        <RadioButton Content="Romanian" GroupName="Lang" Style="{StaticResource SegmentRight}"
+                                     IsChecked="{Binding IsRomanian, Mode=TwoWay}" />
+                    </UniformGrid>
+
+            </ui:DarkSection>
+
+            <!-- 8. CUSTOM WORDS (orange) -->
             <ui:DarkSection HeaderText="Custom Words" AccentBrush="{StaticResource Settings.Orange}">
-                
+
                     <StackPanel>
                         <TextBlock Text="No custom words added." FontSize="11" Foreground="{StaticResource Text.W40}"
                                    Visibility="{Binding HasCustomWords, Converter={StaticResource InverseBoolToVis}}" />
@@ -157,10 +212,10 @@
                                     Click="OnAddWord" />
                         </StackPanel>
                     </StackPanel>
-                
+
             </ui:DarkSection>
 
-            <!-- 7b. CORRECTIONS (pink) -->
+            <!-- 8b. CORRECTIONS (pink) — Windows-only; kept adjacent to Custom Words -->
             <ui:DarkSection HeaderText="Corrections" AccentBrush="{StaticResource Settings.Pink}">
 
                     <StackPanel>
@@ -212,39 +267,42 @@
 
             </ui:DarkSection>
 
-            <!-- 8. STATS (green) -->
-            <ui:DarkSection HeaderText="Stats" AccentBrush="{StaticResource Settings.Green}">
-                
-                    <Grid>
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*" />
-                            <ColumnDefinition Width="Auto" />
-                            <ColumnDefinition Width="*" />
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding TotalWordsSpoken}" FontSize="26" FontWeight="Bold" Foreground="White"
-                                       FontFamily="Consolas" HorizontalAlignment="Center">
-                                <TextBlock.Effect>
-                                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
-                                </TextBlock.Effect>
-                            </TextBlock>
-                            <TextBlock Text="total words" FontSize="10" Foreground="{StaticResource Text.W38}" HorizontalAlignment="Center" />
+            <!-- 9. KEYBOARD SHORTCUT (gray) -->
+            <ui:DarkSection HeaderText="Keyboard Shortcut" AccentBrush="{StaticResource Settings.Gray}">
+
+                    <StackPanel>
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="Toggle Recording:" FontSize="11" Foreground="{StaticResource Text.W75}"
+                                       VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <ui:HotkeyRecorder x:Name="Recorder" MinWidth="120" Padding="8,4"
+                                               Background="{StaticResource Settings.InputBg}"
+                                               Foreground="{StaticResource Text.W75}" />
                         </StackPanel>
-                        <Rectangle Grid.Column="1" Width="0.5" Height="44" Fill="{StaticResource Settings.Border}" />
-                        <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                            <TextBlock Text="{Binding AverageWpmDisplay}" FontSize="26" FontWeight="Bold" Foreground="White"
-                                       FontFamily="Consolas" HorizontalAlignment="Center">
-                                <TextBlock.Effect>
-                                    <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
-                                </TextBlock.Effect>
-                            </TextBlock>
-                            <TextBlock Text="avg WPM" FontSize="10" Foreground="{StaticResource Text.W38}" HorizontalAlignment="Center" />
-                        </StackPanel>
-                    </Grid>
-                
+                        <TextBlock Text="Default: Ctrl + Shift + Space" FontSize="10"
+                                   Foreground="{StaticResource Text.W35}" Margin="0,8,0,0" />
+                    </StackPanel>
+
             </ui:DarkSection>
 
-            <!-- 9. Footer: Restore Defaults / Quit -->
+            <!-- 10. GAMING (gray) -->
+            <ui:DarkSection HeaderText="Gaming" AccentBrush="{StaticResource Settings.Gray}">
+
+                    <StackPanel>
+                        <UniformGrid Rows="1">
+                            <RadioButton Content="Off"        GroupName="GameMode" Style="{StaticResource SegmentLeft}"
+                                         IsChecked="{Binding IsGameOff, Mode=TwoWay}" />
+                            <RadioButton Content="Balanced"   GroupName="GameMode" Style="{StaticResource SegmentMid}"
+                                         IsChecked="{Binding IsGameBalanced, Mode=TwoWay}" />
+                            <RadioButton Content="Aggressive" GroupName="GameMode" Style="{StaticResource SegmentRight}"
+                                         IsChecked="{Binding IsGameAggressive, Mode=TwoWay}" />
+                        </UniformGrid>
+                        <TextBlock Text="Pause the hotkey while a game is in focus. Balanced = detected games only; Aggressive = also any fullscreen app."
+                                   FontSize="10" Foreground="{StaticResource Text.W38}" TextWrapping="Wrap" Margin="0,7,0,0" />
+                    </StackPanel>
+
+            </ui:DarkSection>
+
+            <!-- 11. Footer: Restore Defaults / Quit -->
             <Grid>
                 <Button Content="Restore Default Settings" Style="{StaticResource DarkDestructiveButton}"
                         HorizontalAlignment="Left" Click="OnRestoreDefaults" />

@@ -15,6 +15,14 @@ public sealed class GlobalHotkey : IDisposable
 {
     public event Action? Triggered;
 
+    /// Optional cheap predicate consulted on every chord match (invoked on the hook
+    /// thread). When it returns true a game owns the foreground: JVoice stays fully
+    /// transparent — the chord is not triggered, not debounced, and NOT swallowed, so
+    /// it passes through to the game (it may be an in-game bind). The predicate should
+    /// be O(1) — e.g. reading a cached volatile bool in GameDetector. Null (default)
+    /// means no suppression; false means the normal trigger + swallow path runs.
+    public Func<bool>? SuppressPredicate { get; set; }
+
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_SYSKEYDOWN = 0x0104;
@@ -164,6 +172,14 @@ public sealed class GlobalHotkey : IDisposable
                 var data = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
                 if (MatchesChord((int)data.vkCode))
                 {
+                    // Game-detection passthrough: a game owns the foreground -> stay fully transparent.
+                    // Don't trigger, don't debounce, and crucially DON'T swallow, so the chord reaches
+                    // the game (it may be an in-game bind). The predicate is O(1) (cached volatile bool).
+                    if (SuppressPredicate?.Invoke() == true)
+                    {
+                        Log("chord matched but SUPPRESSED (game foreground) -> passthrough, not swallowed");
+                        return CallNextHookEx(_hook, nCode, wParam, lParam);
+                    }
                     if (TryDebounce())
                     {
                         Log("chord matched + debounce passed -> raising Triggered");

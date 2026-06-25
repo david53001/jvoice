@@ -19,8 +19,8 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **434 / 434 passing** (grew from 122 during
-  the bug-hunt, the Corrections feature, and the no-speech/sentence-tail work below).
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **490 / 490 passing** (grew from 122 during
+  the bug-hunt and the subsequent feature work tracked in §7; a shared, moving total).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
 - **The GUI launches** to the system tray with the "J" icon + first-run Settings window
@@ -145,7 +145,8 @@ windows/
 ├── Directory.Build.props          LangVersion latest, Nullable+ImplicitUsings enable, Version 1.0.0
 ├── JVoice.Core/                   net9.0 — PURE brain + pure decision helpers (no UI/native deps)
 │   ├── Models/                    ToneStyle, TranscriptionLanguage, WhisperModelOption, SettingsState,
-│   │                              HudState, HotkeyChord, SettingsStateJson
+│   │                              HudState, HotkeyChord, SettingsStateJson, CorrectionRule,
+│   │                              TranscriptHistory(+Entry) (Win-only Recent Transcripts, §7 #26)
 │   ├── Text/                      TextProcessor, PhoneticMatcher, VocabularyPrompt, RepetitionGuard,
 │   │                              RegurgitationRecovery, NonSpeechAnnotation (Win-only no-speech detector)
 │   ├── Audio/                     WavTail(+WavTailReader), ChunkPlanner, StreamingTranscriptionSession,
@@ -158,14 +159,16 @@ windows/
 │   ├── app.manifest               asInvoker, PerMonitorV2 DPI, longPathAware, UTF-8, Win10/11 supportedOS
 │   ├── VoiceCoordinator.cs        the orchestrator (port of VoiceCoordinator.swift)
 │   ├── Whisper/                   WhisperRuntime, WhisperModelStore, WhisperNetTranscriptionEngine, BenchRunner
-│   ├── Platform/                  PlatformPaths, SettingsStore, StatsStore, LastTranscriptStore, SystemActions,
+│   ├── Platform/                  PlatformPaths, SettingsStore, StatsStore, LastTranscriptStore,
+│   │                              TranscriptHistoryStore (§7 #26), SystemActions,
 │   │                              LaunchAtLogin, SingleInstance, SettingsUris, PermissionError,
 │   │                              AudioInputRouter, IAudioRecorder, NAudioRecorder, ForegroundWindowTracker,
 │   │                              GlobalHotkey, Paster
 │   ├── UI/                        App-level: HudWindow + HudView, SettingsWindow + SettingsView, DarkSection,
-│   │   │                          HotkeyRecorder, TrayIcon, Converters, Styles/JVoicePalette.xaml
+│   │   │                          HotkeyRecorder, TrayIcon, TranscriptRow (§7 #26), Converters,
+│   │   │                          Styles/JVoicePalette.xaml
 │   └── Assets/                    JVoice.ico + tray-idle/recording/transcribing.png (generated, committed)
-├── JVoice.Tests/                  net9.0 xUnit — 434 tests locking JVoice.Core
+├── JVoice.Tests/                  net9.0 xUnit — 490 tests locking JVoice.Core
 └── tools/
     ├── whisper-smoke/             net9.0 console — WPF-free end-to-end transcription harness
     ├── generate-icon/             net9.0 console (SkiaSharp) — writes Assets/JVoice.ico + tray PNGs
@@ -811,7 +814,113 @@ These are real corrections discovered during execution — preserve them.
       the standard recipe — **assumption logged**). Steps: `docs/launch/windows-dogfood-checklist.md` →
       "Permissions & edge cases → Elevated-window dictation".
 
-26. **Developer-terms correction pack — opt-out, recognizes coding vocabulary (2026-06-25).** David dictates
+26. **Settings reordered to mirror macOS + new "Recent Transcripts" history — 2026-06-25.** Two changes
+    ported from the macOS Settings UI (layout/behaviour only — the Windows **monochrome palette is unchanged**;
+    no colors were touched). **(a) Section order** is now, top-to-bottom: Header, **Stats**, **Recent
+    Transcripts**, Whisper Model, Processing, Voice Style, Language, Custom Words, **Corrections**, Keyboard
+    Shortcut, footer (Restore/Quit). The old editable **Last Transcript** card (the inline Fix/Revert box) was
+    **removed from the UI** — its VM members (`EditedTranscript`/`CanFix`/`CanRevert`/`FixLastTranscript`/
+    `RevertLastFix`/`SyncEditedTranscriptFromLast`/`ClearRevertBuffer`) and the `last-transcript.txt` write are
+    **kept but unsurfaced** (the macOS handoff sanctions leaving them unused). **Corrections is Windows-only**
+    (no macOS counterpart, §6/CorrectionRule) and the macOS order doesn't list it — **assumption logged:** it's
+    kept immediately after Custom Words (its sibling), between Custom Words and Keyboard Shortcut.
+    **(b) Recent Transcripts** is a read-only history of the last **30** finalized transcripts, newest first.
+    Architecture mirrors the SettingsStateJson/StatsStore split — **pure brain in Core, file-I/O in App:**
+    - `JVoice.Core/Models/TranscriptHistoryEntry.cs` — `record TranscriptHistoryEntry(Guid Id, string Text)`
+      (the Id gives each row a stable identity so a per-row delete targets the right entry).
+    - `JVoice.Core/Models/TranscriptHistory.cs` — pure `Add` (trim → blank-ignored → prepend → cap 30),
+      `Remove(id)`, `Serialize`/`Deserialize` (camelCase JSON; **corrupt/missing/blank → empty list, never
+      throws**; drops blank-text entries, fills a missing id, caps to 30). **Unit-tested** by
+      `JVoice.Tests/TranscriptHistoryTests.cs` (19 cases).
+    - `JVoice.App/Platform/TranscriptHistoryStore.cs` — thin lock-guarded wrapper: loads on construct, mutates
+      via the Core helpers, persists synchronously to `%APPDATA%\JVoice\transcript-history.json` with the same
+      atomic temp+move + `SystemActions.ReportError` pattern as StatsStore. `Add` returns the new entry so the UI
+      inserts just that row.
+    - `JVoice.App/UI/TranscriptRow.cs` — bound row VM: immutable `Id`+`Text` plus one transient
+      `JustCopied` flag (never persisted) the Copy button flips for `AppTimings.CopyFeedbackDuration` (1.2 s).
+    - **Wiring (`VoiceCoordinator`):** `_historyStore` + `ObservableCollection<TranscriptRow> RecentTranscripts`
+      + `HasRecentTranscripts`; `AddRecentTranscript(processed)` is called in `FinishTranscriptionAsync` at the
+      **same UI-thread point that records stats / the last transcript** (after a successful paste, using the
+      final pasted text). `ResetSettings` (Restore Defaults) **also clears the history** (`_historyStore.Clear()`
+      + collection clear) — **statistics are deliberately NOT reset** (StatsStore untouched, unchanged from
+      before). The Restore-Defaults confirmation text now says recent transcripts will be cleared and stats won't
+      be affected.
+    - **UI (`SettingsView.xaml`):** empty state shows muted "No transcripts yet."; non-empty is a
+      `ScrollViewer MaxHeight=150` of single-line, `TextTrimming=CharacterEllipsis`, `TextWrapping=NoWrap` rows.
+      Each row Border has a base `Background=Transparent` (so the whole row is hit-testable) and an
+      `IsMouseOver` trigger that highlights it (`#1AFFFFFF`, monochrome) and reveals a Copy + Delete button pair
+      (revealed via `Visibility` bound to the row Border's `IsMouseOver` through `BoolToVis`). Copy =
+      `Clipboard.SetText` (try/catch for clipboard-busy) + glyph swaps to a checkmark for 1.2 s; Delete =
+      `RemoveRecentTranscript(row.Id)`. A monochrome **"Clear all"** button below the list calls
+      `ClearRecentTranscripts`. **Privacy:** plaintext on disk, erased **only** by explicit user action (per-row
+      delete, Clear all, Restore Defaults) — nothing clears it automatically.
+    - **VERIFICATION:** `dotnet build windows/JVoice.sln -c Debug` = 0 errors; Release App build = 0 errors
+      (the locked-DLL copy error if a JVoice instance is running is a file lock, not a code error — build to a
+      separate `-o` dir, or stop the instance); `dotnet test` green incl. the **19 new `TranscriptHistoryTests`**
+      (the full-suite total moves with concurrent work — 490 at this writing). Layout confirmed
+      headlessly via `JVoice.exe --settings-render` in both empty and seeded states (order correct, rows
+      ellipsis-truncate, Clear all present, palette unchanged). **Hover-reveal, Copy→checkmark, Delete, Clear
+      all, persistence-across-restart, and Restore-Defaults-clears-history are the interactive bits** a static
+      render can't capture → on the dogfood checklist ("Settings panel → Recent Transcripts").
+27. **Game-detection hotkey suppression — David-requested 2026-06-25 (Windows-only; no macOS equivalent).**
+    When a **video game owns the foreground**, the hotkey goes **silent AND fully transparent** — JVoice does
+    not record, and crucially it **stops swallowing the chord** so `Ctrl+Shift+Space` passes straight through
+    to the game (it may be an in-game bind). Stops an accidental keypress in Minecraft/GTA/Fortnite/Valorant
+    from popping the HUD or pasting into game chat. Plan: `docs/superpowers/plans/2026-06-25-windows-game-detection.md`.
+    - **ANTI-CHEAT SAFE BY CONSTRUCTION (David's hard requirement — no false bans).** Detection uses ONLY
+      read-only OS queries and **never touches a game process**: the only process handle opened is
+      `PROCESS_QUERY_LIMITED_INFORMATION (0x1000)` to read the image path via `QueryFullProcessImageName`.
+      **NO** memory reads, **NO** `PROCESS_VM_READ`, **NO** module enumeration (`EnumProcessModules`/Toolhelp),
+      **NO** injection, **NO** overlay, **NO** synthesized input — i.e. none of the behaviours Vanguard/EAC/
+      BattlEye ban for. On any `OpenProcess` denial (hardened process) the path-based signals just go false and
+      we move on — **never retried with broader access**. The graphics-DLL module-scan signal from the plan was
+      **deliberately dropped from v1** to keep process interaction at exactly zero (it also avoided a fullscreen-
+      browser false positive). Same API category as OBS / Windows Focus Assist.
+    - **Pure brain (`JVoice.Core/GameDetectionPolicy.cs`, unit-tested like `HotkeyGate`):** `GameSignals` →
+      `ShouldSuppress(signals, GameDetectionMode)`. Modes `Off | Balanced | Aggressive` (`JVoice.Core/Models/
+      GameDetectionMode.cs`). **Balanced (default)** suppresses on `D3DFullscreen ∨ RegisteredGame ∨ KnownGamePath`
+      — deliberately **NOT** bare fullscreen, so fullscreen video/browsers never false-positive. **Aggressive**
+      also suppresses on any borderless/exclusive fullscreen app (catches obscure windowed games; will also trip
+      on fullscreen YouTube — opt-in). User force-allow/deny (`UserForceNotGame`/`UserForceGame`) are wired in the
+      policy but hard-false in v1 (the per-exe lists are v2).
+    - **Signals (`JVoice.App/Platform/GameDetector.cs`, all read-only):** #1 `SHQueryUserNotificationState ==
+      QUNS_RUNNING_D3D_FULL_SCREEN` (Microsoft's own Focus-Assist "a game is fullscreen" signal, process-
+      untouching); #2 **GameConfigStore** (`HKCU\System\GameConfigStore\Children\*` → `MatchedExeFullPath`, 30 s
+      cache) — Windows' own per-user recognized-game list, catches **windowed Minecraft**; #3 known install roots
+      (`\steamapps\common\`, `\Epic Games\`, `\Riot Games\`, …) + a curated exe-name set (`VALORANT-Win64-Shipping.exe`,
+      `GTA5.exe`, … — **not** `javaw.exe`, too ambiguous); #4 foreground window rect == monitor rect (excl. shell
+      `Progman`/`WorkerW` + our own windows). Decision cached in a `volatile bool`, recomputed on
+      `ForegroundWindowTracker.ForegroundChanged` (new event) + a 1.5 s `DispatcherTimer` backstop (alt-enter).
+      **Foreground-keyed:** a backgrounded/alt-tabbed game does NOT suppress (so dictating into an app on monitor 2
+      while a game sits on monitor 1 still works).
+    - **Wiring:** `GlobalHotkey.SuppressPredicate` (O(1) volatile read on the hook thread) → on suppress,
+      `return CallNextHookEx(...)` (passthrough), NOT `(IntPtr)1` (swallow). The predicate is
+      **`() => !IsRecording && _gameDetector?.ShouldSuppress == true`**: it suppresses (passes the chord to the
+      game) only when a game is foreground **and we're not already recording**, so a recording started *before*
+      alt-tabbing into a game can still be **stopped** with the hotkey (and that stop-press is swallowed, not
+      leaked into game chat). `VoiceCoordinator` constructs the detector in `Start()` (with `_foreground`), sets
+      the predicate before `_hotkey.Register`, pushes `GameMode` from settings, and start-guards `ToggleRecording`
+      (covers the tray Start path). Settings adds a monochrome **"Gaming"** segmented picker (Off/Balanced/Aggressive).
+      **`SettingsState` schema v1→v2** adds persisted `GameMode` (default Balanced); a v1 file with no `gameMode`
+      loads as Balanced (backward-compat). **When `GameMode == Off`, `GameDetector.Recompute` short-circuits — it
+      does NOT inspect the foreground at all** (no `OpenProcess`, no registry read): zero process interaction when
+      the feature is disabled.
+    - **`--game-probe` dev CLI (`JVoice.exe --game-probe [seconds]`, default 60):** loops `GameDetector.Inspect()`
+      once/sec, writing each foreground-window signal snapshot to **`%TEMP%\jvoice-gameprobe.log`** (and console
+      under redirection — WinExe) so you can alt-tab into a real game and read the live signals + decision. Runs
+      before WPF, like `--bench`.
+    - **VERIFICATION:** `GameDetectionPolicyTests` truth table (precedence + the Balanced-excludes-bare-fullscreen
+      guarantee) + settings v1→v2 migration tests; `dotnet build windows/JVoice.sln -c Debug` = 0 errors;
+      `dotnet test` = **490/490**. The Win32 signal-gathering itself has no unit tests (Win32 glue, like the other
+      `Platform/*` interop) — verified live via `--game-probe` during dogfood (gaming section of the checklist).
+    - **Commits:** `0b73904` (policy + settings v2 + hook passthrough), `e8153ee` (GameDetector), `40af40b`
+      (`--game-probe`). **NOTE:** the `VoiceCoordinator` + `SettingsView.xaml` wiring landed *inside* commit
+      `8002db9` (the concurrent "Recent Transcripts" commit) — that session's wholesale `git add` swept the
+      uncommitted wiring in; the code is intact and correct, just filed under that commit rather than a clean one.
+    - **Remaining:** David's interactive dogfood (gaming section). **v2 (optional):** per-exe allow/deny lists in
+      Settings, a manual **"Pause JVoice"** tray toggle and/or **push-to-talk** so a stray tap can't latch a
+      recording regardless of detection.
+28. **Developer-terms correction pack — opt-out, recognizes coding vocabulary (2026-06-25).** David dictates
     programming terms ("Node.js", "GitHub", "TypeScript", "JSON", "C#", ".NET", "OpenAI"…) and Whisper mis-rendered
     them — usually spacing/casing drift ("node js", "git hub", "type script") or a dev homophone ("jason"→JSON). The
     custom-words box helped but is the wrong tool at scale: only its first 40 words ever reach the decoder prompt
@@ -840,8 +949,8 @@ These are real corrections discovered during execution — preserve them.
       older/macOS files and existing installs come up ON after upgrade). `VoiceCoordinator.DeveloperTermsEnabled`
       (named differently from the `DeveloperTerms` class to avoid shadowing it inside the coordinator) + a monochrome
       **"Developer Terms"** toggle in the Processing settings section.
-    - **VERIFICATION — `dotnet test` 467/467** (added `DeveloperTermsTests` (30) + settings round-trip/default
-      coverage); `JVoice.App` builds 0 errors. The `node js`→`Node.js` transforms are locked by end-to-end
+    - **VERIFICATION — `dotnet test` 523/523** (full merged suite after integrating the game-detection/v2 line;
+      added `DeveloperTermsTests` (30) + settings round-trip/default coverage); `JVoice.App` builds 0 errors. The `node js`→`Node.js` transforms are locked by end-to-end
       `TextProcessor.Process` tests (more reliable than a live `--bench` of spoken audio).
     - **Built on branch `feat/developer-terms` in an isolated git worktree** (two other sessions were live on
       `windows-port`). ⚠️ **The branch's base — `windows-port` HEAD `f5277ea` — does NOT currently build `JVoice.App`:**
@@ -854,7 +963,8 @@ These are real corrections discovered during execution — preserve them.
       (Web/Python/DevOps…) toggled independently; (c) port `DeveloperTerms` 1:1 to the macOS app.
 
 ### Persistence paths (overview §4.9)
-`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
+`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 2** adds `gameMode`, §7 #27),
+`stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
 (value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
 "Run as Administrator at Login" is on (§7 #25); temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on
@@ -880,7 +990,9 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    BT device routing, mic-permission flow, and the new **elevated-window** path (§7 #25: "Restart as
    Administrator" / "Run as Administrator at Login" → hotkey works in an admin terminal). The app is confirmed to *launch* and the
    HUD/Settings look is screenshot-verified via `--hud-preview`/`--settings-render`; live-mic reactivity is
-   what a person at the desk must confirm.
+   what a person at the desk must confirm. **New:** the **game-detection** gaming section (§7 #27) — with
+   `JVoice.exe --game-probe` running, alt-tab into real games (Valorant/Fortnite/GTA/Minecraft) and confirm the
+   hotkey suppresses + passes through, then confirm fullscreen **video** does NOT suppress (Balanced).
 3. **(Optional) Phase 5 Task 6** — port `scripts/verify-transcription.py` to
    `windows/tools/verify-transcription` (corpus-level word-retention / spurious-vocab scoring across
    many generated clips). `whisper-smoke` + `--bench` already prove end-to-end transcription; this is the
@@ -892,8 +1004,8 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    now a continuous, mic-independent wave (#18, #22, #23; no mic meter) — further tweaks are by-eye taste (constants at the top of
    `HudView.xaml.cs`). The Settings scrollbar is now monochrome (done, commit `990ba76`). (The old
    "waveform glyph" / "per-section accent" / "default-grey scrollbar" polish items are obsolete — #18/#22.)
-6. **(Follow-ups) Developer-terms pack (§7 #26)** — **merge `feat/developer-terms` → `windows-port`** once that
-   branch's base builds `JVoice.App` (blocked on a different session committing `PlatformPaths.cs`, §7 #26). Then the
+6. **(Follow-ups) Developer-terms pack (§7 #28)** — **merge `feat/developer-terms` → `windows-port`** once that
+   branch's base builds `JVoice.App` (blocked on a different session committing `PlatformPaths.cs`, §7 #28). Then the
    optional next slices: a "learn from my fixes" suggester (reuse `TextProcessor.ExtractCorrections`), categorized
    packs (Web/Python/DevOps…), and porting `JVoice.Core/Text/DeveloperTerms.cs` 1:1 to the macOS app. Curating the
    word list further (add/remove terms; the one name-collision risk is `jason`→`JSON`) is by-eye taste.

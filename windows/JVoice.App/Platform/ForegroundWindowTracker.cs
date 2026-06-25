@@ -18,6 +18,11 @@ public sealed class ForegroundWindowTracker : IDisposable
 
     public IntPtr LastForegroundWindow { get; private set; } = IntPtr.Zero;
 
+    /// Fires on every foreground change that is NOT one of our own windows (HUD/tray/
+    /// Settings). Consumed by GameDetector to recompute whether a game owns the
+    /// foreground, which in turn gates hotkey suppression and recording transparency.
+    public event Action<IntPtr>? ForegroundChanged;
+
     public void Start()
     {
         if (_hook != IntPtr.Zero) return;
@@ -67,6 +72,7 @@ public sealed class ForegroundWindowTracker : IDisposable
         if (hwnd == IntPtr.Zero) return;
         if (IsOwnWindow(hwnd)) return; // never target our own HUD/tray/settings window
         LastForegroundWindow = hwnd;
+        ForegroundChanged?.Invoke(hwnd);
     }
 
     private bool IsOwnWindow(IntPtr hwnd) => IsOwnedByCurrentProcess(hwnd);

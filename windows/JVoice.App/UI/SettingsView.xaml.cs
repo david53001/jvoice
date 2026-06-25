@@ -1,6 +1,8 @@
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Threading;
+using JVoice.Core;
 
 namespace JVoice.App.UI;
 
@@ -15,13 +17,8 @@ public partial class SettingsView : UserControl
         {
             Recorder.Chord = Vm.Hotkey;
             Recorder.ChordChanged += chord => Vm.SetHotkey(chord);
-            Vm.SyncEditedTranscriptFromLast();
         };
-        Unloaded += (_, _) => Vm.ClearRevertBuffer();
     }
-
-    private void OnFix(object sender, RoutedEventArgs e) => Vm.FixLastTranscript(Vm.EditedTranscript);
-    private void OnRevert(object sender, RoutedEventArgs e) => Vm.RevertLastFix();
 
     private void OnAddWord(object sender, RoutedEventArgs e) => SubmitWord();
     private void OnNewWordKeyDown(object sender, KeyEventArgs e)
@@ -62,10 +59,34 @@ public partial class SettingsView : UserControl
             Vm.RemoveCorrection(rule);
     }
 
+    // ---- Recent Transcripts ----
+
+    private void OnCopyTranscript(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not TranscriptRow row) return;
+
+        try { Clipboard.SetText(row.Text); }
+        catch { return; } // clipboard busy — no checkmark feedback, nothing copied
+
+        // Flash a checkmark, then flip back after ~1.2s.
+        row.JustCopied = true;
+        var timer = new DispatcherTimer { Interval = AppTimings.CopyFeedbackDuration };
+        timer.Tick += (_, _) => { timer.Stop(); row.JustCopied = false; };
+        timer.Start();
+    }
+
+    private void OnDeleteTranscript(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is TranscriptRow row)
+            Vm.RemoveRecentTranscript(row.Id);
+    }
+
+    private void OnClearTranscripts(object sender, RoutedEventArgs e) => Vm.ClearRecentTranscripts();
+
     private void OnRestoreDefaults(object sender, RoutedEventArgs e)
     {
         var r = MessageBox.Show(
-            "Your custom words, corrections, model choice, and language will be restored to defaults. Recording statistics will not be affected.",
+            "Your custom words, corrections, recent transcripts, model choice, and language will be restored to defaults — your recent transcripts will be cleared. Recording statistics will not be affected.",
             "Reset all JVoice settings to defaults?",
             MessageBoxButton.OKCancel, MessageBoxImage.Warning);
         if (r == MessageBoxResult.OK) Vm.ResetSettings();

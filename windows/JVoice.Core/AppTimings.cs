@@ -18,4 +18,7 @@ public static class AppTimings
     public static readonly TimeSpan HudResetDelay = TimeSpan.FromMilliseconds(1000);
     /// HUD auto-dismiss after an error.
     public static readonly TimeSpan HudErrorResetDelay = TimeSpan.FromMilliseconds(3000);
+    /// Settings → Recent Transcripts: how long the Copy button shows a checkmark
+    /// before flipping back to the copy icon.
+    public static readonly TimeSpan CopyFeedbackDuration = TimeSpan.FromMilliseconds(1200);
 }

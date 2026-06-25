@@ -43,6 +43,8 @@ public static class SettingsStateJson
             // Windows-only field (no macOS counterpart). Absent in files written by
             // older builds / the macOS app; ParseCorrections falls back to empty.
             corrections = state.Corrections.Select(c => new { from = c.From, to = c.To }),
+            // Added in schema v2. Absent in v1 files; ParseGameMode falls back to Balanced.
+            gameMode = state.GameMode.ToString(),
             // Windows-only opt-out flag for the curated developer-terms pack. Absent in
             // older / macOS files; Deserialize falls back to true (default ON).
             developerTerms = state.DeveloperTerms,
@@ -73,6 +75,7 @@ public static class SettingsStateJson
             CustomWords: ParseCustomWords(root),
             RemoveFillerWords: TryGetBool(root, "removeFillerWords") ?? true,
             Corrections: ParseCorrections(root),
+            GameMode: ParseGameMode(TryGetString(root, "gameMode")),
             DeveloperTerms: TryGetBool(root, "developerTerms") ?? true);
     }
 
@@ -107,6 +110,14 @@ public static class SettingsStateJson
         if (raw is null) return TranscriptionLanguage.English;
         if (Enum.TryParse<TranscriptionLanguage>(raw, ignoreCase: true, out var v)) return v;
         return TranscriptionLanguage.English;
+    }
+
+    /// Absent in v1 files (field added in schema v2); missing or unrecognised value → Balanced.
+    private static GameDetectionMode ParseGameMode(string? raw)
+    {
+        if (raw is null) return GameDetectionMode.Balanced;
+        if (Enum.TryParse<GameDetectionMode>(raw, ignoreCase: true, out var v)) return v;
+        return GameDetectionMode.Balanced;
     }
 
     private static IReadOnlyList<string> ParseCustomWords(JsonElement root)
