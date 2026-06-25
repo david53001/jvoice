@@ -37,6 +37,21 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] **Hotkey stays alive across many dictations / heavy GPU use** (the global hook is hardened: high-priority hook thread + a self-healing watchdog that re-installs the hook if Windows ever silently drops it — see HANDOFF-WINDOWS §7 #14). If it *ever* seems unresponsive, relaunch from a terminal with `set JVOICE_HOTKEY_LOG=1` (or `$env:JVOICE_HOTKEY_LOG='1'`) and reproduce — `%TEMP%\jvoice-hotkey.log` will show whether the hook received the key, matched, or re-armed. Send me that file.
 - [ ] First dictation after picking a not-yet-downloaded model shows the same **bar shimmer** while it downloads/prepares the model (no text/percentage — the redesign is text-free except errors), then proceeds.
 
+## Game-detection hotkey suppression (HANDOFF-WINDOWS §7 #27)
+> The hotkey goes **silent and fully transparent** while a video game is in focus, so an accidental
+> Ctrl+Shift+Space in a game doesn't pop the HUD or paste into game chat. **Anti-cheat safe:** detection is
+> read-only OS queries — JVoice never reads the game's memory, never injects, never enumerates its modules
+> (the only process access is `PROCESS_QUERY_LIMITED_INFORMATION` for the exe path). Default mode is **Balanced**.
+> Diagnostic tool: run `JVoice.exe --game-probe` (writes live signal snapshots to `%TEMP%\jvoice-gameprobe.log`
+> for 60s), then alt-tab into a game and read that file — each snapshot shows the QUNS state, exe path, the four
+> signals, and the final `ShouldSuppress` decision.
+- [ ] **In each real game** (try **Valorant, Fortnite, GTA V, Minecraft, and a Steam game**): with the game in focus, press **Ctrl+Shift+Space** → **no HUD, no recording**, and the chord **passes through to the game** (JVoice does nothing). Use `--game-probe` to confirm `ShouldSuppress: True` for that game first.
+- [ ] **Minecraft (windowed `javaw.exe`)** specifically: it's caught via Windows' GameConfigStore, not the exe name. If `--game-probe` shows `RegisteredGame: True`, suppression works; if not (Windows never registered it), it only suppresses fullscreen (Balanced) or needs Aggressive — note which.
+- [ ] **Alt-tab out of the game** to a normal app (Notepad/browser) → the hotkey **works again** (dictation normal). A backgrounded game must NOT keep suppressing.
+- [ ] **Fullscreen video is NOT a false positive (Balanced):** play a **fullscreen** YouTube/Netflix video → the hotkey **still works** (Balanced deliberately ignores bare fullscreen). 
+- [ ] **Settings → Gaming** segmented picker (Off / Balanced / Aggressive): selects, persists across relaunch. Switch to **Aggressive** → now fullscreen video **does** suppress (any fullscreen app). Switch to **Off** → suppression is fully disabled (hotkey fires even inside a game). Return to **Balanced**.
+- [ ] **No false ban / no anti-cheat warning:** after sessions in kernel-anti-cheat games (Vanguard/EAC/BattlEye) with JVoice running, there is **no anti-cheat flag or ban** — expected, since detection never touches the game process. (If anything ever looks off, the only game-related access is the read-only `--game-probe`/detector path lookup; send `%TEMP%\jvoice-gameprobe.log`.)
+
 ## HUD visual fidelity (black & white redesign — 2026-06-23)
 > The HUD no longer follows `docs/demo-video/DESIGN-TOKENS.md` (that's the macOS color design).
 > The Windows HUD is intentionally a minimal **black & white** pill. Screenshot any state without a

@@ -862,10 +862,62 @@ These are real corrections discovered during execution — preserve them.
       ellipsis-truncate, Clear all present, palette unchanged). **Hover-reveal, Copy→checkmark, Delete, Clear
       all, persistence-across-restart, and Restore-Defaults-clears-history are the interactive bits** a static
       render can't capture → on the dogfood checklist ("Settings panel → Recent Transcripts").
+27. **Game-detection hotkey suppression — David-requested 2026-06-25 (Windows-only; no macOS equivalent).**
+    When a **video game owns the foreground**, the hotkey goes **silent AND fully transparent** — JVoice does
+    not record, and crucially it **stops swallowing the chord** so `Ctrl+Shift+Space` passes straight through
+    to the game (it may be an in-game bind). Stops an accidental keypress in Minecraft/GTA/Fortnite/Valorant
+    from popping the HUD or pasting into game chat. Plan: `docs/superpowers/plans/2026-06-25-windows-game-detection.md`.
+    - **ANTI-CHEAT SAFE BY CONSTRUCTION (David's hard requirement — no false bans).** Detection uses ONLY
+      read-only OS queries and **never touches a game process**: the only process handle opened is
+      `PROCESS_QUERY_LIMITED_INFORMATION (0x1000)` to read the image path via `QueryFullProcessImageName`.
+      **NO** memory reads, **NO** `PROCESS_VM_READ`, **NO** module enumeration (`EnumProcessModules`/Toolhelp),
+      **NO** injection, **NO** overlay, **NO** synthesized input — i.e. none of the behaviours Vanguard/EAC/
+      BattlEye ban for. On any `OpenProcess` denial (hardened process) the path-based signals just go false and
+      we move on — **never retried with broader access**. The graphics-DLL module-scan signal from the plan was
+      **deliberately dropped from v1** to keep process interaction at exactly zero (it also avoided a fullscreen-
+      browser false positive). Same API category as OBS / Windows Focus Assist.
+    - **Pure brain (`JVoice.Core/GameDetectionPolicy.cs`, unit-tested like `HotkeyGate`):** `GameSignals` →
+      `ShouldSuppress(signals, GameDetectionMode)`. Modes `Off | Balanced | Aggressive` (`JVoice.Core/Models/
+      GameDetectionMode.cs`). **Balanced (default)** suppresses on `D3DFullscreen ∨ RegisteredGame ∨ KnownGamePath`
+      — deliberately **NOT** bare fullscreen, so fullscreen video/browsers never false-positive. **Aggressive**
+      also suppresses on any borderless/exclusive fullscreen app (catches obscure windowed games; will also trip
+      on fullscreen YouTube — opt-in). User force-allow/deny (`UserForceNotGame`/`UserForceGame`) are wired in the
+      policy but hard-false in v1 (the per-exe lists are v2).
+    - **Signals (`JVoice.App/Platform/GameDetector.cs`, all read-only):** #1 `SHQueryUserNotificationState ==
+      QUNS_RUNNING_D3D_FULL_SCREEN` (Microsoft's own Focus-Assist "a game is fullscreen" signal, process-
+      untouching); #2 **GameConfigStore** (`HKCU\System\GameConfigStore\Children\*` → `MatchedExeFullPath`, 30 s
+      cache) — Windows' own per-user recognized-game list, catches **windowed Minecraft**; #3 known install roots
+      (`\steamapps\common\`, `\Epic Games\`, `\Riot Games\`, …) + a curated exe-name set (`VALORANT-Win64-Shipping.exe`,
+      `GTA5.exe`, … — **not** `javaw.exe`, too ambiguous); #4 foreground window rect == monitor rect (excl. shell
+      `Progman`/`WorkerW` + our own windows). Decision cached in a `volatile bool`, recomputed on
+      `ForegroundWindowTracker.ForegroundChanged` (new event) + a 1.5 s `DispatcherTimer` backstop (alt-enter).
+      **Foreground-keyed:** a backgrounded/alt-tabbed game does NOT suppress (so dictating into an app on monitor 2
+      while a game sits on monitor 1 still works).
+    - **Wiring:** `GlobalHotkey.SuppressPredicate` (O(1) volatile read on the hook thread) → on suppress,
+      `return CallNextHookEx(...)` (passthrough), NOT `(IntPtr)1` (swallow). `VoiceCoordinator` constructs the
+      detector in `Start()` (with `_foreground`), sets the predicate before `_hotkey.Register`, pushes `GameMode`
+      from settings, and start-guards `ToggleRecording` (can always STOP, never START while suppressed). Settings
+      adds a monochrome **"Gaming"** segmented picker (Off/Balanced/Aggressive). **`SettingsState` schema v1→v2**
+      adds persisted `GameMode` (default Balanced); a v1 file with no `gameMode` loads as Balanced (backward-compat).
+    - **`--game-probe` dev CLI (`JVoice.exe --game-probe [seconds]`, default 60):** loops `GameDetector.Inspect()`
+      once/sec, writing each foreground-window signal snapshot to **`%TEMP%\jvoice-gameprobe.log`** (and console
+      under redirection — WinExe) so you can alt-tab into a real game and read the live signals + decision. Runs
+      before WPF, like `--bench`.
+    - **VERIFICATION:** `GameDetectionPolicyTests` truth table (precedence + the Balanced-excludes-bare-fullscreen
+      guarantee) + settings v1→v2 migration tests; `dotnet build windows/JVoice.sln -c Debug` = 0 errors;
+      `dotnet test` = **490/490**. The Win32 signal-gathering itself has no unit tests (Win32 glue, like the other
+      `Platform/*` interop) — verified live via `--game-probe` during dogfood (gaming section of the checklist).
+    - **Commits:** `0b73904` (policy + settings v2 + hook passthrough), `e8153ee` (GameDetector), `40af40b`
+      (`--game-probe`). **NOTE:** the `VoiceCoordinator` + `SettingsView.xaml` wiring landed *inside* commit
+      `8002db9` (the concurrent "Recent Transcripts" commit) — that session's wholesale `git add` swept the
+      uncommitted wiring in; the code is intact and correct, just filed under that commit rather than a clean one.
+    - **Remaining:** David's interactive dogfood (gaming section). **v2 (optional):** per-exe allow/deny lists in
+      Settings, a manual **"Pause JVoice"** tray toggle and/or **push-to-talk** so a stray tap can't latch a
+      recording regardless of detection.
 
 ### Persistence paths (overview §4.9)
-`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`,
-`transcript-history.json` (Recent Transcripts, §7 #26);
+`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 2** adds `gameMode`, §7 #27),
+`stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
 (value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
 "Run as Administrator at Login" is on (§7 #25); temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on
@@ -891,7 +943,9 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    BT device routing, mic-permission flow, and the new **elevated-window** path (§7 #25: "Restart as
    Administrator" / "Run as Administrator at Login" → hotkey works in an admin terminal). The app is confirmed to *launch* and the
    HUD/Settings look is screenshot-verified via `--hud-preview`/`--settings-render`; live-mic reactivity is
-   what a person at the desk must confirm.
+   what a person at the desk must confirm. **New:** the **game-detection** gaming section (§7 #27) — with
+   `JVoice.exe --game-probe` running, alt-tab into real games (Valorant/Fortnite/GTA/Minecraft) and confirm the
+   hotkey suppresses + passes through, then confirm fullscreen **video** does NOT suppress (Balanced).
 3. **(Optional) Phase 5 Task 6** — port `scripts/verify-transcription.py` to
    `windows/tools/verify-transcription` (corpus-level word-retention / spurious-vocab scoring across
    many generated clips). `whisper-smoke` + `--bench` already prove end-to-end transcription; this is the
