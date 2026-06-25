@@ -4,7 +4,7 @@ Manual verification that an autonomous/headless session **cannot** perform (it n
 interactive desktop, a microphone, keypresses, and human eyes). Run through this on the dev
 machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each item.
 
-> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 490/490 (the brain +
+> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 523/523 (the brain +
 > pure platform/coordinator helpers); `JVoice.exe --bench <wav>` and `tools/nospeech-probe` prove
 > on-device transcription + no-speech behaviour end-to-end. This list covers only the GUI + live-input paths.
 >

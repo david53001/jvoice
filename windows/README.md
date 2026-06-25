@@ -13,7 +13,7 @@ read-only reference for the accuracy "brain" and its invariants.
 ## Status
 
 All five port phases are implemented. `dotnet build windows/JVoice.sln -c Release` = **0 errors**,
-`dotnet test` = **490/490**, on-device transcription is verified (Vulkan GPU + CPU), and **the full
+`dotnet test` = **523/523**, on-device transcription is verified (Vulkan GPU + CPU), and **the full
 dictation loop works** (hotkey → record → transcribe → paste). The UI is a **black-&-white redesign**:
 a text-free black HUD pill of white voice-activity bars (errors are the only text; successful paste is
 silent), fully monochrome Settings + tray. No-speech detection is **model-driven** (whisper decides;
@@ -38,7 +38,7 @@ contributor must know — is in **`../docs/HANDOFF-WINDOWS.md`**.
 
 ```bash
 dotnet build windows/JVoice.sln -c Release          # 0 errors expected
-dotnet test  windows/JVoice.Tests/JVoice.Tests.csproj   # 490/490 expected
+dotnet test  windows/JVoice.Tests/JVoice.Tests.csproj   # 523/523 expected
 dotnet run   --project windows/JVoice.App            # launches to the tray (+ first-run Settings)
 ```
 
