@@ -4,7 +4,7 @@ Manual verification that an autonomous/headless session **cannot** perform (it n
 interactive desktop, a microphone, keypresses, and human eyes). Run through this on the dev
 machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each item.
 
-> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 434/434 (the brain +
+> Automated coverage already green: `dotnet test windows/JVoice.Tests` = 490/490 (the brain +
 > pure platform/coordinator helpers); `JVoice.exe --bench <wav>` and `tools/nospeech-probe` prove
 > on-device transcription + no-speech behaviour end-to-end. This list covers only the GUI + live-input paths.
 >
@@ -49,16 +49,16 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] Positioned correctly on a secondary monitor's primary work area.
 
 ## Settings panel (320×520, black & white)
-- [ ] Header "JVoice" + "Voice dictation controls". 10 sections in order: Last Transcript, Keyboard Shortcut, Language, Voice Style, Processing, Whisper Model, Custom Words, Corrections, Stats, footer (Restore/Quit). (Screenshot headlessly via `JVoice.exe --settings-render out.png`, or show it with `--settings-preview`.)
+- [ ] Header "JVoice" + "Voice dictation controls". Sections in order: **Stats, Recent Transcripts, Whisper Model, Processing, Voice Style, Language, Custom Words, Corrections, Keyboard Shortcut**, footer (Restore/Quit). (Reordered 2026-06-25 to mirror the macOS Settings; the old editable **Last Transcript** box was removed — see HANDOFF-WINDOWS §7 #26. Screenshot headlessly via `JVoice.exe --settings-render out.png`, or show it with `--settings-preview`.)
 - [ ] **All monochrome:** pure-black background, dark cards with gray hairline borders, **white** section accent dots (the keyboard section's dot is a subtle gray), gray UPPERCASED titles. No blue/cyan/purple/teal/orange/pink/green anywhere.
 - [ ] **Keyboard Shortcut:** the recorder shows "Ctrl+Shift+Space"; click it, press a new chord → it updates and the new chord triggers dictation (old one no longer does). Backspace resets to default; Esc cancels.
 - [ ] **Language / Voice Style / Whisper Model:** segmented pickers select correctly (selected segment = white-tint fill, white text) and persist (close + relaunch → choice retained).
 - [ ] **Processing:** the switch (white-when-on, black knob) toggles Remove Filler Words; "um/uh/er" disappear from output when on.
 - [ ] **Custom Words:** type a word + Enter (or Add) → it appears in the list and biases transcription; the × removes it.
 - [ ] **Corrections:** add a rule From `web api` → To `web app` (Enter in either box or Add) → it appears as "web api → web app" (the "To" text in white); the × removes it; choice persists across relaunch. Then dictate so the recognizer produces "web api" → the pasted text reads "web app", while a separate "REST API" dictation stays "REST API" (the phrase rule doesn't touch standalone API). Blank/duplicate input is ignored (no row added).
-- [ ] **Last Transcript:** edit the box, **Fix** → new words become custom words; **Revert** undoes the fix + removes those words.
+- [ ] **Recent Transcripts** (read-only history, last 30, newest first — replaces the old editable Last Transcript box, §7 #26): after dictating, the new transcript appears at the **top**; empty state shows muted "No transcripts yet." Each row is **single-line, ellipsis-truncated** (no wrap). **Hover a row** → it highlights and reveals **Copy** + **Delete** icons on the right. **Copy** puts that transcript on the clipboard and flips to a **checkmark for ~1.2s**. **Delete** removes just that row. **Clear all** empties the whole list. The list **survives relaunch** (persisted to `%APPDATA%\JVoice\transcript-history.json`); deleting/corrupting that file → loads empty, no crash. Do ~31 dictations → the list caps at **30** (oldest drops off).
 - [ ] **Stats:** total words + avg WPM update after a dictation.
-- [ ] **Restore Default Settings** → confirm dialog → settings reset (stats untouched). **Quit JVoice** → tray icon disappears, process exits.
+- [ ] **Restore Default Settings** → confirm dialog (now also says **recent transcripts will be cleared**; statistics are not affected) → settings reset, **Recent Transcripts emptied**, stats untouched. **Quit JVoice** → tray icon disappears, process exits.
 
 ## Audio device routing (Bluetooth A2DP preservation)
 - [ ] With a normal mic (built-in/USB) default: dictation records from it (no change).

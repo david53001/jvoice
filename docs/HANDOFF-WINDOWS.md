@@ -19,8 +19,8 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **434 / 434 passing** (grew from 122 during
-  the bug-hunt, the Corrections feature, and the no-speech/sentence-tail work below).
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **490 / 490 passing** (grew from 122 during
+  the bug-hunt and the subsequent feature work tracked in §7; a shared, moving total).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
 - **The GUI launches** to the system tray with the "J" icon + first-run Settings window
@@ -145,7 +145,8 @@ windows/
 ├── Directory.Build.props          LangVersion latest, Nullable+ImplicitUsings enable, Version 1.0.0
 ├── JVoice.Core/                   net9.0 — PURE brain + pure decision helpers (no UI/native deps)
 │   ├── Models/                    ToneStyle, TranscriptionLanguage, WhisperModelOption, SettingsState,
-│   │                              HudState, HotkeyChord, SettingsStateJson
+│   │                              HudState, HotkeyChord, SettingsStateJson, CorrectionRule,
+│   │                              TranscriptHistory(+Entry) (Win-only Recent Transcripts, §7 #26)
 │   ├── Text/                      TextProcessor, PhoneticMatcher, VocabularyPrompt, RepetitionGuard,
 │   │                              RegurgitationRecovery, NonSpeechAnnotation (Win-only no-speech detector)
 │   ├── Audio/                     WavTail(+WavTailReader), ChunkPlanner, StreamingTranscriptionSession,
@@ -158,14 +159,16 @@ windows/
 │   ├── app.manifest               asInvoker, PerMonitorV2 DPI, longPathAware, UTF-8, Win10/11 supportedOS
 │   ├── VoiceCoordinator.cs        the orchestrator (port of VoiceCoordinator.swift)
 │   ├── Whisper/                   WhisperRuntime, WhisperModelStore, WhisperNetTranscriptionEngine, BenchRunner
-│   ├── Platform/                  PlatformPaths, SettingsStore, StatsStore, LastTranscriptStore, SystemActions,
+│   ├── Platform/                  PlatformPaths, SettingsStore, StatsStore, LastTranscriptStore,
+│   │                              TranscriptHistoryStore (§7 #26), SystemActions,
 │   │                              LaunchAtLogin, SingleInstance, SettingsUris, PermissionError,
 │   │                              AudioInputRouter, IAudioRecorder, NAudioRecorder, ForegroundWindowTracker,
 │   │                              GlobalHotkey, Paster
 │   ├── UI/                        App-level: HudWindow + HudView, SettingsWindow + SettingsView, DarkSection,
-│   │   │                          HotkeyRecorder, TrayIcon, Converters, Styles/JVoicePalette.xaml
+│   │   │                          HotkeyRecorder, TrayIcon, TranscriptRow (§7 #26), Converters,
+│   │   │                          Styles/JVoicePalette.xaml
 │   └── Assets/                    JVoice.ico + tray-idle/recording/transcribing.png (generated, committed)
-├── JVoice.Tests/                  net9.0 xUnit — 434 tests locking JVoice.Core
+├── JVoice.Tests/                  net9.0 xUnit — 490 tests locking JVoice.Core
 └── tools/
     ├── whisper-smoke/             net9.0 console — WPF-free end-to-end transcription harness
     ├── generate-icon/             net9.0 console (SkiaSharp) — writes Assets/JVoice.ico + tray PNGs
@@ -811,8 +814,58 @@ These are real corrections discovered during execution — preserve them.
       the standard recipe — **assumption logged**). Steps: `docs/launch/windows-dogfood-checklist.md` →
       "Permissions & edge cases → Elevated-window dictation".
 
+26. **Settings reordered to mirror macOS + new "Recent Transcripts" history — 2026-06-25.** Two changes
+    ported from the macOS Settings UI (layout/behaviour only — the Windows **monochrome palette is unchanged**;
+    no colors were touched). **(a) Section order** is now, top-to-bottom: Header, **Stats**, **Recent
+    Transcripts**, Whisper Model, Processing, Voice Style, Language, Custom Words, **Corrections**, Keyboard
+    Shortcut, footer (Restore/Quit). The old editable **Last Transcript** card (the inline Fix/Revert box) was
+    **removed from the UI** — its VM members (`EditedTranscript`/`CanFix`/`CanRevert`/`FixLastTranscript`/
+    `RevertLastFix`/`SyncEditedTranscriptFromLast`/`ClearRevertBuffer`) and the `last-transcript.txt` write are
+    **kept but unsurfaced** (the macOS handoff sanctions leaving them unused). **Corrections is Windows-only**
+    (no macOS counterpart, §6/CorrectionRule) and the macOS order doesn't list it — **assumption logged:** it's
+    kept immediately after Custom Words (its sibling), between Custom Words and Keyboard Shortcut.
+    **(b) Recent Transcripts** is a read-only history of the last **30** finalized transcripts, newest first.
+    Architecture mirrors the SettingsStateJson/StatsStore split — **pure brain in Core, file-I/O in App:**
+    - `JVoice.Core/Models/TranscriptHistoryEntry.cs` — `record TranscriptHistoryEntry(Guid Id, string Text)`
+      (the Id gives each row a stable identity so a per-row delete targets the right entry).
+    - `JVoice.Core/Models/TranscriptHistory.cs` — pure `Add` (trim → blank-ignored → prepend → cap 30),
+      `Remove(id)`, `Serialize`/`Deserialize` (camelCase JSON; **corrupt/missing/blank → empty list, never
+      throws**; drops blank-text entries, fills a missing id, caps to 30). **Unit-tested** by
+      `JVoice.Tests/TranscriptHistoryTests.cs` (19 cases).
+    - `JVoice.App/Platform/TranscriptHistoryStore.cs` — thin lock-guarded wrapper: loads on construct, mutates
+      via the Core helpers, persists synchronously to `%APPDATA%\JVoice\transcript-history.json` with the same
+      atomic temp+move + `SystemActions.ReportError` pattern as StatsStore. `Add` returns the new entry so the UI
+      inserts just that row.
+    - `JVoice.App/UI/TranscriptRow.cs` — bound row VM: immutable `Id`+`Text` plus one transient
+      `JustCopied` flag (never persisted) the Copy button flips for `AppTimings.CopyFeedbackDuration` (1.2 s).
+    - **Wiring (`VoiceCoordinator`):** `_historyStore` + `ObservableCollection<TranscriptRow> RecentTranscripts`
+      + `HasRecentTranscripts`; `AddRecentTranscript(processed)` is called in `FinishTranscriptionAsync` at the
+      **same UI-thread point that records stats / the last transcript** (after a successful paste, using the
+      final pasted text). `ResetSettings` (Restore Defaults) **also clears the history** (`_historyStore.Clear()`
+      + collection clear) — **statistics are deliberately NOT reset** (StatsStore untouched, unchanged from
+      before). The Restore-Defaults confirmation text now says recent transcripts will be cleared and stats won't
+      be affected.
+    - **UI (`SettingsView.xaml`):** empty state shows muted "No transcripts yet."; non-empty is a
+      `ScrollViewer MaxHeight=150` of single-line, `TextTrimming=CharacterEllipsis`, `TextWrapping=NoWrap` rows.
+      Each row Border has a base `Background=Transparent` (so the whole row is hit-testable) and an
+      `IsMouseOver` trigger that highlights it (`#1AFFFFFF`, monochrome) and reveals a Copy + Delete button pair
+      (revealed via `Visibility` bound to the row Border's `IsMouseOver` through `BoolToVis`). Copy =
+      `Clipboard.SetText` (try/catch for clipboard-busy) + glyph swaps to a checkmark for 1.2 s; Delete =
+      `RemoveRecentTranscript(row.Id)`. A monochrome **"Clear all"** button below the list calls
+      `ClearRecentTranscripts`. **Privacy:** plaintext on disk, erased **only** by explicit user action (per-row
+      delete, Clear all, Restore Defaults) — nothing clears it automatically.
+    - **VERIFICATION:** `dotnet build windows/JVoice.sln -c Debug` = 0 errors; Release App build = 0 errors
+      (the locked-DLL copy error if a JVoice instance is running is a file lock, not a code error — build to a
+      separate `-o` dir, or stop the instance); `dotnet test` green incl. the **19 new `TranscriptHistoryTests`**
+      (the full-suite total moves with concurrent work — 490 at this writing). Layout confirmed
+      headlessly via `JVoice.exe --settings-render` in both empty and seeded states (order correct, rows
+      ellipsis-truncate, Clear all present, palette unchanged). **Hover-reveal, Copy→checkmark, Delete, Clear
+      all, persistence-across-restart, and Restore-Defaults-clears-history are the interactive bits** a static
+      render can't capture → on the dogfood checklist ("Settings panel → Recent Transcripts").
+
 ### Persistence paths (overview §4.9)
-`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
+`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`,
+`transcript-history.json` (Recent Transcripts, §7 #26);
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
 (value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
 "Run as Administrator at Login" is on (§7 #25); temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on

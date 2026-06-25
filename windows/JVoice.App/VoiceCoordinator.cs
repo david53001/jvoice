@@ -22,11 +22,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private readonly SettingsStore _settingsStore;
     private readonly StatsStore _statsStore = new();
     private readonly LastTranscriptStore _lastTranscriptStore = new();
+    private readonly TranscriptHistoryStore _historyStore = new();
     private readonly IAudioRecorder _recorder = new NAudioRecorder();
     private readonly Paster _paster = new();
     private readonly ForegroundWindowTracker _foreground = new();
     private readonly GlobalHotkey _hotkey = new();
     private readonly WhisperModelStore _modelStore = new();
+    private GameDetector? _gameDetector;
 
     private ITranscriptionEngine _engine;
 
@@ -58,8 +60,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _language = s.Language;
         CustomWords = new ObservableCollection<string>(s.CustomWords);
         Corrections = new ObservableCollection<CorrectionRule>(s.Corrections);
+        RecentTranscripts = new ObservableCollection<TranscriptRow>(
+            _historyStore.Entries.Select(e => new TranscriptRow(e.Id, e.Text)));
         _removeFillerWords = s.RemoveFillerWords;
         _hotkeyChord = HotkeyChord.Default;
+        _gameMode = s.GameMode;
         _totalWordsSpoken = _statsStore.TotalWords;
         _averageWpm = _statsStore.AverageWpm;
         _lastTranscript = _lastTranscriptStore.Transcript;
@@ -126,6 +131,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     /// removing one just persists; no engine reload.
     public ObservableCollection<CorrectionRule> Corrections { get; }
 
+    /// Read-only history of the most recent finalized transcripts (newest first,
+    /// capped at TranscriptHistory.MaxEntries). Backed by _historyStore (persisted
+    /// JSON); the rows carry only Id + Text plus a transient "just copied" flag.
+    public ObservableCollection<TranscriptRow> RecentTranscripts { get; }
+
     private HotkeyChord _hotkeyChord;
     public HotkeyChord Hotkey => _hotkeyChord;
 
@@ -169,6 +179,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     public bool HasTranscript => !string.IsNullOrEmpty(LastTranscript);
     public bool HasCustomWords => CustomWords.Count > 0;
     public bool HasCorrections => Corrections.Count > 0;
+    public bool HasRecentTranscripts => RecentTranscripts.Count > 0;
     public bool CanFix => EditedTranscript.Trim() != LastTranscript.Trim();
     public string ModelGuidance => WhisperModel.Guidance();
 
@@ -186,6 +197,17 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private void RaiseLanguageFlags() { Raise(nameof(IsEnglish)); Raise(nameof(IsRomanian)); }
     private void RaiseModelFlags() { Raise(nameof(IsTiny)); Raise(nameof(IsBase)); Raise(nameof(IsSmall)); Raise(nameof(IsLarge)); }
 
+    private GameDetectionMode _gameMode;
+    public GameDetectionMode GameMode
+    {
+        get => _gameMode;
+        set { if (_gameMode == value) return; _gameMode = value; if (_gameDetector is not null) _gameDetector.Mode = value; PersistSettings(); RaiseGameModeFlags(); }
+    }
+    public bool IsGameOff        { get => GameMode == GameDetectionMode.Off;        set { if (value) GameMode = GameDetectionMode.Off; } }
+    public bool IsGameBalanced   { get => GameMode == GameDetectionMode.Balanced;   set { if (value) GameMode = GameDetectionMode.Balanced; } }
+    public bool IsGameAggressive { get => GameMode == GameDetectionMode.Aggressive; set { if (value) GameMode = GameDetectionMode.Aggressive; } }
+    private void RaiseGameModeFlags() { Raise(nameof(IsGameOff)); Raise(nameof(IsGameBalanced)); Raise(nameof(IsGameAggressive)); }
+
     // ====================== lifecycle / wiring ======================
 
     /// Ports VoiceCoordinator.start(): sweep orphans, install hooks, hotkey, prewarm.
@@ -195,10 +217,14 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
         _foreground.Start();
 
+        _gameDetector = new GameDetector(_foreground) { Mode = _gameMode };
+        _gameDetector.Start();
+
         SystemActions.ErrorHandler = msg => _dispatcher.InvokeAsync(() => ShowError(msg));
         _settingsStore.Changed += _ => _dispatcher.InvokeAsync(() => { /* UI binds live props */ });
         _recorder.Failed += msg => _dispatcher.InvokeAsync(() => ShowError(msg));
         _hotkey.Triggered += () => _dispatcher.InvokeAsync(ToggleRecording);
+        _hotkey.SuppressPredicate = () => _gameDetector?.ShouldSuppress == true;
         _hotkey.Register(_hotkeyChord);
 
         UpdateHud(HudState.Idle);
@@ -386,6 +412,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             CustomWords = CustomWords.ToList(),
             RemoveFillerWords = _removeFillerWords,
             Corrections = Corrections.ToList(),
+            GameMode = _gameMode,
         });
     }
 
@@ -404,10 +431,15 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         Corrections.Clear();
         foreach (var c in s.Corrections) Corrections.Add(c);
         RemoveFillerWords = s.RemoveFillerWords;
+        GameMode = s.GameMode;
+        // Restore Defaults also clears the recent-transcripts history (an explicit
+        // user action). Recording statistics (_statsStore) are deliberately NOT reset.
+        _historyStore.Clear();
+        RecentTranscripts.Clear();
         _isInitializing = false;
         _settingsStore.Flush();
-        RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags();
-        Raise(nameof(RemoveFillerWords)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(ModelGuidance));
+        RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags(); RaiseGameModeFlags();
+        Raise(nameof(RemoveFillerWords)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
         _engine = MakeEngine(_whisperModel, _language, CustomWords.ToList());
         _ = _engine.PrewarmAsync();
     }
@@ -453,6 +485,36 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         if (!Corrections.Remove(rule)) return;
         Raise(nameof(HasCorrections));
         PersistSettings();
+    }
+
+    // ---- recent transcripts (Windows-only Recent Transcripts history) ----
+
+    /// Record a finalized transcript at the top of the history. Trimming / blank-ignore /
+    /// the 30-entry cap live in the store; here we mirror its result into the bound
+    /// collection (insert at front, trim the tail) so the UI and store stay in lockstep.
+    public void AddRecentTranscript(string text)
+    {
+        var entry = _historyStore.Add(text);
+        if (entry is null) return; // blank — nothing recorded
+        RecentTranscripts.Insert(0, new TranscriptRow(entry.Id, entry.Text));
+        while (RecentTranscripts.Count > TranscriptHistory.MaxEntries)
+            RecentTranscripts.RemoveAt(RecentTranscripts.Count - 1);
+        Raise(nameof(HasRecentTranscripts));
+    }
+
+    public void RemoveRecentTranscript(Guid id)
+    {
+        _historyStore.Remove(id);
+        for (int i = RecentTranscripts.Count - 1; i >= 0; i--)
+            if (RecentTranscripts[i].Id == id) RecentTranscripts.RemoveAt(i);
+        Raise(nameof(HasRecentTranscripts));
+    }
+
+    public void ClearRecentTranscripts()
+    {
+        _historyStore.Clear();
+        RecentTranscripts.Clear();
+        Raise(nameof(HasRecentTranscripts));
     }
 
     public void SyncEditedTranscriptFromLast() => EditedTranscript = LastTranscript;
@@ -532,6 +594,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         }
         else
         {
+            if (!IsRecording && _gameDetector?.ShouldSuppress == true) return;
             if (_isStartingRecording) return;
             _isStartingRecording = true;
             _transcriptionCts?.Cancel();
@@ -715,6 +778,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 _lastTranscriptStore.Transcript = processed;
                 LastTranscript = processed;
                 EditedTranscript = processed;
+                AddRecentTranscript(processed);
                 _statsStore.Record(wordCount, _lastRecordingSeconds);
                 TotalWordsSpoken = _statsStore.TotalWords;
                 AverageWpm = _statsStore.AverageWpm;
@@ -809,6 +873,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
+        _gameDetector?.Dispose();
         _hotkey.Dispose();
         _foreground.Dispose();
         _paster.Dispose();
