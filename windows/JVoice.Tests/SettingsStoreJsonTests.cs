@@ -44,11 +44,11 @@ public class SettingsStoreJsonTests
     public void Deserialize_ForwardVersion_Throws()
     {
         string json = """
-            { "schemaVersion": 2, "mode": "Casual", "model": "Tiny",
+            { "schemaVersion": 3, "mode": "Casual", "model": "Tiny",
               "language": "English", "customWords": [], "removeFillerWords": true }
             """;
         var ex = Assert.Throws<ForwardVersionException>(() => SettingsStateJson.Deserialize(json));
-        Assert.Equal(2, ex.FileVersion);
+        Assert.Equal(3, ex.FileVersion);
         Assert.Equal(SettingsState.CurrentSchemaVersion, ex.CurrentVersion);
     }
 
@@ -109,16 +109,17 @@ public class SettingsStoreJsonTests
     // ===== Serialize-side fidelity + round-trip fuzz =====
 
     // Swift's CodingKeys are schemaVersion/mode/model/language/customWords/removeFillerWords. The
-    // Windows port adds one extra on-disk key, `corrections` (a Windows-only feature with no macOS
-    // counterpart) — so Serialize emits exactly those seven keys. Older builds / the macOS app simply
-    // ignore the unknown `corrections` key on read; Deserialize tolerates its absence.
+    // Windows port adds two extra on-disk keys with no macOS counterpart: `corrections` and
+    // `gameMode` (the game-detection suppression setting) — so Serialize emits exactly those eight
+    // keys. Older builds / the macOS app simply ignore the unknown keys on read; Deserialize
+    // tolerates their absence (a v1 file with no `gameMode` defaults to Balanced).
     [Fact]
-    public void Serialize_EmitsExactlyTheSevenKeys()
+    public void Serialize_EmitsExactlyTheEightKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "corrections", "customWords", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
+            new[] { "corrections", "customWords", "gameMode", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
             keys);
     }
 

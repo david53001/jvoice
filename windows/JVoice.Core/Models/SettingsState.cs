@@ -7,9 +7,10 @@ public sealed record SettingsState(
     TranscriptionLanguage Language,
     IReadOnlyList<string> CustomWords,
     bool RemoveFillerWords,
-    IReadOnlyList<CorrectionRule> Corrections)
+    IReadOnlyList<CorrectionRule> Corrections,
+    GameDetectionMode GameMode = GameDetectionMode.Balanced)
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     public static SettingsState Default => new(
         SchemaVersion: CurrentSchemaVersion,
@@ -18,5 +19,6 @@ public sealed record SettingsState(
         Language: TranscriptionLanguage.English,
         CustomWords: Array.Empty<string>(),
         RemoveFillerWords: true,
-        Corrections: Array.Empty<CorrectionRule>());
+        Corrections: Array.Empty<CorrectionRule>(),
+        GameMode: GameDetectionMode.Balanced);
 }

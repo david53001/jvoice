@@ -10,18 +10,19 @@ public class SettingsStateTests
     public void Default_MatchesSwiftDefaults()
     {
         var s = SettingsState.Default;
-        Assert.Equal(1, s.SchemaVersion);
+        Assert.Equal(2, s.SchemaVersion);
         Assert.Equal(ToneStyle.Casual, s.Mode);
         Assert.Equal(WhisperModelOption.Tiny, s.Model);
         Assert.Equal(TranscriptionLanguage.English, s.Language);
         Assert.Empty(s.CustomWords);
         Assert.True(s.RemoveFillerWords);
         Assert.Empty(s.Corrections);
+        Assert.Equal(GameDetectionMode.Balanced, s.GameMode);
     }
 
     [Fact]
-    public void CurrentSchemaVersion_Is1()
-        => Assert.Equal(1, SettingsState.CurrentSchemaVersion);
+    public void CurrentSchemaVersion_Is2()
+        => Assert.Equal(2, SettingsState.CurrentSchemaVersion);
 
     [Fact]
     public void Record_With_OverridesOnlyNamedFields()
@@ -30,7 +31,8 @@ public class SettingsStateTests
         Assert.Equal(ToneStyle.Formal, s.Mode);
         Assert.False(s.RemoveFillerWords);
         Assert.Equal(WhisperModelOption.Tiny, s.Model);   // unchanged
-        Assert.Equal(1, s.SchemaVersion);
+        Assert.Equal(2, s.SchemaVersion);
+        Assert.Equal(GameDetectionMode.Balanced, s.GameMode);  // unchanged
     }
 
     // ===== Migration / decode parity (Swift SettingsStateMigrationTests) =====
@@ -83,7 +85,7 @@ public class SettingsStateTests
     [Fact]
     public void Deserialize_SchemaVersionEqualToCurrent_IsAccepted()
     {
-        var s = SettingsStateJson.Deserialize("""{"schemaVersion":1,"mode":"Formal"}""");
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":2,"mode":"Formal"}""");
         Assert.Equal(ToneStyle.Formal, s.Mode);
     }
 
@@ -98,7 +100,7 @@ public class SettingsStateTests
         string[] langs = { "English", "english", "Romanian", "Klingon" };
         for (int i = 0; i < 400; i++)
         {
-            int version = rng.Next(0, 4); // 0..3 — anything > 1 must throw ForwardVersionException
+            int version = rng.Next(0, 5); // 0..4 — anything > 2 must throw ForwardVersionException
             var dto = new
             {
                 schemaVersion = version,
@@ -118,6 +120,42 @@ public class SettingsStateTests
                 var s = SettingsStateJson.Deserialize(json);
                 Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // always normalized forward
             }
+        }
+    }
+
+    // ===== GameMode (schema v2) =====
+
+    // A v1 file (no "gameMode" field) must deserialize cleanly and default GameMode to Balanced.
+    [Fact]
+    public void Deserialize_V1File_DefaultsGameModeToBalanced()
+    {
+        const string v1Json = """
+            {
+                "schemaVersion": 1,
+                "mode": "Casual",
+                "model": "Tiny",
+                "language": "English",
+                "customWords": [],
+                "removeFillerWords": true,
+                "corrections": []
+            }
+            """;
+        var s = SettingsStateJson.Deserialize(v1Json);
+        Assert.Equal(GameDetectionMode.Balanced, s.GameMode);
+        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // normalized to 2
+        Assert.Equal(ToneStyle.Casual, s.Mode);
+    }
+
+    // GameMode round-trips: Aggressive and Off survive serialize → deserialize unchanged.
+    [Fact]
+    public void GameMode_RoundTrips()
+    {
+        foreach (var expected in new[] { GameDetectionMode.Aggressive, GameDetectionMode.Off, GameDetectionMode.Balanced })
+        {
+            var original = SettingsState.Default with { GameMode = expected };
+            string json = SettingsStateJson.Serialize(original);
+            var roundTripped = SettingsStateJson.Deserialize(json);
+            Assert.Equal(expected, roundTripped.GameMode);
         }
     }
 }
