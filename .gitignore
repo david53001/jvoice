@@ -35,3 +35,6 @@ windows/tools/**/obj/
 
 # Windows publish artifacts
 windows/artifacts/
+
+# Superpowers plugin local scratch (e.g. subagent-driven-development progress ledgers)
+.superpowers/
