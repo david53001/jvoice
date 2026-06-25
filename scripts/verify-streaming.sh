@@ -149,12 +149,12 @@ exit(0)
 EOF
 
 xcrun swiftc -O \
-    "$REPO_ROOT/Sources/JVoice/Services/WavTail.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/ChunkPlanner.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/StreamingTranscriptionSession.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/PhoneticMatcher.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/RepetitionGuard.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/RegurgitationRecovery.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/WavTail.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/ChunkPlanner.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/StreamingTranscriptionSession.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/RegurgitationRecovery.swift" \
     "$TMP_DIR/main.swift" \
     -o "$TMP_DIR/verify-streaming"
 

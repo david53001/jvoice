@@ -58,7 +58,7 @@ On first run JVoice asks for **Microphone** (to hear you) and **Accessibility** 
 2. Talk. Press <kbd>⌥Space</kbd> again to stop.
 3. Transcribed, tone-styled text is pasted at your cursor.
 
-Settings (menu bar icon → Settings…): language, tone style, Whisper model, filler-word removal, custom words, and your dictation stats. The last transcript is always editable/revertible from Settings.
+Settings (menu bar icon → Settings…): language, tone style, Whisper model, filler-word removal, custom words, and your dictation stats. Your 30 most recent transcripts are kept in Settings too — copy any one back to the clipboard, or clear them. Everything stays on your Mac.
 
 ## Build from source
 

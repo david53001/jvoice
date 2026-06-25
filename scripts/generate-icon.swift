@@ -1,8 +1,7 @@
 #!/usr/bin/env swift
 //
 // Generates the JVoice app icon: a minimalist "J" monogram (dark stealth)
-// on a macOS rounded-square, then assembles Resources/AppIcon.icns and
-// exports docs/demo-video/public/app-icon.png (1024px) for the Remotion demo.
+// on a macOS rounded-square, then assembles Resources/AppIcon.icns.
 //
 // Design: near-black vertical gradient (#1C1C1E -> #0A0A0A) inside a rounded
 // square, with a centered heavy "J" in soft light-gray and a faint glow —
@@ -19,7 +18,6 @@ let scriptURL = URL(fileURLWithPath: #filePath)
 let repoRoot = scriptURL.deletingLastPathComponent().deletingLastPathComponent()
 let resourcesDir = repoRoot.appendingPathComponent("Resources")
 let icnsURL = resourcesDir.appendingPathComponent("AppIcon.icns")
-let demoIconURL = repoRoot.appendingPathComponent("docs/demo-video/public/app-icon.png")
 
 let iconsetURL = URL(fileURLWithPath: NSTemporaryDirectory())
     .appendingPathComponent("AppIcon-\(UUID().uuidString).iconset")
@@ -125,13 +123,6 @@ for v in variants {
     }
     try data.write(to: iconsetURL.appendingPathComponent("\(v.name).png"))
     print("• \(v.name).png (\(v.px)px)")
-}
-
-// Demo-video icon asset (1024px).
-let demoRep = render(px: 1024)
-if let data = demoRep.representation(using: .png, properties: [:]) {
-    try data.write(to: demoIconURL)
-    print("• demo-video app-icon.png (1024px)")
 }
 
 // Assemble the .icns.

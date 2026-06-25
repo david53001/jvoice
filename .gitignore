@@ -21,3 +21,6 @@ xcuserdata/
 *.swo
 docs/assets/demo-src/frames/
 .vscode/
+
+# Python (verify-transcription.py harness)
+__pycache__/

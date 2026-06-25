@@ -129,7 +129,9 @@ final class VoiceCoordinator: ObservableObject {
     private var recordingStartDate: Date?
     private var lastRecordingDuration: TimeInterval = 0
     private let lastTranscriptStore = LastTranscriptStore()
+    private let transcriptHistoryStore = TranscriptHistoryStore()
     @Published private(set) var lastTranscript: String = ""
+    @Published private(set) var recentTranscripts: [TranscriptEntry] = []
     @Published private(set) var canRevert: Bool = false
     private var pendingRevertWords: [String] = []
     private var preFixTranscript: String = ""
@@ -156,6 +158,7 @@ final class VoiceCoordinator: ObservableObject {
         self.totalWordsSpoken = statsStore.totalWords
         self.averageWPM = statsStore.averageWPM
         self.lastTranscript = lastTranscriptStore.transcript
+        self.recentTranscripts = transcriptHistoryStore.entries
         self.isInitializing = false
     }
 
@@ -543,6 +546,7 @@ final class VoiceCoordinator: ObservableObject {
             let wordCount = processed.split(separator: " ").count
             lastTranscriptStore.transcript = processed
             lastTranscript = processed
+            recentTranscripts = transcriptHistoryStore.add(processed)
             statsStore.record(words: wordCount, durationSeconds: lastRecordingDuration)
             totalWordsSpoken = statsStore.totalWords
             averageWPM = statsStore.averageWPM
@@ -638,11 +642,31 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     /// Erase the persisted last transcript (privacy: it's stored in plaintext
-    /// prefs). Clears the in-memory mirror and the revert buffer too.
+    /// prefs). Clears the in-memory mirror, the recent-transcript history, and
+    /// the revert buffer too.
     func clearLastTranscript() {
         lastTranscriptStore.transcript = ""
         lastTranscript = ""
+        clearTranscriptHistory()
         clearRevertBuffer()
+    }
+
+    /// Remove a single transcript from the recent-history list.
+    func deleteTranscript(_ id: UUID) {
+        recentTranscripts = transcriptHistoryStore.remove(id: id)
+    }
+
+    /// Empty the recent-transcript history (privacy: plaintext in prefs).
+    func clearTranscriptHistory() {
+        transcriptHistoryStore.clear()
+        recentTranscripts = []
+    }
+
+    /// Copy a transcript back onto the system clipboard for reuse.
+    func copyToClipboard(_ text: String) {
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
     }
 
     /// Decide which app the transcription should be pasted into. Mirrors the

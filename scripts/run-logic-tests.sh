@@ -268,12 +268,12 @@ EOF
 
 xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Models/AppMode.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/TextProcessor.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/PhoneticMatcher.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/RepetitionGuard.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/VocabularyPrompt.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/WavTail.swift" \
-    "$REPO_ROOT/Sources/JVoice/Services/ChunkPlanner.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/TextProcessor.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/VocabularyPrompt.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/WavTail.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/ChunkPlanner.swift" \
     "$TMP_DIR/main.swift" \
     -o "$TMP_DIR/logic-tests"
 

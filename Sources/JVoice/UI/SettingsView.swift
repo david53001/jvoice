@@ -119,7 +119,6 @@ private struct DarkDestructiveButtonStyle: ButtonStyle {
 struct SettingsView: View {
     @ObservedObject var coordinator: VoiceCoordinator
     @State private var newWord = ""
-    @State private var editedTranscript: String = ""
     @State private var showResetConfirm = false
 
     var body: some View {
@@ -137,99 +136,94 @@ struct SettingsView: View {
                 }
                 .padding(.bottom, 4)
 
-                // Last Transcript
-                DarkSection("Last Transcript", accentColor: SettingsPalette.blue) {
+                // Stats
+                DarkSection("Stats", accentColor: SettingsPalette.green) {
+                    HStack(spacing: 0) {
+                        VStack(spacing: 3) {
+                            Text("\(coordinator.totalWordsSpoken)")
+                                .font(.system(size: 26, weight: .bold))
+                                .foregroundStyle(.white)
+                                .monospacedDigit()
+                                .shadow(color: SettingsPalette.blue.opacity(0.45), radius: 8)
+                                .shadow(color: SettingsPalette.blue.opacity(0.18), radius: 20)
+                            Text("total words")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color(white: 0.38))
+                        }
+                        .frame(maxWidth: .infinity)
+
+                        Rectangle()
+                            .fill(SettingsPalette.border)
+                            .frame(width: 0.5, height: 44)
+
+                        VStack(spacing: 3) {
+                            Text(coordinator.averageWPM > 0 ? String(format: "%.0f", coordinator.averageWPM) : "—")
+                                .font(.system(size: 26, weight: .bold))
+                                .foregroundStyle(.white)
+                                .monospacedDigit()
+                                .shadow(color: SettingsPalette.green.opacity(0.45), radius: 8)
+                                .shadow(color: SettingsPalette.green.opacity(0.18), radius: 20)
+                            Text("avg WPM")
+                                .font(.system(size: 10))
+                                .foregroundStyle(Color(white: 0.38))
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+
+                // Recent Transcripts
+                DarkSection("Recent Transcripts", accentColor: SettingsPalette.blue) {
                     VStack(alignment: .leading, spacing: 8) {
-                        if coordinator.lastTranscript.isEmpty {
-                            Text("No transcript yet.")
+                        if coordinator.recentTranscripts.isEmpty {
+                            Text("No transcripts yet.")
                                 .font(.footnote)
                                 .foregroundStyle(Color(white: 0.40))
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         } else {
-                            TextEditor(text: $editedTranscript)
-                                .font(.system(size: 11))
-                                .foregroundStyle(Color(white: 0.75))
-                                .frame(height: 56)
-                                .scrollContentBackground(.hidden)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .fill(SettingsPalette.inputBg)
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                                .strokeBorder(SettingsPalette.border, lineWidth: 1)
+                            ScrollView {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    ForEach(coordinator.recentTranscripts) { entry in
+                                        TranscriptRow(
+                                            text: entry.text,
+                                            onCopy: { coordinator.copyToClipboard(entry.text) },
+                                            onDelete: { coordinator.deleteTranscript(entry.id) }
                                         )
-                                )
-                        }
-
-                        if !coordinator.lastTranscript.isEmpty {
-                            HStack(spacing: 8) {
-                                Button("Fix") {
-                                    coordinator.fixLastTranscript(editedTranscript)
+                                    }
                                 }
-                                .buttonStyle(DarkPrimaryButtonStyle())
-                                .disabled(
-                                    editedTranscript.trimmingCharacters(in: .whitespacesAndNewlines) ==
-                                    coordinator.lastTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-                                )
+                                .padding(.vertical, 2)
+                            }
+                            .frame(maxHeight: 150)
 
-                                Button("Revert") {
-                                    coordinator.revertLastFix()
+                            HStack {
+                                Spacer()
+                                Button("Clear all") {
+                                    coordinator.clearTranscriptHistory()
                                 }
                                 .buttonStyle(DarkPrimaryButtonStyle(accentColor: SettingsPalette.gray))
-                                .disabled(!coordinator.canRevert)
-
-                                Button("Clear") {
-                                    coordinator.clearLastTranscript()
-                                }
-                                .buttonStyle(DarkPrimaryButtonStyle(accentColor: SettingsPalette.gray))
-                                .disabled(coordinator.lastTranscript.isEmpty)
                             }
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                .onChange(of: coordinator.lastTranscript) { _, newValue in
-                    editedTranscript = newValue
-                }
 
-                // Keyboard Shortcut
-                DarkSection("Keyboard Shortcut", accentColor: SettingsPalette.gray) {
-                    VStack(alignment: .leading, spacing: 8) {
-                        #if canImport(KeyboardShortcuts)
-                        KeyboardShortcuts.Recorder("Toggle Recording:", name: .toggleRecording)
-                            .foregroundStyle(Color(white: 0.75))
-                        #else
-                        Text("Shortcut customization is unavailable in this build.")
-                            .font(.footnote)
-                            .foregroundStyle(Color(white: 0.40))
-                        #endif
+                // Whisper Model
+                DarkSection("Whisper Model", accentColor: SettingsPalette.cyan) {
+                    VStack(alignment: .leading, spacing: 7) {
+                        Picker("Model", selection: $coordinator.whisperModel) {
+                            ForEach(WhisperModelChoice.allCases) { model in
+                                Text(model.displayName).tag(model)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
 
-                        Text("Default: ⌥ Space")
+                        Text(coordinator.whisperModel.guidance)
                             .font(.system(size: 10))
-                            .foregroundStyle(Color(white: 0.35))
+                            .foregroundStyle(Color(white: 0.38))
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                // Language
-                DarkSection("Language", accentColor: SettingsPalette.indigo) {
-                    Picker("Language", selection: $coordinator.transcriptionLanguage) {
-                        ForEach(TranscriptionLanguage.allCases) { lang in
-                            Text(lang.displayName).tag(lang)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
-                }
-
-                // Voice Style
-                DarkSection("Voice Style", accentColor: SettingsPalette.purple) {
-                    Picker("Tone", selection: $coordinator.toneMode) {
-                        ForEach(ToneMode.allCases) { mode in
-                            Text(mode.displayName).tag(mode)
-                        }
-                    }
-                    .pickerStyle(.segmented)
                 }
 
                 // Processing
@@ -251,23 +245,25 @@ struct SettingsView: View {
                     }
                 }
 
-                // Whisper Model
-                DarkSection("Whisper Model", accentColor: SettingsPalette.cyan) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Picker("Model", selection: $coordinator.whisperModel) {
-                            ForEach(WhisperModelChoice.allCases) { model in
-                                Text(model.displayName).tag(model)
-                            }
+                // Voice Style
+                DarkSection("Voice Style", accentColor: SettingsPalette.purple) {
+                    Picker("Tone", selection: $coordinator.toneMode) {
+                        ForEach(ToneMode.allCases) { mode in
+                            Text(mode.displayName).tag(mode)
                         }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
-
-                        Text(coordinator.whisperModel.guidance)
-                            .font(.system(size: 10))
-                            .foregroundStyle(Color(white: 0.38))
-                            .fixedSize(horizontal: false, vertical: true)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .pickerStyle(.segmented)
+                }
+
+                // Language
+                DarkSection("Language", accentColor: SettingsPalette.indigo) {
+                    Picker("Language", selection: $coordinator.transcriptionLanguage) {
+                        ForEach(TranscriptionLanguage.allCases) { lang in
+                            Text(lang.displayName).tag(lang)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
                 }
 
                 // Custom Words
@@ -326,40 +322,23 @@ struct SettingsView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
-                // Stats
-                DarkSection("Stats", accentColor: SettingsPalette.green) {
-                    HStack(spacing: 0) {
-                        VStack(spacing: 3) {
-                            Text("\(coordinator.totalWordsSpoken)")
-                                .font(.system(size: 26, weight: .bold))
-                                .foregroundStyle(.white)
-                                .monospacedDigit()
-                                .shadow(color: SettingsPalette.blue.opacity(0.45), radius: 8)
-                                .shadow(color: SettingsPalette.blue.opacity(0.18), radius: 20)
-                            Text("total words")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color(white: 0.38))
-                        }
-                        .frame(maxWidth: .infinity)
+                // Keyboard Shortcut
+                DarkSection("Keyboard Shortcut", accentColor: SettingsPalette.gray) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        #if canImport(KeyboardShortcuts)
+                        KeyboardShortcuts.Recorder("Toggle Recording:", name: .toggleRecording)
+                            .foregroundStyle(Color(white: 0.75))
+                        #else
+                        Text("Shortcut customization is unavailable in this build.")
+                            .font(.footnote)
+                            .foregroundStyle(Color(white: 0.40))
+                        #endif
 
-                        Rectangle()
-                            .fill(SettingsPalette.border)
-                            .frame(width: 0.5, height: 44)
-
-                        VStack(spacing: 3) {
-                            Text(coordinator.averageWPM > 0 ? String(format: "%.0f", coordinator.averageWPM) : "—")
-                                .font(.system(size: 26, weight: .bold))
-                                .foregroundStyle(.white)
-                                .monospacedDigit()
-                                .shadow(color: SettingsPalette.green.opacity(0.45), radius: 8)
-                                .shadow(color: SettingsPalette.green.opacity(0.18), radius: 20)
-                            Text("avg WPM")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color(white: 0.38))
-                        }
-                        .frame(maxWidth: .infinity)
+                        Text("Default: ⌥ Space")
+                            .font(.system(size: 10))
+                            .foregroundStyle(Color(white: 0.35))
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
                 // Restore defaults + Quit
@@ -378,7 +357,7 @@ struct SettingsView: View {
                         }
                         Button("Cancel", role: .cancel) {}
                     } message: {
-                        Text("Your custom words, model choice, and language will be restored to defaults, and the last transcript will be cleared. Recording statistics will not be affected.")
+                        Text("Your custom words, model choice, and language will be restored to defaults, and your recent transcripts will be cleared. Recording statistics will not be affected.")
                     }
 
                     Spacer()
@@ -390,16 +369,10 @@ struct SettingsView: View {
 
             }
             .padding(16)
-            .onAppear {
-                editedTranscript = coordinator.lastTranscript
-            }
-            .onDisappear {
-                coordinator.clearRevertBuffer()
-            }
         }
         .background(SettingsPalette.panelBg)
         .preferredColorScheme(.dark)
-        .frame(width: 320, height: 520)
+        .frame(width: 380, height: 520)
     }
 
     private func submitWord() {
@@ -407,5 +380,69 @@ struct SettingsView: View {
         guard !trimmed.isEmpty else { return }
         coordinator.addCustomWord(trimmed)
         newWord = ""
+    }
+}
+
+// MARK: - TranscriptRow
+
+/// One row in the Recent Transcripts list: a single-line, read-only transcript
+/// with Copy / delete affordances that appear on hover. Copy briefly flips to a
+/// checkmark for feedback.
+private struct TranscriptRow: View {
+    let text: String
+    let onCopy: () -> Void
+    let onDelete: () -> Void
+
+    @State private var hovering = false
+    @State private var justCopied = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(Color(white: 0.75))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if hovering {
+                Button {
+                    onCopy()
+                    flashCopied()
+                } label: {
+                    Image(systemName: justCopied ? "checkmark" : "doc.on.doc")
+                        .foregroundStyle(justCopied ? SettingsPalette.green : SettingsPalette.blue.opacity(0.85))
+                }
+                .buttonStyle(.plain)
+                .help("Copy to clipboard")
+
+                Button {
+                    onDelete()
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .foregroundStyle(SettingsPalette.red.opacity(0.80))
+                }
+                .buttonStyle(.plain)
+                .help("Remove")
+            }
+        }
+        .font(.system(size: 11))
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .frame(minHeight: 22)
+        .background(
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .fill(hovering ? SettingsPalette.inputBg : Color.clear)
+        )
+        .contentShape(Rectangle())
+        .onHover { hovering = $0 }
+    }
+
+    private func flashCopied() {
+        justCopied = true
+        Task {
+            try? await Task.sleep(nanoseconds: 1_200_000_000)
+            justCopied = false
+        }
     }
 }

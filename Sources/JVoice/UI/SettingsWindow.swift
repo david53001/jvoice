@@ -5,7 +5,7 @@ import SwiftUI
 final class SettingsWindow: NSWindow {
     init(coordinator: VoiceCoordinator) {
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 520),
+            contentRect: NSRect(x: 0, y: 0, width: 380, height: 520),
             styleMask: [.titled, .closable, .fullSizeContentView],
             backing: .buffered,
             defer: false
