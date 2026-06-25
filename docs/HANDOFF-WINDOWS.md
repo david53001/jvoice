@@ -1,6 +1,6 @@
 # HANDOFF-WINDOWS — Windows port status
 
-**Last updated:** 2026-06-24. **Branch:** `windows-port` (local only — never pushed).
+**Last updated:** 2026-06-26. **Branch:** `windows-port` (published to `origin/windows-port`).
 **Audience:** David + the next zero-context Claude session.
 
 This is the single source of truth for the **state** of the JVoice Windows port. Read
@@ -19,7 +19,7 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **490 / 490 passing** (grew from 122 during
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **523 / 523 passing** (grew from 122 during
   the bug-hunt and the subsequent feature work tracked in §7; a shared, moving total).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
@@ -152,23 +152,27 @@ windows/
 │   ├── Audio/                     WavTail(+WavTailReader), ChunkPlanner, StreamingTranscriptionSession,
 │   │                              BluetoothDevicePolicy, HighPassSilence (Win-only; now metrics-only, §7 #21)
 │   ├── Transcription/             ITranscriptionEngine, TranscriptionException, FileBackedTranscriptionEngine
-│   ├── AppTimings.cs  StatsMath.cs  CoordinatorDecisions.cs
+│   │   └── Policy/                    CoordinatorDecisions, HotkeyGate, GameDetectionPolicy, StatsMath, AppTimings
+│                                  (moved from Core root → Policy/ in the 2026-06-26 reorg; namespace JVoice.Core unchanged)
 ├── JVoice.App/                    net9.0-windows, WinExe, UseWPF — the app
 │   ├── App.xaml(.cs)              [STAThread] Main (bench short-circuit → single-instance →
 │   │                              WhisperRuntime.EnsureLoaded → Run); OnStartup wires it all
 │   ├── app.manifest               asInvoker, PerMonitorV2 DPI, longPathAware, UTF-8, Win10/11 supportedOS
 │   ├── VoiceCoordinator.cs        the orchestrator (port of VoiceCoordinator.swift)
 │   ├── Whisper/                   WhisperRuntime, WhisperModelStore, WhisperNetTranscriptionEngine, BenchRunner
-│   ├── Platform/                  PlatformPaths, SettingsStore, StatsStore, LastTranscriptStore,
-│   │                              TranscriptHistoryStore (§7 #26), SystemActions,
-│   │                              LaunchAtLogin, SingleInstance, SettingsUris, PermissionError,
-│   │                              AudioInputRouter, IAudioRecorder, NAudioRecorder, ForegroundWindowTracker,
-│   │                              GlobalHotkey, Paster
+│   ├── Platform/                  OS integration, split 2026-06-26 into @-mentionable sub-areas
+│   │   │                          (namespace JVoice.App.Platform unchanged — folder ≠ namespace is intentional):
+│   │   ├── Capture/               IAudioRecorder, NAudioRecorder, AudioInputRouter
+│   │   ├── Persistence/           PlatformPaths, SettingsStore, StatsStore, LastTranscriptStore,
+│   │   │                          TranscriptHistoryStore (§7 #26)
+│   │   └── System/                GlobalHotkey, Paster, Elevation, ElevatedAutostart, LaunchAtLogin,
+│   │                              GameDetector, GameProbeRunner, ForegroundWindowTracker, DisplayMetrics,
+│   │                              SingleInstance, SystemActions, SettingsUris, PermissionError, DiagnosticLog
 │   ├── UI/                        App-level: HudWindow + HudView, SettingsWindow + SettingsView, DarkSection,
 │   │   │                          HotkeyRecorder, TrayIcon, TranscriptRow (§7 #26), Converters,
 │   │   │                          Styles/JVoicePalette.xaml
 │   └── Assets/                    JVoice.ico + tray-idle/recording/transcribing.png (generated, committed)
-├── JVoice.Tests/                  net9.0 xUnit — 490 tests locking JVoice.Core
+├── JVoice.Tests/                  net9.0 xUnit — 523 tests locking JVoice.Core
 └── tools/
     ├── whisper-smoke/             net9.0 console — WPF-free end-to-end transcription harness
     ├── generate-icon/             net9.0 console (SkiaSharp) — writes Assets/JVoice.ico + tray PNGs
@@ -857,7 +861,7 @@ These are real corrections discovered during execution — preserve them.
     - **VERIFICATION:** `dotnet build windows/JVoice.sln -c Debug` = 0 errors; Release App build = 0 errors
       (the locked-DLL copy error if a JVoice instance is running is a file lock, not a code error — build to a
       separate `-o` dir, or stop the instance); `dotnet test` green incl. the **19 new `TranscriptHistoryTests`**
-      (the full-suite total moves with concurrent work — 490 at this writing). Layout confirmed
+      (the full-suite total moves with concurrent work — 523 at this writing). Layout confirmed
       headlessly via `JVoice.exe --settings-render` in both empty and seeded states (order correct, rows
       ellipsis-truncate, Clear all present, palette unchanged). **Hover-reveal, Copy→checkmark, Delete, Clear
       all, persistence-across-restart, and Restore-Defaults-clears-history are the interactive bits** a static
@@ -876,14 +880,14 @@ These are real corrections discovered during execution — preserve them.
       we move on — **never retried with broader access**. The graphics-DLL module-scan signal from the plan was
       **deliberately dropped from v1** to keep process interaction at exactly zero (it also avoided a fullscreen-
       browser false positive). Same API category as OBS / Windows Focus Assist.
-    - **Pure brain (`JVoice.Core/GameDetectionPolicy.cs`, unit-tested like `HotkeyGate`):** `GameSignals` →
+    - **Pure brain (`JVoice.Core/Policy/GameDetectionPolicy.cs`, unit-tested like `HotkeyGate`):** `GameSignals` →
       `ShouldSuppress(signals, GameDetectionMode)`. Modes `Off | Balanced | Aggressive` (`JVoice.Core/Models/
-      GameDetectionMode.cs`). **Balanced (default)** suppresses on `D3DFullscreen ∨ RegisteredGame ∨ KnownGamePath`
+      GameDetectionMode.cs`). [reorg 2026-06-26: policy now at `JVoice.Core/Policy/GameDetectionPolicy.cs`] **Balanced (default)** suppresses on `D3DFullscreen ∨ RegisteredGame ∨ KnownGamePath`
       — deliberately **NOT** bare fullscreen, so fullscreen video/browsers never false-positive. **Aggressive**
       also suppresses on any borderless/exclusive fullscreen app (catches obscure windowed games; will also trip
       on fullscreen YouTube — opt-in). User force-allow/deny (`UserForceNotGame`/`UserForceGame`) are wired in the
       policy but hard-false in v1 (the per-exe lists are v2).
-    - **Signals (`JVoice.App/Platform/GameDetector.cs`, all read-only):** #1 `SHQueryUserNotificationState ==
+    - **Signals (`JVoice.App/Platform/System/GameDetector.cs`, all read-only):** #1 `SHQueryUserNotificationState ==
       QUNS_RUNNING_D3D_FULL_SCREEN` (Microsoft's own Focus-Assist "a game is fullscreen" signal, process-
       untouching); #2 **GameConfigStore** (`HKCU\System\GameConfigStore\Children\*` → `MatchedExeFullPath`, 30 s
       cache) — Windows' own per-user recognized-game list, catches **windowed Minecraft**; #3 known install roots
@@ -911,7 +915,7 @@ These are real corrections discovered during execution — preserve them.
       before WPF, like `--bench`.
     - **VERIFICATION:** `GameDetectionPolicyTests` truth table (precedence + the Balanced-excludes-bare-fullscreen
       guarantee) + settings v1→v2 migration tests; `dotnet build windows/JVoice.sln -c Debug` = 0 errors;
-      `dotnet test` = **490/490**. The Win32 signal-gathering itself has no unit tests (Win32 glue, like the other
+      `dotnet test` = **523/523**. The Win32 signal-gathering itself has no unit tests (Win32 glue, like the other
       `Platform/*` interop) — verified live via `--game-probe` during dogfood (gaming section of the checklist).
     - **Commits:** `0b73904` (policy + settings v2 + hook passthrough), `e8153ee` (GameDetector), `40af40b`
       (`--game-probe`). **NOTE:** the `VoiceCoordinator` + `SettingsView.xaml` wiring landed *inside* commit
@@ -962,6 +966,18 @@ These are real corrections discovered during execution — preserve them.
       fix-last-transcript flow to SUGGEST adding a term the user just corrected; (b) categorized packs
       (Web/Python/DevOps…) toggled independently; (c) port `DeveloperTerms` 1:1 to the macOS app.
 
+28. **@-mentionable area reorg + per-area `CLAUDE.md` briefs (2026-06-26).** The `windows/` tree was
+    reorganized into `@`-mentionable area folders via **pure `git mv`** — 0 source edits, every move
+    `R100`, build + **523/523** tests byte-identical to baseline. `JVoice.App/Platform/` split into
+    `Capture/` (recorder + input router), `Persistence/` (settings/stats/transcript stores + paths),
+    and `System/` (hotkey, paste, elevation, game detection, display, single-instance, …). The five
+    `JVoice.Core` root helpers (CoordinatorDecisions, HotkeyGate, GameDetectionPolicy, StatsMath,
+    AppTimings) moved to `JVoice.Core/Policy/`. **Namespaces were NOT changed** (C# declares them
+    in-file) — so folder ≠ namespace is intentional, no `using` moved; don't "fix" it as a drive-by
+    (that's a separate cross-cutting rename). Each area folder got a `CLAUDE.md` brief; `windows/CLAUDE.md`
+    is the area index. App-shell files (`App.xaml`, `app.manifest`, `Assets/`) stayed put (path-coupled
+    in `JVoice.App.csproj`). The macOS `Sources/` was untouched.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 2** adds `gameMode`, §7 #27),
 `stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
@@ -973,6 +989,17 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
 ---
 
 ## 8. What remains
+
+> ⚠️ **KNOWN BUG — running JVoice ELEVATED freezes recording (found 2026-06-26).** Launching the app
+> **elevated** (tray "Restart as Administrator" / `Start-Process -Verb RunAs`) makes the **first recording
+> freeze**: the HUD enters Recording, the wave animation stalls, the stop press never registers (no
+> `StopRecording` line in `diagnostic.log`), and nothing transcribes or pastes. **Non-elevated works
+> perfectly** (full loop completes). Confirmed via the diagnostic log — an elevated PID froze at
+> "HUD Recording" while a non-elevated PID of the *same build* completed every dictation. Root cause not
+> yet isolated (suspect the elevated process's low-level keyboard hook / WPF message pump / GPU init under
+> elevation). **Consequence: the §7 #25 "run elevated so the hotkey/paste works in admin windows" path is
+> currently broken — run non-elevated.** (In practice David's terminal is NOT elevated, so non-elevated
+> pastes into it fine; the earlier "elevated terminal" paste theory was a transient mis-diagnosis.)
 
 1. **(IN PROGRESS) Silence-hallucination gate — David-reported 2026-06-24 (§7 #24).** On near-silent short
    presses whisper sometimes pastes a *plausible* hallucinated sentence (e.g. "you're welcome.", "you can't
