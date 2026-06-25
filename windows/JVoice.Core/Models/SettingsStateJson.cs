@@ -43,6 +43,9 @@ public static class SettingsStateJson
             // Windows-only field (no macOS counterpart). Absent in files written by
             // older builds / the macOS app; ParseCorrections falls back to empty.
             corrections = state.Corrections.Select(c => new { from = c.From, to = c.To }),
+            // Windows-only opt-out flag for the curated developer-terms pack. Absent in
+            // older / macOS files; Deserialize falls back to true (default ON).
+            developerTerms = state.DeveloperTerms,
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -69,7 +72,8 @@ public static class SettingsStateJson
             Language: ParseLanguage(TryGetString(root, "language")),
             CustomWords: ParseCustomWords(root),
             RemoveFillerWords: TryGetBool(root, "removeFillerWords") ?? true,
-            Corrections: ParseCorrections(root));
+            Corrections: ParseCorrections(root),
+            DeveloperTerms: TryGetBool(root, "developerTerms") ?? true);
     }
 
     // field parsers (each falls back to the field default)

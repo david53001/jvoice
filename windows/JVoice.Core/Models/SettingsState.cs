@@ -7,7 +7,8 @@ public sealed record SettingsState(
     TranscriptionLanguage Language,
     IReadOnlyList<string> CustomWords,
     bool RemoveFillerWords,
-    IReadOnlyList<CorrectionRule> Corrections)
+    IReadOnlyList<CorrectionRule> Corrections,
+    bool DeveloperTerms)
 {
     public const int CurrentSchemaVersion = 1;
 
@@ -18,5 +19,6 @@ public sealed record SettingsState(
         Language: TranscriptionLanguage.English,
         CustomWords: Array.Empty<string>(),
         RemoveFillerWords: true,
-        Corrections: Array.Empty<CorrectionRule>());
+        Corrections: Array.Empty<CorrectionRule>(),
+        DeveloperTerms: true);
 }

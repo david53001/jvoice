@@ -59,6 +59,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         CustomWords = new ObservableCollection<string>(s.CustomWords);
         Corrections = new ObservableCollection<CorrectionRule>(s.Corrections);
         _removeFillerWords = s.RemoveFillerWords;
+        _developerTermsEnabled = s.DeveloperTerms;
         _hotkeyChord = HotkeyChord.Default;
         _totalWordsSpoken = _statsStore.TotalWords;
         _averageWpm = _statsStore.AverageWpm;
@@ -116,6 +117,16 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     {
         get => _removeFillerWords;
         set { if (_removeFillerWords == value) return; _removeFillerWords = value; PersistSettings(); Raise(); }
+    }
+
+    private bool _developerTermsEnabled;
+    /// Opt-out toggle for the curated <see cref="DeveloperTerms"/> correction pack.
+    /// Like RemoveFillerWords this only persists — it's read fresh in the transcription
+    /// path (ProcessAndPaste), so no engine reload is needed.
+    public bool DeveloperTermsEnabled
+    {
+        get => _developerTermsEnabled;
+        set { if (_developerTermsEnabled == value) return; _developerTermsEnabled = value; PersistSettings(); Raise(); }
     }
 
     public ObservableCollection<string> CustomWords { get; }
@@ -386,6 +397,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             CustomWords = CustomWords.ToList(),
             RemoveFillerWords = _removeFillerWords,
             Corrections = Corrections.ToList(),
+            DeveloperTerms = _developerTermsEnabled,
         });
     }
 
@@ -404,10 +416,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         Corrections.Clear();
         foreach (var c in s.Corrections) Corrections.Add(c);
         RemoveFillerWords = s.RemoveFillerWords;
+        DeveloperTermsEnabled = s.DeveloperTerms;
         _isInitializing = false;
         _settingsStore.Flush();
         RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags();
-        Raise(nameof(RemoveFillerWords)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(ModelGuidance));
+        Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(ModelGuidance));
         _engine = MakeEngine(_whisperModel, _language, CustomWords.ToList());
         _ = _engine.PrewarmAsync();
     }
@@ -680,7 +693,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
             var vocab = CustomWords.ToList();
             var userDict = TextProcessor.BuildUserDictionary(vocab);
-            var extraDict = UserCorrections.Merge(userDict, Corrections.ToList());
+            // Lay the curated developer-terms pack UNDER the user's own custom-word
+            // variants (their words win), then let user correction rules win over both.
+            var withPack = _developerTermsEnabled ? DeveloperTerms.Augment(userDict) : userDict;
+            var extraDict = UserCorrections.Merge(withPack, Corrections.ToList());
             string processed = TextProcessor.RemoveWhisperHallucinations(
                 TextProcessor.Process(transcript, _toneMode, extraDict, _removeFillerWords, vocab));
 

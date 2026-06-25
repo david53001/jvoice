@@ -17,6 +17,7 @@ public class SettingsStateTests
         Assert.Empty(s.CustomWords);
         Assert.True(s.RemoveFillerWords);
         Assert.Empty(s.Corrections);
+        Assert.True(s.DeveloperTerms);   // Windows-only pack, default ON
     }
 
     [Fact]

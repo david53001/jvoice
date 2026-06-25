@@ -84,15 +84,26 @@
             <!-- 5. PROCESSING (teal) -->
             <ui:DarkSection HeaderText="Processing" AccentBrush="{StaticResource Settings.Teal}">
                 
-                    <Grid>
-                        <StackPanel HorizontalAlignment="Left">
-                            <TextBlock Text="Remove Filler Words" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
-                            <TextBlock Text="Strip um, uh, er, ah, hmm from output" FontSize="10" Foreground="{StaticResource Text.W38}" Margin="0,2,0,0" />
-                        </StackPanel>
-                        <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
-                                  Style="{StaticResource MonoSwitch}"
-                                  IsChecked="{Binding RemoveFillerWords, Mode=TwoWay}" />
-                    </Grid>
+                    <StackPanel>
+                        <Grid>
+                            <StackPanel HorizontalAlignment="Left">
+                                <TextBlock Text="Remove Filler Words" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
+                                <TextBlock Text="Strip um, uh, er, ah, hmm from output" FontSize="10" Foreground="{StaticResource Text.W38}" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                      Style="{StaticResource MonoSwitch}"
+                                      IsChecked="{Binding RemoveFillerWords, Mode=TwoWay}" />
+                        </Grid>
+                        <Grid Margin="0,12,0,0">
+                            <StackPanel HorizontalAlignment="Left">
+                                <TextBlock Text="Developer Terms" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
+                                <TextBlock Text="Fix coding terms: Node.js, GitHub, TypeScript, JSON, C#&#8230;" FontSize="10" Foreground="{StaticResource Text.W38}" Margin="0,2,0,0" />
+                            </StackPanel>
+                            <CheckBox HorizontalAlignment="Right" VerticalAlignment="Center"
+                                      Style="{StaticResource MonoSwitch}"
+                                      IsChecked="{Binding DeveloperTermsEnabled, Mode=TwoWay}" />
+                        </Grid>
+                    </StackPanel>
                 
             </ui:DarkSection>
 

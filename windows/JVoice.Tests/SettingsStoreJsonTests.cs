@@ -16,7 +16,8 @@ public class SettingsStoreJsonTests
             Language: TranscriptionLanguage.Romanian,
             CustomWords: new[] { "JVoice", "Li-Fraumeni" },
             RemoveFillerWords: false,
-            Corrections: new[] { new CorrectionRule("web api", "web app") });
+            Corrections: new[] { new CorrectionRule("web api", "web app") },
+            DeveloperTerms: false);
 
         string json = SettingsStateJson.Serialize(original);
         var back = SettingsStateJson.Deserialize(json);
@@ -27,6 +28,7 @@ public class SettingsStoreJsonTests
         Assert.Equal(original.CustomWords, back.CustomWords);
         Assert.Equal(original.RemoveFillerWords, back.RemoveFillerWords);
         Assert.Equal(original.Corrections, back.Corrections);
+        Assert.Equal(original.DeveloperTerms, back.DeveloperTerms);
         Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
     }
 
@@ -109,16 +111,16 @@ public class SettingsStoreJsonTests
     // ===== Serialize-side fidelity + round-trip fuzz =====
 
     // Swift's CodingKeys are schemaVersion/mode/model/language/customWords/removeFillerWords. The
-    // Windows port adds one extra on-disk key, `corrections` (a Windows-only feature with no macOS
-    // counterpart) — so Serialize emits exactly those seven keys. Older builds / the macOS app simply
-    // ignore the unknown `corrections` key on read; Deserialize tolerates its absence.
+    // Windows port adds two extra on-disk keys with no macOS counterpart: `corrections` and
+    // `developerTerms` — so Serialize emits exactly those eight keys. Older builds / the macOS app
+    // simply ignore the unknown keys on read; Deserialize tolerates their absence.
     [Fact]
-    public void Serialize_EmitsExactlyTheSevenKeys()
+    public void Serialize_EmitsExactlyTheEightKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "corrections", "customWords", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
+            new[] { "corrections", "customWords", "developerTerms", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
             keys);
     }
 
@@ -175,7 +177,8 @@ public class SettingsStoreJsonTests
                 Language: langs[rng.Next(langs.Length)],
                 CustomWords: words,
                 RemoveFillerWords: rng.Next(2) == 0,
-                Corrections: corrections);
+                Corrections: corrections,
+                DeveloperTerms: rng.Next(2) == 0);
 
             var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(state));
             Assert.Equal(state.Mode, back.Mode);
@@ -184,6 +187,7 @@ public class SettingsStoreJsonTests
             Assert.Equal(state.CustomWords, back.CustomWords);
             Assert.Equal(state.RemoveFillerWords, back.RemoveFillerWords);
             Assert.Equal(state.Corrections, back.Corrections);
+            Assert.Equal(state.DeveloperTerms, back.DeveloperTerms);
             Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
         }
     }
@@ -240,6 +244,31 @@ public class SettingsStoreJsonTests
     {
         var s = SettingsStateJson.Deserialize("""{ "corrections": "not-an-array" }""");
         Assert.Empty(s.Corrections);
+    }
+
+    // ===== developerTerms field (Windows-only, default ON) =====
+
+    [Fact]
+    public void Deserialize_MissingDeveloperTerms_DefaultsToTrue()
+    {
+        // Older build / macOS file with no `developerTerms` key → pack is ON.
+        var s = SettingsStateJson.Deserialize(
+            """{ "schemaVersion": 1, "mode": "Casual", "customWords": ["X"] }""");
+        Assert.True(s.DeveloperTerms);
+    }
+
+    [Fact]
+    public void Deserialize_DeveloperTermsFalse_IsHonored()
+    {
+        var s = SettingsStateJson.Deserialize("""{ "developerTerms": false }""");
+        Assert.False(s.DeveloperTerms);
+    }
+
+    [Fact]
+    public void Deserialize_DeveloperTermsWrongType_DefaultsToTrue()
+    {
+        var s = SettingsStateJson.Deserialize("""{ "developerTerms": "notabool" }""");
+        Assert.True(s.DeveloperTerms);
     }
 
     private static string RandomWord(Random rng)
