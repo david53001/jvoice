@@ -811,6 +811,48 @@ These are real corrections discovered during execution — preserve them.
       the standard recipe — **assumption logged**). Steps: `docs/launch/windows-dogfood-checklist.md` →
       "Permissions & edge cases → Elevated-window dictation".
 
+26. **Developer-terms correction pack — opt-out, recognizes coding vocabulary (2026-06-25).** David dictates
+    programming terms ("Node.js", "GitHub", "TypeScript", "JSON", "C#", ".NET", "OpenAI"…) and Whisper mis-rendered
+    them — usually spacing/casing drift ("node js", "git hub", "type script") or a dev homophone ("jason"→JSON). The
+    custom-words box helped but is the wrong tool at scale: only its first 40 words ever reach the decoder prompt
+    (`VocabularyPrompt.MaxWords`), and that scarce budget should stay reserved for the user's genuinely-unusual words.
+    - **Design — route to the UNBOUNDED post-processing channel, NOT the decoder prompt.** Most coding terms are
+      already transcribed phonetically close; they only need spelling/casing NORMALIZATION, which the `extraDictionary`
+      path (`TextProcessor.ApplyCorrections`) does for hundreds of terms at **zero decoder cost and zero
+      prompt-regurgitation risk**. So the pack is a post-hoc correction dictionary, not a `VocabularyPrompt` addition.
+    - **`JVoice.Core/Text/DeveloperTerms.cs`** — a curated `Map` (heard-form→canonical, ~80 entries) + `Augment(baseDict)`.
+      NEW Windows-first Core file (NOT a 1:1 Swift port; intended to be ported to macOS later like the rest of the
+      brain). It is deliberately NOT folded into `TextProcessor` (which stays a verbatim macOS port).
+    - **Wiring (`VoiceCoordinator` ProcessAndPaste):** `userDict = BuildUserDictionary(vocab)` →
+      `withPack = DeveloperTermsEnabled ? DeveloperTerms.Augment(userDict) : userDict` → `UserCorrections.Merge(withPack, rules)`.
+      **Precedence (low→high): dev pack < user custom-word variants < user correction rules < builtin
+      CorrectionDictionary.** `Augment` lays the pack UNDER the base dict so a user's own custom word always wins over
+      the generic pack. (Very Casual lowercases before `ApplyCorrections`, so the pack also RE-CASES correctly there.)
+    - **Curation is deliberately CONSERVATIVE** — only unambiguous spacing/casing fixes + clearly-dev homophones.
+      Ambiguous single English words are EXCLUDED so ordinary dictation is never corrupted: `go`/`rust`/`swift`/`react`
+      casing, bare `java`/`pandas`, bare `dotnet` (would wreck the lowercase `dotnet` CLI), `sequel`→`SQL` (would wreck
+      "the movie sequel"). The test `Map_ExcludesAmbiguousEnglishWords` LOCKS that policy. The acronym-casing entries
+      (`api`→API, `sql`→SQL, `url`→URL…) are safe because `\bword\b` boundaries prevent intra-word hits — `FastAPI`,
+      `REST API`, `PostgreSQL`, `HTTPS` are all left intact. **One KEPT risk:** `jason`→`JSON` collides with the name
+      "Jason" — overwhelmingly right in coding dictation and trivially removable via a user correction rule.
+    - **Settings:** `SettingsState.DeveloperTerms` (bool, **default ON**) — a second Windows-only on-disk key
+      `developerTerms` alongside `corrections`; **no schema bump** (per-field fallback to `true` on absence, so
+      older/macOS files and existing installs come up ON after upgrade). `VoiceCoordinator.DeveloperTermsEnabled`
+      (named differently from the `DeveloperTerms` class to avoid shadowing it inside the coordinator) + a monochrome
+      **"Developer Terms"** toggle in the Processing settings section.
+    - **VERIFICATION — `dotnet test` 467/467** (added `DeveloperTermsTests` (30) + settings round-trip/default
+      coverage); `JVoice.App` builds 0 errors. The `node js`→`Node.js` transforms are locked by end-to-end
+      `TextProcessor.Process` tests (more reliable than a live `--bench` of spoken audio).
+    - **Built on branch `feat/developer-terms` in an isolated git worktree** (two other sessions were live on
+      `windows-port`). ⚠️ **The branch's base — `windows-port` HEAD `f5277ea` — does NOT currently build `JVoice.App`:**
+      committed `VoiceCoordinator.cs` references `PlatformPaths.KeepRecordings`/`CaptureDirectory`, which exist only in
+      an **uncommitted** `PlatformPaths.cs` in the main checkout (a different session's WIP). The dev-terms App code was
+      verified to compile by temporarily borrowing that file (then reverting it). **Merge `feat/developer-terms` →
+      `windows-port` once `PlatformPaths.cs` is committed there.**
+    - **Follow-ups (not started):** (a) "learn from my fixes" — reuse `TextProcessor.ExtractCorrections` + the
+      fix-last-transcript flow to SUGGEST adding a term the user just corrected; (b) categorized packs
+      (Web/Python/DevOps…) toggled independently; (c) port `DeveloperTerms` 1:1 to the macOS app.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`), `stats.json`, `last-transcript.txt`;
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
@@ -850,7 +892,12 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    now a continuous, mic-independent wave (#18, #22, #23; no mic meter) — further tweaks are by-eye taste (constants at the top of
    `HudView.xaml.cs`). The Settings scrollbar is now monochrome (done, commit `990ba76`). (The old
    "waveform glyph" / "per-section accent" / "default-grey scrollbar" polish items are obsolete — #18/#22.)
-6. **Do NOT publish/push** without David's explicit go-ahead.
+6. **(Follow-ups) Developer-terms pack (§7 #26)** — **merge `feat/developer-terms` → `windows-port`** once that
+   branch's base builds `JVoice.App` (blocked on a different session committing `PlatformPaths.cs`, §7 #26). Then the
+   optional next slices: a "learn from my fixes" suggester (reuse `TextProcessor.ExtractCorrections`), categorized
+   packs (Web/Python/DevOps…), and porting `JVoice.Core/Text/DeveloperTerms.cs` 1:1 to the macOS app. Curating the
+   word list further (add/remove terms; the one name-collision risk is `jason`→`JSON`) is by-eye taste.
+7. **Do NOT publish/push** without David's explicit go-ahead.
 
 ---
 
