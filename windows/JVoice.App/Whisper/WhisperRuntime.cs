@@ -1,4 +1,6 @@
+using System.Linq;
 using Whisper.net.LibraryLoader;
+using Whisper.net.Logger;
 
 namespace JVoice.App.Whisper;
 
@@ -30,6 +32,17 @@ internal static class WhisperRuntime
             _ensured = true;
         }
     }
+
+    /// Force the native-runtime probe order BEFORE the first WhisperFactory is created.
+    /// Pass a single library (e.g. RuntimeLibrary.Cuda) to make a missing backend a HARD
+    /// failure (FileNotFoundException) instead of a silent fallback — used by `--bench --runtime`.
+    public static void ForceRuntimeOrder(params RuntimeLibrary[] order)
+        => RuntimeOptions.RuntimeLibraryOrder = order.ToList();
+
+    /// Stream whisper.cpp's own debug log to the console (e.g. "cudaGetDeviceCount returned 35 …"),
+    /// so a forced-CUDA run prints exactly why a backend was rejected.
+    public static void EnableDebugLogging()
+        => LogProvider.AddConsoleLogging(WhisperLogLevel.Debug);
 
     /// A human-readable description of the selected runtime, for bench/log output.
     /// Uses Whisper.net 1.9.1's typed RuntimeOptions.LoadedLibrary (a RuntimeLibrary?
