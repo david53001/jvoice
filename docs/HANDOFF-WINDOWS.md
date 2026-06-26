@@ -1010,6 +1010,38 @@ These are real corrections discovered during execution — preserve them.
     current data with no scrollbar; one number to change if a shorter (slightly-scrolling) window is
     preferred. The macOS `Sources/` Settings (its own `320×520` view in a `640×480` window) is unchanged.
 
+30. **Installed app + both installers refreshed to the §29 two-column build; autostart repointed; CPU-default
+    distribution decided (2026-06-26).** After §29 the user-facing install
+    (`%LOCALAPPDATA%\Programs\JVoice`) and both `~/Downloads` installers were still the pre-Settings build
+    (`cd63b3b`); all were refreshed to `6f8ffc2`.
+    - **Install refreshed in place** with `robocopy /MIR <gpu-folder> <install> /XF uninstall.ps1` from a
+      fresh `dotnet publish windows\JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=gpu -p:SelfContained=true
+      -p:PublishTrimmed=false -p:PublishReadyToRun=true -o windows\artifacts\gpu-folder`. **Use robocopy /MIR,
+      NOT `Remove-Item -Recurse -Force`** — the harness sandbox blocks recursive force-deletes of the
+      `Programs\JVoice` path. The GGML model store (`%LOCALAPPDATA%\JVoice\models\`, ~574 MB) and the
+      Start-Menu `.lnk` live OUTSIDE the install dir, so they survive a mirror.
+    - **Autostart repointed.** `HKCU:\…\Run\JVoice` had drifted to the volatile dev
+      `bin\x64\Release\…\JVoice.exe`; repointed to `"<install>\JVoice.exe" --autostart` (the exact format
+      `LaunchAtLogin.SetEnabled` writes) so logon launches the *installed* app, matching the single
+      Start-Menu shortcut + Uninstall entry. App *search* was already correct (one `.lnk`).
+    - **Both one-click installers rebuilt** from `6f8ffc2`: `JVoice-Setup.exe` (CPU, ~65 MB) and
+      `JVoice-Setup-GPU.exe` (GPU, ~360 MB). Recipe: publish each flavor to a folder (CPU adds
+      `-p:JVoiceFlavor=cpu -p:PublishSingleFile=false`), zip the folder as `app.zip` with a **top-level
+      `JVoice\`** (what `install.ps1` expects), then `iexpress /N /Q windows\artifacts\JVoice-<flavor>.sed`
+      packs `app.zip` + `install.ps1` + `uninstall.ps1` into the setup `.exe` (TargetName → `~/Downloads`).
+      Verified end-to-end (inner `JVoice.exe` ProductVersion = `6f8ffc2`).
+    - **Distribution decision (David):** **CPU `JVoice-Setup.exe` is the default download for everyone; the
+      GPU build is optional, only worth its ~5× size for NVIDIA owners** (it falls back to CPU otherwise).
+      Documented in `docs/launch/windows-distribution.md` + the ready-to-paste
+      `docs/launch/windows-release-notes-draft.md`.
+    - **Gotchas:** a JVoice instance running **elevated** can't be killed from a non-elevated shell (Access
+      denied) and locks the install dir's `JVoice.exe`/`JVoice.Core.dll` → quit it via the tray before any
+      swap. The IExpress build inputs (`pkg-gpu/`, `pkg-cpu/`, `*-folder/`, `JVoice-<flavor>.sed`) live under
+      the gitignored `windows/artifacts/`. **`LICENSE.txt` is not yet inside the installer folder** (GPL-3.0
+      wants it shipped with the binary) — add before any public release.
+    - **NOT published** — the repo (`david53001/jvoice`) stays **private**; pushing here is a private sync,
+      not the on-hold public release.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 2** adds `gameMode`, §7 #27),
 `stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
