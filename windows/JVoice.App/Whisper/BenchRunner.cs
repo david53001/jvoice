@@ -107,15 +107,15 @@ internal static class BenchRunner
         if (thi >= 0 && arguments.Length > thi + 1 && int.TryParse(arguments[thi + 1], out int tparsed))
             threads = tparsed;
 
-        // --audio-ctx: "off" (default, full window) | "auto" (per-clip policy) | <int> (fixed)
-        bool adaptiveCtx = false;
-        int? fixedCtx = null;
+        // --audio-ctx: "off" (full window) | "auto" (per-clip policy) | <int> (fixed); absent = ship default
+        bool adaptiveCtx = EngineTuning.Default.AdaptiveAudioContext;
+        int? fixedCtx = EngineTuning.Default.FixedAudioContext;
         int aci = Array.IndexOf(arguments, "--audio-ctx");
         if (aci >= 0 && arguments.Length > aci + 1)
         {
             string v = arguments[aci + 1];
-            if (v == "auto") adaptiveCtx = true;
-            else if (v != "off" && int.TryParse(v, out int cparsed)) fixedCtx = cparsed;
+            adaptiveCtx = v == "auto";
+            fixedCtx = (v != "auto" && v != "off" && int.TryParse(v, out int cparsed)) ? cparsed : (int?)null;
         }
 
         if (arguments.Contains("--log-runtime")) WhisperRuntime.EnableDebugLogging();
@@ -137,11 +137,13 @@ internal static class BenchRunner
             }
         }
 
+        // Start from the shipped defaults so a no-flag --bench reflects real app behavior;
+        // each flag overrides one knob for A/B measurement.
         var tuning = new EngineTuning(
-            UseFlashAttention: flash ?? false,
+            UseFlashAttention: flash ?? EngineTuning.Default.UseFlashAttention,
             AdaptiveAudioContext: adaptiveCtx,
             FixedAudioContext: fixedCtx,
-            Threads: threads);
+            Threads: threads ?? EngineTuning.Default.Threads);
 
         // Matches the Swift header line. Swift printed `model.rawValue`; we print the
         // GGML file stem (the closest stable Windows analog of the model identity).

@@ -38,11 +38,13 @@
     <DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
 
-  <!-- "cpu" = CPU single-file lite. CUDA/Vulkan excluded so the self-extract stays small. -->
+  <!-- "cpu" = CPU single-file lite. CUDA/Vulkan excluded so the self-extract stays small.
+       JVOICE_CPU forces flash attention OFF in the engine (it degrades CPU decode — whisper.cpp PR #2152). -->
   <PropertyGroup Condition="'$(JVoiceFlavor)' == 'cpu'">
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DefineConstants>$(DefineConstants);JVOICE_CPU</DefineConstants>
   </PropertyGroup>
 
   <!-- "gpu" = folder build keeping runtimes/ on disk (CUDA found next to the exe). -->
