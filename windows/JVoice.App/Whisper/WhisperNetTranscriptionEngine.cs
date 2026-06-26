@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using JVoice.Core;
 using JVoice.Core.Audio;
 using JVoice.Core.Models;
 using JVoice.Core.Text;
@@ -21,6 +22,7 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     private readonly TranscriptionLanguage _language;
     private readonly bool _useVocabularyPrompt;
     private readonly WhisperModelStore _store;
+    private readonly EngineTuning _tuning;
 
     // Guards model load/dedupe AND the prompt-text cache recompute (the actor analog).
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -41,13 +43,15 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         TranscriptionLanguage language,
         IReadOnlyList<string> vocabulary,
         bool useVocabularyPrompt,
-        WhisperModelStore store)
+        WhisperModelStore store,
+        EngineTuning? tuning = null)
     {
         _model = model;
         _language = language;
         _vocabulary = vocabulary ?? Array.Empty<string>();
         _useVocabularyPrompt = useVocabularyPrompt;
         _store = store ?? throw new ArgumentNullException(nameof(store));
+        _tuning = tuning ?? EngineTuning.Default;
     }
 
     public async Task UpdateVocabularyAsync(IReadOnlyList<string> words)
@@ -121,9 +125,16 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         try
         {
             // WhisperFactory.FromPath loads the GGML weights and selects the native
-            // runtime (CUDA on this dev machine, else Vulkan/CPU). Confirmed present
-            // in Whisper.net 1.9.1 (Task 1 Step 7 probe).
-            return WhisperFactory.FromPath(modelPath);
+            // runtime (Vulkan on this dev machine — CUDA needs the toolkit; else CPU).
+            // Flash attention is a FACTORY option (not a per-decode builder knob). It is a
+            // clean win on CUDA, a coin-flip on Vulkan (needs NVIDIA coopmat2), and a
+            // REGRESSION on CPU — so it is force-disabled in the cpu publish flavor.
+            bool useFlash = _tuning.UseFlashAttention;
+#if JVOICE_CPU
+            useFlash = false; // flash attention degrades CPU decode (whisper.cpp PR #2152)
+#endif
+            return WhisperFactory.FromPath(
+                modelPath, new WhisperFactoryOptions { UseFlashAttention = useFlash });
         }
         catch (Exception ex)
         {
@@ -243,6 +254,21 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             .WithLanguage(_language.WhisperCode());   // fixed language, no auto-detect
 
         builder = ApplyTemperatureFallback(builder);
+
+        // Decode threads — only set when configured (null = whisper's own min(4, logical) default).
+        if (_tuning.Threads is int threads)
+            builder = builder.WithThreads(threads);
+
+        // Per-clip encoder context: a short utterance doesn't need the full 30 s window, so a
+        // smaller audio_ctx skips wasted encoder work. FixedAudioContext (bench A/B) wins; else
+        // the adaptive policy; else leave whisper's full default. Sized from THIS decode's sample
+        // count, so both the whole-file and the 15–25 s streaming-chunk paths are covered.
+        int? audioCtx = _tuning.FixedAudioContext
+            ?? (_tuning.AdaptiveAudioContext
+                ? WhisperTuning.AudioContextForSamples(samples.Length)
+                : null);
+        if (audioCtx is int ctx)
+            builder = builder.WithAudioContextSize(ctx);
 
         if (promptText is { Length: > 0 })
             builder = builder.WithPrompt(promptText);

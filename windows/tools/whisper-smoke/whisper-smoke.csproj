@@ -16,6 +16,7 @@
   <!-- Link the engine sources (the engine lives in the WinExe app project). They are
        internal to JVoice.App but compiled INTO this assembly, so internal is fine. -->
   <ItemGroup>
+    <Compile Include="..\..\JVoice.App\Whisper\EngineTuning.cs" Link="Whisper\EngineTuning.cs" />
     <Compile Include="..\..\JVoice.App\Whisper\WhisperRuntime.cs" Link="Whisper\WhisperRuntime.cs" />
     <Compile Include="..\..\JVoice.App\Whisper\WhisperModelStore.cs" Link="Whisper\WhisperModelStore.cs" />
     <Compile Include="..\..\JVoice.App\Whisper\WhisperNetTranscriptionEngine.cs" Link="Whisper\WhisperNetTranscriptionEngine.cs" />
