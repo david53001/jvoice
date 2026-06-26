@@ -10,8 +10,11 @@ monochrome.
   AA text) so it stays crisp at non-native gaming resolutions; `DisplayMetrics.HudScale` enlarges
   by the stretch ratio. **Fix blur IN-APP — never tell David to change his resolution** (memory
   `dev-monitor-native-1920x1080`).
-- `SettingsView.xaml` / `.cs`, `SettingsWindow.cs` — settings, ordered to mirror macOS, plus the
-  Windows-only Recent Transcripts history (root `CLAUDE.md` §7 #26).
+- `SettingsView.xaml` / `.cs`, `SettingsWindow.cs` — settings, plus the Windows-only Recent
+  Transcripts history (root `CLAUDE.md` §7 #26). **Layout is a wide two-column "masonry"** (640×846:
+  full-width header, 10 cards split across two independent vertical-StackPanel columns, full-width
+  footer; root `CLAUDE.md` §7 #29). The `ScrollViewer` keeps `HorizontalScrollBarVisibility="Disabled"`
+  on purpose — that's what gives the body a finite width so the `*` columns resolve.
 - `TrayIcon.cs` — monochrome status item (idle / recording / transcribing).
 - `Converters.cs`, `DarkSection.cs`, `HotkeyRecorder.cs`, `TranscriptRow.cs`,
   `Styles/JVoicePalette.xaml` — support + palette.

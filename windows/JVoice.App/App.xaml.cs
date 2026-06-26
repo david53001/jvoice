@@ -194,7 +194,10 @@ public partial class App : Application
         var view = new SettingsView { DataContext = coordinator };
 
         const double scale = 2.0;
-        var size = new Size(320, 520); // SettingsView's declared size (one screenful)
+        // Follow the view's own declared Width/Height (set in SettingsView.xaml) so this
+        // harness never goes stale when the panel is resized — SettingsView.xaml is the
+        // single source of truth, exactly as the live SizeToContent window tracks it.
+        var size = new Size(view.Width, view.Height);
         view.Measure(size);
         view.Arrange(new Rect(size));
         view.UpdateLayout();

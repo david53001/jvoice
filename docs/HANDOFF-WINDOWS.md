@@ -95,7 +95,7 @@ dotnet test windows/JVoice.Tests/JVoice.Tests.csproj  # expect: Passed! 434/434
 
 # Run the actual app (tray + first-run Settings window):
 dotnet run --project windows/JVoice.App
-#   - First run only: the dark 320x520 Settings window opens + a one-time info dialog.
+#   - First run only: the dark 640x846 two-column Settings window opens + a one-time info dialog.
 #   - Tray "J" icon → right-click for: Start/Stop Dictation, Settings…, Launch at Login, Quit.
 #   - Press Ctrl+Shift+Space to dictate (first dictation downloads the Tiny model ~74 MB once).
 #   - Quit via the tray menu (the app has no main window; it lives in the tray).
@@ -980,6 +980,36 @@ These are real corrections discovered during execution — preserve them.
     is the area index. App-shell files (`App.xaml`, `app.manifest`, `Assets/`) stayed put (path-coupled
     in `JVoice.App.csproj`). The macOS `Sources/` was untouched.
 
+29. **Settings widened to a two-column layout + two layout bugs fixed (David-requested, 2026-06-26).**
+    `SettingsView.xaml` went from a single tall scrolling column (`320×520`) to a **wider `640×846`
+    two-column "masonry"**: a full-width header (row 0), a two-column body (row 1), and a full-width
+    footer (row 2), all still inside the outer `ScrollViewer`. The body is a 3-column Grid (`*` / `14`
+    gutter / `*`); each side is an independent vertical `StackPanel` so variable-height cards pack
+    tip-to-tail with **no cross-column height coupling** (rejected `UniformGrid` = forced equal cells,
+    and `WrapPanel` = ragged gaps). The 10 cards split **order-preserving** to keep the macOS reading
+    order, growth-balanced so no column balloons: **Left** = Stats · Recent Transcripts · Whisper Model
+    · Processing · Voice Style; **Right** = Language · Custom Words · Corrections · Keyboard Shortcut ·
+    Gaming. `HorizontalScrollBarVisibility="Disabled"` on the `ScrollViewer` is **required** — it gives
+    the body a finite width so the `*` columns resolve (at infinite measure width the masonry + the
+    flex add-rows collapse). The result is **wider and shows everything at once with no scrolling** for
+    a typical populated state (David's data: ~5 custom words + several transcripts) — vs. the old
+    320-wide window that scrolled ~1400px; the `ScrollViewer` remains an overflow safety net.
+    Two bugs fixed structurally (robust at any width, not just papered over by the new size):
+    (a) **Developer Terms subtitle overlapped its toggle** — each Processing row was a single-cell Grid
+    where the unconstrained left text slid under the right-aligned switch; now a 2-column Grid (`*` text
+    col with a 12px right margin + `TextWrapping="Wrap"`, `Auto` switch col) so text can never reach the
+    switch. (b) **Corrections "Add" button was clipped to "Ac"** — the add-row was a fixed-width
+    horizontal `StackPanel` (100+arrow+100+button > content width) that overflowed; now a Grid with
+    flexible `*` input column(s) + `Auto` button (and `Auto` arrow), applied to **both** Custom Words and
+    Corrections, so the button always reserves its full width. The four `x:Name`d elements (`Recorder`,
+    `NewWordBox`, `CorrectionFromBox`, `CorrectionToBox`) were preserved → **zero `SettingsView.xaml.cs`
+    changes**. The off-screen screenshot harness `App.xaml.cs:RenderSettingsToFile` now follows the
+    view's own declared size (`new Size(view.Width, view.Height)`) instead of a hardcoded `320×520`, so
+    `SettingsView.xaml:5` is the single source of truth. Verified via `--settings-render` (empty +
+    David's populated state) + **536/536** tests green. Height (846) was tuned empirically to fit David's
+    current data with no scrollbar; one number to change if a shorter (slightly-scrolling) window is
+    preferred. The macOS `Sources/` Settings (its own `320×520` view in a `640×480` window) is unchanged.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 2** adds `gameMode`, §7 #27),
 `stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
@@ -1015,7 +1045,7 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    blocklist) + xUnit tests, **balanced against #21**; (e) delete the clips, relaunch without the env var.
 2. **Dogfood the GUI (David, interactive):** run `docs/launch/windows-dogfood-checklist.md` — the live
    Ctrl+Shift+Space → record → transcribe → paste loop, the new black-&-white HUD bars reacting to your
-   voice (and the silent-success / error-only-text behaviour), the 320×520 monochrome Settings round-trip,
+   voice (and the silent-success / error-only-text behaviour), the 640×846 two-column monochrome Settings round-trip,
    BT device routing, mic-permission flow, and the new **elevated-window** path (§7 #25: "Restart as
    Administrator" / "Run as Administrator at Login" → hotkey works in an admin terminal). The app is confirmed to *launch* and the
    HUD/Settings look is screenshot-verified via `--hud-preview`/`--settings-render`; live-mic reactivity is
