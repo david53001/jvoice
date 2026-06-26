@@ -2,6 +2,16 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **✅ EXECUTED 2026-06-27** (commits `45a640d`..`28a158c` on `windows-port`; measured numbers in
+> [`2026-06-27-windows-whisper-speed-results.md`](2026-06-27-windows-whisper-speed-results.md)).
+> The per-lever "adopt" steps below describe the *intended* measure-then-adopt flow; the **actual
+> outcome** on the RTX 3060 Ti / i5-12400 was: **flash attention ADOPTED** (GPU ~30–37% faster,
+> transcripts identical; forced OFF on CPU) and **decode threads = physical cores ADOPTED** (CPU
+> ~21% faster). **Tasks 4 (per-clip `audio_ctx`), 7 (CUDA), 8 (temp-fallback cap) were measured/
+> assessed but NOT adopted** — audio_ctx was non-monotonic (regression risk), CUDA needs an
+> uninstalled toolkit, temp-cap diverges from macOS parity. `dotnet test` 555/555; the installed app
+> + both `~/Downloads` installers were refreshed to this build. See HANDOFF-WINDOWS §7 #31.
+
 **Goal:** Make on-device Whisper transcription in the JVoice Windows port measurably faster — especially the "Large" (large-v3-turbo) model — without losing accuracy, by adding a small, measured, tunable layer on top of the existing Whisper.net engine (no model/brain changes, no Whisper.net upgrade).
 
 **Architecture:** Add one pure, unit-tested tuning-policy helper to `JVoice.Core` and thread a small `EngineTuning` options record through the existing `WhisperNetTranscriptionEngine`. Wire three already-available Whisper.net 1.9.1 levers — **per-clip `audio_ctx` sizing** (the biggest short-clip win), **decode thread count**, and **flash attention** (factory option) — each gated behind an on-device `--bench` A/B measurement before its default is flipped. Backend work (forcing/measuring CUDA vs the current Vulkan runtime) is an optional, opt-in extension. The macOS Swift app and the `JVoice.Core` "brain" constants are untouched.
