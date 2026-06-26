@@ -17,6 +17,15 @@ public partial class SettingsView : UserControl
         {
             Recorder.Chord = Vm.Hotkey;
             Recorder.ChordChanged += chord => Vm.SetHotkey(chord);
+            // Keep the recorder in sync when the coordinator changes the hotkey itself
+            // (e.g. Restore Defaults). Setting Recorder.Chord only updates its display —
+            // it does NOT raise ChordChanged — so this can't loop back into SetHotkey.
+            // One SettingsView instance lives for the app's lifetime (the window is hidden,
+            // not destroyed), so this subscription doesn't accumulate.
+            Vm.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(VoiceCoordinator.Hotkey)) Recorder.Chord = Vm.Hotkey;
+            };
         };
     }
 

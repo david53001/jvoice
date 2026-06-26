@@ -64,7 +64,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             _historyStore.Entries.Select(e => new TranscriptRow(e.Id, e.Text)));
         _removeFillerWords = s.RemoveFillerWords;
         _developerTermsEnabled = s.DeveloperTerms;
-        _hotkeyChord = HotkeyChord.Default;
+        _hotkeyChord = s.Hotkey;
         _gameMode = s.GameMode;
         _totalWordsSpoken = _statsStore.TotalWords;
         _averageWpm = _statsStore.AverageWpm;
@@ -366,8 +366,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _hotkeyChord = chord;
         _hotkey.Register(chord);
         Raise(nameof(Hotkey));
-        // SettingsState has no hotkey field in Phase 1 — rebind lives for the session
-        // and resets to Default on relaunch (documented assumption).
+        // Persisted to settings.json (the Hotkey field) so a rebind survives relaunch.
+        PersistSettings();
     }
 
     public void ShowSettings()
@@ -430,6 +430,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             CustomWords = CustomWords.ToList(),
             RemoveFillerWords = _removeFillerWords,
             Corrections = Corrections.ToList(),
+            Hotkey = _hotkeyChord,
             DeveloperTerms = _developerTermsEnabled,
             GameMode = _gameMode,
         });
@@ -452,6 +453,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         RemoveFillerWords = s.RemoveFillerWords;
         DeveloperTermsEnabled = s.DeveloperTerms;
         GameMode = s.GameMode;
+        // Rebind the global hotkey back to the default chord (Settings can change it).
+        _hotkeyChord = s.Hotkey;
+        _hotkey.Register(s.Hotkey);
         // Restore Defaults also clears the recent-transcripts history (an explicit
         // user action). Recording statistics (_statsStore) are deliberately NOT reset.
         _historyStore.Clear();
@@ -459,7 +463,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _isInitializing = false;
         _settingsStore.Flush();
         RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags(); RaiseGameModeFlags();
-        Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
+        Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(Hotkey)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
         _engine = MakeEngine(_whisperModel, _language, CustomWords.ToList());
         _ = _engine.PrewarmAsync();
     }

@@ -17,6 +17,7 @@ public class SettingsStoreJsonTests
             CustomWords: new[] { "JVoice", "Li-Fraumeni" },
             RemoveFillerWords: false,
             Corrections: new[] { new CorrectionRule("web api", "web app") },
+            Hotkey: new HotkeyChord(HotkeyModifiers.Control | HotkeyModifiers.Alt, 0x70, "F1"),
             GameMode: GameDetectionMode.Aggressive,
             DeveloperTerms: false);
 
@@ -29,6 +30,7 @@ public class SettingsStoreJsonTests
         Assert.Equal(original.CustomWords, back.CustomWords);
         Assert.Equal(original.RemoveFillerWords, back.RemoveFillerWords);
         Assert.Equal(original.Corrections, back.Corrections);
+        Assert.Equal(original.Hotkey, back.Hotkey);
         Assert.Equal(original.GameMode, back.GameMode);
         Assert.Equal(original.DeveloperTerms, back.DeveloperTerms);
         Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
@@ -113,18 +115,19 @@ public class SettingsStoreJsonTests
     // ===== Serialize-side fidelity + round-trip fuzz =====
 
     // Swift's CodingKeys are schemaVersion/mode/model/language/customWords/removeFillerWords. The
-    // Windows port adds three extra on-disk keys with no macOS counterpart: `corrections`,
-    // `developerTerms` (the developer-terms pack toggle), and `gameMode` (the game-detection
-    // suppression setting) — so Serialize emits exactly those nine keys. Older builds / the macOS
-    // app simply ignore the unknown keys on read; Deserialize tolerates their absence (a v1 file
-    // with no `gameMode` defaults to Balanced, and no `developerTerms` defaults to ON).
+    // Windows port adds four extra on-disk keys with no macOS counterpart: `corrections`,
+    // `developerTerms` (the developer-terms pack toggle), `gameMode` (the game-detection
+    // suppression setting), and `hotkey` (the global-hotkey chord) — so Serialize emits exactly
+    // those ten keys. Older builds / the macOS app simply ignore the unknown keys on read;
+    // Deserialize tolerates their absence (a v1 file with no `gameMode` defaults to Balanced, no
+    // `developerTerms` defaults to ON, no `hotkey` defaults to Ctrl+Shift+Space).
     [Fact]
-    public void Serialize_EmitsExactlyTheNineKeys()
+    public void Serialize_EmitsExactlyTheTenKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "corrections", "customWords", "developerTerms", "gameMode", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
+            new[] { "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
             keys);
     }
 
@@ -183,6 +186,7 @@ public class SettingsStoreJsonTests
                 CustomWords: words,
                 RemoveFillerWords: rng.Next(2) == 0,
                 Corrections: corrections,
+                Hotkey: RandomChord(rng),
                 GameMode: gameModes[rng.Next(gameModes.Length)],
                 DeveloperTerms: rng.Next(2) == 0);
 
@@ -193,10 +197,82 @@ public class SettingsStoreJsonTests
             Assert.Equal(state.CustomWords, back.CustomWords);
             Assert.Equal(state.RemoveFillerWords, back.RemoveFillerWords);
             Assert.Equal(state.Corrections, back.Corrections);
+            Assert.Equal(state.Hotkey, back.Hotkey);
             Assert.Equal(state.GameMode, back.GameMode);
             Assert.Equal(state.DeveloperTerms, back.DeveloperTerms);
             Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
         }
+    }
+
+    // ===== hotkey field (Windows-only, structural; default Ctrl+Shift+Space) =====
+
+    // Every chord the recorder can produce round-trips losslessly: any modifier combo (incl. none),
+    // and main keys whose KeyName (a WPF Key name) HotkeyChord.TryParse would NOT understand —
+    // proving the structural (modifiers/virtualKey/keyName) representation, not a Format()/TryParse
+    // string, is what's persisted.
+    [Theory]
+    [InlineData((int)(HotkeyModifiers.Control | HotkeyModifiers.Shift), 0x20, "Space")]   // the default
+    [InlineData((int)HotkeyModifiers.None, 0x76, "F7")]                                    // no modifiers
+    [InlineData((int)HotkeyModifiers.Win, 0x4A, "J")]                                      // Win+letter
+    [InlineData((int)(HotkeyModifiers.Control | HotkeyModifiers.Alt | HotkeyModifiers.Shift | HotkeyModifiers.Win), 0xBC, "OemComma")] // all mods + a name TryParse can't handle
+    public void RoundTrip_Hotkey_PreservesEveryChord(int mods, int vk, string keyName)
+    {
+        var chord = new HotkeyChord((HotkeyModifiers)mods, vk, keyName);
+        var back = SettingsStateJson.Deserialize(
+            SettingsStateJson.Serialize(SettingsState.Default with { Hotkey = chord }));
+        Assert.Equal(chord, back.Hotkey);
+    }
+
+    [Fact]
+    public void Serialize_WritesHotkeyStructurally()
+    {
+        var chord = new HotkeyChord(HotkeyModifiers.Control | HotkeyModifiers.Shift, 0x20, "Space");
+        using var doc = JsonDocument.Parse(
+            SettingsStateJson.Serialize(SettingsState.Default with { Hotkey = chord }));
+        var h = doc.RootElement.GetProperty("hotkey");
+        Assert.Equal((int)(HotkeyModifiers.Control | HotkeyModifiers.Shift), h.GetProperty("modifiers").GetInt32());
+        Assert.Equal(0x20, h.GetProperty("virtualKey").GetInt32());
+        Assert.Equal("Space", h.GetProperty("keyName").GetString());
+    }
+
+    [Fact]
+    public void Deserialize_MissingHotkey_DefaultsToCtrlShiftSpace()
+    {
+        // Older build / macOS file with no `hotkey` key → Ctrl+Shift+Space.
+        var s = SettingsStateJson.Deserialize(
+            """{ "schemaVersion": 1, "mode": "Casual", "customWords": ["X"] }""");
+        Assert.Equal(HotkeyChord.Default, s.Hotkey);
+    }
+
+    [Theory]
+    [InlineData("""{ "hotkey": "not-an-object" }""")]                                  // wrong type
+    [InlineData("""{ "hotkey": { "modifiers": 5, "keyName": "Space" } }""")]           // missing virtualKey
+    [InlineData("""{ "hotkey": { "modifiers": 5, "virtualKey": 0, "keyName": "X" } }""")] // VK out of range
+    [InlineData("""{ "hotkey": { "modifiers": 5, "virtualKey": 300, "keyName": "X" } }""")] // VK out of range
+    [InlineData("""{ "hotkey": { "modifiers": 5, "virtualKey": 32, "keyName": "" } }""")]  // blank keyName
+    [InlineData("""{ "hotkey": { "virtualKey": 32, "keyName": "Space" } }""")]          // missing modifiers
+    public void Deserialize_MalformedHotkey_FallsBackToDefault(string json)
+        => Assert.Equal(HotkeyChord.Default, SettingsStateJson.Deserialize(json).Hotkey);
+
+    [Fact]
+    public void Deserialize_HotkeyWithZeroModifiers_IsHonored()
+    {
+        // modifiers == 0 is a legitimate chord (e.g. a bare function key), NOT a fallback trigger.
+        var s = SettingsStateJson.Deserialize(
+            """{ "hotkey": { "modifiers": 0, "virtualKey": 118, "keyName": "F7" } }""");
+        Assert.Equal(new HotkeyChord(HotkeyModifiers.None, 0x76, "F7"), s.Hotkey);
+    }
+
+    private static HotkeyChord RandomChord(Random rng)
+    {
+        var mods = (HotkeyModifiers)rng.Next(0, 16); // any combination of the 4 modifier bits
+        (int vk, string name)[] keys =
+        {
+            (0x20, "Space"), (0x4A, "J"), (0x70, "F1"), (0x76, "F7"),
+            (0x0D, "Enter"), (0xBC, "OemComma"), (0x31, "D1"), (0x60, "NumPad0"),
+        };
+        var (vk, name) = keys[rng.Next(keys.Length)];
+        return new HotkeyChord(mods, vk, name);
     }
 
     // ===== corrections field (Windows-only) =====

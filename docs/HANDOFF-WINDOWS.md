@@ -206,8 +206,10 @@ BluetoothDevicePolicy, StatsMath, CoordinatorDecisions) live in Core so the test
   whisper.cpp doesn't have those bugs (empirically reconfirmed, §6).
 - **GGML model map:** Tiny→`ggml-tiny.bin`, Base→`ggml-base.bin`, Small→`ggml-small.bin`,
   Large→`ggml-large-v3-turbo-q5_0.bin` (~547 MB). Downloaded on first use to `%LOCALAPPDATA%\JVoice\models\`.
-- **Default hotkey Ctrl+Shift+Space** (Alt+Space is the Windows window menu). Rebindable in Settings;
-  the rebind is **session-only** (SettingsState has no hotkey field yet — resets to default on relaunch).
+- **Default hotkey Ctrl+Shift+Space** (Alt+Space is the Windows window menu). Rebindable in Settings
+  and **persisted** across relaunch via the `hotkey` field in `settings.json` (a Windows-only, structural
+  `{modifiers,virtualKey,keyName}` object — macOS persists its shortcut separately via the
+  KeyboardShortcuts library). Absent/malformed → Ctrl+Shift+Space; Restore Defaults re-registers it.
 - **Tray-first UI** + a real focusable Settings window + first-run shows Settings once + the floating
   HUD pill overlay. `AudioInputRouter` does NOT change the system default device — it picks a non-BT
   capture endpoint only when the default is Bluetooth (keeps the user's headset music in A2DP).

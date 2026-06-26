@@ -48,6 +48,17 @@ public static class SettingsStateJson
             // Windows-only opt-out flag for the curated developer-terms pack. Absent in
             // older / macOS files; Deserialize falls back to true (default ON).
             developerTerms = state.DeveloperTerms,
+            // Windows-only global-hotkey chord (no macOS counterpart — macOS persists its
+            // shortcut via the KeyboardShortcuts library). Stored structurally so any chord
+            // round-trips losslessly (KeyName can be any WPF key name, which HotkeyChord.TryParse
+            // doesn't always understand). Absent in older / macOS files; ParseHotkey falls back
+            // to HotkeyChord.Default (Ctrl+Shift+Space).
+            hotkey = new
+            {
+                modifiers = (int)state.Hotkey.Modifiers,
+                virtualKey = state.Hotkey.VirtualKey,
+                keyName = state.Hotkey.KeyName,
+            },
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -75,6 +86,7 @@ public static class SettingsStateJson
             CustomWords: ParseCustomWords(root),
             RemoveFillerWords: TryGetBool(root, "removeFillerWords") ?? true,
             Corrections: ParseCorrections(root),
+            Hotkey: ParseHotkey(root),
             GameMode: ParseGameMode(TryGetString(root, "gameMode")),
             DeveloperTerms: TryGetBool(root, "developerTerms") ?? true);
     }
@@ -148,6 +160,25 @@ public static class SettingsStateJson
             list.Add(new CorrectionRule(from, to));
         }
         return list;
+    }
+
+    /// Parses the Windows-only `hotkey` object: `{ "modifiers": <int flags>, "virtualKey":
+    /// <int>, "keyName": "<string>" }`. Absent / wrong-typed / incomplete => HotkeyChord.Default
+    /// (Ctrl+Shift+Space). A usable chord needs a real main key, so a missing/blank keyName or an
+    /// out-of-range virtualKey falls back; modifiers may legitimately be 0 (e.g. a bare "F7").
+    private static HotkeyChord ParseHotkey(JsonElement root)
+    {
+        if (!root.TryGetProperty("hotkey", out var h) || h.ValueKind != JsonValueKind.Object)
+            return HotkeyChord.Default;
+
+        int? modifiers = TryGetInt(h, "modifiers");
+        int? virtualKey = TryGetInt(h, "virtualKey");
+        string? keyName = TryGetString(h, "keyName");
+
+        if (modifiers is null || virtualKey is not (> 0 and <= 0xFF) || string.IsNullOrEmpty(keyName))
+            return HotkeyChord.Default;
+
+        return new HotkeyChord((HotkeyModifiers)modifiers.Value, virtualKey.Value, keyName);
     }
 
     // lenient scalar readers (wrong type => null => field default)

@@ -19,6 +19,7 @@ public class SettingsStateTests
         Assert.Empty(s.Corrections);
         Assert.True(s.DeveloperTerms);   // Windows-only pack, default ON
         Assert.Equal(GameDetectionMode.Balanced, s.GameMode);
+        Assert.Equal(HotkeyChord.Default, s.Hotkey);  // Windows-only; Ctrl+Shift+Space
     }
 
     [Fact]
