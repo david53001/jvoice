@@ -4,18 +4,36 @@ The Windows analog of the macOS Gatekeeper "Open Anyway" findings
 (`unsigned-distribution-findings.md`). $0 budget → **no paid code-signing certificate** →
 JVoice ships as an **unsigned** download. This documents what users see and how to ship.
 
-## What ships
+## What ships — two installers (CPU default, GPU optional)
 
-- A **zipped self-contained folder** (`JVoice-<gpu|cpu>-win-x64.zip`), not a bare `.exe`.
-  - **GPU build** (`JVoiceFlavor=gpu`): includes CUDA + Vulkan + CPU native runtimes. Larger.
-  - **CPU build** (`JVoiceFlavor=cpu`, folder): small, CPU-only. The reliable "lite" download.
-  - **Not** a single-file exe: WPF can't be trimmed and Whisper.net 1.9.1 can't load its native
-    runtime from a bundled single-file (`Assembly.Location` is empty there). The folder build is
-    verified working; the single-file is not shipped.
-- Each zip includes `LICENSE.txt` (GPL-3.0 obligation).
+The user-facing download is a **one-click installer**: an IExpress self-extractor that wraps a
+**self-contained folder build**, unpacks it to `%LOCALAPPDATA%\Programs\JVoice`, creates Start-Menu
++ Desktop shortcuts and an Add/Remove-Programs entry, and launches. No admin needed. Two flavors:
+
+| Download | Flavor | Size | For |
+| --- | --- | --- | --- |
+| **`JVoice-Setup.exe`** | `JVoiceFlavor=cpu` (folder) | ~66 MB | **Everyone — the default.** CPU-only; runs on any Windows 10/11 x64 PC. |
+| `JVoice-Setup-GPU.exe` | `JVoiceFlavor=gpu` (folder) | ~365 MB | **Optional, NVIDIA owners.** Bundles CUDA + Vulkan + CPU runtimes for GPU-accelerated transcription. |
+
+**Which one?** → **Most people: `JVoice-Setup.exe`.** Only grab the GPU build if you have an
+**NVIDIA GPU** and want the speed-up — it's ~5× larger and falls back to CPU on machines without a
+supported GPU, so there's no benefit to it otherwise. Both transcribe identically; the GPU build is
+just faster on capable hardware.
+
+- A plain `JVoice-<gpu|cpu>-win-x64.zip` of the same folder is the no-installer alternative.
+- **Not** a single-file exe: WPF can't be trimmed and Whisper.net 1.9.1 can't load its native
+  runtime from a bundled single-file (`Assembly.Location` is empty there). The folder build is
+  verified working; the single-file is not shipped.
 - Self-contained: the .NET 9 runtime is bundled — users need nothing pre-installed.
-- The speech model (`ggml-*.bin`, 74–547 MB) is **not** in the zip; it downloads on first use
+- Ship `LICENSE.txt` alongside the binary (GPL-3.0 obligation) — add it to the folder before
+  zipping/packaging.
+- The speech model (`ggml-*.bin`, 74–547 MB) is **not** bundled; it downloads on first use
   from Hugging Face to `%LOCALAPPDATA%\JVoice\models\` (the one allowed runtime network call).
+
+The installers are built with IExpress from `windows/artifacts/` (gitignored): publish each flavor
+to a folder, zip the folder as `app.zip` (top-level `JVoice\`), then `iexpress /N /Q JVoice-<flavor>.sed`
+packages `app.zip` + `install.ps1` + `uninstall.ps1` into the setup `.exe`. See the `.sed` files and
+`install.ps1` in `windows/artifacts/sfx-build/` / `windows/artifacts/JVoice-<gpu|cpu>.sed`.
 
 ## What the user sees (SmartScreen)
 
