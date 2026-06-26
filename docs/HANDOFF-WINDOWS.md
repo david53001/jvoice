@@ -1041,6 +1041,39 @@ These are real corrections discovered during execution — preserve them.
       wants it shipped with the binary) — add before any public release.
     - **NOT published** — the repo (`david53001/jvoice`) stays **private**; pushing here is a private sync,
       not the on-hold public release.
+31. **Whisper transcription speed-up — flash attention + decode threads, measured & adopted (2026-06-27).**
+    A tuning layer on top of the existing Whisper.net 1.9.1 engine (NO model change, NO Whisper.net upgrade —
+    1.9.1 is already latest; the "brain" `JVoice.Core/Text` is untouched). Plan +
+    measured numbers: `docs/superpowers/plans/2026-06-27-windows-whisper-speed.md` (+ `…-results.md`).
+    - **New pure helper `JVoice.Core/Policy/WhisperTuning.cs`** (Windows-first, like GameDetectionPolicy —
+      unit-tested by `WhisperTuningTests`, +19) holds `AudioContextFor`/`DecodeThreads`. **New App record
+      `JVoice.App/Whisper/EngineTuning.cs`** carries the knobs into `WhisperNetTranscriptionEngine`
+      (factory `WhisperFactoryOptions.UseFlashAttention`; builder `.WithThreads` / `.WithAudioContextSize`).
+      The engine ctor gained a trailing optional `EngineTuning? tuning = null` (defaults to `EngineTuning.Default`,
+      so `VoiceCoordinator.MakeEngine` and the tools are unchanged). `whisper-smoke` links the two new files.
+    - **ADOPTED #1 — flash attention ON for GPU builds.** On the RTX 3060 Ti (Vulkan) large-v3-turbo decoded
+      **~30–37% faster** (18.8 s clip 0.538 s → 0.360 s; default-vs-old-default 0.565 s → 0.348 s ≈ **−38%**)
+      with **byte-identical transcripts**. Forced **OFF** in the `cpu` flavor via a new `JVOICE_CPU`
+      `DefineConstants` (`#if JVOICE_CPU` in `EngineTuning.Default` + a belt-and-suspenders guard in
+      `PerformLoadAsync`) — flash degrades CPU decode (whisper.cpp PR #2152). Verified: dev/GPU `--bench`
+      reports `flash=on`, the cpu-folder build reports `flash=off`.
+    - **ADOPTED #2 — `WithThreads` = physical core count** (new `JVoice.App/Platform/System/CpuInfo.cs`,
+      Win32 `GetLogicalProcessorInformation`). CPU decode (`tiny`) was **~21% faster at 6 vs whisper's
+      default 4** (no gain past physical cores); ~no effect on GPU. This mainly helps the **CPU build (the
+      default download)**.
+    - **NOT adopted — per-clip `audio_ctx`.** Measured **non-monotonic**: a 768-frame ctx REGRESSED ~9 s
+      clips 2–3× (while 896–1280 helped), and tuning a floor on SAPI clips risks misbehaving on David's real
+      low-SNR mic. Left OFF; lever stays behind `--bench --audio-ctx`. **CUDA** confirmed unavailable without
+      the toolkit (forced-cuda bench) → stays a documented opt-in, not shipped (no `Cuda12` package added).
+      **Temp-fallback cap** not adopted (diverges from macOS parity, marginal EV).
+    - **`--bench` instrumented** (`--iters` median/min, `--flash`, `--threads`, `--audio-ctx`, `--runtime`,
+      `--log-runtime`; warm-up excluded; bases tuning on `EngineTuning.Default` so a no-flag run reflects
+      shipped behavior). New `WhisperRuntime.ForceRuntimeOrder/EnableDebugLogging`. ⚠ **WinExe stdout is only
+      captured via `& JVoice.exe … 2>&1 | …`, never `$out = & …`.**
+    - **VERIFICATION:** `dotnet build windows/JVoice.sln -c Release` = 0 errors; `dotnet test` = **555/555**
+      (was 536; +19 WhisperTuningTests). On-device benches above. Live-mic accuracy with flash on is a
+      dogfood item (the realistic clips were transcript-identical; only a degenerate 8×-repeat synthetic clip
+      diverged → "No speech").
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 2** adds `gameMode`, §7 #27),
