@@ -314,7 +314,7 @@ final class VoiceCoordinator: ObservableObject {
 
     func updateHUD(_ state: HUDState) {
         hudState = state
-        hudWindow.update(state: state)
+        hudWindow.update(state: state, theme: appTheme, meter: recordingManager.levelMeter)
         // The menu bar mirrors the HUD so progress stays visible even when
         // the pill is dismissed or off-screen.
         switch state {
@@ -333,7 +333,7 @@ final class VoiceCoordinator: ObservableObject {
     /// NSWindow chrome need an explicit nudge.
     private func applyTheme() {
         settingsWindow?.appearance = NSAppearance(named: appTheme == .dark ? .darkAqua : .aqua)
-        // HUD restyle wired in Task 13 (update(state:theme:meter:)).
+        hudWindow.update(state: hudState, theme: appTheme, meter: recordingManager.levelMeter)
     }
 
     /// Surface a transient error in the HUD and auto-dismiss after the
