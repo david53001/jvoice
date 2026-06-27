@@ -259,6 +259,11 @@ if case let .cut(_, silent) = ChunkPlanner.plan(unconsumed: tone(seconds: 16, am
 expect(ChunkPlanner.isSilent(tone(seconds: 3, amplitude: 0.0), config: cfg), "isSilent: zeros")
 expect(!ChunkPlanner.isSilent(tone(seconds: 3, amplitude: 0.5), config: cfg), "isSilent: speech-level tone")
 
+print("AppTheme")
+expectEqual(AppTheme.dark.toggled, .light, "dark toggles to light")
+expectEqual(AppTheme.light.toggled, .dark, "light toggles to dark")
+expectEqual(try! JSONDecoder().decode(AppTheme.self, from: "\"sepia\"".data(using: .utf8)!), .dark, "unknown theme → dark")
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S)")
     exit(1)
@@ -268,6 +273,7 @@ EOF
 
 xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Models/AppMode.swift" \
+    "$REPO_ROOT/Sources/JVoice/Models/AppTheme.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/TextProcessor.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
