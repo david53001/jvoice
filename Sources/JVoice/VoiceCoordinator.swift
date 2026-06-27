@@ -94,6 +94,13 @@ final class VoiceCoordinator: ObservableObject {
         }
     }
 
+    @Published var appTheme: AppTheme {
+        didSet {
+            persistSettings()
+            applyTheme()
+        }
+    }
+
     @Published private(set) var settingsState: SettingsState
     /// Reflects the live `SMAppService` registration state, not a stored setting.
     @Published private(set) var launchAtLogin: Bool = LaunchAtLoginManager.isEnabled
@@ -155,6 +162,7 @@ final class VoiceCoordinator: ObservableObject {
         self.transcriptionLanguage = settingsStore.state.language
         self.customWords = settingsStore.state.customWords
         self.removeFillerWords = settingsStore.state.removeFillerWords
+        self.appTheme = settingsStore.state.theme
         self.totalWordsSpoken = statsStore.totalWords
         self.averageWPM = statsStore.averageWPM
         self.lastTranscript = lastTranscriptStore.transcript
@@ -319,6 +327,15 @@ final class VoiceCoordinator: ObservableObject {
         }
     }
 
+    /// Re-render theme-dependent surfaces when the user flips the sun/moon
+    /// toggle. The Settings SwiftUI view re-renders automatically (it observes
+    /// `appTheme` via `@ObservedObject`); the HUD pill and the Settings
+    /// NSWindow chrome need an explicit nudge.
+    private func applyTheme() {
+        settingsWindow?.appearance = NSAppearance(named: appTheme == .dark ? .darkAqua : .aqua)
+        // HUD restyle wired in Task 13 (update(state:theme:meter:)).
+    }
+
     /// Surface a transient error in the HUD and auto-dismiss after the
     /// usual delay.
     func showError(_ message: String) {
@@ -347,6 +364,7 @@ final class VoiceCoordinator: ObservableObject {
         transcriptionLanguage = settingsStore.state.language
         customWords = settingsStore.state.customWords
         removeFillerWords = settingsStore.state.removeFillerWords
+        appTheme = settingsStore.state.theme
         isInitializing = false
         settingsStore.flush()
         // A reset is an explicit user action, so also clear the persisted
@@ -585,6 +603,7 @@ final class VoiceCoordinator: ObservableObject {
         s.language = transcriptionLanguage
         s.customWords = customWords
         s.removeFillerWords = removeFillerWords
+        s.theme = appTheme
         settingsStore.state = s
         settingsState = s
     }
