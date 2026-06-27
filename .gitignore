@@ -24,3 +24,6 @@ docs/assets/demo-src/frames/
 
 # Python (verify-transcription.py harness)
 __pycache__/
+
+# Visual-companion brainstorm artifacts
+.superpowers/
