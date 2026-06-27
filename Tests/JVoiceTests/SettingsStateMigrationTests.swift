@@ -52,4 +52,28 @@ import Foundation
     let decoded = try JSONDecoder().decode(AppMode.self, from: json)
     #expect(decoded == .casual)
 }
+
+@Test func newSettingsStateDefaultsToDarkTheme() {
+    #expect(SettingsState().theme == .dark)
+}
+
+@Test func decodesV1BlobWithoutThemeAsDark() throws {
+    // A schema-v1 blob predates the theme field; it must decode (v1 < current)
+    // and default theme to .dark.
+    let v1JSON = """
+    {"schemaVersion":1,"mode":"casual","model":"tiny","language":"english",
+     "customWords":[],"removeFillerWords":true}
+    """.data(using: .utf8)!
+    let decoded = try JSONDecoder().decode(SettingsState.self, from: v1JSON)
+    #expect(decoded.theme == .dark)
+    #expect(decoded.schemaVersion == SettingsState.currentSchemaVersion)
+}
+
+@Test func themeRoundTripsThroughSettingsState() throws {
+    var s = SettingsState()
+    s.theme = .light
+    let data = try JSONEncoder().encode(s)
+    let back = try JSONDecoder().decode(SettingsState.self, from: data)
+    #expect(back.theme == .light)
+}
 #endif

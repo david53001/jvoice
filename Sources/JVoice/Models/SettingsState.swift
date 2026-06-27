@@ -1,13 +1,14 @@
 import Foundation
 
 public struct SettingsState: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion: Int = 1
+    public static let currentSchemaVersion: Int = 2
     public var schemaVersion: Int = SettingsState.currentSchemaVersion
     public var mode: AppMode
     public var model: WhisperModelOption
     public var language: TranscriptionLanguage
     public var customWords: [String]
     public var removeFillerWords: Bool
+    public var theme: AppTheme
 
     public var whisperModel: WhisperModelOption {
         get { model }
@@ -19,13 +20,15 @@ public struct SettingsState: Codable, Equatable, Sendable {
         model: WhisperModelOption = .tiny,
         language: TranscriptionLanguage = .english,
         customWords: [String] = [],
-        removeFillerWords: Bool = true
+        removeFillerWords: Bool = true,
+        theme: AppTheme = .dark
     ) {
         self.mode = mode
         self.model = model
         self.language = language
         self.customWords = customWords
         self.removeFillerWords = removeFillerWords
+        self.theme = theme
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -35,6 +38,7 @@ public struct SettingsState: Codable, Equatable, Sendable {
         case language
         case customWords
         case removeFillerWords
+        case theme
     }
 
     public init(from decoder: Decoder) throws {
@@ -53,6 +57,7 @@ public struct SettingsState: Codable, Equatable, Sendable {
         language = try container.decodeIfPresent(TranscriptionLanguage.self, forKey: .language) ?? .english
         customWords = try container.decodeIfPresent([String].self, forKey: .customWords) ?? []
         removeFillerWords = try container.decodeIfPresent(Bool.self, forKey: .removeFillerWords) ?? true
+        theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .dark
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -63,5 +68,6 @@ public struct SettingsState: Codable, Equatable, Sendable {
         try container.encode(language, forKey: .language)
         try container.encode(customWords, forKey: .customWords)
         try container.encode(removeFillerWords, forKey: .removeFillerWords)
+        try container.encode(theme, forKey: .theme)
     }
 }
