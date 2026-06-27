@@ -268,4 +268,19 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         let size = (attrs[.size] as? Int) ?? 0
         return size >= minBytes
     }
+
+    /// True when a finished recording contains no audio above the silence floor
+    /// (user held the hotkey but didn't speak, or the mic captured nothing).
+    /// Reuses the streaming pipeline's WAV reader + the proven
+    /// `ChunkPlanner.isSilent` policy. Fails open (returns `false`) when the
+    /// file can't be read, so an uninspectable recording still reaches
+    /// transcription rather than being wrongly rejected.
+    public static func isSilentRecording(at url: URL) -> Bool {
+        guard let reader = WavTailReader.open(url: url),
+              let samples = reader.samples(from: 0),
+              !samples.isEmpty else {
+            return false
+        }
+        return ChunkPlanner.isSilent(samples)
+    }
 }

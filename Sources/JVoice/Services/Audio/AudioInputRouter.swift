@@ -79,10 +79,16 @@ enum AudioInputRouter {
         return deviceID
     }
 
-    private static func availableInputDevices() -> [InputDevice] {
+    static func availableInputDevices() -> [InputDevice] {
         allDeviceIDs()
             .filter { hasInputChannels($0) }
             .map { InputDevice(id: $0, transport: transportType(of: $0)) }
+    }
+
+    /// True when at least one usable microphone (input channel) exists. Used to
+    /// surface a clear "no microphone" error before attempting to record.
+    static func hasInputDevice() -> Bool {
+        !availableInputDevices().isEmpty
     }
 
     private static func transportType(of device: AudioDeviceID) -> UInt32 {
