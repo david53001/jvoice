@@ -264,6 +264,12 @@ expectEqual(AppTheme.dark.toggled, .light, "dark toggles to light")
 expectEqual(AppTheme.light.toggled, .dark, "light toggles to dark")
 expectEqual(try! JSONDecoder().decode(AppTheme.self, from: "\"sepia\"".data(using: .utf8)!), .dark, "unknown theme → dark")
 
+print("DictationError")
+expect(DictationError.allCases.allSatisfy { !$0.message.isEmpty }, "every error has a message")
+expect(DictationError.allCases.allSatisfy { $0.message.lowercased() != "something went wrong" }, "no generic fallback copy")
+expect(Set(DictationError.allCases.map { $0.message }).count == DictationError.allCases.count, "messages are distinct")
+expect(DictationError.noMicrophone.message.lowercased().contains("microphone"), "no-mic mentions microphone")
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S)")
     exit(1)
@@ -274,6 +280,7 @@ EOF
 xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Models/AppMode.swift" \
     "$REPO_ROOT/Sources/JVoice/Models/AppTheme.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Orchestration/DictationError.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/TextProcessor.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
