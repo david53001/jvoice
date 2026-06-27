@@ -2,129 +2,143 @@ import SwiftUI
 
 struct HUDView: View {
     let state: HUDState
+    var theme: Theme = .dark
+    var meter: AudioLevelMeter? = nil
     var onStop: (() -> Void)? = nil
 
     var body: some View {
         switch state {
         case .recording:
-            RecordingPill(onStop: onStop)
+            RecordingPill(theme: theme, meter: meter, onStop: onStop)
         case .preparingModel:
-            PreparingModelPill()
+            PreparingModelPill(theme: theme)
         case .transcribing:
-            TranscribingPill()
+            TranscribingPill(theme: theme)
         case .done, .error:
-            StatusPill(state: state)
+            StatusPill(state: state, theme: theme)
         case .idle:
             EmptyView()
         }
     }
 }
 
-// MARK: - Shared background
+// MARK: - Shared pill chrome
 
-private func pillBackground(borderColor: Color) -> some View {
-    RoundedRectangle(cornerRadius: 22, style: .continuous)
-        .fill(Color(red: 0.027, green: 0.027, blue: 0.055))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(borderColor.opacity(0.22), lineWidth: 1)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [borderColor.opacity(0.06), .clear],
-                        startPoint: .topLeading,
-                        endPoint: .center
+private extension View {
+    /// Monochrome pill body + soft, even glow that fully fades within the
+    /// surrounding glow padding (no square clip).
+    func pillChrome(theme: Theme, minWidth: CGFloat = HUDLayout.pillMinWidth, maxWidth: CGFloat? = nil) -> some View {
+        self
+            .frame(minWidth: minWidth,
+                   maxWidth: maxWidth,
+                   minHeight: HUDLayout.pillHeight)
+            .background(
+                RoundedRectangle(cornerRadius: HUDLayout.pillCorner, style: .continuous)
+                    .fill(theme.pillBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: HUDLayout.pillCorner, style: .continuous)
+                            .strokeBorder(theme.hairline, lineWidth: 1)
                     )
-                )
-        )
-        .shadow(color: borderColor.opacity(0.18), radius: 16)
-        .shadow(color: borderColor.opacity(0.07), radius: 32)
-}
-
-// MARK: - OrbitalRing
-
-private struct PulseModifier: ViewModifier {
-    @State private var scale: CGFloat = 0.9
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(scale)
-            .onAppear {
-                withAnimation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true)) {
-                    scale = 1.05
-                }
-            }
+            )
+            .shadow(color: theme.pillGlow, radius: 16)
+            .shadow(color: theme.pillGlow.opacity(0.6), radius: 28)
+            .shadow(color: theme.pillDropShadow, radius: 12, x: 0, y: 6)
+            .padding(HUDLayout.glowPadding)
     }
 }
 
-private struct OrbitalRing: View {
-    let ringColor: Color
-    let iconName: String
+// MARK: - J mark
+
+private struct JMark: View {
+    let theme: Theme
+    var body: some View {
+        Text("J")
+            .font(.system(size: 22, weight: .heavy))
+            .foregroundStyle(theme.barFill)
+            .frame(width: 18)
+            .accessibilityHidden(true)
+    }
+}
+
+// MARK: - Waveform bars
+
+/// Recording: mic-reactive bars (driven by the live meter, with a subtle
+/// per-bar oscillation so they look alive even at a steady level).
+private struct ReactiveBars: View {
+    @ObservedObject var meter: AudioLevelMeter
+    let theme: Theme
+    let barCount = 15
+    private let minH: CGFloat = 4
+    private let maxH: CGFloat = 26
 
     var body: some View {
-        ZStack {
-            // Pulsing aura behind the ring
-            Circle()
-                .fill(
-                    RadialGradient(
-                        colors: [ringColor.opacity(0.18), .clear],
-                        center: .center,
-                        startRadius: 0,
-                        endRadius: 18
-                    )
-                )
-                .frame(width: 36, height: 36)
-                .modifier(PulseModifier())
-
-            // Spinning arc
-            TimelineView(.animation) { context in
-                let phase = context.date.timeIntervalSinceReferenceDate
-                let degrees = (phase.truncatingRemainder(dividingBy: 4.0) / 4.0) * 360.0
-                Circle()
-                    .trim(from: 0.0, to: 0.28)
-                    .stroke(
-                        ringColor,
-                        style: StrokeStyle(lineWidth: 1.5, lineCap: .round)
-                    )
-                    .frame(width: 28, height: 28)
-                    .rotationEffect(.degrees(degrees))
-                    .shadow(color: ringColor.opacity(0.85), radius: 3)
-                    .shadow(color: ringColor.opacity(0.4), radius: 6)
+        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 3) {
+                ForEach(0..<barCount, id: \.self) { i in
+                    Capsule(style: .continuous)
+                        .fill(theme.barFill)
+                        .frame(width: 3, height: height(i, t))
+                }
             }
-
-            // Fixed center icon
-            Image(systemName: iconName)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(ringColor)
-                .shadow(color: ringColor.opacity(0.6), radius: 4)
-                .shadow(color: ringColor.opacity(0.25), radius: 10)
+            .frame(maxWidth: .infinity)
+            .frame(height: maxH)
         }
-        .frame(width: 36, height: 36)
+        .accessibilityHidden(true)
+    }
+
+    private func height(_ i: Int, _ t: TimeInterval) -> CGFloat {
+        let level = CGFloat(meter.level)                       // 0…1
+        let osc = 0.55 + 0.45 * CGFloat(sin(t * 6 + Double(i) * 0.7)) // 0.1…1
+        return minH + (maxH - minH) * level * osc
     }
 }
 
-// MARK: - StopButton
+/// Transcribing: a gentle, low-amplitude shimmer (no mic input during decode).
+private struct ShimmerBars: View {
+    let theme: Theme
+    let barCount = 15
+    private let minH: CGFloat = 4
+    private let maxH: CGFloat = 11
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 3) {
+                ForEach(0..<barCount, id: \.self) { i in
+                    Capsule(style: .continuous)
+                        .fill(theme.barFill.opacity(0.85))
+                        .frame(width: 3, height: height(i, t))
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 26)
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func height(_ i: Int, _ t: TimeInterval) -> CGFloat {
+        let wave = 0.5 + 0.5 * CGFloat(sin(t * 3 + Double(i) * 0.6))
+        return minH + (maxH - minH) * wave
+    }
+}
+
+// MARK: - Stop button
 
 private struct StopButton: View {
+    let theme: Theme
     let action: () -> Void
-
-    private static let stopRed = Color(red: 1.0, green: 0.376, blue: 0.376)
-
     var body: some View {
         Button(action: action) {
             ZStack {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Self.stopRed.opacity(0.12))
+                    .fill(theme.barFill.opacity(0.14))
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(Self.stopRed.opacity(0.30), lineWidth: 1)
+                            .strokeBorder(theme.barFill.opacity(0.45), lineWidth: 1)
                     )
-                    .shadow(color: Self.stopRed.opacity(0.20), radius: 4)
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(Self.stopRed)
-                    .shadow(color: Self.stopRed.opacity(0.80), radius: 3)
+                    .fill(theme.barFill)
                     .frame(width: 7, height: 7)
             }
             .frame(width: 22, height: 22)
@@ -134,202 +148,151 @@ private struct StopButton: View {
     }
 }
 
-// MARK: - RecordingPill
+// MARK: - Bottom label
+
+private struct PillLabel: View {
+    let text: String
+    let theme: Theme
+    var body: some View {
+        Text(text.uppercased())
+            .font(.system(size: 7, weight: .semibold))
+            .tracking(1.6)
+            .foregroundStyle(theme.textMuted)
+    }
+}
+
+// MARK: - Recording pill
 
 private struct RecordingPill: View {
+    let theme: Theme
+    let meter: AudioLevelMeter?
     let onStop: (() -> Void)?
 
-    private static let accent = Color(red: 0.290, green: 0.620, blue: 1.000)
-    private static let textColor = Color(red: 0.820, green: 0.910, blue: 1.000)
-    private static let subColor = accent.opacity(0.55)
-
     var body: some View {
-        HStack(spacing: 10) {
-            HStack(spacing: 10) {
-                OrbitalRing(ringColor: Self.accent, iconName: "mic.fill")
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Recording")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Self.textColor)
-                        .shadow(color: Self.accent.opacity(0.55), radius: 6)
-                        .shadow(color: Self.accent.opacity(0.20), radius: 18)
-                    Text("Listening…")
-                        .font(.system(size: 10, weight: .medium))
-                        .foregroundStyle(Self.subColor)
+        ZStack {
+            HStack(spacing: 14) {
+                JMark(theme: theme)
+                if let meter {
+                    ReactiveBars(meter: meter, theme: theme)
+                } else {
+                    ShimmerBars(theme: theme) // defensive fallback
+                }
+                if let onStop {
+                    StopButton(theme: theme, action: onStop)
+                } else {
+                    Color.clear.frame(width: 22)
                 }
             }
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Recording")
+            .padding(.horizontal, 16)
 
-            Spacer(minLength: 0)
-
-            if let onStop {
-                StopButton(action: onStop)
+            VStack {
+                Spacer()
+                PillLabel(text: "Recording", theme: theme)
+                    .padding(.bottom, 6)
             }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(minWidth: HUDLayout.hudPillSize.width, minHeight: HUDLayout.hudPillSize.height)
-        .background { pillBackground(borderColor: Self.accent) }
-        .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
-        .padding(32)
-        .accessibilityElement(children: .contain)
-    }
-}
-
-// MARK: - PreparingModelPill
-
-/// Shown when a dictation has to wait for the Whisper model to load (or its
-/// first-ever CoreML specialization — measured ~2¼ min for large-v3_turbo on
-/// an M3; the OS caches the result per bundle ID, so it only happens once).
-/// The ticking elapsed counter proves the app is alive: a static pill reads
-/// as a hang and invites a force-quit, which restarts the ANE compile from
-/// zero and makes the wait endless.
-private struct PreparingModelPill: View {
-    private static let accent = Color(red: 0.502, green: 0.376, blue: 1.000)
-    private static let textColor = Color(red: 0.792, green: 0.733, blue: 1.000)
-    private static let subColor = accent.opacity(0.62)
-
-    @State private var startDate = Date()
-
-    private static func elapsedText(from start: Date, to now: Date) -> String {
-        let seconds = max(0, Int(now.timeIntervalSince(start)))
-        return String(format: "%d:%02d", seconds / 60, seconds % 60)
-    }
-
-    var body: some View {
-        HStack(spacing: 10) {
-            OrbitalRing(ringColor: Self.accent, iconName: "gearshape.2")
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Preparing Model")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Self.textColor)
-                    .shadow(color: Self.accent.opacity(0.55), radius: 6)
-                    .shadow(color: Self.accent.opacity(0.20), radius: 18)
-                TimelineView(.periodic(from: startDate, by: 1)) { context in
-                    Text("One-time setup — keep JVoice open · \(Self.elapsedText(from: startDate, to: context.date))")
-                        .monospacedDigit()
-                }
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(Self.subColor)
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(minWidth: HUDLayout.hudPillSize.width, minHeight: HUDLayout.hudPillSize.height)
-        .background { pillBackground(borderColor: Self.accent) }
-        .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
-        .padding(32)
+        .pillChrome(theme: theme)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Preparing model")
+        .accessibilityLabel("Recording")
     }
 }
 
-// MARK: - TranscribingPill
+// MARK: - Transcribing pill
 
 private struct TranscribingPill: View {
-    private static let accent = Color(red: 0.000, green: 0.831, blue: 0.878)
-    private static let textColor = Color(red: 0.627, green: 0.941, blue: 0.969)
-    private static let subColor = accent.opacity(0.55)
-
+    let theme: Theme
     var body: some View {
-        HStack(spacing: 10) {
-            OrbitalRing(ringColor: Self.accent, iconName: "waveform.path")
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Transcribing")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Self.textColor)
-                    .shadow(color: Self.accent.opacity(0.55), radius: 6)
-                    .shadow(color: Self.accent.opacity(0.20), radius: 18)
-                Text("Processing…")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(Self.subColor)
+        ZStack {
+            HStack(spacing: 14) {
+                JMark(theme: theme)
+                ShimmerBars(theme: theme)
+                Color.clear.frame(width: 22) // keep bars centered (no stop button)
             }
+            .padding(.horizontal, 16)
 
-            Spacer(minLength: 0)
+            VStack {
+                Spacer()
+                PillLabel(text: "Transcribing", theme: theme)
+                    .padding(.bottom, 6)
+            }
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(minWidth: HUDLayout.hudPillSize.width, minHeight: HUDLayout.hudPillSize.height)
-        .background { pillBackground(borderColor: Self.accent) }
-        .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
-        .padding(32)
+        .pillChrome(theme: theme)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Transcribing")
     }
 }
 
-// MARK: - StatusPill
+// MARK: - Preparing-model pill (keeps a status icon + the live timer)
 
-private struct StatusPill: View {
-    let state: HUDState
+/// Shown while the Whisper model loads / does its first-ever CoreML compile
+/// (~2¼ min for Large on first use). The ticking counter proves the app is
+/// alive — a static pill reads as a hang and invites a force-quit that restarts
+/// the compile from zero.
+private struct PreparingModelPill: View {
+    let theme: Theme
+    @State private var startDate = Date()
 
-    private var accent: Color {
-        switch state {
-        case .done:  return Color(red: 0.431, green: 0.906, blue: 0.718)
-        case .error: return Color(red: 0.980, green: 0.627, blue: 0.376)
-        default:     return .secondary
-        }
-    }
-
-    private var textColor: Color {
-        switch state {
-        case .done:  return Color(red: 0.694, green: 0.988, blue: 0.718)
-        case .error: return Color(red: 1.000, green: 0.820, blue: 0.627)
-        default:     return .white
-        }
+    private static func elapsed(_ start: Date, _ now: Date) -> String {
+        let s = max(0, Int(now.timeIntervalSince(start)))
+        return String(format: "%d:%02d", s / 60, s % 60)
     }
 
     var body: some View {
-        // For errors, show the specific message the coordinator built (e.g.
-        // "No target app…"); otherwise the short headline ("Pasted"). The
-        // `.done` transcript payload is never shown here.
-        let text: String = {
-            if case .error(let message) = state, !message.isEmpty {
-                return message
+        HStack(spacing: 12) {
+            Image(systemName: "gearshape.2")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(theme.textPrimary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Preparing Model")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.textPrimary)
+                TimelineView(.periodic(from: startDate, by: 1)) { context in
+                    Text("One-time setup — keep JVoice open · \(Self.elapsed(startDate, context.date))")
+                        .monospacedDigit()
+                }
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(theme.textSecondary)
             }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .pillChrome(theme: theme)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Preparing model")
+    }
+}
+
+// MARK: - Status pill (done / error)
+
+private struct StatusPill: View {
+    let state: HUDState
+    let theme: Theme
+
+    var body: some View {
+        let text: String = {
+            if case .error(let message) = state, !message.isEmpty { return message }
             return state.headline
         }()
 
         return HStack(spacing: 10) {
             ZStack {
                 Circle()
-                    .fill(accent.opacity(0.12))
-                    .overlay(Circle().strokeBorder(accent.opacity(0.30), lineWidth: 1))
-                    .shadow(color: accent.opacity(0.22), radius: 6)
+                    .fill(theme.barFill.opacity(0.12))
+                    .overlay(Circle().strokeBorder(theme.barFill.opacity(0.30), lineWidth: 1))
                     .frame(width: 28, height: 28)
                 Image(systemName: state.systemImageName)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(accent)
-                    .shadow(color: accent.opacity(0.70), radius: 4)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.textPrimary)
             }
-
             Text(text)
                 .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(textColor)
-                .shadow(color: accent.opacity(0.55), radius: 6)
-                .shadow(color: accent.opacity(0.20), radius: 18)
+                .foregroundStyle(theme.textPrimary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .frame(
-            minWidth: HUDLayout.hudPillSize.width,
-            maxWidth: 360,
-            minHeight: HUDLayout.hudPillSize.height
-        )
-        .background { pillBackground(borderColor: accent) }
-        .shadow(color: .black.opacity(0.35), radius: 12, x: 0, y: 6)
-        .padding(32)
+        .padding(.horizontal, 16)
+        .pillChrome(theme: theme, maxWidth: 360)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
     }

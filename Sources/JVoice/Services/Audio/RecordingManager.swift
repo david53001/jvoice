@@ -30,6 +30,10 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
 
     private var recorder: AVAudioRecorder?
 
+    /// Live mic level (0…1) for the recording HUD bars. Driven only while a
+    /// recording is active.
+    public let levelMeter = AudioLevelMeter()
+
     /// When a recording temporarily redirects capture away from a Bluetooth
     /// default input (see `AudioInputRouter`), this holds the original default
     /// input device to restore once recording ends.
@@ -106,6 +110,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
             self.recordedURL = url
             self.startedAt = Date()
             self.isRecording = true
+            levelMeter.start(recorder: recorder)
             return true
         } catch {
             self.lastError = .engineSetupFailed(message: error.localizedDescription)
@@ -140,6 +145,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
 
         recorder?.stop()
         recorder = nil
+        levelMeter.stop()
         isRecording = false
         startedAt = nil
         restoreDefaultInput()
@@ -225,6 +231,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         isRecording = false
         recorder?.stop()
         recorder = nil
+        levelMeter.stop()
         restoreDefaultInput()
         if let url = recordedURL {
             try? FileManager.default.removeItem(at: url)

@@ -14,7 +14,7 @@ final class HUDWindow: NSPanel {
                   styleMask style: NSWindow.StyleMask,
                   backing bufferingType: NSWindow.BackingStoreType,
                   defer flag: Bool) {
-        self.hostingController = NSHostingController(rootView: HUDView(state: .idle))
+        self.hostingController = NSHostingController(rootView: HUDView(state: .idle, theme: .dark))
         super.init(contentRect: contentRect, styleMask: style, backing: bufferingType, defer: flag)
     }
 
@@ -46,9 +46,14 @@ final class HUDWindow: NSPanel {
         contentViewController = hostingController
     }
 
-    func update(state: HUDState) {
+    func update(state: HUDState, theme: AppTheme = .dark, meter: AudioLevelMeter? = nil) {
         currentState = state
-        hostingController.rootView = HUDView(state: state, onStop: onStop)
+        hostingController.rootView = HUDView(
+            state: state,
+            theme: theme.theme,
+            meter: meter,
+            onStop: onStop
+        )
         ignoresMouseEvents = (state != .recording)
 
         if state.isVisible {

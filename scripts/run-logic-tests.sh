@@ -270,6 +270,14 @@ expect(DictationError.allCases.allSatisfy { $0.message.lowercased() != "somethin
 expect(Set(DictationError.allCases.map { $0.message }).count == DictationError.allCases.count, "messages are distinct")
 expect(DictationError.noMicrophone.message.lowercased().contains("microphone"), "no-mic mentions microphone")
 
+print("AudioLevel.normalize")
+expectEqual(AudioLevel.normalize(-160), 0, "very quiet → 0")
+expectEqual(AudioLevel.normalize(-55), 0, "floor → 0")
+expectEqual(AudioLevel.normalize(0), 1, "0 dB → 1")
+expectEqual(AudioLevel.normalize(5), 1, "above 0 dB clamps to 1")
+expect(AudioLevel.normalize(-40) < AudioLevel.normalize(-20), "monotonic increasing")
+expectEqual(AudioLevel.normalize(Float.nan), 0, "NaN → 0")
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S)")
     exit(1)
@@ -281,6 +289,7 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Models/AppMode.swift" \
     "$REPO_ROOT/Sources/JVoice/Models/AppTheme.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Orchestration/DictationError.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Audio/AudioLevel.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/TextProcessor.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
