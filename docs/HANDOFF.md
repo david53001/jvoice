@@ -1,6 +1,26 @@
-# HANDOFF — state as of 2026-06-25 (area-based context restructure + Settings UI / transcript history)
+# HANDOFF — state as of 2026-06-28 (monochrome UI overhaul: themes + redesigned HUD pill + 2-column Settings + DictationError)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
+
+## 2026-06-28 session — Monochrome UI overhaul: themes + redesigned HUD pill + 2-column Settings + specific DictationError messages (MERGED to main, branch `ui-overhaul-monochrome`)
+
+Three parallel implementation tracks (branches `ui-track-a`, `ui-track-b`, `ui-track-c`), each independently reviewed and approved, merged into `ui-overhaul-monochrome` and then merged to `main`.
+
+**A. Monochrome dark/light theme** (`Sources/JVoice/Models/AppTheme.swift`, `Sources/JVoice/UI/Theme.swift`). `AppTheme` enum (`dark` / `light`) with a safe fallback decoder (unknown rawValue → `.dark`, mirrors the `AppMode` pattern). `Theme` struct carries monochrome design tokens — pure blacks, whites, neutral greys, no hue — for all JVoice-drawn surfaces (HUD pill + Settings cards). Persisted in `SettingsState` (schema bumped to v2). Exposed via `VoiceCoordinator.appTheme` (`@Published`). A sun/moon toggle in the Settings window flips the appearance at runtime.
+
+**B. Redesigned HUD pill** (`Sources/JVoice/UI/HUDView.swift`, `HUDLayout.swift`, `HUDWindow.swift`). Recording and transcribing states show a centered row: "J" mark · animated waveform bars · stop button, with a short status label underneath. Transcribing shows a low-amplitude shimmer. `HUDLayout.glowPadding` keeps the pill glow from clipping square at the window edge. Two new Audio-area files:
+- `Sources/JVoice/Services/Audio/AudioLevel.swift` — pure `AudioLevel.normalize(dB:)` (no AVFoundation imports; also covered by `scripts/run-logic-tests.sh`).
+- `Sources/JVoice/Services/Audio/AudioLevelMeter.swift` — `@MainActor ObservableObject` polling `AVAudioRecorder` metering at 15 Hz with equal-weight smoothing; drives the reactive recording bars.
+
+**C. 2-column monochrome Settings + specific DictationError** (`Sources/JVoice/UI/SettingsView.swift`, `SettingsWindow.swift`). Settings window widened to 700 pt, reorganised: controls left / user data right, Stats full-width at top, pinned Restore-Defaults / Quit footer. New `Sources/JVoice/Services/Orchestration/DictationError.swift`: ten specific, user-facing error cases replacing the prior generic fallback. Two new detections: `noMicrophone` (`AudioInputRouter.hasInputDevice()`) and `noSpeechHeard` (`RecordingManager.isSilentRecording` via `WavTailReader` + `ChunkPlanner.isSilent`).
+
+**New test files (all CI-only):** `AppThemeTests`, `AudioLevelTests`, `DictationErrorTests`, `SilentRecordingTests`, `SettingsStateMigrationTests`, `MenuBarIconTests`, `StatsStoreTests`, `TextProcessorTests`, `TranscriptHistoryStoreTests`, `VoiceCoordinatorLogicTests`. `DictationError` copy and `AudioLevel.normalize` are also exercised by `scripts/run-logic-tests.sh` (executes locally).
+
+**Verification (all green):** `swift build` → Build complete; `./scripts/run-logic-tests.sh` → all pass; `./scripts/verify-streaming.sh` → all pass. No automated visual test for the HUD appearance or Settings layout — a human eyeball after `./scripts/install.sh` is needed.
+
+**Not yet done:** no dogfood session on the new pill and Settings layout. The menu-bar "J" icon was deliberately left untouched by the theming.
+
+**Commit / branch state (current):** Branch `ui-overhaul-monochrome` merged to `main`. Nothing pushed to remote; publishing remains on hold per David's explicit instruction.
 
 ## 2026-06-25 session — Area-based context restructure + Settings UI overhaul & transcript history (UNCOMMITTED working tree, branch `restructure-areas`)
 
