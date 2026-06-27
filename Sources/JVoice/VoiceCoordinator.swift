@@ -343,6 +343,28 @@ final class VoiceCoordinator: ObservableObject {
         scheduleHUDReset(after: 3_000_000_000)
     }
 
+    /// Single funnel for specific dictation failures — guarantees the HUD never
+    /// shows a generic message and the copy stays in one tested place.
+    private func show(_ error: DictationError) {
+        updateHUD(.error(error.message))
+        scheduleHUDReset(after: 3_000_000_000)
+    }
+
+    /// Map a thrown transcription error to a specific user-facing failure.
+    private func dictationError(for error: Error) -> DictationError {
+        if let t = error as? TranscriptionError {
+            switch t {
+            case .emptyTranscript:
+                return .noSpeechHeard
+            case .modelLoadFailed:
+                return .modelLoadFailed
+            case .audioFileMissing, .unsupportedAudioFile:
+                return .transcriptionFailed
+            }
+        }
+        return .transcriptionFailed
+    }
+
     /// Synchronously flush any pending debounced settings write.
     /// Called from `applicationWillTerminate` so the last keystrokes
     /// aren't lost when the user quits mid-debounce.
@@ -386,25 +408,27 @@ final class VoiceCoordinator: ObservableObject {
             return
         }
 
+        guard AudioInputRouter.hasInputDevice() else {
+            show(.noMicrophone)
+            return
+        }
+
         guard recordingManager.startRecording() else {
             if let err = recordingManager.lastError {
                 switch err {
                 case .permissionDenied:
                     PermissionError.microphoneDenied.surfaceAndOpenSettings()
                     return
-                case .engineSetupFailed(let msg):
-                    updateHUD(.error("Couldn't start recorder: \(msg)"))
-                case .encodeFailure(let msg):
-                    updateHUD(.error("Recorder failed: \(msg)"))
-                case .finishedUnsuccessfully:
-                    updateHUD(.error("Recording stopped unexpectedly."))
-                case .fileTooSmall(let bytes):
-                    updateHUD(.error("Recording too short (\(bytes) bytes captured)."))
+                case .engineSetupFailed:
+                    show(.recorderFailedToStart)
+                case .encodeFailure, .finishedUnsuccessfully:
+                    show(.recordingInterrupted)
+                case .fileTooSmall:
+                    show(.recordingTooShort)
                 }
             } else {
-                updateHUD(.error("Unable to start recording."))
+                show(.recorderFailedToStart)
             }
-            scheduleHUDReset()
             return
         }
 
@@ -455,8 +479,7 @@ final class VoiceCoordinator: ObservableObject {
                                                        ownPID: ownPID,
                                                        lastNonSelfPID: lastNonSelfFrontmostPID)
         guard let targetPID = resolvedTargetPID else {
-            updateHUD(.error("No target app — focus an app that accepts text before recording."))
-            scheduleHUDReset(after: 3_000_000_000)
+            show(.noTextFieldFocused)
             if let audioURL {
                 try? FileManager.default.removeItem(at: audioURL)
             }
@@ -476,8 +499,7 @@ final class VoiceCoordinator: ObservableObject {
     private func finishTranscription(audioURL: URL?, targetPID: pid_t?, session: StreamingTranscriptionSession? = nil) async {
         guard let audioURL else {
             if let session { await session.cancel() }
-            updateHUD(.error("No recording was captured."))
-            scheduleHUDReset()
+            show(.recorderFailedToStart)
             return
         }
 
@@ -488,8 +510,13 @@ final class VoiceCoordinator: ObservableObject {
             // message instead of waiting for WhisperKit to fail with an opaque
             // 'unsupportedAudioFile' several seconds later.
             if let session { await session.cancel() }
-            updateHUD(.error("Recording too short — please hold the hotkey longer."))
-            scheduleHUDReset(after: 3_000_000_000)
+            show(.recordingTooShort)
+            return
+        }
+
+        if RecordingManager.isSilentRecording(at: audioURL) {
+            if let session { await session.cancel() }
+            show(.noSpeechHeard)
             return
         }
 
@@ -524,8 +551,7 @@ final class VoiceCoordinator: ObservableObject {
             let processed = removeBlankTranscriptPlaceholder(from: TextProcessor.process(transcript, mode: toneMode.appMode, extraDictionary: userDict, removeFillerWords: removeFillerWords, vocabulary: customWords))
 
             guard !processed.isEmpty else {
-                updateHUD(.error("No speech detected."))
-                scheduleHUDReset()
+                show(.noSpeechHeard)
                 return
             }
 
@@ -552,12 +578,10 @@ final class VoiceCoordinator: ObservableObject {
                 scheduleHUDReset()
                 return
             case .pasteboardLocked:
-                updateHUD(.error("Pasteboard is busy — try again."))
-                scheduleHUDReset()
+                show(.clipboardBusy)
                 return
             case .targetRejected:
-                updateHUD(.error("Unable to paste into the active app."))
-                scheduleHUDReset()
+                show(.pasteFailed)
                 return
             }
 
@@ -572,8 +596,7 @@ final class VoiceCoordinator: ObservableObject {
             updateHUD(.done(processed))
             scheduleHUDReset()
         } catch {
-            updateHUD(.error(error.localizedDescription))
-            scheduleHUDReset()
+            show(dictationError(for: error))
         }
     }
 
