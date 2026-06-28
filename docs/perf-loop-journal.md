@@ -55,6 +55,29 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 1: accuracy — hallucination filter tone-mode consistency
+- **Target (scope d, accuracy):** `TextProcessor.removeWhisperHallucinations` — close a
+  tone-mode-dependent leak. In the live pipeline (`VoiceCoordinator.swift:551`) this filter runs
+  **after** `TextProcessor.format`. Casual tone strips terminal `.!?`, so a whole-transcript
+  YouTube-style hallucination such as "Thanks for watching!" arrives as "Thanks for watching" —
+  which was absent from the sentinel list and leaked into the pasted text. (Author intent was
+  clearly to strip it: both "Thanks for watching!"/"Thanks for watching." and "Bye."/"Bye!" were
+  enumerated; only the bare, Casual-produced form was missing.)
+- **Change:** store the sentinel phrases without terminal punctuation and compare against the
+  transcript with trailing `.!?` removed (reusing the existing private `removeTerminalPunctuation`
+  helper). Surgical, ~10 lines in one function. Added 6 assertions to `scripts/run-logic-tests.sh`
+  and a mirrored `@Test` to the canonical `Tests/JVoiceTests/TextProcessorTests.swift`.
+- **Measured (TDD baseline→after):** before the fix the 2 new Casual-form cases were RED
+  ("Thanks for watching" and "Bye" leaked through unchanged); after the fix all green. Valid
+  utterances ("OK." → "OK.", "Hi" → "Hi") and longer sentences that merely start with such a
+  phrase ("Thanks for watching the fireworks tonight") remain untouched.
+- **Verifiers:** build ✓ / run-logic-tests ✓ (106 cases, was 100) / verify-streaming ✓ (14 cases)
+  / test target compiles ✓. Heavy harness (`verify-transcription.py` / `--bench`) **skipped by
+  design**: this is a deterministic whole-transcript string filter with full unit coverage; the
+  heavy harnesses score live-audio word-retention on `say` clips of real sentences, which never
+  yield a transcript equal to a hallucination phrase, so they'd show zero delta and add no signal.
+- **Decision:** KEPT (commit `f9c0707`).
+
 ### 2026-06-28 — iteration 0: baseline capture
 - **Target:** establish the reference baseline (the scaffold commit `bcc2e7a` created this
   journal but left the baseline section empty). No source change this iteration — recording the
