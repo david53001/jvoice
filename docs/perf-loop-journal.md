@@ -55,6 +55,8 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 15: NO-OP (plateau, 10th consecutive). No code change. `swift build` ✓; tree clean, source byte-identical since iter 7 so run-logic-tests (126) / verify-streaming (14) remain green by deduction (re-running deterministic tests on unchanged source adds nothing). Recommend pausing cron `3ae65987`.
+
 ### 2026-06-28 — iteration 14: NO-OP (plateau, 9th consecutive)
 - Re-evaluated the heavy harness as a way to add value. **Conclusion (record so no future
   iteration wastes ~8 min on it):** `scripts/verify-transcription.py` / `--bench` would NOT
