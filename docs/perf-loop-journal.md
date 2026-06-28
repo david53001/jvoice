@@ -55,6 +55,14 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 8: NO further safe improvement (plateau, 3rd consecutive)
+- No code change. Nothing changed since iteration 7; the plateau analysis (iterations 6–7) and the
+  iteration-4 candidate ledger remain fully current — every remaining lever needs a heavy-harness /
+  on-device measurement or David's input. Did not churn or re-run the full search.
+- Verifiers (integrity): build ✓ / run-logic-tests ✓ (126) / verify-streaming ✓ (14). Branch green.
+- **Standing recommendation:** pause cron `3ae65987` until a deferred lever is greenlit. Repeated
+  5-minute no-ops add no value; future no-op entries will stay one-liners to avoid journal bloat.
+
 ### 2026-06-28 — iteration 7: NO further safe improvement (plateau confirmed, 2nd consecutive)
 - Fresh pass over `TextProcessor.format`/`normalizeWhitespace`, `ChunkPlanner`, `WavTail`.
   The only candidates left are rare cosmetic edge cases (e.g. Formal-mode
