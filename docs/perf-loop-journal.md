@@ -55,6 +55,24 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 2: accuracy — disfluency removal misses "uhm"/"erm"
+- **Target (scope d, accuracy / filler removal):** `TextProcessor.removeDisfluencies`. Its regex
+  `\b(um+h?|uh+|er+|a+h+|hmm+)\b` caught um/umm/uh/uhh/er/ah/hmm but **missed the m-trailing
+  hesitation fillers "uhm" and "erm"** — both extremely common and both non-words — so they leaked
+  into the pasted text even when the user enabled filler removal (`removeFillerWords`).
+- **Change:** added `uhm+` and `erm+` to the alternation, ordered before `uh+`/`er+`. One regex
+  literal edited. The existing `\b…\b` word boundaries keep real `-rm`/`-hm` words (term, firm,
+  warm, error) untouched — proven by new regression assertions. Added 7 assertions to
+  `scripts/run-logic-tests.sh` and mirrored `@Test`/XCTest functions into the canonical
+  `Tests/JVoiceTests/TextProcessorTests.swift` (both its swift-testing and XCTest sections).
+- **Measured (TDD baseline→after):** before the fix the 4 new uhm/erm cases were RED (the fillers
+  passed through unchanged) while the 3 regression guards already passed; after the fix all green.
+- **Verifiers:** build ✓ / run-logic-tests ✓ (113 cases, was 106) / verify-streaming ✓ (14 cases)
+  / test target compiles ✓. Heavy harness (`verify-transcription.py` / `--bench`) **skipped by
+  design**: this is deterministic post-processing string logic, and the `say`-generated clips the
+  heavy harness uses never contain spoken hesitations, so they would exercise nothing here.
+- **Decision:** KEPT (commit `d949019`).
+
 ### 2026-06-28 — iteration 1: accuracy — hallucination filter tone-mode consistency
 - **Target (scope d, accuracy):** `TextProcessor.removeWhisperHallucinations` — close a
   tone-mode-dependent leak. In the live pipeline (`VoiceCoordinator.swift:551`) this filter runs
