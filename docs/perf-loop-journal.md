@@ -55,6 +55,36 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-29 — measurement-backed lever: ChunkPlanner earliest-pause cut (David greenlit)
+- **Context:** after the loop paused, David greenlit doing one of the deferred levers with the
+  heavy on-device harness attached. Picked the `ChunkPlanner` streaming cut-point (the only
+  deferred lever that is both implementable AND end-to-end validatable autonomously).
+- **Target (scope a + c, silence detection / streaming latency):** `ChunkPlanner.plan` cut the
+  growing recording at the *globally quietest* sub-threshold window in `[minChunk, maxChunk]`,
+  i.e. it waited to compare against later/deeper pauses before emitting. Since every candidate
+  below the silence `threshold` is already a valid (non-word-splitting) boundary, cutting at the
+  *earliest* qualifying pause emits the streaming chunk sooner (lower latency, smaller/faster
+  chunks) at no loss of cut safety. Quietest-spot logic kept only for the forced-cut fallback.
+- **Method (true A/B, deterministic):** the harness uses cached `say` clips + greedy decode, and
+  only the streaming path touches `ChunkPlanner`, so the sole variable is the chunk boundary.
+  Built `.build/release/JVoice` (`swift build -c release`) BEFORE the change for baseline, then
+  AFTER, running `python3 scripts/verify-transcription.py --model base --quick` on identical clips.
+- **Measured (baseline → after):** **24/24 PASS both runs; every streaming retention value,
+  spurious=0, and all 6 whole-file fallbacks BYTE-IDENTICAL** (streaming retention: tariffs-med
+  1.00, weather-med 0.98, cooking-med 0.98, travel-med 1.00, history-med 0.98, long3 0.96;
+  `-short` scenarios fall back as before). → **zero accuracy regression, no new fallbacks.**
+  - *Honest caveat:* the results are identical because these clips have ≤1 qualifying pause per
+    15–25 s chunk window, so earliest==quietest and the change is a **no-op on them**. The harness
+    therefore proves SAFETY (no mid-word cuts, no extra fallbacks); the actual latency benefit
+    lands on pause-dense dictation (multiple pauses in one window), which the new `twoPause`
+    unit test exercises directly (it cuts at the earlier shallow pause, not the deeper later one).
+- **Verifiers:** build ✓ / run-logic-tests ✓ (128, +2 incl. the earliest-pause test that was RED
+  before) / verify-streaming ✓ (14) / test target compiles ✓ / heavy harness ✓ (zero regression).
+- **Decision:** KEPT (commit `a87e3a7`). Verified-safe latency improvement.
+- **Remaining deferred levers** (still need David / on-device dogfooding, unchanged): paste timing
+  (`AppTimings`) needs real-app paste-reliability testing; decode options need an accuracy A/B and
+  a product-judgment tradeoff; `RepetitionGuard` stopwords need a real regurgitation corpus.
+
 ### 2026-06-29 — iteration 26: LOOP PAUSED (David's decision)
 David was asked (via an interactive prompt) how to proceed after 20+ consecutive plateau
 iterations and chose **Pause the loop**. Cron `3ae65987` has been cancelled (`CronList` now reports
