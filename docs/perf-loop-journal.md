@@ -55,6 +55,29 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 3: accuracy — all-symbol Whisper silence artifacts leak
+- **Target (scope d, accuracy):** `TextProcessor.removeWhisperHallucinations`. Its lone-punctuation
+  guard only matched the hardcoded ASCII subset `".,;:!? "`, so a whole-transcript silence
+  artifact made of *other* marks leaked into the pasted text: a stray `-`, an ellipsis `…`,
+  em-dash runs, and Whisper's music-note `♪ ♪` output (emitted over background music).
+- **Pre-check (scope b, error handling):** also audited `DictationError` + all callers this
+  iteration — all 10 cases are produced in `VoiceCoordinator.swift` and the
+  `TranscriptionError`→`DictationError` mapping (lines 354–365) is complete, so there was no
+  error-handling gap to fix; moved on to the accuracy target above.
+- **Change:** broadened the guard to "entirely punctuation/symbols/whitespace" —
+  `CharacterSet.punctuationCharacters ∪ .symbols ∪ .whitespacesAndNewlines`, tested with
+  `trimmed.unicodeScalars.allSatisfy`. Rationale: real dictated speech always carries a letter or
+  digit, so an all-marks transcript is always a silence artifact. Mixed content ("$20 is the
+  price", "OK.") still passes through untouched. Added 7 assertions to `scripts/run-logic-tests.sh`
+  and a mirrored `@Test` to `Tests/JVoiceTests/TextProcessorTests.swift`.
+- **Measured (TDD baseline→after):** before the fix the 4 non-ASCII cases (`-`, `…`, `— —`,
+  `♪ ♪ ♪`) were RED (leaked through unchanged) while the 3 guards passed; after the fix all green.
+  The passing `♪` case confirms `CharacterSet.symbols` covers the music-note glyph.
+- **Verifiers:** build ✓ / run-logic-tests ✓ (120 cases, was 113) / verify-streaming ✓ (14 cases)
+  / test target compiles ✓. Heavy harness **skipped by design** (deterministic string filter; the
+  `say`-generated clips the heavy harness uses cannot produce on-demand lone-symbol artifacts).
+- **Decision:** KEPT (commit `8949804`).
+
 ### 2026-06-28 — iteration 2: accuracy — disfluency removal misses "uhm"/"erm"
 - **Target (scope d, accuracy / filler removal):** `TextProcessor.removeDisfluencies`. Its regex
   `\b(um+h?|uh+|er+|a+h+|hmm+)\b` caught um/umm/uh/uhh/er/ah/hmm but **missed the m-trailing
