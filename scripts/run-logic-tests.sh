@@ -165,6 +165,18 @@ expectEqual(TextProcessor.removeWhisperHallucinations("OK."), "OK.", "valid shor
 expectEqual(TextProcessor.removeWhisperHallucinations("Hi"), "Hi", "valid short utterance preserved")
 expectEqual(TextProcessor.removeWhisperHallucinations("Thanks for watching the fireworks tonight"), "Thanks for watching the fireworks tonight", "longer real sentence untouched")
 
+print("TextProcessor.removeWhisperHallucinations — all-symbol silence artifacts")
+// A transcript made ENTIRELY of punctuation/symbols is never dictated speech
+// (real speech always carries a letter or digit). The old guard only matched
+// the ASCII subset ".,;:!? ", so non-ASCII silence artifacts leaked.
+expectEqual(TextProcessor.removeWhisperHallucinations("-"), "", "lone dash stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("…"), "", "lone ellipsis stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("— —"), "", "em-dash run stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("♪ ♪ ♪"), "", "Whisper music-note run stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("."), "", "existing lone period still stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("$20 is the price"), "$20 is the price", "symbols mixed with words/digits preserved")
+expectEqual(TextProcessor.removeWhisperHallucinations("OK."), "OK.", "letters present → preserved")
+
 print("RepetitionGuard.strip")
 let regurgVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
 let regurgInput = "so basically what tariffs are is when governments put taxes on imported goods and who pays them is the people buying the item from a country that is sub agents, claude, li-fraumeni, sub agents, claude, vs code, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, la-fa, li-fraumeni, sub agents, li-fraumeni"

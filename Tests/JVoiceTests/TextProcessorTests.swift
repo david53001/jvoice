@@ -270,6 +270,18 @@ func processAppliesPhoneticVocabularyCorrection() {
     #expect(TextProcessor.removeWhisperHallucinations(" . ") == "")
 }
 
+@Test func removesAllSymbolSilenceArtifacts() {
+    // A whole-transcript made only of marks/symbols is a silence artifact,
+    // not the ASCII .,;:!? subset alone: stray dashes, ellipses, and Whisper's
+    // music-note "♪" runs must all be dropped.
+    #expect(TextProcessor.removeWhisperHallucinations("-") == "")
+    #expect(TextProcessor.removeWhisperHallucinations("…") == "")
+    #expect(TextProcessor.removeWhisperHallucinations("— —") == "")
+    #expect(TextProcessor.removeWhisperHallucinations("♪ ♪ ♪") == "")
+    // Any letter or digit means real content — preserved untouched.
+    #expect(TextProcessor.removeWhisperHallucinations("$20 is the price") == "$20 is the price")
+}
+
 @Test func preservesShortValidUtterance() {
     #expect(TextProcessor.removeWhisperHallucinations("OK.") == "OK.")
     #expect(TextProcessor.removeWhisperHallucinations("Hi") == "Hi")

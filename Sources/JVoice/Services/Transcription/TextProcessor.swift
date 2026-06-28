@@ -178,13 +178,21 @@ public struct TextProcessor: Sendable {
         return normalizeWhitespace(result).trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
+    /// Marks/whitespace only — a transcript made entirely of these is a
+    /// silence artifact, never dictated speech (which always carries a letter
+    /// or digit). Covers stray dashes, ellipses and Whisper's music-note "♪"
+    /// runs, not just the ASCII `.,;:!?` subset.
+    private static let punctuationOrSymbol: CharacterSet = CharacterSet.punctuationCharacters
+        .union(.symbols)
+        .union(.whitespacesAndNewlines)
+
     /// Strips known Whisper hallucination outputs that occur on near-silent or zero-content
     /// audio. Returns an empty string if the entire input is hallucination noise.
     public static func removeWhisperHallucinations(_ text: String) -> String {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        // Lone punctuation
+        // All-marks transcript (lone punctuation, dashes, ellipsis, ♪ runs).
         if trimmed.isEmpty { return "" }
-        if trimmed.allSatisfy({ ".,;:!? ".contains($0) }) { return "" }
+        if trimmed.unicodeScalars.allSatisfy({ punctuationOrSymbol.contains($0) }) { return "" }
         // Whisper-specific sentinels (stored without terminal punctuation).
         let blanklikePatterns = [
             "[BLANK_TEXT]",
