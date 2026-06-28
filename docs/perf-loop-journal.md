@@ -55,6 +55,45 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 4: NO further safe improvement found this iteration
+- **Searched:** silence detection (`ChunkPlanner`, `WavTail`), error handling (`DictationError` +
+  all callers + the `TranscriptionError`→`DictationError` mapping), pipeline/paste latency
+  (`AppTimings`, `PasteManager`, `VoiceCoordinator` paste path), streaming/recovery
+  (`StreamingTranscriptionSession`, `RegurgitationRecovery`), and the accuracy matchers
+  (`PhoneticMatcher`, `RepetitionGuard`, `VocabularyPrompt`). Also grepped for
+  TODO/FIXME/HACK and for crash-prone `try!`/`fatalError`/force-unwraps — **none found**;
+  the source is clean and defensive.
+- **Outcome:** no change made. Per the charter, did **not** invent risky churn. The three KEPT
+  fixes (iterations 1–3) already closed the obvious objective post-processing accuracy gaps.
+- **Candidate ledger (evaluated → why deferred/rejected; recorded so later iterations don't
+  re-tread):**
+  - *Paste timing* (`AppTimings.pasteActivationDelay` 0.08 s / `pasteRestoreDelay` 0.30 s):
+    reducing them is a real SPEED lever but reliability-critical — too-short delays cause paste
+    failures on slower machines/apps. Needs on-device A/B testing + David's call. **Deferred,
+    not autonomous-safe.**
+  - *`ChunkPlanner` cut-point selection* ("quietest qualifying pause" → "earliest qualifying
+    pause" would lower streaming latency): a heuristic tradeoff (earliest = lower-confidence cut,
+    risk of mid-word split). No clear winner without on-device measurement. **Deferred.**
+  - *`RepetitionGuard` stopword-set expansion*: risks suppressing real loop detection; pure
+    heuristic tuning that needs the real-audio harness to validate. **Deferred.**
+  - *`removeWhisperHallucinations` "♪ phrase ♪" wrapping*: plausible but speculative about
+    Whisper's exact output; not locally verifiable. **Deferred to a measurement-backed iteration.**
+  - *Micro-perf* (`applyCorrections` regex caching, `ChunkPlanner.windowRMS` per-poll recompute,
+    `isSilent` slice-vs-array copy): all run once per transcript or once per ~1 s poll over a
+    ≤25 s buffer — not user-perceptible, and the churn/complexity fails the "surgical" bar.
+    **Rejected.**
+  - *Mixed-case decoder sentinels in `stripDecoderArtifacts`*: WhisperKit emits uppercase
+    sentinels; the gap is speculative. **Rejected.**
+  - *`VocabularyPrompt` dedup*: the add-path (`VoiceCoordinator.addCustomWord`, line 642) already
+    dedups case-insensitively, so this would guard an impossible scenario. **Rejected.**
+  - *`DictationError` message copy*: already specific, distinct, and actionable; further edits
+    would be subjective polish (David's call), not an objective fix. **Rejected.**
+- **Verifiers (baseline integrity check):** build ✓ / run-logic-tests ✓ (120 cases) /
+  verify-streaming ✓ (14 cases). Branch left clean and green.
+- **Decision:** no commit beyond this journal note. The next iterations should bias toward the
+  **Deferred** items above, which need either an on-device `--bench`/`verify-transcription.py`
+  measurement or David's input — not toward inventing new post-processing rules.
+
 ### 2026-06-28 — iteration 3: accuracy — all-symbol Whisper silence artifacts leak
 - **Target (scope d, accuracy):** `TextProcessor.removeWhisperHallucinations`. Its lone-punctuation
   guard only matched the hardcoded ASCII subset `".,;:!? "`, so a whole-transcript silence
