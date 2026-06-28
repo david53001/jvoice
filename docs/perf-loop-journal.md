@@ -55,6 +55,29 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-29 — iteration 26: LOOP PAUSED (David's decision)
+David was asked (via an interactive prompt) how to proceed after 20+ consecutive plateau
+iterations and chose **Pause the loop**. Cron `3ae65987` has been cancelled (`CronList` now reports
+no scheduled jobs), so the 5-minute auto-firing has stopped. To resume later, re-run `/loop 5m`
+with the same task prompt.
+
+**Final state of branch `perf-loop/auto-improvements`:** clean and green — `swift build` ✓,
+`./scripts/run-logic-tests.sh` 126 ✓, `./scripts/verify-streaming.sh` 14 ✓.
+
+**Loop outcome — 4 KEPT accuracy fixes, all in the post-processing layer, each TDD'd (failing
+test first) and verified by the fast local verifiers, with the canonical
+`Tests/JVoiceTests/TextProcessorTests.swift` suite kept in sync:**
+1. `f9c0707` — catch unpunctuated Whisper hallucinations in Casual tone (`removeWhisperHallucinations`).
+2. `d949019` — strip "uhm"/"erm" hesitation fillers (`removeDisfluencies`).
+3. `8949804` — drop all-symbol Whisper silence artifacts (dashes, ellipses, "♪" runs), not just ASCII `.,;:!?`.
+4. `5df2e38` — match hallucination phrases wrapped in leading/surrounding marks.
+
+**Not done (and why) — for whoever resumes:** the remaining levers (decode options, paste timing,
+`ChunkPlanner` cut-point, `RepetitionGuard` stopwords) are WhisperKit-coupled, reliability-critical,
+or heuristic tradeoffs that need an on-device `--bench` / `verify-transcription.py` measurement or
+David's product judgment — not an autonomous edit. See the iteration-4 candidate ledger and the
+iteration-14 note (why the heavy harness can't validate the shipped post-processing changes).
+
 ### 2026-06-28 — iteration 16: PLATEAU POLICY (consolidating note for the no-op run)
 The loop converged after iteration 5. Iterations 4 and 6–16 are no-ops — the locally-verifiable
 post-processing accuracy gaps are closed (KEPT fixes: iters 1, 2, 3, 5), the test suite has no
