@@ -55,6 +55,36 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 6: NO further safe improvement found this iteration (plateau)
+- **Searched:** the whole-file + streaming decode paths in
+  `Services/Transcription/TranscriptionManager.swift` (`decodeFile`/`decodeSamples`), re-scanned
+  `PhoneticMatcher`, `RepetitionGuard`, `VocabularyPrompt`, `stripDecoderArtifacts`, and the
+  silence path (`ChunkPlanner`).
+- **Outcome:** no change made; did not invent risky churn or pile a 5th tweak onto the
+  hallucination filter.
+- **Why this is a genuine plateau (not under-trying):** the four KEPT fixes (iterations 1, 2, 3, 5)
+  have closed the objective, *locally-verifiable* gaps in JVoice's post-processing layer — the
+  `removeWhisperHallucinations` filter is now robust across tone modes (iter 1), the unpunctuated
+  Casual form (iter 1), all-symbol artifacts (iter 3), and phrases wrapped in leading/surrounding
+  marks (iter 5); `removeDisfluencies` now covers the m-trailing fillers uhm/erm (iter 2). The
+  source carries no TODO/FIXME and no crash-prone `try!`/`fatalError`/force-unwrap (verified iter 4).
+- **What remains needs evidence the fast local verifiers can't provide** (see the iteration-4
+  candidate ledger below — still current):
+  - **Decode options** (`temperatureFallbackCount`, `chunkingStrategy`, prompt-token cap in
+    `decodeFile`/`decodeSamples`): WhisperKit-coupled; any change needs
+    `.build/release/JVoice --bench` or `python3 scripts/verify-transcription.py` on a real clip.
+  - **Paste timing** (`AppTimings.pasteActivationDelay`/`pasteRestoreDelay`): reliability-critical;
+    needs on-device A/B testing.
+  - **`ChunkPlanner` cut-point heuristic** and **`RepetitionGuard` stopword set**: heuristic
+    tradeoffs needing the real-audio harness, not unit assertions.
+- **Recommendation for the next iterations:** prefer one of the *deferred* levers above **only**
+  with a heavy-harness measurement attached (models are downloaded, so `--bench` /
+  `verify-transcription.py` are runnable), or pause the loop pending David's input. Continuing to
+  invent post-processing rules past this point risks over-fitting / churn.
+- **Verifiers (baseline integrity):** build ✓ / run-logic-tests ✓ (126 cases) /
+  verify-streaming ✓ (14 cases). Branch left clean and green.
+- **Decision:** no commit beyond this journal note.
+
 ### 2026-06-28 — iteration 5: accuracy — hallucination phrases wrapped in leading/surrounding marks
 - **Target (scope d, accuracy):** `TextProcessor.removeWhisperHallucinations`. The phrase-matching
   added in iteration 1 only trimmed **trailing** `.!?` before comparing the transcript to the
