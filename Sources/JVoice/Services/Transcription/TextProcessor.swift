@@ -204,11 +204,14 @@ public struct TextProcessor: Sendable {
             "Please subscribe to my channel",
             "Bye",
         ]
-        // The tone formatter rewrites terminal "."/"!"/"?" before this filter
-        // runs (Casual strips it, Formal/Very-Casual add one), so compare with
-        // any trailing terminal punctuation removed — otherwise a whole-transcript
-        // hallucination leaks whenever the formatter dropped its punctuation.
-        let core = removeTerminalPunctuation(trimmed)
+        // Compare against the phrase with any SURROUNDING marks removed: the tone
+        // formatter rewrites terminal "."/"!"/"?" (Casual strips it, Formal/Very-
+        // Casual add one), and Whisper decorates hallucinated phrases with leading
+        // dashes/ellipses or wraps them in music notes ("♪ Thanks for watching ♪").
+        // Trimming both ends catches all of these; real content keyed to a pattern
+        // while wrapped in marks is implausible, and a non-match returns `text`
+        // unchanged, so legitimately-marked speech is preserved.
+        let core = trimmed.trimmingCharacters(in: punctuationOrSymbol)
         for pattern in blanklikePatterns {
             if core.caseInsensitiveCompare(pattern) == .orderedSame {
                 return ""

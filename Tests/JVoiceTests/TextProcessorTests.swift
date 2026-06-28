@@ -282,6 +282,17 @@ func processAppliesPhoneticVocabularyCorrection() {
     #expect(TextProcessor.removeWhisperHallucinations("$20 is the price") == "$20 is the price")
 }
 
+@Test func removesHallucinationPhraseWrappedInMarks() {
+    // Whisper decorates hallucinated phrases with leading dashes/ellipses or
+    // wraps them in music notes; surrounding marks must not defeat the match.
+    #expect(TextProcessor.removeWhisperHallucinations("- Thanks for watching") == "")
+    #expect(TextProcessor.removeWhisperHallucinations("... Bye") == "")
+    #expect(TextProcessor.removeWhisperHallucinations("♪ Thanks for watching ♪") == "")
+    // Real content carrying the same leading mark is returned untouched.
+    #expect(TextProcessor.removeWhisperHallucinations("- send the report by Friday")
+        == "- send the report by Friday")
+}
+
 @Test func preservesShortValidUtterance() {
     #expect(TextProcessor.removeWhisperHallucinations("OK.") == "OK.")
     #expect(TextProcessor.removeWhisperHallucinations("Hi") == "Hi")

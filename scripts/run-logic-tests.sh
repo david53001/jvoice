@@ -177,6 +177,17 @@ expectEqual(TextProcessor.removeWhisperHallucinations("."), "", "existing lone p
 expectEqual(TextProcessor.removeWhisperHallucinations("$20 is the price"), "$20 is the price", "symbols mixed with words/digits preserved")
 expectEqual(TextProcessor.removeWhisperHallucinations("OK."), "OK.", "letters present → preserved")
 
+print("TextProcessor.removeWhisperHallucinations — phrase wrapped in surrounding marks")
+// Whisper decorates hallucinated phrases with LEADING punctuation (a dash, an
+// ellipsis) or wraps them in music notes; the trailing-only trim missed these.
+expectEqual(TextProcessor.removeWhisperHallucinations("- Thanks for watching"), "", "leading dash before phrase stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("... Bye"), "", "leading ellipsis before phrase stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("♪ Thanks for watching ♪"), "", "music-note-wrapped phrase stripped")
+// Regression guards: real content with the same leading marks is preserved.
+expectEqual(TextProcessor.removeWhisperHallucinations("Thanks for watching!"), "", "plain phrase still stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("- send the report by Friday"), "- send the report by Friday", "leading dash on real content preserved")
+expectEqual(TextProcessor.removeWhisperHallucinations("Thanks for the help, send the file"), "Thanks for the help, send the file", "longer real sentence untouched")
+
 print("RepetitionGuard.strip")
 let regurgVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
 let regurgInput = "so basically what tariffs are is when governments put taxes on imported goods and who pays them is the people buying the item from a country that is sub agents, claude, li-fraumeni, sub agents, claude, vs code, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, la-fa, li-fraumeni, sub agents, li-fraumeni"
