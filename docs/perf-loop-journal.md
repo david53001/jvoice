@@ -55,6 +55,32 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 5: accuracy — hallucination phrases wrapped in leading/surrounding marks
+- **Target (scope d, accuracy):** `TextProcessor.removeWhisperHallucinations`. The phrase-matching
+  added in iteration 1 only trimmed **trailing** `.!?` before comparing the transcript to the
+  sentinel phrases, so a hallucination Whisper decorated with **leading** marks leaked into the
+  pasted text: `- Thanks for watching`, `... Bye`, and music-note-wrapped `♪ Thanks for watching ♪`.
+- **Note on the iteration-4 ledger:** iteration 4 listed the "♪-wrapped" case as *deferred pending
+  on-device measurement*. Re-examined and promoted it because the change is **safe by
+  construction** — a non-match returns the original `text` unchanged, so it can never strip
+  legitimate content (which is never in the sentinel list); its safety does not depend on
+  measuring how often it fires. It also has a concrete, non-speculative driver: leading-dash/ellipsis
+  hallucinations leaked under the trailing-only trim. This is a promotion of a *deferred* item, not
+  a re-tread of a *rejected* one.
+- **Change:** replaced the trailing-only `removeTerminalPunctuation(trimmed)` with
+  `trimmed.trimmingCharacters(in: punctuationOrSymbol)` (the same CharacterSet introduced in
+  iteration 3), so marks on **both** ends are ignored during the phrase comparison. One line.
+  Added 6 assertions to `scripts/run-logic-tests.sh` and a mirrored `@Test` to
+  `Tests/JVoiceTests/TextProcessorTests.swift`.
+- **Measured (TDD baseline→after):** before the fix the 3 wrapped/leading cases were RED (leaked
+  unchanged) while the 3 guards passed (plain phrase stripped; `- send the report by Friday`
+  preserved as real content; longer sentence untouched); after the fix all green. All prior
+  hallucination cases (`[BLANK_TEXT]` → trims brackets → matches; `OK.` → preserved) still hold.
+- **Verifiers:** build ✓ / run-logic-tests ✓ (126 cases, was 120) / verify-streaming ✓ (14 cases)
+  / test target compiles ✓. Heavy harness **skipped by design** (deterministic string filter; the
+  `say`-generated clips the heavy harness uses cannot produce on-demand mark-wrapped artifacts).
+- **Decision:** KEPT (commit `5df2e38`).
+
 ### 2026-06-28 — iteration 4: NO further safe improvement found this iteration
 - **Searched:** silence detection (`ChunkPlanner`, `WavTail`), error handling (`DictationError` +
   all callers + the `TranscriptionError`→`DictationError` mapping), pipeline/paste latency
