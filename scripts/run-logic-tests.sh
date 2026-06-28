@@ -141,6 +141,19 @@ expectEqual(
     ["WhisperKit"],
     "BLD-12: genuine same-length single correction is captured")
 
+print("TextProcessor.removeWhisperHallucinations — tone-mode punctuation consistency")
+// The Casual tone formatter strips terminal .!? BEFORE this filter runs, so a
+// whole-transcript YouTube-style hallucination must be caught with OR without
+// its trailing punctuation. The author already enumerated both "Bye."/"Bye!"
+// and "Thanks for watching!"/"Thanks for watching." — the bare form the Casual
+// formatter produces was the gap.
+expectEqual(TextProcessor.removeWhisperHallucinations("Thanks for watching!"), "", "punctuated hallucination stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("Thanks for watching"), "", "Casual (unpunctuated) hallucination stripped too")
+expectEqual(TextProcessor.removeWhisperHallucinations("Bye"), "", "unpunctuated 'Bye' stripped (matches existing 'Bye.'/'Bye!')")
+expectEqual(TextProcessor.removeWhisperHallucinations("OK."), "OK.", "valid short utterance preserved, punctuation intact")
+expectEqual(TextProcessor.removeWhisperHallucinations("Hi"), "Hi", "valid short utterance preserved")
+expectEqual(TextProcessor.removeWhisperHallucinations("Thanks for watching the fireworks tonight"), "Thanks for watching the fireworks tonight", "longer real sentence untouched")
+
 print("RepetitionGuard.strip")
 let regurgVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
 let regurgInput = "so basically what tariffs are is when governments put taxes on imported goods and who pays them is the people buying the item from a country that is sub agents, claude, li-fraumeni, sub agents, claude, vs code, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, la-fa, li-fraumeni, sub agents, li-fraumeni"

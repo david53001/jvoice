@@ -185,22 +185,24 @@ public struct TextProcessor: Sendable {
         // Lone punctuation
         if trimmed.isEmpty { return "" }
         if trimmed.allSatisfy({ ".,;:!? ".contains($0) }) { return "" }
-        // Whisper-specific sentinels
+        // Whisper-specific sentinels (stored without terminal punctuation).
         let blanklikePatterns = [
             "[BLANK_TEXT]",
             "BLANK_TEXT",
-            "Thanks for watching!",
-            "Thanks for watching.",
-            "Thank you.",
-            "Thank you for watching.",
+            "Thanks for watching",
+            "Thank you",
+            "Thank you for watching",
             "Subscribe to my channel",
-            "Subscribe to my channel.",
-            "Please subscribe to my channel.",
-            "Bye.",
-            "Bye!",
+            "Please subscribe to my channel",
+            "Bye",
         ]
+        // The tone formatter rewrites terminal "."/"!"/"?" before this filter
+        // runs (Casual strips it, Formal/Very-Casual add one), so compare with
+        // any trailing terminal punctuation removed — otherwise a whole-transcript
+        // hallucination leaks whenever the formatter dropped its punctuation.
+        let core = removeTerminalPunctuation(trimmed)
         for pattern in blanklikePatterns {
-            if trimmed.caseInsensitiveCompare(pattern) == .orderedSame {
+            if core.caseInsensitiveCompare(pattern) == .orderedSame {
                 return ""
             }
         }

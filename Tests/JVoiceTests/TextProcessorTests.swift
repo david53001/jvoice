@@ -236,6 +236,16 @@ func processAppliesPhoneticVocabularyCorrection() {
     #expect(TextProcessor.removeWhisperHallucinations("Subscribe to my channel.") == "")
 }
 
+@Test func removesUnpunctuatedHallucinationFromCasualTone() {
+    // The Casual tone formatter strips terminal .!? before this filter runs,
+    // so a whole-transcript hallucination must be caught without it too.
+    #expect(TextProcessor.removeWhisperHallucinations("Thanks for watching") == "")
+    #expect(TextProcessor.removeWhisperHallucinations("Bye") == "")
+    // A longer real sentence that merely starts with such a phrase is untouched.
+    #expect(TextProcessor.removeWhisperHallucinations("Thanks for watching the fireworks tonight")
+        == "Thanks for watching the fireworks tonight")
+}
+
 @Test func removesBlankTextSentinel() {
     #expect(TextProcessor.removeWhisperHallucinations("[BLANK_TEXT]") == "")
     #expect(TextProcessor.removeWhisperHallucinations("BLANK_TEXT") == "")
