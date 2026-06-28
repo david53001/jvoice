@@ -45,16 +45,22 @@ public enum ChunkPlanner {
         let threshold = max(config.silenceRMSFloor, peak * config.relativeSilenceFraction)
 
         // Candidate cut points: complete windows starting at/after the minimum
-        // chunk length.
+        // chunk length. `windowRMS` yields windows left-to-right, so `candidates`
+        // is in ascending start order.
         let candidates = energies.filter { $0.start >= minSamples && $0.start + window <= searchEnd }
-        let quietest = candidates.min { $0.rms < $1.rms }
 
-        if let quietest, quietest.rms < threshold {
-            return makeCut(unconsumed, at: quietest.start + window / 2, config: config)
+        // Cut at the EARLIEST window quiet enough to be a real pause, not the
+        // globally quietest one. Every candidate below `threshold` is already a
+        // valid (silence-level) boundary, so taking the first one emits the
+        // streaming chunk as soon as a pause appears — lower latency with no loss
+        // of cut safety, instead of waiting to compare against later, deeper pauses.
+        if let earliest = candidates.first(where: { $0.rms < threshold }) {
+            return makeCut(unconsumed, at: earliest.start + window / 2, config: config)
         }
-        // No pause found: keep waiting until the single-window cap forces a cut
-        // at the least-bad spot.
+        // No pause below threshold: keep waiting until the single-window cap
+        // forces a cut at the least-bad (quietest) spot.
         guard unconsumed.count >= maxSamples else { return .wait }
+        let quietest = candidates.min { $0.rms < $1.rms }
         return makeCut(unconsumed, at: quietest.map { $0.start + window / 2 } ?? maxSamples, config: config)
     }
 

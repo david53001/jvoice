@@ -28,6 +28,25 @@ private func tone(seconds: Double, amplitude: Double) -> [Int16] {
     #expect(!silent)
 }
 
+@Test func cutsAtEarliestQualifyingPauseNotDeepest() throws {
+    // Two sub-threshold pauses: pause A (amp 0.02 → ~0.014 RMS, below the
+    // relative threshold but above silence) is earlier; pause B (0 RMS) is
+    // deeper and later. The cut must land in pause A so the streaming chunk is
+    // emitted sooner — every candidate below threshold is already a valid
+    // boundary, so the earliest one is taken rather than the quietest.
+    let audio = tone(seconds: 16, amplitude: 0.5)
+        + tone(seconds: 1, amplitude: 0.02)
+        + tone(seconds: 2, amplitude: 0.5)
+        + tone(seconds: 1, amplitude: 0)
+        + tone(seconds: 1, amplitude: 0.5)
+    guard case let .cut(at, silent) = ChunkPlanner.plan(unconsumed: audio) else {
+        Issue.record("expected a cut at the earlier pause")
+        return
+    }
+    #expect(at >= 16 * 16_000 && at <= 17 * 16_000)
+    #expect(!silent)
+}
+
 @Test func forcesCutAtSingleWindowCap() {
     // 26 s of nonstop speech: cap exceeded → forced cut, bounded to the
     // proven single-window range.

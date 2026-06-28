@@ -305,6 +305,21 @@ if case let .cut(_, silent) = ChunkPlanner.plan(unconsumed: tone(seconds: 16, am
 }
 expect(ChunkPlanner.isSilent(tone(seconds: 3, amplitude: 0.0), config: cfg), "isSilent: zeros")
 expect(!ChunkPlanner.isSilent(tone(seconds: 3, amplitude: 0.5), config: cfg), "isSilent: speech-level tone")
+// Earliest-qualifying-pause cut: with TWO sub-threshold pauses, cut at the
+// EARLIER (shallower) pause A, not the later (deeper/quietest) pause B — emits
+// the streaming chunk sooner. Pause A (amp 0.02 → ~0.014 RMS) is below the
+// relative threshold (~0.035) but louder than the silent pause B (0 RMS).
+let twoPause = tone(seconds: 16, amplitude: 0.5)
+    + tone(seconds: 1, amplitude: 0.02)
+    + tone(seconds: 2, amplitude: 0.5)
+    + tone(seconds: 1, amplitude: 0.0)
+    + tone(seconds: 1, amplitude: 0.5)
+if case let .cut(at, silent) = ChunkPlanner.plan(unconsumed: twoPause, config: cfg) {
+    expect(at >= 16 * 16_000 && at <= 17 * 16_000, "cut lands in the EARLIER pause A (at=\(at)), not deeper later pause B")
+    expect(!silent, "earliest-pause chunk still holds speech → not silent")
+} else {
+    expect(false, "two-pause input past min → cut")
+}
 
 print("AppTheme")
 expectEqual(AppTheme.dark.toggled, .light, "dark toggles to light")
