@@ -34,12 +34,38 @@ later iterations never repeat a dead lever.
 
 ## Baseline (iteration 0)
 
-_To be filled by the first iteration: record `swift build` result, `run-logic-tests.sh` pass
-count, `verify-streaming.sh` result, and any timing numbers captured._
+Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`):
+
+- **`swift build`** — ✓ Build complete (2.87s, debug). Pre-existing warning only: SwiftPM
+  flags the 5 `CLAUDE.md` area briefs as "unhandled files" (cosmetic, not our concern).
+- **`./scripts/run-logic-tests.sh`** — ✓ All logic tests passed, **100 `✓` assertions**
+  (TextProcessor, PhoneticMatcher, VocabularyPrompt, RepetitionGuard incl. 120-case loop fuzz,
+  WavTail, ChunkPlanner, AppTheme, DictationError, AudioLevel.normalize).
+- **`./scripts/verify-streaming.sh`** — ✓ All streaming + recovery verification passed,
+  **14 `✓` assertions** (empty-chunk→fallback never silent-drops; regurgitation re-decode;
+  prompt-disabled path; exact sample-count conservation).
+- **Heavy-harness eligibility:** models already downloaded under
+  `~/Documents/huggingface/models/argmaxinc/whisperkit-coreml` (tiny, base, small,
+  large-v3-v20240930 + turbo/626MB/632MB variants). So `--bench` / `verify-transcription.py`
+  are runnable for future iterations whose change targets transcription timing/accuracy.
+- No timing micro-baseline captured yet (raw decode speed is a known dead lever; future timing
+  baselines should target pipeline latency, not Whisper-internal decode).
 
 ## Iteration log
 
 <!-- newest first; one entry per iteration -->
+
+### 2026-06-28 — iteration 0: baseline capture
+- **Target:** establish the reference baseline (the scaffold commit `bcc2e7a` created this
+  journal but left the baseline section empty). No source change this iteration — recording the
+  metrics every future iteration measures against.
+- **Change:** filled the "Baseline (iteration 0)" section above with verifier results +
+  heavy-harness eligibility. Docs only; no code touched.
+- **Measured:** n/a (baseline itself) — `swift build` 2.87s; run-logic-tests 100 ✓;
+  verify-streaming 14 ✓.
+- **Verifiers:** build ✓ / run-logic-tests ✓ (100 cases) / verify-streaming ✓ (14 cases).
+- **Decision:** KEPT (docs-only baseline commit; see branch log).
+
 <!--
 ### YYYY-MM-DD HH:MM — <target area>
 - **Target:** ...
