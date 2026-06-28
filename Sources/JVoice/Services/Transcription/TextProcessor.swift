@@ -137,7 +137,7 @@ public struct TextProcessor: Sendable {
     }
 
     public static func removeDisfluencies(_ text: String) -> String {
-        let pattern = #"(?i)\b(um+h?|uh+|er+|a+h+|hmm+)\b[,.]?\s*"#
+        let pattern = #"(?i)\b(um+h?|uhm+|uh+|erm+|er+|a+h+|hmm+)\b[,.]?\s*"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         let stripped = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")

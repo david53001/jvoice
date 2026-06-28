@@ -70,6 +70,19 @@ func builtInDictionaryWinsOverUserEntry() {
     #expect(TextProcessor.removeDisfluencies("The error was clear") == "The error was clear")
 }
 
+@Test func removesMTrailingHesitationFillers() {
+    // "uhm"/"erm" are pure hesitation fillers (never English words) that the
+    // formatter's word boundaries keep distinct from real -rm/-hm words.
+    #expect(TextProcessor.removeDisfluencies("uhm, I was thinking") == "I was thinking")
+    #expect(TextProcessor.removeDisfluencies("I was uhm thinking") == "I was thinking")
+    #expect(TextProcessor.removeDisfluencies("erm, I think so") == "I think so")
+    #expect(TextProcessor.removeDisfluencies("I was uhmm really erm sure") == "I was really sure")
+}
+
+@Test func doesNotTouchRealRmWords() {
+    #expect(TextProcessor.removeDisfluencies("the term was firm and warm") == "the term was firm and warm")
+}
+
 @Test func emptyStringReturnsEmpty() {
     #expect(TextProcessor.removeDisfluencies("") == "")
 }
@@ -333,6 +346,17 @@ final class TextProcessorTests: XCTestCase {
 
     func testDoesNotTouchWordContainingEr() {
         XCTAssertEqual(TextProcessor.removeDisfluencies("The error was clear"), "The error was clear")
+    }
+
+    func testRemovesMTrailingHesitationFillers() {
+        XCTAssertEqual(TextProcessor.removeDisfluencies("uhm, I was thinking"), "I was thinking")
+        XCTAssertEqual(TextProcessor.removeDisfluencies("I was uhm thinking"), "I was thinking")
+        XCTAssertEqual(TextProcessor.removeDisfluencies("erm, I think so"), "I think so")
+        XCTAssertEqual(TextProcessor.removeDisfluencies("I was uhmm really erm sure"), "I was really sure")
+    }
+
+    func testDoesNotTouchRealRmWords() {
+        XCTAssertEqual(TextProcessor.removeDisfluencies("the term was firm and warm"), "the term was firm and warm")
     }
 
     func testEmptyStringReturnsEmpty() {

@@ -78,6 +78,17 @@ expectEqual(TextProcessor.process("Hello World From Me", mode: .veryCasual), "he
 expectEqual(TextProcessor.process("hello world", mode: .formal), "Hello world.", "formal unchanged")
 expectEqual(TextProcessor.process("Um, hello world", mode: .casual, removeFillerWords: true), "hello world", "filler removal unchanged")
 expectEqual(TextProcessor.process("please use j voice with whisper kit", mode: .casual), "please use JVoice with WhisperKit", "built-in dictionary unchanged")
+
+print("TextProcessor.removeDisfluencies — m-trailing hesitation fillers (uhm/erm)")
+expectEqual(TextProcessor.removeDisfluencies("uhm, I was thinking"), "I was thinking", "leading 'uhm' removed")
+expectEqual(TextProcessor.removeDisfluencies("I was uhm thinking"), "I was thinking", "mid-sentence 'uhm' removed")
+expectEqual(TextProcessor.removeDisfluencies("erm, I think so"), "I think so", "leading 'erm' removed")
+expectEqual(TextProcessor.removeDisfluencies("I was uhmm really erm sure"), "I was really sure", "lengthened uhmm/erm removed")
+// Regression guards: real -rm/-hm words and existing fillers must be untouched.
+expectEqual(TextProcessor.removeDisfluencies("the term was firm and warm"), "the term was firm and warm", "real -rm words preserved")
+expectEqual(TextProcessor.removeDisfluencies("Um, I was thinking"), "I was thinking", "existing 'um' still removed")
+expectEqual(TextProcessor.removeDisfluencies("The error was clear"), "The error was clear", "'er' inside 'error' preserved")
+
 expectEqual(TextProcessor.stripDecoderArtifacts("hello [BLANK_AUDIO] world"), "hello world", "strip [BLANK_AUDIO] mid-string")
 expectEqual(TextProcessor.stripDecoderArtifacts("a [MUSIC] b [APPLAUSE] c"), "a b c", "strip multiple bracketed sentinels")
 expectEqual(TextProcessor.stripDecoderArtifacts("[BLANK_AUDIO]"), "", "all-artifact → empty")
