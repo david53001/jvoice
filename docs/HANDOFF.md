@@ -1,6 +1,22 @@
-# HANDOFF — state as of 2026-06-28 (monochrome UI overhaul: themes + redesigned HUD pill + 2-column Settings + DictationError)
+# HANDOFF — state as of 2026-06-29 (autonomous perf/accuracy loop: 5 KEPT changes, installed + pushed to private GitHub)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
+
+## 2026-06-29 session — Autonomous perf/accuracy loop (5 KEPT changes) + installed + pushed to private GitHub
+
+Ran an autonomous "speed + accuracy" improvement loop on branch `perf-loop/auto-improvements` (state in `docs/perf-loop-journal.md`). It shipped **five test-first, fully-verified changes**, then plateaued (no further safe locally-verifiable wins) and was paused on David's call:
+
+1. `f9c0707` — `TextProcessor.removeWhisperHallucinations`: catch unpunctuated YouTube-style hallucinations in Casual tone.
+2. `d949019` — `TextProcessor.removeDisfluencies`: strip "uhm"/"erm" hesitation fillers (real -rm/-hm words preserved).
+3. `8949804` — `removeWhisperHallucinations`: drop all-symbol silence artifacts (dashes, ellipses, "♪" runs), not just ASCII `.,;:!?`.
+4. `5df2e38` — `removeWhisperHallucinations`: match hallucination phrases wrapped in leading/surrounding marks.
+5. `a87e3a7` — `ChunkPlanner.plan`: cut streaming chunks at the **earliest** qualifying pause (lower latency) instead of the quietest. Validated end-to-end with `scripts/verify-transcription.py --model base` (streaming retention byte-identical before/after → zero regression).
+
+All four hallucination/disfluency fixes are post-processing string logic with full `scripts/run-logic-tests.sh` coverage and canonical `Tests/JVoiceTests/TextProcessorTests.swift` / `ChunkPlannerTests.swift` mirrors. **Verification (all green):** `swift build`, `run-logic-tests.sh` (128 assertions), `verify-streaming.sh` (14), test target compiles, heavy harness zero-regression.
+
+**Done this session:** documented the changes (CHANGELOG.md `[Unreleased]` + this handoff), reinstalled the app to `/Applications` from the latest code via `scripts/install.sh` (stats preserved — `UserDefaults` `com.jvoice.app` is untouched by reinstall), and **pushed to the existing PRIVATE repo `github.com/david53001/jvoice`** (`main` fast-forwarded to include all the above). NOTE: this supersedes the older "nothing pushed to remote / publishing on hold" line below **only for the private repo** — a *public* launch is still David's separate, deliberate decision.
+
+**Deferred levers (need David / on-device measurement, not autonomous edits):** paste timing (`AppTimings.pasteActivationDelay`/`pasteRestoreDelay` — needs real-app paste-reliability dogfooding), decode options (accuracy A/B + product judgment), `RepetitionGuard` stopwords (needs a real regurgitation corpus). See the `docs/perf-loop-journal.md` candidate ledger.
 
 ## 2026-06-28 session — Monochrome UI overhaul: themes + redesigned HUD pill + 2-column Settings + specific DictationError messages (MERGED to main, branch `ui-overhaul-monochrome`)
 

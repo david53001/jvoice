@@ -4,7 +4,7 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
-## [Unreleased] — 2026-06-28
+## [Unreleased] — 2026-06-29
 
 ### Added
 
@@ -23,3 +23,15 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 - **Wider, 2-column Settings window** (`Sources/JVoice/UI/SettingsView.swift`, `SettingsWindow.swift`). Window width increased to 700 pt. Controls (Whisper Model, Processing, Voice Style, Language, Keyboard Shortcut) occupy the left column; user data (Recent Transcripts, Custom Words) the right. Stats appear full-width at the top. The sun/moon theme toggle is in the top-right corner. A Restore-Defaults / Quit row is pinned at the footer.
 
 - `SettingsState` schema bumped to version 2 to store the persisted `appTheme` field.
+
+### Fixed
+
+- **Whisper hallucination filter catches more silence artifacts.** `TextProcessor.removeWhisperHallucinations` (`Sources/JVoice/Services/Transcription/TextProcessor.swift`) drops whole-transcript "hallucinations" — text Whisper invents over near-silent or noisy audio — before it is pasted. Three gaps were closed: (1) YouTube-style sign-offs ("Thanks for watching", "Subscribe to my channel", "Bye") are now caught in **every** tone style, including Casual, which strips the trailing "." that the filter previously needed; (2) a transcript made **entirely of punctuation or symbols** — a stray "-", an ellipsis "…", or Whisper's music-note "♪ ♪" runs over background music — is dropped, not just the old ASCII `.,;:!?` set; (3) a hallucinated phrase **wrapped in leading/surrounding marks** ("- Thanks for watching", "… Bye", "♪ Thanks for watching ♪") is matched by comparing with surrounding marks trimmed from both ends. Real content carrying such marks (e.g. "- send the report by Friday") is left untouched.
+
+- **Filler-word removal strips the hesitations "uhm" and "erm."** `TextProcessor.removeDisfluencies` (same file) already removed um/uh/er/ah/hmm, but missed the common m-trailing forms "uhm"/"erm" (neither is an English word). They are now removed when filler removal is enabled, while real words ending in those letters — "term", "firm", "warm", "error" — are preserved.
+
+### Performance
+
+- **Lower latency for streaming-while-recording transcription.** `ChunkPlanner.plan` (`Sources/JVoice/Services/Transcription/ChunkPlanner.swift`) decides where to cut the still-growing recording into chunks that are transcribed during recording. It now cuts at the **earliest** silence-level pause in range instead of the globally quietest one — so each chunk is emitted as soon as a valid pause appears (and chunks stay smaller, so they decode faster), with no loss of cut safety since every candidate is already below the silence threshold. Validated end-to-end with the `scripts/verify-transcription.py` harness (`base` Whisper model): streaming word-retention and spurious-word counts were byte-identical before and after the change — zero accuracy regression.
+
+These accuracy and latency changes were developed on the `perf-loop/auto-improvements` branch via an autonomous, test-first improvement loop; the per-change rationale, baselines, and verification results are recorded in `docs/perf-loop-journal.md`.
