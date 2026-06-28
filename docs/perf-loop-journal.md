@@ -55,6 +55,8 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 13: NO-OP (plateau, 8th consecutive). Branch green (build / run-logic-tests 126 / verify-streaming 14). No code change since iter 7. Recommend pausing cron `3ae65987`; loop auto-expires ~7 days from creation regardless.
+
 ### 2026-06-28 — iteration 12: NO-OP (plateau, 7th consecutive). Branch green (build / run-logic-tests 126 / verify-streaming 14). No code change since iter 7. Loop converged; remaining levers are David's product-judgment calls. Recommend pausing cron `3ae65987`.
 
 ### 2026-06-28 — iteration 11: NO-OP (plateau, 6th consecutive). Branch green (build / run-logic-tests 126 / verify-streaming 14). Fresh check: test suite has no disabled/TODO/known-issue markers either. No code change. Recommend pausing cron `3ae65987`.
