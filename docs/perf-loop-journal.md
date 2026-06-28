@@ -55,6 +55,22 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 7: NO further safe improvement (plateau confirmed, 2nd consecutive)
+- Fresh pass over `TextProcessor.format`/`normalizeWhitespace`, `ChunkPlanner`, `WavTail`.
+  The only candidates left are rare cosmetic edge cases (e.g. Formal-mode
+  `capitalizeFirstCharacter` not capitalizing the first *letter* when a transcript begins with a
+  quote/symbol) — but Whisper effectively never emits such input from dictation, so fixing it would
+  guard a near-impossible scenario (against the project's "no handling for impossible scenarios"
+  rule). No change made.
+- This confirms the **iteration 6 plateau analysis** (see below) — it remains fully current. The
+  locally-verifiable post-processing wins are done (iters 1, 2, 3, 5); the remaining levers
+  (decode options, paste timing, `ChunkPlanner` cut-point, `RepetitionGuard` stopwords) need a
+  heavy-harness / on-device measurement or David's input, per the iteration-4 ledger.
+- **Verifiers (baseline integrity):** build ✓ / run-logic-tests ✓ (126) / verify-streaming ✓ (14).
+  Branch clean and green.
+- **Decision:** no commit beyond this note. **Recommendation:** pause the 5-min loop (cron
+  `3ae65987`) until a deferred lever is greenlit, to avoid low-value repeated no-ops.
+
 ### 2026-06-28 — iteration 6: NO further safe improvement found this iteration (plateau)
 - **Searched:** the whole-file + streaming decode paths in
   `Services/Transcription/TranscriptionManager.swift` (`decodeFile`/`decodeSamples`), re-scanned
