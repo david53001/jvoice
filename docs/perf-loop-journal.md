@@ -55,6 +55,19 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 14: NO-OP (plateau, 9th consecutive)
+- Re-evaluated the heavy harness as a way to add value. **Conclusion (record so no future
+  iteration wastes ~8 min on it):** `scripts/verify-transcription.py` / `--bench` would NOT
+  exercise this loop's accuracy changes — `removeWhisperHallucinations` is a no-op on normal
+  speech (fires only on whole-transcript hallucination phrases / all-symbol input, which
+  `say`-synthesised real sentences never produce), and `removeDisfluencies` is not invoked by
+  `--bench` (`BenchRunner` calls `process(...)` with `removeFillerWords` = false). The harness
+  measures WhisperKit model accuracy, not this loop's post-processing. So the iter-1/2/3/5
+  "skip heavy harness" calls were correct, and the iter-4/6 "attach a measurement" idea does not
+  apply to the *already-shipped* changes (it would apply to a *future* decode-option change).
+- No code change. Branch green (build / run-logic-tests 126 / verify-streaming 14).
+- Recommend pausing cron `3ae65987`; auto-expires ~7 days from creation regardless.
+
 ### 2026-06-28 — iteration 13: NO-OP (plateau, 8th consecutive). Branch green (build / run-logic-tests 126 / verify-streaming 14). No code change since iter 7. Recommend pausing cron `3ae65987`; loop auto-expires ~7 days from creation regardless.
 
 ### 2026-06-28 — iteration 12: NO-OP (plateau, 7th consecutive). Branch green (build / run-logic-tests 126 / verify-streaming 14). No code change since iter 7. Loop converged; remaining levers are David's product-judgment calls. Recommend pausing cron `3ae65987`.
