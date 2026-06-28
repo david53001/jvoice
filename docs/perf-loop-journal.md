@@ -55,6 +55,8 @@ Captured 2026-06-28 on `perf-loop/auto-improvements` (last good commit `bcc2e7a`
 
 <!-- newest first; one entry per iteration -->
 
+### 2026-06-28 — iteration 9: NO-OP (plateau, 4th consecutive). Branch green (build / run-logic-tests 126 / verify-streaming 14). No code change; iter-4 ledger + iter-6 analysis current. Remaining levers are David's product-judgment calls. Recommend pausing cron `3ae65987`.
+
 ### 2026-06-28 — iteration 8: NO further safe improvement (plateau, 3rd consecutive)
 - No code change. Nothing changed since iteration 7; the plateau analysis (iterations 6–7) and the
   iteration-4 candidate ledger remain fully current — every remaining lever needs a heavy-harness /
