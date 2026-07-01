@@ -22,7 +22,9 @@ public static class ForegroundApp
         return path is null ? null : Path.GetFileNameWithoutExtension(path);
     }
 
-    private static string? ExePath(IntPtr hwnd)
+    /// The full image path of the process owning <paramref name="hwnd"/>, or null on failure.
+    /// Same read-only access class as <see cref="ExeName"/> (used by RunningApps too).
+    public static string? ExePath(IntPtr hwnd)
     {
         if (hwnd == IntPtr.Zero) return null;
         _ = GetWindowThreadProcessId(hwnd, out uint pid);

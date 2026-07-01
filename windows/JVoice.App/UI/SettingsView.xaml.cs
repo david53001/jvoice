@@ -1,7 +1,10 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
+using JVoice.App.Platform;
 using JVoice.Core;
 using JVoice.Core.Models;
 
@@ -127,17 +130,61 @@ public partial class SettingsView : UserControl
         AppRuleModeButton.Content = _appRuleMode.DisplayName();
     }
 
+    // ---- searchable open-app picker (fills AppRuleBox with the chosen app's exe) ----
+    private List<AppChoice> _allApps = new();
+    private bool _suppressPick; // guards the pick round-trip (setting Text/SelectedItem re-fires events)
+
+    private void OnAppRuleFocus(object sender, RoutedEventArgs e)
+    {
+        _allApps = RunningApps.List().ToList(); // refresh on focus so newly-opened apps appear
+        FilterApps(AppRuleBox.Text);
+        AppPickerPopup.IsOpen = AppPickerList.Items.Count > 0;
+    }
+
+    private void OnAppRuleTextChanged(object sender, TextChangedEventArgs e)
+    {
+        AppRuleWatermark.Visibility = string.IsNullOrEmpty(AppRuleBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+        if (_suppressPick) return;
+        FilterApps(AppRuleBox.Text);
+        if (AppRuleBox.IsKeyboardFocusWithin)
+            AppPickerPopup.IsOpen = AppPickerList.Items.Count > 0;
+    }
+
+    private void FilterApps(string? text)
+    {
+        text = text?.Trim();
+        AppPickerList.ItemsSource = string.IsNullOrEmpty(text)
+            ? _allApps
+            : _allApps.Where(a => a.Display.Contains(text, System.StringComparison.OrdinalIgnoreCase)
+                               || a.Exe.Contains(text, System.StringComparison.OrdinalIgnoreCase)).ToList();
+    }
+
+    private void OnAppPicked(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressPick || AppPickerList.SelectedItem is not AppChoice choice) return;
+        _suppressPick = true;
+        AppRuleBox.Text = choice.Exe; // the exact exe name AppModeResolver matches
+        AppPickerList.SelectedItem = null;
+        _suppressPick = false;
+        AppPickerPopup.IsOpen = false;
+        AppRuleBox.CaretIndex = AppRuleBox.Text.Length;
+        AppRuleBox.Focus();
+    }
+
     private void OnAddAppRule(object sender, RoutedEventArgs e) => SubmitAppRule();
     private void OnAppRuleKeyDown(object sender, KeyEventArgs e)
     {
-        if (e.Key == Key.Enter) { SubmitAppRule(); e.Handled = true; }
+        if (e.Key == Key.Enter) { AppPickerPopup.IsOpen = false; SubmitAppRule(); e.Handled = true; }
+        else if (e.Key == Key.Escape) { AppPickerPopup.IsOpen = false; e.Handled = true; }
     }
     private void SubmitAppRule()
     {
-        // Clear only on a successful add (AddAppRule ignores blank/duplicate matches).
+        // Clear only on a successful add (AddAppRule ignores blank/duplicate matches). A typed
+        // partial name is fine — AppModeResolver matches on substring, so "chr" still catches chrome.
         if (Vm.AddAppRule(AppRuleBox.Text, _appRuleMode))
         {
             AppRuleBox.Clear();
+            AppPickerPopup.IsOpen = false;
             AppRuleBox.Focus();
         }
     }

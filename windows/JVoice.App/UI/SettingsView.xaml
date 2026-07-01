@@ -240,7 +240,7 @@
                             </Grid>
 
                             <!-- Custom per-app rules -->
-                            <TextBlock Text="Custom rules — match part of an app's name (e.g. &quot;slack&quot;, &quot;chrome&quot;)."
+                            <TextBlock Text="Custom rules — pick one of your open apps (or type a name), choose a mode, then Add."
                                        FontSize="10" Foreground="{StaticResource Text.W38}" TextWrapping="Wrap" Margin="0,12,0,6" />
                             <TextBlock Text="No custom rules added." FontSize="11" Foreground="{StaticResource Text.W40}"
                                        Visibility="{Binding HasAppModeRules, Converter={StaticResource InverseBoolToVis}}" />
@@ -264,7 +264,7 @@
                                     </ItemsControl.ItemTemplate>
                                 </ItemsControl>
                             </ScrollViewer>
-                            <!-- Add row: star app-name input + click-to-cycle mode chip + Add. -->
+                            <!-- Add row: searchable open-app picker + click-to-cycle mode chip + Add. -->
                             <Grid Margin="0,8,0,0">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*" />
@@ -273,10 +273,61 @@
                                 </Grid.ColumnDefinitions>
                                 <Border Grid.Column="0" CornerRadius="6" Background="{StaticResource Settings.InputBg}"
                                         BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
-                                    <TextBox x:Name="AppRuleBox" Background="Transparent" BorderThickness="0"
-                                             Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
-                                             KeyDown="OnAppRuleKeyDown" />
+                                    <Grid>
+                                        <TextBox x:Name="AppRuleBox" Background="Transparent" BorderThickness="0"
+                                                 Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                                 GotKeyboardFocus="OnAppRuleFocus" TextChanged="OnAppRuleTextChanged"
+                                                 KeyDown="OnAppRuleKeyDown" />
+                                        <!-- Watermark (toggled in code-behind when the box is empty). -->
+                                        <TextBlock x:Name="AppRuleWatermark" Text="Search your open apps&#8230;" FontSize="11"
+                                                   Foreground="{StaticResource Text.W35}" Margin="9,0,0,0"
+                                                   IsHitTestVisible="False" VerticalAlignment="Center" />
+                                    </Grid>
                                 </Border>
+                                <!-- Filtered dropdown of currently-open apps (styled dark to match). -->
+                                <Popup x:Name="AppPickerPopup" PlacementTarget="{Binding ElementName=AppRuleBox}"
+                                       Placement="Bottom" StaysOpen="False" AllowsTransparency="True"
+                                       Width="{Binding ActualWidth, ElementName=AppRuleBox}">
+                                    <Border Background="{StaticResource Settings.PanelBg}" BorderBrush="{StaticResource Settings.Border}"
+                                            BorderThickness="1" CornerRadius="6" Margin="0,2,0,0">
+                                        <ListBox x:Name="AppPickerList" Background="Transparent" BorderThickness="0" MaxHeight="176"
+                                                 SelectionChanged="OnAppPicked" ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                                            <ListBox.ItemContainerStyle>
+                                                <Style TargetType="ListBoxItem">
+                                                    <Setter Property="Padding" Value="8,4" />
+                                                    <Setter Property="Background" Value="Transparent" />
+                                                    <Setter Property="Template">
+                                                        <Setter.Value>
+                                                            <ControlTemplate TargetType="ListBoxItem">
+                                                                <Border x:Name="row" Background="{TemplateBinding Background}" CornerRadius="4"
+                                                                        Padding="{TemplateBinding Padding}">
+                                                                    <ContentPresenter />
+                                                                </Border>
+                                                                <ControlTemplate.Triggers>
+                                                                    <Trigger Property="IsMouseOver" Value="True">
+                                                                        <Setter TargetName="row" Property="Background" Value="#1AFFFFFF" />
+                                                                    </Trigger>
+                                                                    <Trigger Property="IsSelected" Value="True">
+                                                                        <Setter TargetName="row" Property="Background" Value="#26FFFFFF" />
+                                                                    </Trigger>
+                                                                </ControlTemplate.Triggers>
+                                                            </ControlTemplate>
+                                                        </Setter.Value>
+                                                    </Setter>
+                                                </Style>
+                                            </ListBox.ItemContainerStyle>
+                                            <ListBox.ItemTemplate>
+                                                <DataTemplate>
+                                                    <StackPanel>
+                                                        <TextBlock Text="{Binding Display}" FontSize="11" Foreground="{StaticResource Text.W85}"
+                                                                   TextTrimming="CharacterEllipsis" />
+                                                        <TextBlock Text="{Binding Exe}" FontSize="9" Foreground="{StaticResource Text.W38}" />
+                                                    </StackPanel>
+                                                </DataTemplate>
+                                            </ListBox.ItemTemplate>
+                                        </ListBox>
+                                    </Border>
+                                </Popup>
                                 <Button x:Name="AppRuleModeButton" Grid.Column="1" Style="{StaticResource DarkPrimaryButton}" Margin="6,0,0,0"
                                         MinWidth="80" Content="Code" Foreground="{StaticResource Settings.Teal}" Tag="{StaticResource Settings.Teal}"
                                         Click="OnCycleAppRuleMode" ToolTip="Click to change the mode this rule applies" />
