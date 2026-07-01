@@ -19,7 +19,7 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **523 / 523 passing** (grew from 122 during
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **713 / 713 passing** (grew from 122 during
   the bug-hunt and the subsequent feature work tracked in §7; a shared, moving total).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
@@ -64,14 +64,19 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
   the streaming session dropped his quiet *trailing clause* (it read as "silent" at his low level); it now
   falls back to the lossless whole-file path instead of dropping the tail. Verified end-to-end (real engine):
   silence/hum/noise → "No speech detected."; quiet speech at his levels → exact transcript. `dotnet test` 434/434.
-- **(OPEN, in progress) Silence sometimes pastes a hallucinated sentence** (David-reported 2026-06-24 — see
-  §7 #24). The no-speech work above fixed the *false negative* (real quiet speech wrongly rejected); this is
-  the *false positive* — on a near-silent short press whisper can emit a confident, plausible sentence (e.g.
-  "you're welcome.", "you can't see it, but you can't see it."), worst with the vocab prompt ON, that the
-  annotation-only `NonSpeechAnnotation` doesn't catch. A **calibrated, model-driven, Windows-only** gate is
-  being built — the capture harness (`JVOICE_KEEP_WAV` + `nospeech-probe --analyze`) is done and verified;
-  it awaits David's real calibration clips. The two must stay **balanced** (don't reject his quiet speech to
-  kill the hallucination), and confidence is NOT the signal (it's inverted — §7 #24).
+- **The "first recording freeze" is root-caused and FIXED** (2026-07-02 — see §7 #37). It was never
+  elevation: `NAudioRecorder.Stop()` disposed the WASAPI capture (whose `Dispose` joins the capture
+  thread) while holding the gate that the capture callback needs — a lock-order inversion that froze
+  the UI thread on an unlucky stop press. Teardown now detaches under the gate and disposes outside it;
+  deterministic regression via `JVOICE_TEST_SLOW_CAPTURE_MS` + the headless
+  `windows/tools/capture-stop-probe`. Elevated dictation verified working (the old §8 warning is retired).
+- **Silence no longer pastes a hallucinated sentence** (David-reported 2026-06-24; CLOSED 2026-07-02 —
+  see §7 #38). Calibrated on 17 of David's real capture clips: whisper's confidence is INVERTED
+  (hallucinations score highest), and the working discriminator is **prompt-vs-no-prompt agreement**.
+  `Core/Policy/SilenceHallucinationGate` + a witness decode in the engine: a near-silent clip
+  (rawRMS < 0.004, trigger only) that still produced prompted text is re-decoded without the prompt —
+  an empty reduced witness ⇒ "No speech detected.", else the prompted transcript is kept. 10/10 silent
+  presses gated, 7/7 quiet real sentences kept (the #21 balance held).
 
 **What still needs a human (David's interactive dogfood):** real-mic-with-actual-speech accuracy and
 the *visual* fidelity of the HUD/Settings can only be judged by a person at the desktop. Walk
