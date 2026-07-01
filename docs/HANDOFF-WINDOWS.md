@@ -1130,6 +1130,25 @@ These are real corrections discovered during execution — preserve them.
       Settings render inspected. **Live dogfood pending** (translate accuracy on RO speech; the undo chord;
       per-app Code mode in a real terminal/VS Code; clipboard-only). **NOT pushed / not merged** — sits on
       `feat/dictation-modes` off `windows-port`.
+    - **REVIEW (2026-07-01, commit `39b7864`):** a multi-angle review (correctness / concurrency / cleanup /
+      conventions) ran on the branch. Fixed: (a) `ForegroundApp`'s `QueryFullProcessImageName` was binding
+      the **ANSI** entry (missing `CharSet.Unicode`) unlike `GameDetector` → a non-ASCII install path would
+      mangle the exe name; now matches `GameDetector` exactly; (b) the undo chord could be set equal to the
+      record chord (esp. via the recorder's Backspace-→-default) → both hooks swallow the same press;
+      `SetUndoHotkey`/`SetHotkey` now reject/clear on a shared trigger (modifiers+VK); (c) `UndoLastPaste` now
+      gates on the paste-target HWND so alt-tabbing away can't Ctrl+Z the wrong app; (d) `HotkeyRecorder`
+      gained an opt-in unset/`Placeholder` state (`AllowClear`) so the undo recorder shows "None" and
+      Backspace clears; (e) the app-aware foreground-exe syscall now runs only when the toggle is ON; (f) App
+      Modes list got an empty-state + `MaxHeight`; (g) fuzz round-trip now covers the v3 fields. The
+      `AppModeRules.ToList()`-on-a-background-thread flag was **refuted** — `FinishTranscriptionAsync` has no
+      `ConfigureAwait(false)`, so with the `DispatcherSynchronizationContext` every continuation (incl. the
+      `.ToList()`s) resumes on the UI thread, same as the pre-existing `CustomWords`/`Corrections` calls — no
+      race. **Deferred (considered, not bandaids):** generalizing `GlobalHotkey` to a multi-chord binding list
+      (the undo feature adds a 2nd low-level hook/thread/watchdog — cost only paid when undo is enabled), and
+      extracting a shared `ProcessImagePath.FromWindow(hwnd)` so the exe-path read isn't duplicated between
+      `ForegroundApp` and `GameDetector` (touches the invariant-locked `GameDetector`; the two are now at
+      least byte-identical). Also latent, unchanged: the `Loaded`-time event subscriptions assume the Settings
+      window is hidden-not-destroyed (true today; matches the pre-existing main-recorder pattern).
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 3** — v2 added `gameMode`
