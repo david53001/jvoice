@@ -1149,6 +1149,21 @@ These are real corrections discovered during execution — preserve them.
       `ForegroundApp` and `GameDetector` (touches the invariant-locked `GameDetector`; the two are now at
       least byte-identical). Also latent, unchanged: the `Loaded`-time event subscriptions assume the Settings
       window is hidden-not-destroyed (true today; matches the pre-existing main-recorder pattern).
+    - **SEARCHABLE APP PICKER (2026-07-01, commit `7bc94fa`, David-requested):** the App Modes add-row is no
+      longer a raw exe text box — focusing it opens a dark filtered dropdown of the user's **currently-open
+      apps** (friendly `FileVersionInfo.FileDescription` + exe name), typing filters, picking fills the exact
+      exe name the resolver matches. Free-text still works (partial name = substring match at runtime). New
+      `JVoice.App/Platform/System/RunningApps.cs` enumerates visible/titled/non-owned top-level windows, skips
+      shell hosts (`ApplicationFrameHost`…), de-dupes by exe — **read-only, reuses the now-public
+      `ForegroundApp.ExePath`** (no new privileged P/Invoke; anti-cheat-safe). Verified via a throwaway
+      `--list-apps` probe (found Chrome/VS Code(exe "Code")/Discord/Spotify/Explorer with correct friendly
+      names), then the probe was removed. `--settings-render` shows the watermark; the popup itself opens only
+      on focus (not in the static render).
+    - **INSTALLED BUILD REFRESHED (2026-07-01):** David dogfooding — the install at
+      `%LOCALAPPDATA%\Programs\JVoice` was updated to this branch via a fresh `JVoiceFlavor=gpu` publish +
+      `robocopy /MIR /XF uninstall.ps1` (preserve the uninstaller; user data lives elsewhere), relaunched
+      **non-elevated**. So the installed app is now the `feat/dictation-modes` build, NOT `windows-port`/`main`
+      — reinstall from `JVoice-Setup-GPU.exe` (or re-mirror a `windows-port` publish) to revert.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 3** — v2 added `gameMode`
