@@ -26,6 +26,39 @@ public class TextProcessorTests
         Assert.Contains("JVoice", outp);
     }
 
+    // ===== Code mode — Windows-only ToneStyle.Code (app-aware "code mode" for terminals/IDEs) =====
+    // Minimal formatting: preserve casing, symbols and terminal punctuation as spoken; NO forced
+    // capitalization, NO added period, NO lowercasing. Corrections/filler-removal still apply.
+
+    [Fact]
+    public void Code_PreservesCasingAndSymbols_NoReformat()
+        => Assert.Equal("MyClass.doThing()",
+            TextProcessor.Process("MyClass.doThing()", ToneStyle.Code, Empty, false, Array.Empty<string>()));
+
+    [Fact]
+    public void Code_DoesNotAddTerminalPeriod()
+        => Assert.Equal("run the build",
+            TextProcessor.Process("run the build", ToneStyle.Code, Empty, false, Array.Empty<string>()));
+
+    [Fact]
+    public void Code_DoesNotStripTerminalPunctuation()
+        => Assert.Equal("git commit.",
+            TextProcessor.Process("git commit.", ToneStyle.Code, Empty, false, Array.Empty<string>()));
+
+    [Fact]
+    public void Code_DoesNotLowercase()
+        => Assert.Equal("Open API URL",
+            TextProcessor.Process("Open API URL", ToneStyle.Code, Empty, false, Array.Empty<string>()));
+
+    [Fact]
+    public void Code_StillHonorsFillerRemoval()
+        => Assert.Equal("run the build",
+            TextProcessor.Process("um run the build", ToneStyle.Code, Empty, true, Array.Empty<string>()));
+
+    [Fact]
+    public void Code_DisplayName_IsCode()
+        => Assert.Equal("Code", ToneStyle.Code.DisplayName());
+
     [Fact]
     public void RemoveFillerWords_StripsDisfluencies()
         => Assert.Equal("so can we move",

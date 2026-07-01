@@ -122,6 +122,8 @@ public static class TextProcessor
             ToneStyle.Casual => RemoveTerminalPunctuation(trimmed),
             ToneStyle.Formal => EnsureTerminalPeriod(CapitalizeFirstCharacter(trimmed)),
             ToneStyle.VeryCasual => EnsureTerminalDotOrQuestion(CollapseRepeatedCommas(trimmed)),
+            // Code (Windows-only): minimal formatting — leave casing/symbols/punctuation as spoken.
+            ToneStyle.Code => trimmed,
             _ => trimmed,
         };
     }
