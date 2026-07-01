@@ -242,24 +242,28 @@
                             <!-- Custom per-app rules -->
                             <TextBlock Text="Custom rules — match part of an app's name (e.g. &quot;slack&quot;, &quot;chrome&quot;)."
                                        FontSize="10" Foreground="{StaticResource Text.W38}" TextWrapping="Wrap" Margin="0,12,0,6" />
-                            <ItemsControl ItemsSource="{Binding AppModeRules}"
+                            <TextBlock Text="No custom rules added." FontSize="11" Foreground="{StaticResource Text.W40}"
+                                       Visibility="{Binding HasAppModeRules, Converter={StaticResource InverseBoolToVis}}" />
+                            <ScrollViewer MaxHeight="88" VerticalScrollBarVisibility="Auto"
                                           Visibility="{Binding HasAppModeRules, Converter={StaticResource BoolToVis}}">
-                                <ItemsControl.ItemTemplate>
-                                    <DataTemplate>
-                                        <Grid Margin="0,2">
-                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
-                                                <TextBlock Text="{Binding AppMatch}" FontSize="11" Foreground="{StaticResource Text.W75}" />
-                                                <TextBlock Text="&#x2192;" FontSize="11" Foreground="{StaticResource Text.W40}" Margin="6,0,6,0" />
-                                                <TextBlock Text="{Binding Mode}" FontSize="11" Foreground="{StaticResource Settings.Teal}" />
-                                            </StackPanel>
-                                            <Button HorizontalAlignment="Right" Style="{StaticResource PressableButton}"
-                                                    Click="OnRemoveAppRule" Tag="{Binding}"
-                                                    FontFamily="Segoe MDL2 Assets" Content="&#xECC9;"
-                                                    Foreground="#B3FFFFFF" />
-                                        </Grid>
-                                    </DataTemplate>
-                                </ItemsControl.ItemTemplate>
-                            </ItemsControl>
+                                <ItemsControl ItemsSource="{Binding AppModeRules}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2">
+                                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                                    <TextBlock Text="{Binding AppMatch}" FontSize="11" Foreground="{StaticResource Text.W75}" />
+                                                    <TextBlock Text="&#x2192;" FontSize="11" Foreground="{StaticResource Text.W40}" Margin="6,0,6,0" />
+                                                    <TextBlock Text="{Binding Mode}" FontSize="11" Foreground="{StaticResource Settings.Teal}" />
+                                                </StackPanel>
+                                                <Button HorizontalAlignment="Right" Style="{StaticResource PressableButton}"
+                                                        Click="OnRemoveAppRule" Tag="{Binding}"
+                                                        FontFamily="Segoe MDL2 Assets" Content="&#xECC9;"
+                                                        Foreground="#B3FFFFFF" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
                             <!-- Add row: star app-name input + click-to-cycle mode chip + Add. -->
                             <Grid Margin="0,8,0,0">
                                 <Grid.ColumnDefinitions>

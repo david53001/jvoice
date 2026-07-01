@@ -23,6 +23,15 @@ public sealed class HotkeyRecorder : System.Windows.Controls.Button
 
     public event Action<HotkeyChord>? ChordChanged;
 
+    /// When true this recorder supports an "unset" state: Backspace/Delete (and the external
+    /// <see cref="ShowCleared"/>) show <see cref="Placeholder"/> and raise <see cref="Cleared"/>
+    /// instead of resetting to the default chord. Off by default, so the main record recorder keeps
+    /// its "Backspace = restore default" behavior; the opt-in undo recorder turns it on.
+    public bool AllowClear { get; set; }
+    public string Placeholder { get; set; } = "None";
+    public event Action? Cleared;
+    private bool _cleared;
+
     public HotkeyRecorder()
     {
         Focusable = true;
@@ -31,10 +40,20 @@ public sealed class HotkeyRecorder : System.Windows.Controls.Button
         LostFocus += (_, _) => EndCapture();
     }
 
+    /// Put the recorder into the unset/placeholder display state (external sync; does NOT raise
+    /// Cleared). Used when the bound value is "disabled/none".
+    public void ShowCleared()
+    {
+        _cleared = true;
+        if (!_capturing) Content = Placeholder;
+    }
+
     private static void OnChordChanged(DependencyObject d, DependencyPropertyChangedEventArgs e)
     {
         var r = (HotkeyRecorder)d;
-        if (!r._capturing) r.Content = ((HotkeyChord)e.NewValue).Format();
+        if (r._capturing) return;
+        r._cleared = false; // an externally-set chord is a real value, not the unset state
+        r.Content = ((HotkeyChord)e.NewValue).Format();
     }
 
     private void BeginCapture()
@@ -49,7 +68,7 @@ public sealed class HotkeyRecorder : System.Windows.Controls.Button
     {
         if (!_capturing) return;
         _capturing = false;
-        Content = Chord.Format();
+        Content = _cleared ? Placeholder : Chord.Format();
     }
 
     protected override void OnPreviewKeyDown(KeyEventArgs e)
@@ -65,6 +84,13 @@ public sealed class HotkeyRecorder : System.Windows.Controls.Button
         if (key == Key.Escape) { EndCapture(); return; }
         if (key is Key.Back or Key.Delete)
         {
+            if (AllowClear)
+            {
+                _cleared = true;
+                EndCapture();          // shows Placeholder (since _cleared)
+                Cleared?.Invoke();
+                return;
+            }
             SetChord(HotkeyChord.Default);
             EndCapture();
             return;
@@ -86,6 +112,7 @@ public sealed class HotkeyRecorder : System.Windows.Controls.Button
 
     private void SetChord(HotkeyChord chord)
     {
+        _cleared = false;
         Chord = chord;
         ChordChanged?.Invoke(chord);
     }

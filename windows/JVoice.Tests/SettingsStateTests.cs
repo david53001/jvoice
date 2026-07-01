@@ -108,7 +108,7 @@ public class SettingsStateTests
         string[] langs = { "English", "english", "Romanian", "Klingon" };
         for (int i = 0; i < 400; i++)
         {
-            int version = rng.Next(0, 5); // 0..4 — anything > 2 must throw ForwardVersionException
+            int version = rng.Next(0, 5); // 0..4 — anything > 3 (CurrentSchemaVersion) must throw
             var dto = new
             {
                 schemaVersion = version,
@@ -150,7 +150,7 @@ public class SettingsStateTests
             """;
         var s = SettingsStateJson.Deserialize(v1Json);
         Assert.Equal(GameDetectionMode.Balanced, s.GameMode);
-        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // normalized to 2
+        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // normalized to 3
         Assert.Equal(ToneStyle.Casual, s.Mode);
     }
 

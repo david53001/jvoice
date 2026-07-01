@@ -22,9 +22,12 @@ public partial class SettingsView : UserControl
             Recorder.Chord = Vm.Hotkey;
             Recorder.ChordChanged += chord => Vm.SetHotkey(chord);
 
-            // Undo-last-paste recorder: show the assigned chord or "None" (opt-in / disabled).
+            // Undo-last-paste recorder: opt-in, so it supports an "unset" (None) state — Backspace
+            // clears it instead of arming the default (record) chord.
+            UndoRecorder.AllowClear = true;
             SyncUndoRecorder();
             UndoRecorder.ChordChanged += chord => Vm.SetUndoHotkey(chord);
+            UndoRecorder.Cleared += () => Vm.ClearUndoHotkey();
 
             // App-rule mode chip: seed its label from the default add-mode.
             AppRuleModeButton.Content = _appRuleMode.DisplayName();
@@ -45,7 +48,7 @@ public partial class SettingsView : UserControl
     private void SyncUndoRecorder()
     {
         if (Vm.UndoHotkey is { } c) UndoRecorder.Chord = c;
-        else UndoRecorder.Content = "None";
+        else UndoRecorder.ShowCleared();
     }
 
     private void OnAddWord(object sender, RoutedEventArgs e) => SubmitWord();
@@ -145,11 +148,8 @@ public partial class SettingsView : UserControl
             Vm.RemoveAppRule(rule);
     }
 
-    private void OnClearUndoHotkey(object sender, RoutedEventArgs e)
-    {
-        Vm.ClearUndoHotkey();
-        UndoRecorder.Content = "None";
-    }
+    private void OnClearUndoHotkey(object sender, RoutedEventArgs e) => Vm.ClearUndoHotkey();
+    // (ClearUndoHotkey raises UndoHotkey → SyncUndoRecorder → ShowCleared, so the display follows.)
 
     private void OnRestoreDefaults(object sender, RoutedEventArgs e)
     {

@@ -52,9 +52,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private DispatcherTimer? _hudResetTimer;
     private string[] _pendingRevertWords = [];
     private string _preFixTranscript = "";
-    // The text JVoice most recently PASTED (not clipboard-only), captured for the undo hotkey.
-    // One-shot: cleared after an undo so a second press can't walk further back the app's history.
+    // The text JVoice most recently PASTED (not clipboard-only) + the window it went into, captured
+    // for the undo hotkey. One-shot: cleared after an undo. The HWND gates undo to that same window
+    // so alt-tabbing away can't fire Ctrl+Z into an unrelated app.
     private string _lastPastedText = "";
+    private IntPtr _lastPastedHwnd = IntPtr.Zero;
 
     public VoiceCoordinator()
     {
@@ -300,9 +302,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     public bool HasUndoHotkey => _undoHotkey is not null;
     public string UndoHotkeyDisplay => _undoHotkey is { } c ? c.Format() : "None";
 
-    /// Assign (or re-assign) the undo hotkey and register the second global hook.
+    /// Assign (or re-assign) the undo hotkey and register the second global hook. Rejects a chord
+    /// that shares the record hotkey's trigger (same modifiers + key): both hooks would swallow it,
+    /// so one would break the other (a stray Ctrl+Z on every record press). On reject we re-raise so
+    /// the recorder re-syncs to the real (unchanged) undo chord instead of the rejected one.
     public void SetUndoHotkey(HotkeyChord chord)
     {
+        if (SharesTrigger(chord, _hotkeyChord)) { RaiseUndoHotkeyFlags(); return; }
         _undoHotkey = chord;
         _undoHotkeyReg.Register(chord);
         RaiseUndoHotkeyFlags();
@@ -321,16 +327,23 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     private void RaiseUndoHotkeyFlags() { Raise(nameof(UndoHotkey)); Raise(nameof(HasUndoHotkey)); Raise(nameof(UndoHotkeyDisplay)); }
 
-    /// Send the foreground app's own Undo (Ctrl+Z) to reverse JVoice's last paste. Guarded so it
-    /// only fires when JVoice actually pasted this session and the foreground isn't one of our own
-    /// windows. One-shot (clears the record) so a stray double-press can't walk the app's history.
+    /// Two chords trigger the same physical press iff their modifiers + virtual key match — the hook
+    /// matches on those, not on the display KeyName, so this (not `==`) is the collision test.
+    private static bool SharesTrigger(HotkeyChord a, HotkeyChord b)
+        => a.Modifiers == b.Modifiers && a.VirtualKey == b.VirtualKey;
+
+    /// Send the foreground app's own Undo (Ctrl+Z) to reverse JVoice's last paste. Fires only when
+    /// JVoice actually pasted this session AND the foreground is still the exact window we pasted
+    /// into (so alt-tabbing away can't undo an unrelated app's edit). One-shot: clears the record so
+    /// a stray double-press can't walk the app's history.
     public void UndoLastPaste()
     {
         if (string.IsNullOrEmpty(_lastPastedText)) return;
         IntPtr fg = ForegroundWindowTracker.GetForegroundWindowNow();
-        if (fg == IntPtr.Zero || ForegroundWindowTracker.IsOwnedByCurrentProcess(fg)) return;
+        if (fg == IntPtr.Zero || fg != _lastPastedHwnd) return;
         _paster.SendUndo();
         _lastPastedText = "";
+        _lastPastedHwnd = IntPtr.Zero;
     }
 
     // ====================== lifecycle / wiring ======================
@@ -483,6 +496,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _hotkeyChord = chord;
         _hotkey.Register(chord);
         Raise(nameof(Hotkey));
+        // If the record chord now collides with the undo chord, the record hotkey wins — clear undo
+        // so the two hooks can't both swallow the same press.
+        if (_undoHotkey is { } u && SharesTrigger(u, chord)) ClearUndoHotkey();
         // Persisted to settings.json (the Hotkey field) so a rebind survives relaunch.
         PersistSettings();
     }
@@ -905,10 +921,14 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             var withPack = _developerTermsEnabled ? DeveloperTerms.Augment(userDict) : userDict;
             var extraDict = UserCorrections.Merge(withPack, Corrections.ToList());
             // App-aware modes: if the paste target matches a user rule (or a built-in code app),
-            // dictate under that tone instead of the global one; otherwise keep _toneMode. The exe
-            // read is read-only (ForegroundApp), and target is the resolved paste window.
-            string? targetExe = ForegroundApp.ExeName(target);
-            ToneStyle effectiveTone = AppModeResolver.Resolve(targetExe, AppModeRules.ToList(), _appAwareModes) ?? _toneMode;
+            // dictate under that tone instead of the global one; otherwise keep _toneMode. Gated on
+            // the master toggle so the (read-only) foreground-exe probe is skipped entirely when off.
+            ToneStyle effectiveTone = _toneMode;
+            if (_appAwareModes)
+            {
+                string? targetExe = ForegroundApp.ExeName(target); // read-only; target is the paste window
+                effectiveTone = AppModeResolver.Resolve(targetExe, AppModeRules.ToList(), enabled: true) ?? _toneMode;
+            }
             string processed = TextProcessor.RemoveWhisperHallucinations(
                 TextProcessor.Process(transcript, effectiveTone, extraDict, _removeFillerWords, vocab));
 
@@ -948,8 +968,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                         await _dispatcher.InvokeAsync(() => { ShowError("Unable to paste into the active app."); ScheduleHudReset(AppTimings.HudResetDelay); });
                         return;
                 }
-                // Paste succeeded — remember it so the opt-in undo hotkey can reverse it.
+                // Paste succeeded — remember it (and where it landed) so the opt-in undo hotkey can
+                // reverse it, but only while that same window is still foreground.
                 _lastPastedText = processed;
+                _lastPastedHwnd = target;
             }
 
             int wordCount = processed.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;

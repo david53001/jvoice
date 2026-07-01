@@ -177,6 +177,11 @@ public class SettingsStoreJsonTests
             for (int c = 0; c < cc; c++)
                 corrections[c] = new CorrectionRule(RandomWord(rng), RandomWord(rng));
 
+            int rc = rng.Next(0, 4);
+            var appRules = new AppModeRule[rc];
+            for (int r = 0; r < rc; r++)
+                appRules[r] = new AppModeRule(RandomWord(rng), modes[rng.Next(modes.Length)]);
+
             var state = new SettingsState(
                 SchemaVersion: SettingsState.CurrentSchemaVersion,
                 Mode: modes[rng.Next(modes.Length)],
@@ -187,7 +192,12 @@ public class SettingsStoreJsonTests
                 Corrections: corrections,
                 Hotkey: RandomChord(rng),
                 GameMode: gameModes[rng.Next(gameModes.Length)],
-                DeveloperTerms: rng.Next(2) == 0);
+                DeveloperTerms: rng.Next(2) == 0,
+                CopyToClipboardOnly: rng.Next(2) == 0,
+                UndoHotkey: rng.Next(2) == 0 ? RandomChord(rng) : (HotkeyChord?)null,
+                TranslateToEnglish: rng.Next(2) == 0,
+                AppAwareModes: rng.Next(2) == 0,
+                AppModeRules: appRules);
 
             var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(state));
             Assert.Equal(state.Mode, back.Mode);
@@ -199,6 +209,11 @@ public class SettingsStoreJsonTests
             Assert.Equal(state.Hotkey, back.Hotkey);
             Assert.Equal(state.GameMode, back.GameMode);
             Assert.Equal(state.DeveloperTerms, back.DeveloperTerms);
+            Assert.Equal(state.CopyToClipboardOnly, back.CopyToClipboardOnly);
+            Assert.Equal(state.UndoHotkey, back.UndoHotkey);
+            Assert.Equal(state.TranslateToEnglish, back.TranslateToEnglish);
+            Assert.Equal(state.AppAwareModes, back.AppAwareModes);
+            Assert.Equal(state.AppModeRules, back.AppModeRules);
             Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
         }
     }

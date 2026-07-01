@@ -32,9 +32,12 @@ public static class ForegroundApp
         if (hProc == IntPtr.Zero) return null; // can't open (e.g. higher integrity) — safe fallback
         try
         {
+            // Mirrors GameDetector's read exactly (CharSet.Unicode → the ...W entry point,
+            // ref uint size, ToString(0, cap)); a non-Unicode marshal would mangle a non-ASCII
+            // install path and break the app-mode match.
             var sb = new StringBuilder(1024);
-            int cap = sb.Capacity;
-            return QueryFullProcessImageName(hProc, 0, sb, ref cap) ? sb.ToString() : null;
+            uint cap = (uint)sb.Capacity;
+            return QueryFullProcessImageName(hProc, 0, sb, ref cap) ? sb.ToString(0, (int)cap) : null;
         }
         finally
         {
@@ -48,9 +51,9 @@ public static class ForegroundApp
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
 
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool QueryFullProcessImageName(IntPtr hProcess, int dwFlags, StringBuilder lpExeName, ref int lpdwSize);
+    private static extern bool QueryFullProcessImageName(IntPtr hProcess, uint dwFlags, StringBuilder lpExeName, ref uint lpdwSize);
 
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]

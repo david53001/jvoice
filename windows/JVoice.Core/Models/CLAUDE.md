@@ -4,7 +4,9 @@ Plain data shared across the app: enums, value types, and the JSON shapes persis
 
 ## Key files
 - `SettingsState.cs` / `SettingsStateJson.cs` — the settings model + its on-disk JSON DTO
-  (schema v2; `GameMode` added). The DTO is the persistence contract.
+  (schema **v3**; v2 added `gameMode`, v3 added the Windows-only dictation-feature fields
+  `copyToClipboardOnly` / `undoHotkey` (nullable) / `translateToEnglish` / `appAwareModes` /
+  `appModeRules`). The DTO is the persistence contract.
 - `ToneStyle.cs`, `TranscriptionLanguage.cs`, `WhisperModelOption.cs`, `GameDetectionMode.cs`,
   `HotkeyChord.cs` — user-facing enums/choices.
 - `HudState.cs` — the HUD state machine the UI mirrors (idle / recording / preparing /
