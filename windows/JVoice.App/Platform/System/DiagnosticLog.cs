@@ -21,7 +21,10 @@ public static class DiagnosticLog
     {
         try
         {
-            string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  {message}{Environment.NewLine}";
+            // [pid/tid] prefix: interleaved instances (e.g. an elevated relaunch beside the
+            // outgoing copy) and cross-thread flows are untangleable without it — the 2026-06-26
+            // "elevated freeze" hunt had to guess which PID wrote which line.
+            string line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}  [{Environment.ProcessId}/{Environment.CurrentManagedThreadId}]  {message}{Environment.NewLine}";
             lock (Gate) File.AppendAllText(LogPath, line, Encoding.UTF8);
         }
         catch { /* diagnostics must never break the app */ }

@@ -33,6 +33,14 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
     // always sees the latest write without a lock (a single float is torn-read-safe).
     private volatile float _level;
 
+    // TEST-ONLY seam (env-gated, zero cost when unset), following GlobalHotkey's
+    // JVOICE_HOTKEY_TEST_STALL_MS precedent: JVOICE_TEST_SLOW_CAPTURE_MS=<n> widens the
+    // capture thread's _gate hold in OnDataAvailable so the otherwise ~sub-1% per-stop
+    // "first-recording freeze" race (Stop() joining the capture thread while it is
+    // blocked on _gate) reproduces deterministically for on-device regression tests.
+    private static readonly int _testSlowCaptureMs =
+        int.TryParse(Environment.GetEnvironmentVariable("JVOICE_TEST_SLOW_CAPTURE_MS"), out var v) && v > 0 ? v : 0;
+
     public string? CurrentPath { get; private set; }
     public bool IsRecording { get; private set; }
     public DateTime? StartedAt { get; private set; }
@@ -44,6 +52,9 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
 
     public bool TryStart(out string? error)
     {
+        (WasapiCapture? Capture, MMDevice? Device) failed = default;
+        try
+        {
         lock (_gate)
         {
             if (IsRecording) { error = null; return false; }
@@ -96,30 +107,45 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
             catch (Exception ex)
             {
                 error = $"Could not start the microphone: {ex.Message}";
-                TearDownLocked(deleteFile: true);
+                failed = TearDownLocked(deleteFile: true);
                 return false;
             }
+        }
+        }
+        finally
+        {
+            // Runs after the lock block has exited → the gate is released here.
+            DisposeDetached(failed);
         }
     }
 
     public string? Stop()
     {
+        (WasapiCapture? Capture, MMDevice? Device) detached = default;
+        try
+        {
         lock (_gate)
         {
             if (!IsRecording) return CurrentPath;
             string? path = CurrentPath;
             try
             {
-                _capture?.StopRecording();   // triggers OnRecordingStopped (drains + disposes)
+                _capture?.StopRecording();   // async request; the capture thread winds down on its own
             }
             catch { /* ignore */ }
             PumpToWriter();                  // final drain of anything buffered
             FinalizeWriterLocked();
             IsRecording = false;
             StartedAt = null;
-            DisposeCaptureLocked();
+            detached = DetachLocked();
             CurrentPath = null;
             return path; // caller checks usability via IsUsableRecording
+        }
+        }
+        finally
+        {
+            // Dispose OUTSIDE the gate (the finally runs after the lock block exits).
+            DisposeDetached(detached);
         }
     }
 
@@ -164,6 +190,11 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
             UpdateLevel(e.Buffer, e.BytesRecorded);
             lock (_gate)
             {
+                if (_testSlowCaptureMs > 0) Thread.Sleep(_testSlowCaptureMs); // test seam, see field
+                // Ignore a stale capture that was already detached (teardown disposes it
+                // outside this gate, so a last in-flight packet can still arrive here) —
+                // its samples must not leak into a NEW recording's buffer.
+                if (!ReferenceEquals(sender, _capture)) return;
                 _buffer?.AddSamples(e.Buffer, 0, e.BytesRecorded);
             }
         }
@@ -211,12 +242,15 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
         // Mid-recording failure: tear down the partial file and notify (Swift parity:
         // a broken recording must not be transcribed and must not orphan a WAV).
         string message = $"Recording stopped unexpectedly: {e.Exception.Message}";
+        (WasapiCapture? Capture, MMDevice? Device) detached;
         lock (_gate)
         {
-            TearDownLocked(deleteFile: true);
+            if (!ReferenceEquals(sender, _capture)) return; // a stale, already-detached capture
+            detached = TearDownLocked(deleteFile: true);
             IsRecording = false;
             StartedAt = null;
         }
+        DisposeDetached(detached);
         Failed?.Invoke(message);
         SystemActions.ReportError(message);
     }
@@ -227,6 +261,9 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
     /// flush, so the growing file is continuously readable by WavTailReader.
     private void PumpToWriter()
     {
+        (WasapiCapture? Capture, MMDevice? Device) failed = default;
+        try
+        {
         lock (_gate)
         {
             if (_writer is null || _to16 is null) return;
@@ -245,12 +282,20 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
             catch (Exception ex)
             {
                 string message = $"Recording write failed: {ex.Message}";
-                TearDownLocked(deleteFile: true);
+                failed = TearDownLocked(deleteFile: true);
                 IsRecording = false;
                 StartedAt = null;
                 Failed?.Invoke(message);
                 SystemActions.ReportError(message);
             }
+        }
+        }
+        finally
+        {
+            // Disposed outside the gate. When this pump ran reentrantly from Stop() the
+            // calling thread STILL holds the gate here — DisposeDetached defers to the
+            // thread pool in that case (see Monitor.IsEntered guard).
+            DisposeDetached(failed);
         }
     }
 
@@ -268,35 +313,61 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
         _level = 0f; // meter goes quiet the instant recording ends
     }
 
-    private void DisposeCaptureLocked()
+    /// Detach the capture + device from the recorder's fields (MUST hold _gate). The
+    /// caller disposes the returned pair OUTSIDE the gate via DisposeDetached.
+    private (WasapiCapture? Capture, MMDevice? Device) DetachLocked()
     {
-        if (_capture is not null)
-        {
-            _capture.DataAvailable -= OnDataAvailable;
-            _capture.RecordingStopped -= OnRecordingStopped;
-            try { _capture.Dispose(); } catch { }
-            _capture = null;
-        }
-        try { _device?.Dispose(); } catch { }
-        _device = null;
+        var c = _capture; _capture = null;
+        var d = _device; _device = null;
+        return (c, d);
     }
 
-    /// Stop+dispose everything; optionally delete the partial WAV (failure path).
-    private void TearDownLocked(bool deleteFile)
+    /// Dispose a detached capture/device pair. MUST run WITHOUT _gate held: NAudio's
+    /// WasapiCapture.Dispose JOINS its capture thread, and that thread may right now be
+    /// blocked on _gate inside OnDataAvailable — disposing under the gate is the
+    /// lock-order inversion that permanently froze the app on a stop press (the
+    /// "first recording freeze"; deterministic repro via JVOICE_TEST_SLOW_CAPTURE_MS).
+    /// If the current thread still holds the gate reentrantly (Stop → PumpToWriter
+    /// failure), defer to the thread pool instead of joining here.
+    private void DisposeDetached((WasapiCapture? Capture, MMDevice? Device) detached)
+    {
+        if (detached.Capture is null && detached.Device is null) return;
+        if (Monitor.IsEntered(_gate))
+        {
+            var d = detached;
+            Task.Run(() => DisposeDetached(d));
+            return;
+        }
+        if (detached.Capture is not null)
+        {
+            detached.Capture.DataAvailable -= OnDataAvailable;
+            detached.Capture.RecordingStopped -= OnRecordingStopped;
+            try { detached.Capture.Dispose(); } catch { }
+        }
+        try { detached.Device?.Dispose(); } catch { }
+    }
+
+    /// Stop + finalize everything under the gate and DETACH the capture/device; the
+    /// caller must dispose the returned pair outside the gate (DisposeDetached).
+    /// Optionally deletes the partial WAV (failure path).
+    private (WasapiCapture? Capture, MMDevice? Device) TearDownLocked(bool deleteFile)
     {
         try { _capture?.StopRecording(); } catch { }
         FinalizeWriterLocked();
-        DisposeCaptureLocked();
+        var detached = DetachLocked();
         if (deleteFile && CurrentPath is not null)
         {
             try { File.Delete(CurrentPath); } catch { }
             CurrentPath = null;
         }
+        return detached;
     }
 
     public void Dispose()
     {
-        lock (_gate) TearDownLocked(deleteFile: IsRecording);
+        (WasapiCapture? Capture, MMDevice? Device) detached;
+        lock (_gate) detached = TearDownLocked(deleteFile: IsRecording);
+        DisposeDetached(detached);
     }
 
     // device selection
