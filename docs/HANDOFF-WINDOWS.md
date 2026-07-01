@@ -1075,8 +1075,66 @@ These are real corrections discovered during execution — preserve them.
       dogfood item (the realistic clips were transcript-identical; only a degenerate 8×-repeat synthetic clip
       diverged → "No speech").
 
+32. **Dictation-features batch — quick-wins bundle + app-aware modes (2026-07-01).** David asked "what
+    should we add"; picked a **quick-wins bundle first, then app-aware modes**. All on branch
+    `feat/dictation-modes`. Plan: `docs/superpowers/plans/2026-07-01-windows-dictation-modes.md`. The
+    "brain" `JVoice.Core/Text` is untouched; the new Core pieces are pure + TDD-locked; the
+    game-detection / anti-cheat invariants are preserved.
+    - **Schema bump v2 → v3 (ONE bump for the whole batch).** `SettingsState` gains five Windows-only
+      fields, each with a safe default + per-field JSON fallback so a v2 file upgrades transparently:
+      `copyToClipboardOnly` (false), `undoHotkey` (nullable — **null = disabled**, serialized as JSON
+      null; the only field whose malformed/absent value falls back to null not a default chord),
+      `translateToEnglish` (false), `appAwareModes` (**true**), `appModeRules` (empty). Version-coupled
+      tests moved to v3 in the same commit (schema asserts, forward-version boundary 3→4, exact-keys
+      10→15). `AppModeRules` uses a nullable-param + normalized-property so positional/defaulted
+      construction never yields null.
+    - **Quick win — clipboard-only.** `FinishTranscriptionAsync` stages the text (`Paster.Stage`, which
+      already existed) instead of pasting when the "Copy to Clipboard" toggle (Processing card) is on.
+      No `_lastPastedText` capture in this mode (nothing in an app to undo).
+    - **Quick win — time saved.** New pure `StatsMath.EstimatedMinutesSaved` (words ÷ **40 wpm** typing
+      baseline − minutes spoken, floored at 0, NaN/neg-safe; `TypingWpmBaseline = 40.0`). Surfaced as a
+      third stat in the now **three-up** green Stats card (`TimeSavedDisplay`: "—" / "N min" / "N.N h").
+      6 new StatsMathTests.
+    - **Quick win — dictate-to-translate.** Whisper.net 1.9.1 **does** expose `WithTranslate()` (verified
+      by reflecting the DLL — an earlier explore agent wrongly inferred it was absent). Engine ctor gained
+      a **trailing** optional `bool translate = false` (placed after `tuning` so BenchRunner's positional
+      `tuning` arg still binds); `_translate` → `builder.WithTranslate()`. The "Translate to English"
+      toggle (Language card) rebuilds the engine like a language change. Source stays the `Language`
+      setting; output is English.
+    - **Quick win — undo last paste (opt-in).** A **second** `GlobalHotkey` instance (`_undoHotkeyReg`),
+      registered only when a chord is assigned (**no default** — a registered global chord is swallowed
+      system-wide, so a default would clobber a common key). `UndoLastPaste()` sends the foreground app's
+      own Undo via new `Paster.SendUndo()` (Ctrl+Z; `SendCtrlV` refactored to a shared `SendCtrlKey`).
+      Guarded (only if JVoice pasted this session + foreground isn't ours), **one-shot** (clears
+      `_lastPastedText`), and **game-suppressed** (passes the chord through to a foregrounded game).
+      Recorder + Clear button in the Keyboard Shortcut card; shows "None" when unset.
+    - **App-aware modes.** New Windows-only `ToneStyle.Code` (4th value; minimal formatting — preserve
+      casing/symbols/terminal punctuation as spoken, no forced cap/period/lowercase; corrections + filler
+      removal still apply; kept OUT of the manual `Toggled` cycle). New pure `AppModeResolver.Resolve(exe,
+      userRules, enabled)` + `AppModeRule` record: user rules win (case-insensitive substring, list order =
+      precedence) over a built-in `CodeApps` list (terminals/editors/IDEs → Code); null when off/unknown/
+      unmatched → caller keeps the global tone. The foreground exe is read by new
+      `JVoice.App/Platform/System/ForegroundApp.ExeName` — **same read-only access class as GameDetector**
+      (`PROCESS_QUERY_LIMITED_INFORMATION` + `QueryFullProcessImageName` only; no memory reads/module
+      scans/injection — anti-cheat-safe). Applied in `FinishTranscriptionAsync` on the paste `target`
+      before `TextProcessor.Process`. New "App Modes" card: master toggle (default ON) + per-app rule
+      editor with a **click-to-cycle mode chip** (ComboBox avoided — its dropdown fights the monochrome
+      theme). **NOTE on the request:** David said "switch models" — in context that means **modes** (tone),
+      not Whisper models; per-app rules switch tone only (a runtime model reload costs seconds). Per-app
+      *model* override is left as a documented future field.
+    - **UI:** `SettingsView.xaml` grew to **640×1080** two-column (rendered-verified via `--settings-render`;
+      two initial-display values — the mode chip "Code" and the undo recorder "None" — are set in XAML, not
+      `Loaded`, because the render harness doesn't fire `Loaded`).
+    - **VERIFICATION:** `dotnet build windows/JVoice.sln -c Release` = 0 errors; `dotnet test` = **608/608**
+      (was 555; +53 across StatsMath / TextProcessor / AppModeResolver / SettingsState / SettingsStoreJson).
+      Settings render inspected. **Live dogfood pending** (translate accuracy on RO speech; the undo chord;
+      per-app Code mode in a real terminal/VS Code; clipboard-only). **NOT pushed / not merged** — sits on
+      `feat/dictation-modes` off `windows-port`.
+
 ### Persistence paths (overview §4.9)
-`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 2** adds `gameMode`, §7 #27),
+`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 3** — v2 added `gameMode`
+(§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
+(§7 #32)),
 `stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
 (value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
