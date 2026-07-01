@@ -935,7 +935,8 @@ These are real corrections discovered during execution — preserve them.
       already transcribed phonetically close; they only need spelling/casing NORMALIZATION, which the `extraDictionary`
       path (`TextProcessor.ApplyCorrections`) does for hundreds of terms at **zero decoder cost and zero
       prompt-regurgitation risk**. So the pack is a post-hoc correction dictionary, not a `VocabularyPrompt` addition.
-    - **`JVoice.Core/Text/DeveloperTerms.cs`** — a curated `Map` (heard-form→canonical, ~80 entries) + `Augment(baseDict)`.
+    - **`JVoice.Core/Text/DeveloperTerms.cs`** — a curated `Map` (heard-form→canonical, ~165 entries after the
+      2026-07-01 AI/vibe-coding expansion — see §7 #34) + `Augment(baseDict)`.
       NEW Windows-first Core file (NOT a 1:1 Swift port; intended to be ported to macOS later like the rest of the
       brain). It is deliberately NOT folded into `TextProcessor` (which stays a verbatim macOS port).
     - **Wiring (`VoiceCoordinator` ProcessAndPaste):** `userDict = BuildUserDictionary(vocab)` →
@@ -1192,6 +1193,37 @@ These are real corrections discovered during execution — preserve them.
     live `SizeToContent` window *should* settle on its own (WPF runs the layout loop to completion), and worst
     case the `MaxHeight` guard + outer ScrollViewer keep the X reachable, but David should confirm the live
     window opens at ~757 tall (not showing an outer scrollbar).
+
+34. **Developer-terms pack — AI / "vibe coding" expansion (David-requested, 2026-07-01, branch `feat/dictation-modes`).**
+    David noted the pack (§7 #28) was strong on the "traditional stack" (JS/Python/infra) but had almost none of the
+    modern AI-assisted / "vibe coding" vocabulary. Added a new **`// ---- AI / vibe coding ----`** block to
+    `JVoice.Core/Text/DeveloperTerms.cs` — **+58 heard-form keys** (Map `107 → 165`), no code/API change, no schema
+    change, no wiring change (it flows through the existing `DeveloperTerms.Augment(userDict)` call at
+    `VoiceCoordinator.cs:921`, still gated by the **Developer Terms** toggle, still default ON). Brain otherwise untouched.
+    - **What was added** (all unambiguous product tokens; two variants each where Whisper spaces them):
+      **tools/agents** Copilot, GitHub Copilot, Claude Code, Codeium, Windsurf, Ollama, Replit;
+      **frameworks/protocols** MCP, LangGraph, LlamaIndex, CrewAI, AutoGen, Semantic Kernel, DSPy, vLLM;
+      **models/labs** GPT, DeepSeek, Mixtral, Qwen, Gemini, Mistral, Groq;
+      **vector DBs** Weaviate, ChromaDB, Qdrant, pgvector, Milvus, FAISS;
+      **deploy/stack** Vercel, Netlify, Supabase, Firebase, Cloudflare, PlanetScale, Turborepo, tRPC, SvelteKit,
+      Deno, pnpm, Zod, Zustand, Prisma.
+    - **The hard part was what to LEAVE OUT.** The pack rewrites ordinary dictation too, so every candidate was audited
+      against the actual `\bword\b` matcher (`TextProcessor.PhrasePattern`). Product names that are also everyday English
+      are **EXCLUDED** and now **test-locked** in `Map_ExcludesAmbiguousEnglishWords`: **`cursor`** (the text/mouse
+      cursor — the single most dangerous possible add), `bolt`, `continue`, `render`, `railway`, `remix`, `warp`,
+      `astro`, bare `svelte` (SvelteKit kept instead), `bun`, **`pinecone`/`pine cone`** (the botanical object), bare
+      `chroma` (ChromaDB kept instead), `cohere` (the verb), **`perplexity`** (also a real ML metric), `grok` (the
+      everyday verb), `drizzle`, `lovable`, and bare `llama` (the animal; versioned model names skipped because Whisper
+      renders digits unpredictably). Those products stay reachable via the user's own custom-words / correction rules,
+      which outrank the pack.
+    - **Three KEPT homophones/judgment calls**, each the same call as the pre-existing `jason`→JSON: `groq`→Groq (NOT
+      `grok`), `gemini`→Gemini (SAFE either way — capitalized in both the zodiac and the Google-model sense, so it can
+      never corrupt), and distinctive tokens `mistral`/`firebase`/`windsurf` whose non-tech senses (the wind / a military
+      firebase / the sport) are vanishingly rare in coding dictation — same judgment already made for `django`/`redis`.
+    - **VERIFICATION:** `dotnet test` **650/650** (DeveloperTermsTests 30 → **72**: +11 positive `Process_AppliesPack`
+      cases, +12 negative `Process_LeavesAmbiguousWordsUntouched` collision guards, +19 `Map_ExcludesAmbiguousEnglishWords`
+      exclusions); `dotnet build JVoice.sln -c Release` **0 errors**. NOT pushed. The full curation rationale (why each
+      exclusion, why each kept homophone) is in the `DeveloperTerms` class doc-comment.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 3** — v2 added `gameMode`

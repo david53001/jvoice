@@ -24,6 +24,23 @@ namespace JVoice.Core.Text;
 /// "jason"→"JSON" — kept because in coding dictation it's overwhelmingly JSON; the
 /// user can remove it with a correction rule if they dictate to a person named Jason.
 ///
+/// The AI / "vibe coding" section (2026-07-01) follows the SAME rule. Many of the hottest
+/// tool names ARE ordinary English, so they are deliberately EXCLUDED to protect normal
+/// dictation: "cursor" (the text/mouse cursor — the single most dangerous one), "bolt",
+/// "continue", "render", "railway", "remix", "warp", "astro", bare "svelte", "bun",
+/// "pinecone"/"pine cone" (the botanical object), bare "chroma", "cohere" (the verb),
+/// "perplexity" (also a real ML metric), "grok" (the everyday verb), "drizzle", "lovable",
+/// and bare "llama" (the animal — versioned model names like "Llama 3" are skipped too,
+/// since Whisper renders digits unpredictably). Those products stay reachable via the
+/// user's own custom-words / correction rules, which outrank this pack by design.
+/// Three homophones/near-collisions are KEPT, each the same call as "jason": "groq"→"Groq"
+/// (NOT "grok", the everyday verb + xAI's model), "gemini"→"Gemini" (SAFE either way — it's
+/// a proper noun capitalized in BOTH the zodiac and the Google-model sense, so it can never
+/// corrupt), and distinctive product tokens "mistral"/"firebase"/"windsurf" whose non-tech
+/// senses (the Mediterranean wind / a military firebase / the sport) are vanishingly rare in
+/// coding dictation — the same judgment already made for "django"/"redis". Every exclusion
+/// above is locked by the test `Map_ExcludesAmbiguousEnglishWords`.
+///
 /// This list is intended to be ported 1:1 to the macOS app later, exactly like the
 /// rest of the brain (cf. <see cref="TextProcessor.CorrectionDictionary"/>).
 public static class DeveloperTerms
@@ -151,6 +168,83 @@ public static class DeveloperTerms
         ["o auth"] = "OAuth",
         ["oauth"] = "OAuth",
         ["npm"] = "npm",
+
+        // ================================================================
+        // AI / "vibe coding" — tools, agents, models, protocols, and the
+        // modern deploy stack (added 2026-07-01). SAME conservative rule:
+        // product names that are ordinary English (cursor/bolt/continue/
+        // render/railway/remix/warp/astro/svelte/bun/pinecone/chroma/cohere/
+        // perplexity/grok/drizzle/llama/lovable) are EXCLUDED — see the class
+        // doc-comment and the Map_ExcludesAmbiguousEnglishWords test.
+        // ================================================================
+
+        // ---- AI coding tools / agents ----
+        ["copilot"] = "Copilot",
+        ["github copilot"] = "GitHub Copilot",
+        ["claude code"] = "Claude Code",
+        ["codeium"] = "Codeium",
+        ["windsurf"] = "Windsurf",
+        ["ollama"] = "Ollama",
+        ["o llama"] = "Ollama",
+        ["replit"] = "Replit",
+        ["rep lit"] = "Replit",
+
+        // ---- AI frameworks / orchestration / protocols ----
+        ["mcp"] = "MCP",
+        ["lang graph"] = "LangGraph",
+        ["langgraph"] = "LangGraph",
+        ["llama index"] = "LlamaIndex",
+        ["llamaindex"] = "LlamaIndex",
+        ["crew ai"] = "CrewAI",
+        ["crewai"] = "CrewAI",
+        ["auto gen"] = "AutoGen",
+        ["autogen"] = "AutoGen",
+        ["semantic kernel"] = "Semantic Kernel",
+        ["dspy"] = "DSPy",
+        ["vllm"] = "vLLM",
+
+        // ---- Models / labs (numbered versions deliberately skipped) ----
+        ["gpt"] = "GPT",
+        ["deep seek"] = "DeepSeek",
+        ["deepseek"] = "DeepSeek",
+        ["mixtral"] = "Mixtral",
+        ["qwen"] = "Qwen",
+        ["gemini"] = "Gemini",    // safe: capitalized in BOTH the zodiac & Google-model senses
+        ["mistral"] = "Mistral",  // the Mediterranean wind is vanishingly rare in coding dictation
+        ["groq"] = "Groq",        // NOT "grok" (the everyday verb) — kept the same way as "jason"
+
+        // ---- Vector databases ----
+        ["weaviate"] = "Weaviate",
+        ["chroma db"] = "ChromaDB",
+        ["chromadb"] = "ChromaDB",
+        ["qdrant"] = "Qdrant",
+        ["pg vector"] = "pgvector",
+        ["pgvector"] = "pgvector",
+        ["milvus"] = "Milvus",
+        ["faiss"] = "FAISS",
+
+        // ---- Modern deploy / web stack (where vibe-coded apps ship) ----
+        ["vercel"] = "Vercel",
+        ["ver cell"] = "Vercel",
+        ["netlify"] = "Netlify",
+        ["supabase"] = "Supabase",
+        ["firebase"] = "Firebase",
+        ["fire base"] = "Firebase",
+        ["cloudflare"] = "Cloudflare",
+        ["cloud flare"] = "Cloudflare",
+        ["planetscale"] = "PlanetScale",
+        ["planet scale"] = "PlanetScale",
+        ["turborepo"] = "Turborepo",
+        ["turbo repo"] = "Turborepo",
+        ["trpc"] = "tRPC",
+        ["t rpc"] = "tRPC",
+        ["sveltekit"] = "SvelteKit",
+        ["svelte kit"] = "SvelteKit",
+        ["deno"] = "Deno",
+        ["pnpm"] = "pnpm",
+        ["zod"] = "Zod",
+        ["zustand"] = "Zustand",
+        ["prisma"] = "Prisma",
     };
 
     /// Returns <paramref name="baseDict"/> with the pack laid in UNDERNEATH it: every
