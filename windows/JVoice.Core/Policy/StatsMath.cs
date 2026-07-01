@@ -19,4 +19,21 @@ public static class StatsMath
     /// AverageWpm guard above.
     public static bool ShouldRecord(int words, double durationSeconds)
         => words > 0 && durationSeconds > 0;
+
+    /// Words-per-minute a competent typist is assumed to sustain, used as the baseline the
+    /// "time saved" stat measures dictation against. 40 wpm is a conservative average-typist rate.
+    public const double TypingWpmBaseline = 40.0;
+
+    /// Windows-only "time saved" estimate (minutes): how much longer it would have taken to TYPE
+    /// the dictated words (at TypingWpmBaseline) than it took to SPEAK them. Floored at 0 so a slow
+    /// dictation never reports negative savings. NaN/negative seconds are treated as 0 spoken time
+    /// (same NaN-safety intent as AverageWpm/ShouldRecord — `seconds > 0` is false for NaN).
+    public static double EstimatedMinutesSaved(int totalWords, double totalSeconds)
+    {
+        if (totalWords <= 0) return 0;
+        double typingMinutes = totalWords / TypingWpmBaseline;
+        double spokenMinutes = totalSeconds > 0 ? totalSeconds / 60.0 : 0;
+        double saved = typingMinutes - spokenMinutes;
+        return saved > 0 ? saved : 0;
+    }
 }
