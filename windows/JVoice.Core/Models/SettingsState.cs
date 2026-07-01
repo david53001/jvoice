@@ -23,9 +23,14 @@ public sealed record SettingsState(
     bool AppAwareModes = true,
     // User per-app rules (built-in code apps are implicit in AppModeResolver, not persisted).
     // Nullable param + normalized property so a defaulted/positional construction never yields null.
-    IReadOnlyList<AppModeRule>? AppModeRules = null)
+    IReadOnlyList<AppModeRule>? AppModeRules = null,
+    // ── v4 (Windows-only) ──
+    // Automatically check GitHub for a newer JVoice release and offer an in-app update. On by
+    // default; the check is a single anonymous GET to the GitHub API that sends no user data (the
+    // second and only other network call besides the one-time model download). No macOS counterpart.
+    bool CheckForUpdates = true)
 {
-    public const int CurrentSchemaVersion = 3;
+    public const int CurrentSchemaVersion = 4;
 
     public IReadOnlyList<AppModeRule> AppModeRules { get; init; } = AppModeRules ?? Array.Empty<AppModeRule>();
 
@@ -55,5 +60,6 @@ public sealed record SettingsState(
         UndoHotkey: null,
         TranslateToEnglish: false,
         AppAwareModes: true,
-        AppModeRules: Array.Empty<AppModeRule>());
+        AppModeRules: Array.Empty<AppModeRule>(),
+        CheckForUpdates: true);
 }

@@ -198,6 +198,14 @@ public partial class SettingsView : UserControl
     private void OnClearUndoHotkey(object sender, RoutedEventArgs e) => Vm.ClearUndoHotkey();
     // (ClearUndoHotkey raises UndoHotkey → SyncUndoRecorder → ShowCleared, so the display follows.)
 
+    // ---- Updates (in-app version check + one-click update) ----
+
+    private async void OnCheckForUpdates(object sender, RoutedEventArgs e)
+        => await Vm.Updates.CheckAsync(userInitiated: true);
+
+    private void OnUpdateNow(object sender, RoutedEventArgs e)
+        => Vm.Updates.StartDownloadAndInstall();
+
     private void OnRestoreDefaults(object sender, RoutedEventArgs e)
     {
         var r = MessageBox.Show(

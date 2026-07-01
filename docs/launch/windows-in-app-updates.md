@@ -1,0 +1,120 @@
+# JVoice for Windows — in-app updates (feature handoff)
+
+Windows-only. Branch **`feat/in-app-updates`** (worktree, branched from `feat/dictation-modes`
+@ `c9ca6ad`). **NOT merged, NOT pushed.** David asked for an in-app "there's an update available"
+prompt with a one-click Update button and a "marketing" progress bar (eased, no exact percentage,
+fast-start / slow-finish). This is that feature. Recorded as `HANDOFF-WINDOWS.md §7 #36`.
+
+> **Concurrency note:** a second Claude session is working `feat/dictation-modes` at the same time
+> (its in-flight §7 **#34** = developer-terms AI expansion, **#35** = default model → Large). This
+> branch took **#36** to avoid a numbering collision; at merge David gets #34/#35/#36 in sequence.
+> This dedicated doc exists so my write didn't race the other session's live edits to the HANDOFF.
+
+## What it does
+
+- On startup (opt-out), and on demand from **Settings → Updates → "Check Now"**, JVoice asks GitHub
+  for the latest release and compares it to the running build's version.
+- When a newer version exists: the **tray** shows a bold "**Update Available — Open Settings…**"
+  item at the top, and the **Updates card** shows "Update available — vX.Y.Z" + an **"Update Now"**
+  button.
+- Clicking **Update Now** downloads the matching installer with an **eased progress bar** (a plain
+  white fill, **no percentage text**), then launches the installer and quits so it can overwrite the
+  install and relaunch JVoice.
+- **Reframe David should know:** the app updates from a published **GitHub Release**, not from raw
+  commits to `main`. The intended pipeline is *commit/tag on `main` → CI builds installers → creates
+  a GitHub Release → the app sees the release*. Auto-updating on every commit is deliberately not the
+  design (main isn't always release-ready, and each release is a 66–365 MB download).
+
+## Gating reality (why it's dormant today)
+
+- The repo/releases are **private**, so the anonymous GitHub API returns **404**, which the service
+  treats as "no update" — the feature is **silently inert until David publishes** (repo or its
+  Releases made public). Verified live: `JVoice.exe --update-check` prints `available: False`,
+  `error: <none>` against `david53001/jvoice`.
+- Edit **`UpdateConfig.RepoSlug`** at publish time (one place). If the two-account decision changes
+  the target, that's the only edit needed.
+
+## Privacy
+
+The update check is the **second and only other network call** in the app besides the one-time GGML
+model download. It is an anonymous `GET https://api.github.com/repos/<slug>/releases/latest` that
+sends **no user data** (no telemetry, no identifiers) — only a `User-Agent: JVoice-Updater` header
+GitHub requires. It runs only when **"Automatic Updates"** is on (default) or the user clicks "Check
+Now". The Settings card discloses this: *"Check GitHub for a new version. No data is sent."*
+**Assumption logged:** default is **ON** so the prompt David asked for actually appears; a user can
+turn it off in Settings. This is a documented, disclosed exception to the "zero runtime network"
+line — flag for David if he'd prefer it default-off.
+
+## Architecture
+
+**Pure Core (`JVoice.Core/Policy/`, unit-locked by `JVoice.Tests`, no I/O):**
+- `ReleaseVersion.cs` — tolerant version parse/compare (v-prefix, 2–4 components, SemVer
+  `-rc`/`+build` metadata ignored; unparseable → fails so a weird tag never prompts).
+- `UpdateProgressCurve.cs` — the "marketing" curve. `FromFraction` = ease-out (ahead of real early,
+  decelerates late, capped at `Ceiling = 0.95` so the bar sits just short of full until done);
+  `FromElapsed` = time-based crawl when the server sends no Content-Length; `Display(...)` picks
+  between them and returns 1.0 only when `done`.
+- `UpdateCheck.cs` — `GitHubReleaseParser` (lenient JSON→`ReleaseInfo`), `UpdateAssetSelector`
+  (picks `JVoice-Setup.exe` vs `JVoice-Setup-GPU.exe` by flavor, with fallbacks),
+  `UpdateDecision.IsUpdateAvailable` (fail-safe: same/older/unparseable → no prompt).
+
+**App (`JVoice.App/Update/`):**
+- `UpdateConfig.cs` — repo slug, `Enabled` gate, `PreferCpuInstaller` (`#if JVOICE_CPU`), current
+  version. **The one place to edit at publish.**
+- `UpdateService.cs` — the only I/O: HTTP check (never throws; 404 → "no update", other failures →
+  soft error shown only for user-initiated checks), streamed download with `(received, total?)`
+  progress, `LaunchInstaller` (ShellExecute detached).
+- `UpdateCoordinator.cs` — the state machine (`Idle/Checking/UpToDate/Available/Downloading/
+  ReadyToRestart/Error`) + bindable surface. A ~30 ms `DispatcherTimer` eases a shown value toward
+  the pure curve's target (monotonic, up-only) so the fill glides; on completion it fills to full,
+  launches the installer, and quits after ~900 ms so file locks release.
+- `UpdateProbeRunner.cs` — hidden `--update-check` CLI (runs the real query once, prints the result).
+
+**Wiring:**
+- `VoiceCoordinator` exposes `public UpdateCoordinator Updates { get; }`; `Start()` fires a silent
+  startup check when `CheckForUpdatesAutomatically` is on; a `CheckForUpdatesAutomatically` bindable
+  persists like the other toggles.
+- `SettingsView.xaml` — new **"Updates" card** (Column 3, green accent): auto-check toggle, current
+  version + "Check Now", status line, "Update Now", and the eased bar (a `Border` fill whose width =
+  `FractionToWidthConverter(Updates.Progress, track.ActualWidth)`; converter added to
+  `Converters.cs` + registered in `JVoicePalette.xaml`).
+- `TrayIcon.cs` — bold "Update Available — Open Settings…" item when `Updates.UpdateAvailable`.
+- `App.xaml.cs` — `--update-preview <state>` (live window) and `--settings-render <path> <state>`
+  (headless screenshot) force a card state (`available|downloading|checking|uptodate|error`) with no
+  network, for visual verification.
+
+## Settings schema
+
+Bumped **v3 → v4**: new `checkForUpdates` (bool, default **true**), Windows-only, per-field fallback
+(absent → true). `SettingsState` / `SettingsStateJson` updated; `SettingsStateTests` /
+`SettingsStoreJsonTests` updated (version asserts → 4, forward-version test → 5, key count 15 → 16,
+new default + round-trip tests, fuzz range widened).
+
+## The installer-apply step (packaging note)
+
+On "Update Now" the app downloads `JVoice-Setup.exe` (matching flavor) to
+`%TEMP%\JVoice-Update\`, launches it, and quits after ~900 ms so its files unlock. The **IExpress
+`install.ps1`** (in the gitignored `windows/artifacts/`, not in the repo) **should wait for the old
+JVoice process to exit before it robocopies** into `%LOCALAPPDATA%\Programs\JVoice` — add a
+`Get-Process JVoice` poll (or a short `Start-Sleep`) at the top of the copy step as belt-and-braces.
+The installer already relaunches JVoice when it finishes.
+
+## Verification (done)
+
+- `dotnet build windows/JVoice.sln -c Release` → **0 errors**.
+- `dotnet test windows/JVoice.Tests` → **651/651** (608 baseline at the branch point + 43 new:
+  `ReleaseVersionTests`, `UpdateProgressCurveTests`, `UpdateCheckTests`, + settings v4 cases).
+- Live HTTP seam: `JVoice.exe --update-check` → graceful "no update" (404) against the private repo.
+- Visuals: `--settings-render <png> available|downloading|error` — the card renders in the
+  three-column layout; the downloading state shows the eased white fill with **no % text**.
+
+## Still to do (David)
+
+1. **Dogfood** the live flow once there's a real public release to point at (or temporarily aim
+   `UpdateConfig.RepoSlug` at a public test repo): check → download bar → installer relaunch.
+2. **CI release workflow** (the "commit/tag → release" half) is not built here — a GitHub Actions
+   job on a `v*` tag that builds both flavors and publishes a Release. Left as a follow-up so this
+   branch stays focused on the in-app UX; happy to add it next.
+3. Add the `install.ps1` wait-for-exit line at the next installer rebuild (above).
+4. Slot the canonical HANDOFF §7 #36 + `CLAUDE.md` pointer once `feat/dictation-modes` merges
+   (both are already added on this branch; reconcile numbering with that branch's #34/#35).

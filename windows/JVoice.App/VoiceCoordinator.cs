@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Threading;
 using JVoice.App.Platform;
 using JVoice.App.UI;
+using JVoice.App.Update;
 using JVoice.App.Whisper;
 using JVoice.Core;
 using JVoice.Core.Audio;
@@ -31,9 +32,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     // hotkey). Only registered while an UndoHotkey chord is set; unregistered when cleared.
     private readonly GlobalHotkey _undoHotkeyReg = new();
     private readonly WhisperModelStore _modelStore = new();
+    private readonly UpdateService _updateService = new();
     private GameDetector? _gameDetector;
 
     private ITranscriptionEngine _engine;
+
+    /// The in-app updater (Settings "Updates" card + tray). Windows-only (§7 #34).
+    public UpdateCoordinator Updates { get; }
 
     // UI surfaces (set by App in Task 9).
     public HudWindow? Hud { get; set; }
@@ -80,6 +85,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _translateToEnglish = s.TranslateToEnglish;
         _appAwareModes = s.AppAwareModes;
         AppModeRules = new ObservableCollection<AppModeRule>(s.AppModeRules);
+        _checkForUpdates = s.CheckForUpdates;
+        Updates = new UpdateCoordinator(_updateService, _dispatcher, QuitApp, () => Tray?.RebuildMenu());
         _totalWordsSpoken = _statsStore.TotalWords;
         _averageWpm = _statsStore.AverageWpm;
         _timeSavedMinutes = StatsMath.EstimatedMinutesSaved(_statsStore.TotalWords, _statsStore.TotalSeconds);
@@ -264,6 +271,14 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         set { if (_translateToEnglish == value) return; _translateToEnglish = value; SwapEngine(); PersistSettings(); Raise(); }
     }
 
+    // ---- auto update-check toggle (v4; persisted only — read by Start() for the startup check) ----
+    private bool _checkForUpdates;
+    public bool CheckForUpdatesAutomatically
+    {
+        get => _checkForUpdates;
+        set { if (_checkForUpdates == value) return; _checkForUpdates = value; PersistSettings(); Raise(); }
+    }
+
     // ---- app-aware modes (post-processing only; no engine reload) ----
     private bool _appAwareModes;
     public bool AppAwareModes
@@ -378,6 +393,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         UpdateHud(HudState.Idle);
 
         _ = _engine.PrewarmAsync();
+
+        // Silent startup check for a newer release (opt-out via the Updates card). No-ops while the
+        // repo is private (the anonymous GitHub API 404s → "no update"); when a newer version exists
+        // it surfaces in the tray + Settings without interrupting the user.
+        if (_checkForUpdates) _ = Updates.CheckAsync(userInitiated: false);
     }
 
     public void BootstrapLaunchAtLogin()
@@ -571,6 +591,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             TranslateToEnglish = _translateToEnglish,
             AppAwareModes = _appAwareModes,
             AppModeRules = AppModeRules.ToList(),
+            CheckForUpdates = _checkForUpdates,
         });
     }
 
@@ -596,6 +617,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _copyToClipboardOnly = s.CopyToClipboardOnly;
         _translateToEnglish = s.TranslateToEnglish;
         _appAwareModes = s.AppAwareModes;
+        _checkForUpdates = s.CheckForUpdates;
         AppModeRules.Clear();
         foreach (var r in s.AppModeRules) AppModeRules.Add(r);
         // Undo hotkey back to its default (null = disabled): tear down the 2nd hook, or re-register.
@@ -613,6 +635,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags(); RaiseGameModeFlags(); RaiseUndoHotkeyFlags();
         Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(Hotkey)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
         Raise(nameof(CopyToClipboardOnly)); Raise(nameof(TranslateToEnglish)); Raise(nameof(AppAwareModes)); Raise(nameof(HasAppModeRules));
+        Raise(nameof(CheckForUpdatesAutomatically));
         _engine = MakeEngine(_whisperModel, _language, CustomWords.ToList());
         _ = _engine.PrewarmAsync();
     }

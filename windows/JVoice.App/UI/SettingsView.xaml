@@ -560,6 +560,69 @@
                         </StackPanel>
                     </ui:DarkSection>
 
+                    <!-- UPDATES (green) — in-app version check + one-click update (root CLAUDE.md §7 #34) -->
+                    <ui:DarkSection HeaderText="Updates" AccentBrush="{StaticResource Settings.Green}">
+                        <StackPanel>
+                            <!-- Auto-check toggle -->
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="Automatic Updates" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
+                                    <TextBlock Text="Check GitHub for a new version. No data is sent." FontSize="10"
+                                               Foreground="{StaticResource Text.W38}" TextWrapping="Wrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                          Style="{StaticResource MonoSwitch}"
+                                          IsChecked="{Binding CheckForUpdatesAutomatically, Mode=TwoWay}" />
+                            </Grid>
+
+                            <!-- Current version + manual check -->
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <TextBlock Grid.Column="0" VerticalAlignment="Center" FontSize="11" Foreground="{StaticResource Text.W75}">
+                                    <Run Text="Version " /><Run Text="{Binding Updates.CurrentVersionDisplay, Mode=OneWay}" />
+                                </TextBlock>
+                                <Button Grid.Column="1" Content="Check Now" Style="{StaticResource DarkPrimaryButton}"
+                                        Foreground="{StaticResource Settings.Green}" Tag="{StaticResource Settings.Green}"
+                                        Click="OnCheckForUpdates"
+                                        Visibility="{Binding Updates.CanCheck, Converter={StaticResource BoolToVis}}" />
+                            </Grid>
+
+                            <!-- Status line (checking / up to date / available / errors) -->
+                            <TextBlock Text="{Binding Updates.StatusText}" FontSize="10" Foreground="{StaticResource Text.W45}"
+                                       TextWrapping="Wrap" Margin="0,8,0,0"
+                                       Visibility="{Binding Updates.HasStatus, Converter={StaticResource BoolToVis}}" />
+
+                            <!-- Update button (only when a newer version is available) -->
+                            <Button Content="Update Now" Style="{StaticResource DarkPrimaryButton}" HorizontalAlignment="Left"
+                                    Margin="0,8,0,0" Foreground="{StaticResource Settings.Green}" Tag="{StaticResource Settings.Green}"
+                                    Click="OnUpdateNow"
+                                    Visibility="{Binding Updates.ShowUpdateButton, Converter={StaticResource BoolToVis}}" />
+
+                            <!-- Eased download bar: a plain fill Border (no % text) whose width is the
+                                 eased progress × the track width. The fill glides via UpdateCoordinator's
+                                 smoothing timer; full only when the download actually completes. -->
+                            <Border x:Name="UpdateProgressTrack" Height="6" CornerRadius="3" Margin="0,10,0,2"
+                                    Background="#22FFFFFF" ClipToBounds="True"
+                                    Visibility="{Binding Updates.ShowProgress, Converter={StaticResource BoolToVis}}">
+                                <Border HorizontalAlignment="Left" CornerRadius="3" Background="White">
+                                    <Border.Width>
+                                        <MultiBinding Converter="{StaticResource FractionToWidth}">
+                                            <Binding Path="Updates.Progress" />
+                                            <Binding Path="ActualWidth" ElementName="UpdateProgressTrack" />
+                                        </MultiBinding>
+                                    </Border.Width>
+                                </Border>
+                            </Border>
+                        </StackPanel>
+                    </ui:DarkSection>
+
                 </StackPanel>
             </Grid>
 

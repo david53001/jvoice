@@ -10,7 +10,7 @@ public class SettingsStateTests
     public void Default_MatchesSwiftDefaults()
     {
         var s = SettingsState.Default;
-        Assert.Equal(3, s.SchemaVersion);
+        Assert.Equal(4, s.SchemaVersion);
         Assert.Equal(ToneStyle.Casual, s.Mode);
         // Windows-only divergence: macOS defaults to .tiny; Windows defaults to Large (most
         // accurate, and fast with GPU acceleration). See SettingsState.Default.
@@ -28,11 +28,13 @@ public class SettingsStateTests
         Assert.False(s.TranslateToEnglish);
         Assert.True(s.AppAwareModes);          // app-aware modes ON by default
         Assert.Empty(s.AppModeRules);          // no user rules (built-in code apps are implicit)
+        // v4 (Windows-only)
+        Assert.True(s.CheckForUpdates);        // auto update-check ON by default
     }
 
     [Fact]
-    public void CurrentSchemaVersion_Is3()
-        => Assert.Equal(3, SettingsState.CurrentSchemaVersion);
+    public void CurrentSchemaVersion_Is4()
+        => Assert.Equal(4, SettingsState.CurrentSchemaVersion);
 
     [Fact]
     public void Record_With_OverridesOnlyNamedFields()
@@ -41,7 +43,7 @@ public class SettingsStateTests
         Assert.Equal(ToneStyle.Formal, s.Mode);
         Assert.False(s.RemoveFillerWords);
         Assert.Equal(WhisperModelOption.LargeTurbo, s.Model);   // unchanged (the Windows default)
-        Assert.Equal(3, s.SchemaVersion);
+        Assert.Equal(4, s.SchemaVersion);
         Assert.Equal(GameDetectionMode.Balanced, s.GameMode);  // unchanged
     }
 
@@ -95,8 +97,31 @@ public class SettingsStateTests
     [Fact]
     public void Deserialize_SchemaVersionEqualToCurrent_IsAccepted()
     {
-        var s = SettingsStateJson.Deserialize("""{"schemaVersion":3,"mode":"Formal"}""");
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":4,"mode":"Formal"}""");
         Assert.Equal(ToneStyle.Formal, s.Mode);
+    }
+
+    // ===== CheckForUpdates (schema v4) =====
+
+    // A v3 file (no "checkForUpdates" field) must deserialize cleanly and default it to true.
+    [Fact]
+    public void Deserialize_PreV4File_DefaultsCheckForUpdatesToTrue()
+    {
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":3,"mode":"Casual"}""");
+        Assert.True(s.CheckForUpdates);
+        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // normalized forward to 4
+    }
+
+    // CheckForUpdates round-trips: false survives serialize → deserialize (a user opting out sticks).
+    [Fact]
+    public void CheckForUpdates_RoundTrips()
+    {
+        foreach (var expected in new[] { true, false })
+        {
+            var original = SettingsState.Default with { CheckForUpdates = expected };
+            var roundTripped = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(original));
+            Assert.Equal(expected, roundTripped.CheckForUpdates);
+        }
     }
 
     // Deserialize over arbitrary well-formed settings JSON never throws anything except
@@ -110,7 +135,7 @@ public class SettingsStateTests
         string[] langs = { "English", "english", "Romanian", "Klingon" };
         for (int i = 0; i < 400; i++)
         {
-            int version = rng.Next(0, 5); // 0..4 — anything > 3 (CurrentSchemaVersion) must throw
+            int version = rng.Next(0, 6); // 0..5 — anything > 4 (CurrentSchemaVersion) must throw
             var dto = new
             {
                 schemaVersion = version,

@@ -68,6 +68,8 @@ public static class SettingsStateJson
             translateToEnglish = state.TranslateToEnglish,
             appAwareModes = state.AppAwareModes,
             appModeRules = state.AppModeRules.Select(r => new { appMatch = r.AppMatch, mode = r.Mode.ToString() }),
+            // ── v4 key (Windows-only) ── Absent in older / macOS files; Deserialize falls back to true.
+            checkForUpdates = state.CheckForUpdates,
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -102,7 +104,8 @@ public static class SettingsStateJson
             UndoHotkey: ParseUndoHotkey(root),
             TranslateToEnglish: TryGetBool(root, "translateToEnglish") ?? false,
             AppAwareModes: TryGetBool(root, "appAwareModes") ?? true,
-            AppModeRules: ParseAppModeRules(root));
+            AppModeRules: ParseAppModeRules(root),
+            CheckForUpdates: TryGetBool(root, "checkForUpdates") ?? true);
     }
 
     // field parsers (each falls back to the field default)

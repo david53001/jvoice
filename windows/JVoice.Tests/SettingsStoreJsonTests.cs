@@ -50,11 +50,11 @@ public class SettingsStoreJsonTests
     public void Deserialize_ForwardVersion_Throws()
     {
         string json = """
-            { "schemaVersion": 4, "mode": "Casual", "model": "Tiny",
+            { "schemaVersion": 5, "mode": "Casual", "model": "Tiny",
               "language": "English", "customWords": [], "removeFillerWords": true }
             """;
         var ex = Assert.Throws<ForwardVersionException>(() => SettingsStateJson.Deserialize(json));
-        Assert.Equal(4, ex.FileVersion);
+        Assert.Equal(5, ex.FileVersion);
         Assert.Equal(SettingsState.CurrentSchemaVersion, ex.CurrentVersion);
     }
 
@@ -118,16 +118,17 @@ public class SettingsStoreJsonTests
     // Swift's CodingKeys are schemaVersion/mode/model/language/customWords/removeFillerWords. The
     // Windows port adds Windows-only on-disk keys with no macOS counterpart: `corrections`,
     // `developerTerms`, `gameMode`, `hotkey` (schema v2), then the v3 dictation-feature keys
-    // `copyToClipboardOnly`, `undoHotkey`, `translateToEnglish`, `appAwareModes`, `appModeRules`.
-    // Serialize emits exactly these fifteen keys. Older builds / the macOS app ignore the unknown
-    // keys on read; Deserialize tolerates their absence (each falls back to its default).
+    // `copyToClipboardOnly`, `undoHotkey`, `translateToEnglish`, `appAwareModes`, `appModeRules`,
+    // then the v4 key `checkForUpdates`. Serialize emits exactly these sixteen keys. Older builds /
+    // the macOS app ignore the unknown keys on read; Deserialize tolerates their absence (each
+    // falls back to its default).
     [Fact]
-    public void Serialize_EmitsExactlyTheFifteenKeys()
+    public void Serialize_EmitsExactlyTheSixteenKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "appAwareModes", "appModeRules", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "language", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "undoHotkey" },
+            new[] { "appAwareModes", "appModeRules", "checkForUpdates", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "language", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "undoHotkey" },
             keys);
     }
 
