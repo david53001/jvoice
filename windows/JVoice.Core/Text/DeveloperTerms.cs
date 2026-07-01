@@ -222,6 +222,7 @@ public static class DeveloperTerms
         ["pgvector"] = "pgvector",
         ["milvus"] = "Milvus",
         ["faiss"] = "FAISS",
+        ["supabase"] = "SupaBase",
 
         // ---- Modern deploy / web stack (where vibe-coded apps ship) ----
         ["vercel"] = "Vercel",
