@@ -14,7 +14,8 @@ Full as-built state, pinned versions, and every deviation live in
 - `JVoice.App/` — the WPF Windows shell. Sub-areas: `Whisper/`, `UI/`,
   `Platform/{Capture,Persistence,System}/`. Orchestrator: `VoiceCoordinator.cs`.
 - `JVoice.Tests/` — xUnit suite (523 tests) translated from the Swift tests; locks the brain.
-- `tools/` — standalone probe/utility CLIs (whisper-smoke, hotkey-probe, nospeech-probe, generate-icon).
+- `tools/` — standalone probe/utility CLIs (whisper-smoke, hotkey-probe, nospeech-probe,
+  capture-stop-probe, generate-icon).
 
 ## Build / test
 - `dotnet build windows/JVoice.sln -c Release` — 0 errors.

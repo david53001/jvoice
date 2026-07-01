@@ -1295,6 +1295,53 @@ These are real corrections discovered during execution — preserve them.
     - **Consolidation:** #34/#35 are the concurrent `feat/dictation-modes` session's entries (dev-terms
       AI / default-model→Large); all three (#34/#35/#36) are now merged onto `feat/dictation-modes`.
 
+37. **"Elevated first-recording freeze" root-caused and FIXED — it was never about elevation
+    (2026-07-02, branch `feat/dictation-modes`).** The §8 known bug ("launching JVoice elevated freezes
+    the first recording; the stop press never registers") is closed. The old ⚠ do-NOT-run-elevated
+    warning is obsolete: **elevated dictation works** (verified live this session).
+    - **Root cause — a capture-teardown deadlock in `Platform/Capture/NAudioRecorder.cs`, reachable on
+      ANY stop, elevated or not.** `Stop()` held the recorder's `_gate` for its whole body and, still
+      under that gate, called `_capture.Dispose()`. NAudio's `WasapiCapture.Dispose` **joins its capture
+      thread** — but that thread delivers `DataAvailable` every ~10 ms and `OnDataAvailable` takes the
+      SAME `_gate` to append samples. If a packet arrived while `Stop()` held the gate, the capture
+      thread blocked on `_gate`, `Dispose` waited forever on the join → the **UI thread** (Stop runs on
+      the dispatcher) froze permanently: HUD wave stalls, every later hotkey press dispatches into a
+      dead dispatcher ("the stop press never registers"), and the diagnostic log ends at `HUD Recording`
+      — exactly the 2026-06-26 00:44:48 signature — because the deadlock sat BEFORE the `StopRecording`
+      log line. Same join-under-gate hazard existed in `TearDownLocked`'s callers (TryStart failure,
+      pump-write failure, `OnRecordingStopped`, `Dispose`).
+    - **Why it looked elevation-specific:** coincidence + cold start. The per-stop hit probability is
+      tiny (the callback holds the gate ~µs out of every ~10 ms), but on the FIRST stop of a fresh
+      process, JIT + cold file caches stretch `Stop()`'s gate hold, widening the window — and the first
+      confirmed hit happened to be the first elevated test (n=1). The same signature exists in the log
+      **non-elevated on 2026-06-24 00:26** (before the elevated feature was even deployed), and this
+      session's UNFIXED build ran a full elevated dictation cycle fine while the seeded repro froze it
+      non-elevated.
+    - **Deterministic repro (the "failing test"):** new env-gated seam `JVOICE_TEST_SLOW_CAPTURE_MS=<n>`
+      (kept in-tree, `GlobalHotkey` test-seam precedent; zero cost unset) widens the callback's gate
+      hold. At 200 ms the unfixed build froze on the first stop **every time** (log ends at the dispose
+      step); the fixed build completes the full record→stop→transcribe→paste cycle under the same seam.
+    - **The fix — never join the capture thread while holding `_gate`:** teardown now **detaches** the
+      capture+device from the fields under the gate (`DetachLocked`) and **disposes them outside** it
+      (`DisposeDetached`), for all five paths (Stop, TryStart-failure, pump-failure, OnRecordingStopped,
+      Dispose). `DisposeDetached` defers to the thread pool iff the current thread still holds the gate
+      reentrantly (Stop → pump-failure). Two guards make the detached window airtight: `OnDataAvailable`
+      and `OnRecordingStopped` ignore a **stale sender** (`!ReferenceEquals(sender, _capture)`), so a
+      final in-flight packet can neither leak samples into a NEW recording's buffer nor tear down a new
+      session. Behavior otherwise unchanged (same ≤10 ms tail-drop semantics as before).
+    - **Also:** `DiagnosticLog` lines now carry a `[pid/tid]` prefix — the original hunt could not tell
+      which instance/thread wrote which line when an elevated relaunch overlapped the outgoing copy.
+    - **VERIFICATION:** seeded repro fail→fixed as above (on-device); `dotnet build JVoice.sln -c
+      Release` 0 errors; `dotnet test` **693/693**; live loops on the deployed install — non-elevated
+      cycle, seeded non-elevated cycle, and **two elevated cycles** (launched UAC-free via
+      `Start-ScheduledTask 'JVoice Elevated Autostart'`; chord injected with Notepad foreground) all
+      complete: `HUD Recording → StopRecording → Transcribed → HUD Idle`. **Scripted regression check
+      (headless — no HUD, no paste, no focus steal):** `dotnet run --project
+      windows/tools/capture-stop-probe -c Release -- --cycles 3 --slow-ms 200` drives the REAL recorder
+      sources through seeded start/record/stop cycles; exit 0 = pass, 2 = the deadlock is back (not in
+      the .sln, like hotkey-probe). David's at-the-desk elevated dogfood tick (§8 item 2) remains the
+      final confirmation.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
@@ -1309,16 +1356,11 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
 
 ## 8. What remains
 
-> ⚠️ **KNOWN BUG — running JVoice ELEVATED freezes recording (found 2026-06-26).** Launching the app
-> **elevated** (tray "Restart as Administrator" / `Start-Process -Verb RunAs`) makes the **first recording
-> freeze**: the HUD enters Recording, the wave animation stalls, the stop press never registers (no
-> `StopRecording` line in `diagnostic.log`), and nothing transcribes or pastes. **Non-elevated works
-> perfectly** (full loop completes). Confirmed via the diagnostic log — an elevated PID froze at
-> "HUD Recording" while a non-elevated PID of the *same build* completed every dictation. Root cause not
-> yet isolated (suspect the elevated process's low-level keyboard hook / WPF message pump / GPU init under
-> elevation). **Consequence: the §7 #25 "run elevated so the hotkey/paste works in admin windows" path is
-> currently broken — run non-elevated.** (In practice David's terminal is NOT elevated, so non-elevated
-> pastes into it fine; the earlier "elevated terminal" paste theory was a transient mis-diagnosis.)
+> ✅ **The 2026-06-26 "elevated first-recording freeze" is FIXED (2026-07-02, §7 #37).** It was a
+> capture-teardown deadlock in `NAudioRecorder` reachable on any stop — elevation was a coincidental
+> first observation. The §7 #25 elevated path works again (verified live via the logon task); David's
+> at-the-desk elevated dogfood tick (item 2 below) is the remaining confirmation. Forward-looking work
+> beyond this list: `docs/windows-roadmap.md`.
 
 1. **(IN PROGRESS) Silence-hallucination gate — David-reported 2026-06-24 (§7 #24).** On near-silent short
    presses whisper sometimes pastes a *plausible* hallucinated sentence (e.g. "you're welcome.", "you can't
@@ -1336,7 +1378,9 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    BT device routing, mic-permission flow, and the new **elevated-window** path (§7 #25: "Restart as
    Administrator" / "Run as Administrator at Login" → hotkey works in an admin terminal). The app is confirmed to *launch* and the
    HUD/Settings look is screenshot-verified via `--hud-preview`/`--settings-render`; live-mic reactivity is
-   what a person at the desk must confirm. **New:** the **game-detection** gaming section (§7 #27) — with
+   what a person at the desk must confirm. The elevated path is unblocked again by §7 #37 (the freeze is
+   fixed; scripted elevated loops pass) — the at-the-desk admin-terminal round-trip is the remaining tick.
+   **New:** the **game-detection** gaming section (§7 #27) — with
    `JVoice.exe --game-probe` running, alt-tab into real games (Valorant/Fortnite/GTA/Minecraft) and confirm the
    hotkey suppresses + passes through, then confirm fullscreen **video** does NOT suppress (Balanced).
 3. **(Optional) Phase 5 Task 6** — port `scripts/verify-transcription.py` to
