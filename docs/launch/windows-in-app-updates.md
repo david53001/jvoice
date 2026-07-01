@@ -102,8 +102,9 @@ The installer already relaunches JVoice when it finishes.
 ## Verification (done)
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors**.
-- `dotnet test windows/JVoice.Tests` → **651/651** (608 baseline at the branch point + 43 new:
-  `ReleaseVersionTests`, `UpdateProgressCurveTests`, `UpdateCheckTests`, + settings v4 cases).
+- `dotnet test windows/JVoice.Tests` → **651/651** standalone (608 baseline + 43 new:
+  `ReleaseVersionTests`, `UpdateProgressCurveTests`, `UpdateCheckTests`, + settings v4 cases);
+  **693/693 after consolidation** with `feat/dictation-modes` #34/#35 (merge `0190e72`).
 - Live HTTP seam: `JVoice.exe --update-check` → graceful "no update" (404) against the private repo.
 - Visuals: `--settings-render <png> available|downloading|error` — the card renders in the
   three-column layout; the downloading state shows the eased white fill with **no % text**.
@@ -116,5 +117,6 @@ The installer already relaunches JVoice when it finishes.
    job on a `v*` tag that builds both flavors and publishes a Release. Left as a follow-up so this
    branch stays focused on the in-app UX; happy to add it next.
 3. Add the `install.ps1` wait-for-exit line at the next installer rebuild (above).
-4. Slot the canonical HANDOFF §7 #36 + `CLAUDE.md` pointer once `feat/dictation-modes` merges
-   (both are already added on this branch; reconcile numbering with that branch's #34/#35).
+4. ~~Slot the canonical HANDOFF §7 #36 + `CLAUDE.md` pointer.~~ **DONE** — consolidated into
+   `feat/dictation-modes` (merge `0190e72`); HANDOFF §7 #34/#35/#36 + the CLAUDE.md pointer are all
+   present and the schema note reads v4.
