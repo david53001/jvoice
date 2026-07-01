@@ -14,6 +14,10 @@ keep `namespace JVoice.Core`.)
   **Anti-cheat-safe by construction: read-only OS signals only.** Balanced (default) excludes
   bare fullscreen so fullscreen video doesn't false-positive (root `CLAUDE.md` §7 #27).
 - `StatsMath.cs` — pure arithmetic for usage stats (words/time aggregations).
+- `SilenceHallucinationGate.cs` — the §7 #38 witness-decode policy: near-silence (rawRms < 0.004,
+  a verify TRIGGER only — never a rejector, §7 #21) means the prompted transcript must be vouched
+  for by an unprompted decode; an empty reduced witness ⇒ no-speech. Calibrated on David's real
+  clips (whisper confidence is INVERTED — don't threshold it).
 - `AppTimings.cs` — shared timing constants.
 
 ## Invariant

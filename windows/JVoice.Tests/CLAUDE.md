@@ -1,6 +1,6 @@
 # JVoice.Tests — the brain's lock
 
-xUnit suite (523 tests) that pins `JVoice.Core` to the macOS Swift behavior. Each `*Tests.cs`
+xUnit suite (713 tests) that pins `JVoice.Core` to the macOS Swift behavior. Each `*Tests.cs`
 mirrors a Swift test file; the constants are asserted verbatim. White-box access to internal
 helpers is granted via `InternalsVisibleTo("JVoice.Tests")` in `JVoice.Core.csproj` (mirrors
 Swift's `@testable import`).
@@ -11,7 +11,9 @@ Swift's `@testable import`).
   UserCorrectionsTests.
 - **Audio / streaming** → StreamingSessionTests, ChunkPlannerTests, WavTailTests,
   HighPassSilenceTests, BluetoothDevicePolicyTests.
-- **Policy** → CoordinatorDecisionsTests, HotkeyGateTests, GameDetectionPolicyTests, StatsMathTests.
+- **Policy** → CoordinatorDecisionsTests, HotkeyGateTests, GameDetectionPolicyTests, StatsMathTests,
+  WhisperTuningTests, SilenceHallucinationGateTests, ReleaseVersionTests, UpdateCheckTests,
+  UpdateProgressCurveTests.
 - **Models / persistence** → ModelTests, SettingsStateTests, SettingsStoreJsonTests,
   HotkeyChordTests, HudStateTests, TranscriptHistoryTests.
 - **Engine seam** → FileBackedEngineTests.
