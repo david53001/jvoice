@@ -60,6 +60,27 @@ the download page and in the README so users aren't scared off.
 - **winget / Microsoft Store:** out of scope for the unsigned $0 model (the Store requires
   packaging + an account).
 
+## In-app updates (built; branch `feat/in-app-updates`)
+
+JVoice has a built-in updater (full detail: `windows-in-app-updates.md`; HANDOFF §7 #36). It checks
+**GitHub Releases** (not raw `main` commits) and, when a newer version exists, shows an "Update
+available" prompt + one-click **Update Now** in **Settings → Updates** (and a tray item). "Update
+Now" downloads the matching `JVoice-Setup(-GPU).exe`, launches it, and quits so it can overwrite +
+relaunch.
+
+- **Pipeline to wire at publish:** *commit/tag on `main` → CI builds both installers → publishes a
+  GitHub Release* — the app polls `releases/latest`. A release-cutting GitHub Actions workflow is a
+  follow-up (not built yet).
+- **Dormant until public:** the check is an anonymous GitHub API GET; while the repo/releases are
+  private it 404s → "no update", so shipping this changes nothing until David publishes. Point
+  `UpdateConfig.RepoSlug` at the release repo at publish time (one edit).
+- **Privacy:** this is the only runtime network call besides the one-time model download and sends
+  **no user data**; it's opt-out in Settings ("Automatic Updates", default on). Note it on the
+  download page alongside the SmartScreen step.
+- **Installer wait-for-exit:** since the app quits right as it launches the installer, add a
+  `Get-Process JVoice` wait at the top of `install.ps1`'s copy step so robocopy never races a still-
+  locked file.
+
 ## Zipping the build (PowerShell, in-box)
 
 ```powershell

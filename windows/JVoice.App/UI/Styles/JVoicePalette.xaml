@@ -198,6 +198,7 @@
     <!-- ===== converters ===== -->
     <BooleanToVisibilityConverter x:Key="BoolToVis" />
     <ui:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+    <ui:FractionToWidthConverter x:Key="FractionToWidth" />
 
     <!-- ===== segmented radio-button styles (joined toggle row) ===== -->
     <Style x:Key="SegmentBase" TargetType="RadioButton">

@@ -24,6 +24,7 @@ public sealed class TrayIcon : IDisposable
 
     // Wiring (set by App on construction).
     public Func<bool> IsRecording { get; set; } = () => false;
+    public Func<bool> UpdateAvailable { get; set; } = () => false;
     public Func<bool> LaunchAtLoginEnabled { get; set; } = () => false;
     public Func<bool> IsElevated { get; set; } = () => false;
     public Func<bool> RunAsAdminAtLoginEnabled { get; set; } = () => false;
@@ -82,6 +83,16 @@ public sealed class TrayIcon : IDisposable
     public void RebuildMenu()
     {
         var menu = new ContextMenu();
+
+        // When a newer version is ready, surface it at the very top. Opening Settings shows the
+        // Updates card (current version, "Update Now", the eased download bar).
+        if (UpdateAvailable())
+        {
+            var update = new MenuItem { Header = "Update Available — Open Settings…", FontWeight = FontWeights.Bold };
+            update.Click += (_, _) => OnOpenSettings();
+            menu.Items.Add(update);
+            menu.Items.Add(new Separator());
+        }
 
         var dictation = new MenuItem { Header = IsRecording() ? "Stop Dictation" : "Start Dictation" };
         dictation.Click += (_, _) => OnToggleDictation();

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
@@ -36,6 +37,9 @@ public partial class App : Application
         if (GameProbeRunner.ShouldRun(args))
             return GameProbeRunner.RunAndExit(args);
 
+        if (JVoice.App.Update.UpdateProbeRunner.ShouldRun(args))
+            return JVoice.App.Update.UpdateProbeRunner.RunAndExit(args);
+
         // Hidden dev aids for inspecting/screenshotting the real rendering, both bypassing
         // the single-instance lock so they can run alongside a normal instance:
         //   `--hud-preview [state]`  — shows ONLY the HUD pill (no tray/mic/whisper).
@@ -45,7 +49,8 @@ public partial class App : Application
             a => string.Equals(a, "--hud-preview", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--settings-preview", StringComparison.OrdinalIgnoreCase)
-              || string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase));
+              || string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase)
+              || string.Equals(a, "--update-preview", StringComparison.OrdinalIgnoreCase));
 
         // A logon launch (the Run-key entry carries --autostart) steps aside when the elevated
         // auto-start task is configured: that task launches an ELEVATED copy — the one that can
@@ -104,6 +109,19 @@ public partial class App : Application
             RenderSettingsToFile(e.Args);
             return;
         }
+        if (Array.Exists(e.Args, a => string.Equals(a, "--update-preview", StringComparison.OrdinalIgnoreCase)))
+        {
+            // Show ONLY the Settings window with the Updates card forced into a given state (no tray,
+            // no network): `--update-preview [available|downloading|checking|uptodate|error]`.
+            var idx = Array.FindIndex(e.Args, a => string.Equals(a, "--update-preview", StringComparison.OrdinalIgnoreCase));
+            var state = (idx >= 0 && idx + 1 < e.Args.Length) ? e.Args[idx + 1] : "available";
+            var previewCoordinator = new VoiceCoordinator();
+            previewCoordinator.Updates.EnterPreviewState(state);
+            var previewSettings = new SettingsWindow(previewCoordinator);
+            previewSettings.ShowOrActivate();
+            previewSettings.Topmost = true;
+            return;
+        }
         if (Array.Exists(e.Args, a => string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase)))
         {
             RenderHudToFile(e.Args);
@@ -125,6 +143,7 @@ public partial class App : Application
         _tray = new TrayIcon
         {
             IsRecording = () => _coordinator.IsRecording,
+            UpdateAvailable = () => _coordinator.Updates.UpdateAvailable,
             LaunchAtLoginEnabled = () => _coordinator.LaunchAtLoginEnabled,
             IsElevated = () => _coordinator.IsElevated,
             RunAsAdminAtLoginEnabled = () => _coordinator.RunAsAdminAtLoginEnabled,
@@ -186,11 +205,18 @@ public partial class App : Application
     {
         var idx = Array.FindIndex(args,
             a => string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase));
-        var path = (idx >= 0 && idx + 1 < args.Length)
-            ? args[idx + 1]
-            : Path.Combine(Path.GetTempPath(), "jvoice-settings.png");
+
+        // Args after the flag: an optional output path and an optional Updates-card state token
+        // (so `--settings-render out.png available` screenshots the card mid-update). Tell them
+        // apart by the known state names rather than position.
+        var known = new[] { "checking", "available", "downloading", "uptodate", "error" };
+        var rest = idx >= 0 ? args.Skip(idx + 1).ToArray() : Array.Empty<string>();
+        string? updateState = rest.FirstOrDefault(a => known.Contains(a.ToLowerInvariant()));
+        string? pathArg = rest.FirstOrDefault(a => !known.Contains(a.ToLowerInvariant()));
+        var path = pathArg ?? Path.Combine(Path.GetTempPath(), "jvoice-settings.png");
 
         var coordinator = new VoiceCoordinator();
+        if (updateState is not null) coordinator.Updates.EnterPreviewState(updateState);
         var view = new SettingsView { DataContext = coordinator };
 
         const double scale = 2.0;

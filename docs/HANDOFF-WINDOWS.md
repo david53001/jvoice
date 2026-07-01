@@ -1193,10 +1193,43 @@ These are real corrections discovered during execution — preserve them.
     case the `MaxHeight` guard + outer ScrollViewer keep the X reachable, but David should confirm the live
     window opens at ~757 tall (not showing an outer scrollbar).
 
+36. **In-app updates — "there's an update available" prompt + one-click update with an eased bar
+    (David-requested, 2026-07-01, branch `feat/in-app-updates`).** Windows-only. A silent startup
+    check (opt-out) + a **Settings → Updates** card that shows the current version, "Check Now",
+    "Update available — vX.Y.Z", and an **"Update Now"** button; a bold tray item surfaces it too.
+    "Update Now" downloads the matching installer behind a **"marketing" progress bar** (eased fill,
+    **no percentage text**, fast-start/slow-finish, full only when done), then launches the installer
+    and quits so it can overwrite + relaunch. **Updates from a published GitHub Release, not raw
+    `main` commits** (intended pipeline: commit/tag → CI builds installers → Release → app sees it).
+    - **Full detail: `docs/launch/windows-in-app-updates.md`** (architecture, privacy, publish steps).
+    - **Pure Core (`JVoice.Core/Policy/`, unit-locked):** `ReleaseVersion` (tolerant version compare),
+      `UpdateProgressCurve` (the eased curve, `Ceiling=0.95` until done), `UpdateCheck`
+      (`GitHubReleaseParser` + `UpdateAssetSelector` CPU/GPU + `UpdateDecision`, fail-safe).
+    - **App (`JVoice.App/Update/`):** `UpdateConfig` (repo slug + `#if JVOICE_CPU` flavor — the one
+      publish-time edit), `UpdateService` (the only I/O: HTTP check never throws, 404→"no update";
+      streamed download; ShellExecute the installer), `UpdateCoordinator` (state machine + a 30 ms
+      timer easing a shown value toward the pure curve), `UpdateProbeRunner` (hidden `--update-check`).
+      `VoiceCoordinator.Updates` + a persisted `CheckForUpdatesAutomatically`; `SettingsView`
+      "Updates" card (Col 3, green) with a `FractionToWidthConverter` fill bar; `TrayIcon` item;
+      `App.xaml.cs` `--update-preview <state>` + `--settings-render <path> <state>`.
+    - **Schema v3 → v4:** new `checkForUpdates` (bool, default true; per-field fallback). Settings
+      tests updated (asserts → 4, forward test → 5, key count 15→16, new default/round-trip cases).
+    - **Privacy:** the update check is the SECOND and only other network call besides the model
+      download — an anonymous GitHub API GET that sends **no user data**; disclosed in the card
+      ("No data is sent"); **default ON** (assumption logged) so the prompt appears; **dormant while
+      the repo is private** (404 → no update). ⚠ Also: the shipped IExpress `install.ps1` should wait
+      for the old JVoice to exit before robocopy (belt-and-braces; see the feature doc).
+    - **VERIFICATION:** `dotnet test` **651/651** (608 baseline + 43 new); `dotnet build JVoice.sln
+      -c Release` **0 errors**; `--update-check` graceful 404; `--settings-render … available|
+      downloading|error` render-verified. **NOT dogfooded live** (needs a public release) — David.
+      **NOT pushed.**
+    - **Concurrency:** #34/#35 are the parallel `feat/dictation-modes` session's entries (dev-terms
+      AI / default-model→Large) whose code isn't on this branch's base; reconcile numbering at merge.
+
 ### Persistence paths (overview §4.9)
-`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 3** — v2 added `gameMode`
+`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
-(§7 #32)),
+(§7 #32); v4 added `checkForUpdates` (§7 #36)),
 `stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
 (value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
