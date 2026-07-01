@@ -1342,6 +1342,46 @@ These are real corrections discovered during execution — preserve them.
       the .sln, like hotkey-probe). David's at-the-desk elevated dogfood tick (§8 item 2) remains the
       final confirmation.
 
+38. **Silence-hallucination gate — the §7 #24 open bug is CLOSED (2026-07-02, branch
+    `feat/dictation-modes`).** Near-silent short presses sometimes pasted a confident invented
+    sentence ("you're welcome.", "you", "you can't believe it, but you can't believe it.", even the
+    bare vocab word "app") — silent data corruption that the frozen `RemoveWhisperHallucinations`
+    blocklist can't chase (novel sentences; parity-locked).
+    - **Calibration (the #24 plan, executed):** David recorded 13 fresh clips through the LIVE
+      pipeline (`JVOICE_KEEP_WAV=1` → `%APPDATA%\JVoice\capture\`; 8 silent presses 0.4–4.4 s +
+      5 quiet real sentences), analyzed with `nospeech-probe --analyze` (17 clips total incl. the
+      06-24 four; mirrors the live model `large-v3-turbo-q5_0` + his real vocab prompt).
+      **Measured:** (a) whisper's confidence is INVERTED as predicted — silence hallucinations
+      score avgConf up to **0.96**, real speech 0.58–0.81 → unusable; (b) gzip compR mostly tracks
+      text length → unusable alone; (c) **prompt-vs-no-prompt agreement separates 17/17**: on every
+      silent press the UNPROMPTED decode collapses to stock "Thank you." (→ blocklist → empty),
+      while it keeps the real sentence on all quiet-speech clips; (d) all silent presses measured
+      **rawRMS ≤ 0.0003** (digital-level), his quietest real speech 0.0005–0.0028, louder 0.004+.
+    - **The gate:** pure `JVoice.Core/Policy/SilenceHallucinationGate.cs` (namespace
+      `JVoice.Core.Policy`) + wiring in `WhisperNetTranscriptionEngine.TranscribeAsync`. When the
+      guarded transcript is non-empty AND the clip is near-silent (`rawRms < QuietRmsTrigger` =
+      **0.004**, 13× above observed silence) AND a vocab prompt is active → decode the same samples
+      once more WITHOUT the prompt and reduce that WITNESS (`NonSpeechAnnotation.Reduce` +
+      `StripDecoderArtifacts` + `RemoveWhisperHallucinations`): **empty witness ⇒ no-speech; else
+      keep the PROMPTED transcript** (the vocab-accurate one). RMS is only the verify TRIGGER —
+      the reject decision is always the model's, so the §7 #21 "no level floor may reject speech"
+      rule stands: quiet real speech triggers verification and passes because its witness keeps
+      words. Cost: one extra decode only on near-silent clips (his louder dictation adds zero).
+      Whole-file path only (silent short presses never produce a completed streaming chunk; a
+      silent chunk already falls back losslessly).
+    - **Balanced against #21 by construction and by data:** 7/7 real quiet clips KEPT through the
+      real engine after the gate; 10/10 silent clips → "No speech detected."
+      (`--bench` sweep over all 17 capture clips with the live vocab: silent → exit 1 `no-speech
+      (model empty/annotation)`, real → exit 0 with the correct transcript.)
+    - **VERIFICATION:** `dotnet build JVoice.sln -c Release` 0 errors; `dotnet test` **713/713**
+      (20 new `SilenceHallucinationGateTests` locking thresholds + resolve semantics with the
+      measured values); the 17-clip `--bench` sweep above. Calibration clips deleted after the
+      sweep (privacy); `JVOICE_KEEP_WAV` removed from the user env (HKCU\Environment).
+    - **Residual risk (accepted, documented):** if BOTH decodes hallucinate on the same silent clip
+      (never observed — unprompted always gave blocklisted stock phrases), the text still pastes;
+      and "noisy silence" above 0.004 rawRMS relies on whisper's own annotation (#21 behavior).
+      Re-calibrate any time with the same capture → `nospeech-probe --analyze` loop.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
@@ -1362,16 +1402,11 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
 > at-the-desk elevated dogfood tick (item 2 below) is the remaining confirmation. Forward-looking work
 > beyond this list: `docs/windows-roadmap.md`.
 
-1. **(IN PROGRESS) Silence-hallucination gate — David-reported 2026-06-24 (§7 #24).** On near-silent short
-   presses whisper sometimes pastes a *plausible* hallucinated sentence (e.g. "you're welcome.", "you can't
-   see it, but you can't see it."), worst with the vocab prompt ON. The calibration harness is **built and
-   verified**, and the app is set up to capture real clips. **Next:** (a) David records ~5 silent presses +
-   ~5 quiet sentences with the capture build (launched with `JVOICE_KEEP_WAV=1` → clips land in
-   `%APPDATA%\JVoice\capture\`); (b) `dotnet run --project windows/tools/nospeech-probe/nospeech-probe.csproj
-   -c Release -- --analyze` (no args → reads the capture dir); (c) pick the discriminator (confidence is
-   INVERTED — candidates are **prompt-vs-no-prompt agreement** + **compression ratio**); (d) implement a
-   **Windows-only** gate in `WhisperNetTranscriptionEngine` (NOT the frozen shared `RemoveWhisperHallucinations`
-   blocklist) + xUnit tests, **balanced against #21**; (e) delete the clips, relaunch without the env var.
+1. **✅ Silence-hallucination gate — DONE 2026-07-02 (§7 #38).** The #24 plan was executed end-to-end:
+   David recorded 13 real clips, `nospeech-probe --analyze` confirmed prompt-vs-no-prompt agreement as
+   the discriminator (confidence measured INVERTED, as predicted), and the gate shipped as
+   `Core/Policy/SilenceHallucinationGate` + a witness decode in `WhisperNetTranscriptionEngine`.
+   17/17 clips verdict-correct through the real engine; 713/713 tests. See §7 #38.
 2. **Dogfood the GUI (David, interactive):** run `docs/launch/windows-dogfood-checklist.md` — the live
    Ctrl+Shift+Space → record → transcribe → paste loop, the new black-&-white HUD bars reacting to your
    voice (and the silent-success / error-only-text behaviour), the 640×846 two-column monochrome Settings round-trip,

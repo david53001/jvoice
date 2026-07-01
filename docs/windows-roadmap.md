@@ -10,18 +10,11 @@
 
 ## 1. Fix first (quality of the core loop)
 
-1. **Silence-hallucination gate — IN PROGRESS, top priority** (HANDOFF §7 #24, §8 item 1).
-   Near-silent short presses sometimes paste a *plausible* fake sentence ("you're welcome.") —
-   silent data corruption, observed repeatedly in `%APPDATA%\JVoice\diagnostic.log`. The
-   calibration harness (`windows/tools/nospeech-probe`) is built; the remaining steps need
-   **David's real mic clips**: record ~5 silent presses + ~5 quiet sentences with
-   `JVOICE_KEEP_WAV=1` set (clips land in `%APPDATA%\JVoice\capture\`), run
-   `dotnet run --project windows/tools/nospeech-probe -c Release -- --analyze`, pick the
-   discriminator (candidates: prompt-vs-no-prompt agreement, compression ratio — confidence is
-   INVERTED), implement a **Windows-only** gate in
-   `windows/JVoice.App/Whisper/WhisperNetTranscriptionEngine.cs` (NOT the frozen shared
-   `RemoveWhisperHallucinations` blocklist), balance against §7 #21 (quiet real speech must
-   still pass), then delete the clips.
+1. **~~Silence-hallucination gate~~ — DONE 2026-07-02** (HANDOFF §7 #38). Calibrated on David's
+   real clips; discriminator = prompt-vs-no-prompt agreement (confidence measured inverted);
+   shipped as `Core/Policy/SilenceHallucinationGate` + a witness decode in the engine. 17/17
+   clips verdict-correct; quiet real speech unharmed (§7 #21 balance held). Re-calibrate any
+   time via `JVOICE_KEEP_WAV` capture → `nospeech-probe --analyze`.
 2. **~~Elevated-run first-recording freeze~~ — FIXED 2026-07-02** (HANDOFF §7 #37). Root cause
    was a capture-teardown deadlock in `NAudioRecorder`, not elevation; elevation was a
    coincidental first-observation. Kept here so nobody re-opens the stale §8 warning.
