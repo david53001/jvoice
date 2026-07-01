@@ -1225,6 +1225,43 @@ These are real corrections discovered during execution — preserve them.
       exclusions); `dotnet build JVoice.sln -c Release` **0 errors**. NOT pushed. The full curation rationale (why each
       exclusion, why each kept homophone) is in the `DeveloperTerms` class doc-comment.
 
+35. **Default Whisper model → Large, with a "keep on Large" advisory (David-requested, 2026-07-01, branch `feat/dictation-modes`).**
+    David wanted the model to **default to Large and stay there** unless the user really knows what they're doing —
+    on his RTX 3060 Ti (Vulkan) large-v3-turbo is both the most accurate model **and** fast (§7 #31 measured it ≈30–37%
+    faster with flash attention), so it is the right out-of-the-box choice. **This is a deliberate Windows-only divergence
+    from macOS**, which defaults to `.tiny` (`Sources/JVoice/Models/SettingsState.swift:19`) — the `Default_MatchesSwiftDefaults`
+    test now carries a comment noting the model field intentionally diverges (other Windows-only default fields already do).
+    - **Core (2 constants, kept in sync):** `SettingsState.Default.Model` `Tiny → LargeTurbo`
+      (`JVoice.Core/Models/SettingsState.cs`), **and** the per-field fallback in `SettingsStateJson.ParseModel`
+      (both the `raw is null` and the final unparseable-value branches) `Tiny → LargeTurbo`. The two are deliberately
+      aligned so **any** unspecified-model path (fresh install with no file, a foreign/partial file, a garbage `model`
+      string) resolves to the *same* default — which is exactly what `Deserialize_MissingFields_UseDefaults` asserts
+      (it compares against `SettingsState.Default.Model`, so it auto-follows). **No schema change** (the `model` field
+      already exists; still schema v3) and **no engine/download-flow change** — a fresh user simply downloads the
+      ~574 MB `ggml-large-v3-turbo-q5_0.bin` on first use via the existing `WhisperModelStore.EnsureAsync` path
+      (HUD `preparingModel`/`downloadingModel`), same as any other model choice.
+    - **UI (`SettingsView.xaml`, "Whisper Model" card):** added a monochrome warning callout **below** the segmented
+      Tiny/Base/Small/Large control and the per-model guidance line — a bordered box (`#14FFFFFF` fill, `Settings.Border`,
+      r6) with the **Segoe MDL2 Assets `E7BA` Warning triangle** (same icon font used elsewhere in Settings) and text
+      **"Keep this on Large."** + why (most accurate; fast with GPU; only switch if you know you need to, e.g. an older
+      CPU-only PC). An **extra caution line** ("You've picked a smaller model — accuracy may drop…") is bound to
+      `Visibility="{Binding IsLarge, Converter={StaticResource InverseBoolToVis}}"` so it appears **only when a smaller
+      model is selected** — reusing the existing `IsLarge` VM flag and the `InverseBoolToVis` converter, so **no
+      code-behind and no VoiceCoordinator change**. The callout added ~one card-row of height to column 1; the panel
+      still fits (the §33 `SizeToContent` + `MaxHeight` clamp + outer `ScrollViewer` guards hold).
+    - **Tests updated for the new default** (3 assertions, same commit): `SettingsStateTests.Default_MatchesSwiftDefaults`
+      and `.Record_With_OverridesOnlyNamedFields` (`Tiny → LargeTurbo`), and
+      `SettingsStoreJsonTests.Deserialize_UnknownEnumValues_FallBackPerField` (unparseable `"Quantum"` now falls back to
+      `LargeTurbo`, not `Tiny`). `Deserialize_MissingFields_UseDefaults` needed no edit (it references
+      `SettingsState.Default.Model`).
+    - **VERIFICATION:** `dotnet test` **650/650**; `dotnet build JVoice.App -c Release` **0 errors**; **both UI states
+      rendered** via `--settings-render` (Large selected → advisory only; a temporary reversible swap to Small →
+      advisory **+** caution line, then the real `settings.json` restored byte-for-byte to `LargeTurbo`). Committed
+      `fcbbe50`; **NOT pushed**. ⚠ **Note for CPU builds:** the default distribution is the **CPU** `JVoice-Setup.exe`
+      (§7 #30/§30) where Large runs *slowly* — the callout's "just as fast" wording is GPU-true; a CPU-flavor user is
+      the exact "you know you need a smaller model" case the caution line points at. Left as-is (David is the primary
+      user, on GPU); revisit if a flavor-aware default is ever wanted.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 3** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`

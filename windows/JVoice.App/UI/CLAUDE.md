@@ -25,7 +25,10 @@ monochrome.
   `HorizontalScrollBarVisibility="Disabled"` on purpose — that's what gives the body a finite width
   so the `*` columns resolve. **Note:** `--settings-render` needs **two** measure/arrange passes
   before reading `DesiredSize.Height` (the outer ScrollViewer settles its extent only after the
-  first layout pass — a single pass under-measures and clips the tallest column).
+  first layout pass — a single pass under-measures and clips the tallest column). The **Whisper
+  Model** card carries a monochrome "keep on Large" warning callout (Segoe MDL2 `E7BA` triangle);
+  its extra caution line is bound to `IsLarge` via `InverseBoolToVis` and shows only when a smaller
+  model is selected (root `CLAUDE.md` §7 #35).
 - `TrayIcon.cs` — monochrome status item (idle / recording / transcribing).
 - `Converters.cs`, `DarkSection.cs`, `HotkeyRecorder.cs`, `TranscriptRow.cs`,
   `Styles/JVoicePalette.xaml` — support + palette.
