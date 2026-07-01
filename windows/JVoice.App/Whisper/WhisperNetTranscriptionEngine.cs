@@ -3,6 +3,7 @@ using System.Text;
 using JVoice.Core;
 using JVoice.Core.Audio;
 using JVoice.Core.Models;
+using JVoice.Core.Policy;
 using JVoice.Core.Text;
 using JVoice.Core.Transcription;
 using Whisper.net;
@@ -223,6 +224,24 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             _useVocabularyPrompt,
             vocabulary,
             usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false));
+
+        // §7 #38 silence-hallucination gate: on a NEAR-SILENT clip the prompted decode can
+        // confidently invent text ("you're welcome.") that escapes the blocklist. Measured
+        // discriminator: the UNPROMPTED decode of the same audio collapses to a stock phrase
+        // the blocklist reduces to empty (10/10 silent presses) while keeping real quiet
+        // speech (7/7). So near-silence only TRIGGERS a witness decode without the prompt —
+        // an empty witness means no-speech; a non-empty one vouches for the prompted text.
+        // Skipped when no prompt is active (the decode already was unprompted). Whole-file
+        // path only: short silent presses never produce a completed streaming chunk, and a
+        // silent chunk already falls back losslessly via the empty-chunk policy.
+        if (guarded.Length > 0 && _useVocabularyPrompt
+            && SilenceHallucinationGate.ShouldVerify(rawRms, guarded)
+            && await CurrentPromptAsync().ConfigureAwait(false) is { Length: > 0 })
+        {
+            string witness = TextProcessor.RemoveWhisperHallucinations(NonSpeechAnnotation.Reduce(
+                await DecodeSamplesAsync(samples, factory, usePrompt: false, ct).ConfigureAwait(false)));
+            guarded = SilenceHallucinationGate.Resolve(guarded, witness);
+        }
 
         if (guarded.Length == 0)
             throw TranscriptionException.EmptyTranscript(
