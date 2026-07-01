@@ -193,13 +193,22 @@ public sealed class Paster : IDisposable
         }
     }
 
-    private static bool SendCtrlV()
+    private static bool SendCtrlV() => SendCtrlKey(0x56); // V
+
+    /// Synthesize Ctrl+Z to the focused window — i.e. the app's own Undo. Backs the opt-in
+    /// "undo last paste" hotkey: the foreground app already has focus when the chord fires
+    /// (JVoice has no focused window), so this needs no target HWND. Best-effort — if the
+    /// focused window is elevated, SendInput from a non-elevated process silently no-ops (UIPI).
+    public bool SendUndo() => SendCtrlKey(0x5A); // Z
+
+    /// Synthesize Ctrl+<vk> as a clean down/up pair around the Control modifier.
+    private static bool SendCtrlKey(ushort vk)
     {
-        // KEYEVENTF_KEYUP = 0x0002; VK_CONTROL = 0x11; V = 0x56.
+        // KEYEVENTF_KEYUP = 0x0002; VK_CONTROL = 0x11.
         var inputs = new INPUT[4];
         inputs[0] = KeyInput(VK_CONTROL, keyUp: false);
-        inputs[1] = KeyInput(0x56, keyUp: false); // V down
-        inputs[2] = KeyInput(0x56, keyUp: true);  // V up
+        inputs[1] = KeyInput(vk, keyUp: false); // key down
+        inputs[2] = KeyInput(vk, keyUp: true);  // key up
         inputs[3] = KeyInput(VK_CONTROL, keyUp: true);
         uint sent = SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         return sent == inputs.Length;

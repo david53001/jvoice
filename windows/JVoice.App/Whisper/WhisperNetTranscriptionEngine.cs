@@ -23,6 +23,9 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     private readonly bool _useVocabularyPrompt;
     private readonly WhisperModelStore _store;
     private readonly EngineTuning _tuning;
+    // When true, whisper runs its "translate" task: output is English regardless of the
+    // spoken/source _language. Immutable per engine (a toggle rebuilds the engine, like _language).
+    private readonly bool _translate;
 
     // Guards model load/dedupe AND the prompt-text cache recompute (the actor analog).
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -44,7 +47,8 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         IReadOnlyList<string> vocabulary,
         bool useVocabularyPrompt,
         WhisperModelStore store,
-        EngineTuning? tuning = null)
+        EngineTuning? tuning = null,
+        bool translate = false)
     {
         _model = model;
         _language = language;
@@ -52,6 +56,7 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         _useVocabularyPrompt = useVocabularyPrompt;
         _store = store ?? throw new ArgumentNullException(nameof(store));
         _tuning = tuning ?? EngineTuning.Default;
+        _translate = translate;
     }
 
     public async Task UpdateVocabularyAsync(IReadOnlyList<string> words)
@@ -252,6 +257,10 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
 
         var builder = factory.CreateBuilder()
             .WithLanguage(_language.WhisperCode());   // fixed language, no auto-detect
+
+        // Optional "translate" task: emit English regardless of the spoken source language.
+        if (_translate)
+            builder = builder.WithTranslate();
 
         builder = ApplyTemperatureFallback(builder);
 

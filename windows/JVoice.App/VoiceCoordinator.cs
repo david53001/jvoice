@@ -27,6 +27,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private readonly Paster _paster = new();
     private readonly ForegroundWindowTracker _foreground = new();
     private readonly GlobalHotkey _hotkey = new();
+    // Second global hook for the opt-in "undo last paste" chord (independent of the record
+    // hotkey). Only registered while an UndoHotkey chord is set; unregistered when cleared.
+    private readonly GlobalHotkey _undoHotkeyReg = new();
     private readonly WhisperModelStore _modelStore = new();
     private GameDetector? _gameDetector;
 
@@ -49,6 +52,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private DispatcherTimer? _hudResetTimer;
     private string[] _pendingRevertWords = [];
     private string _preFixTranscript = "";
+    // The text JVoice most recently PASTED (not clipboard-only), captured for the undo hotkey.
+    // One-shot: cleared after an undo so a second press can't walk further back the app's history.
+    private string _lastPastedText = "";
 
     public VoiceCoordinator()
     {
@@ -66,8 +72,15 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _developerTermsEnabled = s.DeveloperTerms;
         _hotkeyChord = s.Hotkey;
         _gameMode = s.GameMode;
+        // v3 dictation features
+        _copyToClipboardOnly = s.CopyToClipboardOnly;
+        _undoHotkey = s.UndoHotkey;
+        _translateToEnglish = s.TranslateToEnglish;
+        _appAwareModes = s.AppAwareModes;
+        AppModeRules = new ObservableCollection<AppModeRule>(s.AppModeRules);
         _totalWordsSpoken = _statsStore.TotalWords;
         _averageWpm = _statsStore.AverageWpm;
+        _timeSavedMinutes = StatsMath.EstimatedMinutesSaved(_statsStore.TotalWords, _statsStore.TotalSeconds);
         _lastTranscript = _lastTranscriptStore.Transcript;
         EditedTranscript = _lastTranscript;
         LaunchAtLoginEnabled = LaunchAtLogin.IsEnabled;
@@ -174,6 +187,15 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     public double AverageWpm { get => _averageWpm; private set { _averageWpm = value; Raise(); Raise(nameof(AverageWpmDisplay)); } }
     public string AverageWpmDisplay => AverageWpm > 0 ? AverageWpm.ToString("F0") : "—";
 
+    private double _timeSavedMinutes;
+    public double TimeSavedMinutes { get => _timeSavedMinutes; private set { _timeSavedMinutes = value; Raise(); Raise(nameof(TimeSavedDisplay)); } }
+    /// Human-friendly "time saved" for the stats card: "—" under a minute, "N min" up to an hour,
+    /// then "N.N h". Derived from StatsMath.EstimatedMinutesSaved over the lifetime totals.
+    public string TimeSavedDisplay =>
+        _timeSavedMinutes < 1 ? "—" :
+        _timeSavedMinutes < 60 ? $"{Math.Round(_timeSavedMinutes)} min" :
+        $"{_timeSavedMinutes / 60.0:0.#} h";
+
     public bool LaunchAtLoginEnabled { get; private set; }
 
     // volatile: written on the UI thread but read on the hotkey hook thread by
@@ -222,6 +244,95 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     public bool IsGameAggressive { get => GameMode == GameDetectionMode.Aggressive; set { if (value) GameMode = GameDetectionMode.Aggressive; } }
     private void RaiseGameModeFlags() { Raise(nameof(IsGameOff)); Raise(nameof(IsGameBalanced)); Raise(nameof(IsGameAggressive)); }
 
+    // ====================== v3 dictation features (Windows-only) ======================
+
+    // ---- copy-to-clipboard-only mode (post-processing only; no engine reload) ----
+    private bool _copyToClipboardOnly;
+    public bool CopyToClipboardOnly
+    {
+        get => _copyToClipboardOnly;
+        set { if (_copyToClipboardOnly == value) return; _copyToClipboardOnly = value; PersistSettings(); Raise(); }
+    }
+
+    // ---- dictate-to-translate: whisper "translate" task → English (rebuilds the engine like Language) ----
+    private bool _translateToEnglish;
+    public bool TranslateToEnglish
+    {
+        get => _translateToEnglish;
+        set { if (_translateToEnglish == value) return; _translateToEnglish = value; SwapEngine(); PersistSettings(); Raise(); }
+    }
+
+    // ---- app-aware modes (post-processing only; no engine reload) ----
+    private bool _appAwareModes;
+    public bool AppAwareModes
+    {
+        get => _appAwareModes;
+        set { if (_appAwareModes == value) return; _appAwareModes = value; PersistSettings(); Raise(); }
+    }
+
+    /// User per-app tone rules (built-in code apps are implicit in AppModeResolver, not listed here).
+    public ObservableCollection<AppModeRule> AppModeRules { get; }
+    public bool HasAppModeRules => AppModeRules.Count > 0;
+
+    /// Add a per-app rule. Returns false (no-op) when the match is blank or a rule with the same
+    /// match (case-insensitive) already exists. Post-processing only — no engine reload.
+    public bool AddAppRule(string appMatch, ToneStyle mode)
+    {
+        var m = appMatch.Trim();
+        if (m.Length == 0) return false;
+        if (AppModeRules.Any(r => string.Equals(r.AppMatch.Trim(), m, StringComparison.OrdinalIgnoreCase))) return false;
+        AppModeRules.Add(new AppModeRule(m, mode));
+        Raise(nameof(HasAppModeRules));
+        PersistSettings();
+        return true;
+    }
+
+    public void RemoveAppRule(AppModeRule rule)
+    {
+        if (!AppModeRules.Remove(rule)) return;
+        Raise(nameof(HasAppModeRules));
+        PersistSettings();
+    }
+
+    // ---- opt-in undo-last-paste hotkey (null = disabled; the 2nd global hook) ----
+    private HotkeyChord? _undoHotkey;
+    public HotkeyChord? UndoHotkey => _undoHotkey;
+    public bool HasUndoHotkey => _undoHotkey is not null;
+    public string UndoHotkeyDisplay => _undoHotkey is { } c ? c.Format() : "None";
+
+    /// Assign (or re-assign) the undo hotkey and register the second global hook.
+    public void SetUndoHotkey(HotkeyChord chord)
+    {
+        _undoHotkey = chord;
+        _undoHotkeyReg.Register(chord);
+        RaiseUndoHotkeyFlags();
+        PersistSettings();
+    }
+
+    /// Clear the undo hotkey (disable the feature) and tear down the second hook.
+    public void ClearUndoHotkey()
+    {
+        if (_undoHotkey is null) return;
+        _undoHotkey = null;
+        _undoHotkeyReg.Unregister();
+        RaiseUndoHotkeyFlags();
+        PersistSettings();
+    }
+
+    private void RaiseUndoHotkeyFlags() { Raise(nameof(UndoHotkey)); Raise(nameof(HasUndoHotkey)); Raise(nameof(UndoHotkeyDisplay)); }
+
+    /// Send the foreground app's own Undo (Ctrl+Z) to reverse JVoice's last paste. Guarded so it
+    /// only fires when JVoice actually pasted this session and the foreground isn't one of our own
+    /// windows. One-shot (clears the record) so a stray double-press can't walk the app's history.
+    public void UndoLastPaste()
+    {
+        if (string.IsNullOrEmpty(_lastPastedText)) return;
+        IntPtr fg = ForegroundWindowTracker.GetForegroundWindowNow();
+        if (fg == IntPtr.Zero || ForegroundWindowTracker.IsOwnedByCurrentProcess(fg)) return;
+        _paster.SendUndo();
+        _lastPastedText = "";
+    }
+
     // ====================== lifecycle / wiring ======================
 
     /// Ports VoiceCoordinator.start(): sweep orphans, install hooks, hotkey, prewarm.
@@ -244,6 +355,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         // into a game can always be stopped.
         _hotkey.SuppressPredicate = () => !IsRecording && _gameDetector?.ShouldSuppress == true;
         _hotkey.Register(_hotkeyChord);
+
+        // Second hook: the opt-in undo-last-paste chord. Pass it through to games (never inject
+        // Ctrl+Z into a game) and only register when the user has actually assigned a chord.
+        _undoHotkeyReg.Triggered += () => _dispatcher.InvokeAsync(UndoLastPaste);
+        _undoHotkeyReg.SuppressPredicate = () => _gameDetector?.ShouldSuppress == true;
+        if (_undoHotkey is { } uh) _undoHotkeyReg.Register(uh);
 
         UpdateHud(HudState.Idle);
 
@@ -382,7 +499,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     {
         try
         {
-            return new WhisperNetTranscriptionEngine(model, lang, vocab, useVocabularyPrompt: true, _modelStore);
+            return new WhisperNetTranscriptionEngine(model, lang, vocab, useVocabularyPrompt: true, _modelStore, translate: _translateToEnglish);
         }
         catch
         {
@@ -433,6 +550,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             Hotkey = _hotkeyChord,
             DeveloperTerms = _developerTermsEnabled,
             GameMode = _gameMode,
+            CopyToClipboardOnly = _copyToClipboardOnly,
+            UndoHotkey = _undoHotkey,
+            TranslateToEnglish = _translateToEnglish,
+            AppAwareModes = _appAwareModes,
+            AppModeRules = AppModeRules.ToList(),
         });
     }
 
@@ -453,6 +575,16 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         RemoveFillerWords = s.RemoveFillerWords;
         DeveloperTermsEnabled = s.DeveloperTerms;
         GameMode = s.GameMode;
+        // v3 dictation features — set the backing fields directly (not the properties) to avoid an
+        // extra engine SwapEngine mid-reset; the final MakeEngine below reads the reset _translate.
+        _copyToClipboardOnly = s.CopyToClipboardOnly;
+        _translateToEnglish = s.TranslateToEnglish;
+        _appAwareModes = s.AppAwareModes;
+        AppModeRules.Clear();
+        foreach (var r in s.AppModeRules) AppModeRules.Add(r);
+        // Undo hotkey back to its default (null = disabled): tear down the 2nd hook, or re-register.
+        _undoHotkey = s.UndoHotkey;
+        if (_undoHotkey is { } uh) _undoHotkeyReg.Register(uh); else _undoHotkeyReg.Unregister();
         // Rebind the global hotkey back to the default chord (Settings can change it).
         _hotkeyChord = s.Hotkey;
         _hotkey.Register(s.Hotkey);
@@ -462,8 +594,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         RecentTranscripts.Clear();
         _isInitializing = false;
         _settingsStore.Flush();
-        RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags(); RaiseGameModeFlags();
+        RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags(); RaiseGameModeFlags(); RaiseUndoHotkeyFlags();
         Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(Hotkey)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
+        Raise(nameof(CopyToClipboardOnly)); Raise(nameof(TranslateToEnglish)); Raise(nameof(AppAwareModes)); Raise(nameof(HasAppModeRules));
         _engine = MakeEngine(_whisperModel, _language, CustomWords.ToList());
         _ = _engine.PrewarmAsync();
     }
@@ -771,8 +904,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             // variants (their words win), then let user correction rules win over both.
             var withPack = _developerTermsEnabled ? DeveloperTerms.Augment(userDict) : userDict;
             var extraDict = UserCorrections.Merge(withPack, Corrections.ToList());
+            // App-aware modes: if the paste target matches a user rule (or a built-in code app),
+            // dictate under that tone instead of the global one; otherwise keep _toneMode. The exe
+            // read is read-only (ForegroundApp), and target is the resolved paste window.
+            string? targetExe = ForegroundApp.ExeName(target);
+            ToneStyle effectiveTone = AppModeResolver.Resolve(targetExe, AppModeRules.ToList(), _appAwareModes) ?? _toneMode;
             string processed = TextProcessor.RemoveWhisperHallucinations(
-                TextProcessor.Process(transcript, _toneMode, extraDict, _removeFillerWords, vocab));
+                TextProcessor.Process(transcript, effectiveTone, extraDict, _removeFillerWords, vocab));
 
             if (string.IsNullOrEmpty(processed))
             {
@@ -780,23 +918,38 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            await _dispatcher.InvokeAsync(() => ActivateWindow(target));
-            await Task.Delay(AppTimings.PasteActivationDelay, ct);
-            PasteOutcome outcome = _paster.Paste(processed, target);
-
-            switch (outcome)
+            if (_copyToClipboardOnly)
             {
-                case PasteOutcome.Ok:
-                    break;
-                case PasteOutcome.AccessDenied:
-                    await _dispatcher.InvokeAsync(() => { ShowError("Can't paste into an elevated (admin) window. Run that app non-elevated, or focus a normal window."); ScheduleHudReset(AppTimings.HudResetDelay); });
-                    return;
-                case PasteOutcome.ClipboardLocked:
+                // Clipboard-only: stage the text and stop — the user pastes it themselves. There is
+                // nothing in an app to reverse, so _lastPastedText (the undo record) is left unset.
+                if (!_paster.Stage(processed))
+                {
                     await _dispatcher.InvokeAsync(() => { ShowError("Clipboard is busy — try again."); ScheduleHudReset(AppTimings.HudResetDelay); });
                     return;
-                case PasteOutcome.TargetRejected:
-                    await _dispatcher.InvokeAsync(() => { ShowError("Unable to paste into the active app."); ScheduleHudReset(AppTimings.HudResetDelay); });
-                    return;
+                }
+            }
+            else
+            {
+                await _dispatcher.InvokeAsync(() => ActivateWindow(target));
+                await Task.Delay(AppTimings.PasteActivationDelay, ct);
+                PasteOutcome outcome = _paster.Paste(processed, target);
+
+                switch (outcome)
+                {
+                    case PasteOutcome.Ok:
+                        break;
+                    case PasteOutcome.AccessDenied:
+                        await _dispatcher.InvokeAsync(() => { ShowError("Can't paste into an elevated (admin) window. Run that app non-elevated, or focus a normal window."); ScheduleHudReset(AppTimings.HudResetDelay); });
+                        return;
+                    case PasteOutcome.ClipboardLocked:
+                        await _dispatcher.InvokeAsync(() => { ShowError("Clipboard is busy — try again."); ScheduleHudReset(AppTimings.HudResetDelay); });
+                        return;
+                    case PasteOutcome.TargetRejected:
+                        await _dispatcher.InvokeAsync(() => { ShowError("Unable to paste into the active app."); ScheduleHudReset(AppTimings.HudResetDelay); });
+                        return;
+                }
+                // Paste succeeded — remember it so the opt-in undo hotkey can reverse it.
+                _lastPastedText = processed;
             }
 
             int wordCount = processed.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
@@ -809,6 +962,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 _statsStore.Record(wordCount, _lastRecordingSeconds);
                 TotalWordsSpoken = _statsStore.TotalWords;
                 AverageWpm = _statsStore.AverageWpm;
+                TimeSavedMinutes = StatsMath.EstimatedMinutesSaved(_statsStore.TotalWords, _statsStore.TotalSeconds);
                 // Silent success: the text is already in the user's app, so the HUD just
                 // disappears — no "Pasted" confirmation pill (per the bars-only redesign).
                 UpdateHud(HudState.Idle);
@@ -902,6 +1056,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     {
         _gameDetector?.Dispose();
         _hotkey.Dispose();
+        _undoHotkeyReg.Dispose();
         _foreground.Dispose();
         _paster.Dispose();
         (_recorder as IDisposable)?.Dispose();

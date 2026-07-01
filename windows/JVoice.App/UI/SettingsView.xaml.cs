@@ -3,12 +3,16 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Threading;
 using JVoice.Core;
+using JVoice.Core.Models;
 
 namespace JVoice.App.UI;
 
 public partial class SettingsView : UserControl
 {
     private VoiceCoordinator Vm => (VoiceCoordinator)DataContext;
+
+    // The mode a new app-rule will be added with; cycled by the chip button in the add row.
+    private ToneStyle _appRuleMode = ToneStyle.Code;
 
     public SettingsView()
     {
@@ -17,16 +21,31 @@ public partial class SettingsView : UserControl
         {
             Recorder.Chord = Vm.Hotkey;
             Recorder.ChordChanged += chord => Vm.SetHotkey(chord);
-            // Keep the recorder in sync when the coordinator changes the hotkey itself
-            // (e.g. Restore Defaults). Setting Recorder.Chord only updates its display —
-            // it does NOT raise ChordChanged — so this can't loop back into SetHotkey.
-            // One SettingsView instance lives for the app's lifetime (the window is hidden,
-            // not destroyed), so this subscription doesn't accumulate.
+
+            // Undo-last-paste recorder: show the assigned chord or "None" (opt-in / disabled).
+            SyncUndoRecorder();
+            UndoRecorder.ChordChanged += chord => Vm.SetUndoHotkey(chord);
+
+            // App-rule mode chip: seed its label from the default add-mode.
+            AppRuleModeButton.Content = _appRuleMode.DisplayName();
+
+            // Keep the recorders in sync when the coordinator changes a hotkey itself (e.g. Restore
+            // Defaults). Setting HotkeyRecorder.Chord only updates its display — it does NOT raise
+            // ChordChanged — so this can't loop back into SetHotkey/SetUndoHotkey. One SettingsView
+            // instance lives for the app's lifetime (the window is hidden, not destroyed), so this
+            // subscription doesn't accumulate.
             Vm.PropertyChanged += (_, e) =>
             {
                 if (e.PropertyName == nameof(VoiceCoordinator.Hotkey)) Recorder.Chord = Vm.Hotkey;
+                else if (e.PropertyName == nameof(VoiceCoordinator.UndoHotkey)) SyncUndoRecorder();
             };
         };
+    }
+
+    private void SyncUndoRecorder()
+    {
+        if (Vm.UndoHotkey is { } c) UndoRecorder.Chord = c;
+        else UndoRecorder.Content = "None";
     }
 
     private void OnAddWord(object sender, RoutedEventArgs e) => SubmitWord();
@@ -91,6 +110,46 @@ public partial class SettingsView : UserControl
     }
 
     private void OnClearTranscripts(object sender, RoutedEventArgs e) => Vm.ClearRecentTranscripts();
+
+    // ---- App Modes (per-app tone rules) ----
+
+    // Cycle order for the add-row mode chip (includes Code, unlike ToneStyle.Toggled).
+    private static readonly ToneStyle[] AppRuleModeCycle =
+        { ToneStyle.Casual, ToneStyle.Formal, ToneStyle.VeryCasual, ToneStyle.Code };
+
+    private void OnCycleAppRuleMode(object sender, RoutedEventArgs e)
+    {
+        int i = Array.IndexOf(AppRuleModeCycle, _appRuleMode);
+        _appRuleMode = AppRuleModeCycle[(i + 1) % AppRuleModeCycle.Length];
+        AppRuleModeButton.Content = _appRuleMode.DisplayName();
+    }
+
+    private void OnAddAppRule(object sender, RoutedEventArgs e) => SubmitAppRule();
+    private void OnAppRuleKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { SubmitAppRule(); e.Handled = true; }
+    }
+    private void SubmitAppRule()
+    {
+        // Clear only on a successful add (AddAppRule ignores blank/duplicate matches).
+        if (Vm.AddAppRule(AppRuleBox.Text, _appRuleMode))
+        {
+            AppRuleBox.Clear();
+            AppRuleBox.Focus();
+        }
+    }
+
+    private void OnRemoveAppRule(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is AppModeRule rule)
+            Vm.RemoveAppRule(rule);
+    }
+
+    private void OnClearUndoHotkey(object sender, RoutedEventArgs e)
+    {
+        Vm.ClearUndoHotkey();
+        UndoRecorder.Content = "None";
+    }
 
     private void OnRestoreDefaults(object sender, RoutedEventArgs e)
     {

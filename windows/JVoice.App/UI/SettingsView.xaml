@@ -2,7 +2,7 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:JVoice.App.UI"
-             Width="640" Height="846" Background="{StaticResource Settings.PanelBg}">
+             Width="640" Height="1080" Background="{StaticResource Settings.PanelBg}">
     <!-- ===== Two-column (masonry) Settings layout =====
          A full-width header (row 0), a two-column body of cards (row 1), and a full-width
          footer (row 2). The two body columns are independent vertical StackPanels so cards of
@@ -37,16 +37,18 @@
                 <!-- ===================== LEFT COLUMN ===================== -->
                 <StackPanel Grid.Column="0">
 
-                    <!-- STATS (green) -->
+                    <!-- STATS (green) — three-up: total words | avg WPM | time saved -->
                     <ui:DarkSection HeaderText="Stats" AccentBrush="{StaticResource Settings.Green}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*" />
                                 <ColumnDefinition Width="Auto" />
                                 <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="*" />
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding TotalWordsSpoken}" FontSize="26" FontWeight="Bold" Foreground="White"
+                                <TextBlock Text="{Binding TotalWordsSpoken}" FontSize="22" FontWeight="Bold" Foreground="White"
                                            FontFamily="Consolas" HorizontalAlignment="Center">
                                     <TextBlock.Effect>
                                         <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
@@ -56,13 +58,23 @@
                             </StackPanel>
                             <Rectangle Grid.Column="1" Width="0.5" Height="44" Fill="{StaticResource Settings.Border}" />
                             <StackPanel Grid.Column="2" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding AverageWpmDisplay}" FontSize="26" FontWeight="Bold" Foreground="White"
+                                <TextBlock Text="{Binding AverageWpmDisplay}" FontSize="22" FontWeight="Bold" Foreground="White"
                                            FontFamily="Consolas" HorizontalAlignment="Center">
                                     <TextBlock.Effect>
                                         <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
                                     </TextBlock.Effect>
                                 </TextBlock>
                                 <TextBlock Text="avg WPM" FontSize="10" Foreground="{StaticResource Text.W38}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                            <Rectangle Grid.Column="3" Width="0.5" Height="44" Fill="{StaticResource Settings.Border}" />
+                            <StackPanel Grid.Column="4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding TimeSavedDisplay}" FontSize="22" FontWeight="Bold" Foreground="White"
+                                           FontFamily="Consolas" HorizontalAlignment="Center">
+                                    <TextBlock.Effect>
+                                        <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFFFFF" Opacity="0.28" />
+                                    </TextBlock.Effect>
+                                </TextBlock>
+                                <TextBlock Text="time saved" FontSize="10" Foreground="{StaticResource Text.W38}" HorizontalAlignment="Center" />
                             </StackPanel>
                         </Grid>
                     </ui:DarkSection>
@@ -180,6 +192,20 @@
                                           Style="{StaticResource MonoSwitch}"
                                           IsChecked="{Binding DeveloperTermsEnabled, Mode=TwoWay}" />
                             </Grid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="Copy to Clipboard" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
+                                    <TextBlock Text="Copy the text instead of auto-pasting it" FontSize="10" Foreground="{StaticResource Text.W38}"
+                                               TextWrapping="Wrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                          Style="{StaticResource MonoSwitch}"
+                                          IsChecked="{Binding CopyToClipboardOnly, Mode=TwoWay}" />
+                            </Grid>
                         </StackPanel>
                     </ui:DarkSection>
 
@@ -195,6 +221,68 @@
                         </UniformGrid>
                     </ui:DarkSection>
 
+                    <!-- APP MODES (teal) — auto-switch the tone by foreground app -->
+                    <ui:DarkSection HeaderText="App Modes" AccentBrush="{StaticResource Settings.Teal}">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="Auto-switch by App" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
+                                    <TextBlock Text="Terminals, VS Code &amp; IDEs use Code mode automatically" FontSize="10" Foreground="{StaticResource Text.W38}"
+                                               TextWrapping="Wrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                          Style="{StaticResource MonoSwitch}"
+                                          IsChecked="{Binding AppAwareModes, Mode=TwoWay}" />
+                            </Grid>
+
+                            <!-- Custom per-app rules -->
+                            <TextBlock Text="Custom rules — match part of an app's name (e.g. &quot;slack&quot;, &quot;chrome&quot;)."
+                                       FontSize="10" Foreground="{StaticResource Text.W38}" TextWrapping="Wrap" Margin="0,12,0,6" />
+                            <ItemsControl ItemsSource="{Binding AppModeRules}"
+                                          Visibility="{Binding HasAppModeRules, Converter={StaticResource BoolToVis}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,2">
+                                            <StackPanel Orientation="Horizontal" HorizontalAlignment="Left">
+                                                <TextBlock Text="{Binding AppMatch}" FontSize="11" Foreground="{StaticResource Text.W75}" />
+                                                <TextBlock Text="&#x2192;" FontSize="11" Foreground="{StaticResource Text.W40}" Margin="6,0,6,0" />
+                                                <TextBlock Text="{Binding Mode}" FontSize="11" Foreground="{StaticResource Settings.Teal}" />
+                                            </StackPanel>
+                                            <Button HorizontalAlignment="Right" Style="{StaticResource PressableButton}"
+                                                    Click="OnRemoveAppRule" Tag="{Binding}"
+                                                    FontFamily="Segoe MDL2 Assets" Content="&#xECC9;"
+                                                    Foreground="#B3FFFFFF" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <!-- Add row: star app-name input + click-to-cycle mode chip + Add. -->
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="6" Background="{StaticResource Settings.InputBg}"
+                                        BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
+                                    <TextBox x:Name="AppRuleBox" Background="Transparent" BorderThickness="0"
+                                             Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                             KeyDown="OnAppRuleKeyDown" />
+                                </Border>
+                                <Button x:Name="AppRuleModeButton" Grid.Column="1" Style="{StaticResource DarkPrimaryButton}" Margin="6,0,0,0"
+                                        MinWidth="80" Content="Code" Foreground="{StaticResource Settings.Teal}" Tag="{StaticResource Settings.Teal}"
+                                        Click="OnCycleAppRuleMode" ToolTip="Click to change the mode this rule applies" />
+                                <Button Grid.Column="2" Content="Add" Style="{StaticResource DarkPrimaryButton}" Margin="6,0,0,0"
+                                        Foreground="{StaticResource Settings.Teal}" Tag="{StaticResource Settings.Teal}"
+                                        Click="OnAddAppRule" />
+                            </Grid>
+                        </StackPanel>
+                    </ui:DarkSection>
+
                 </StackPanel>
 
                 <!-- ===================== RIGHT COLUMN ===================== -->
@@ -202,12 +290,28 @@
 
                     <!-- LANGUAGE (indigo) -->
                     <ui:DarkSection HeaderText="Language" AccentBrush="{StaticResource Settings.Indigo}">
-                        <UniformGrid Rows="1">
-                            <RadioButton Content="English"  GroupName="Lang" Style="{StaticResource SegmentLeft}"
-                                         IsChecked="{Binding IsEnglish, Mode=TwoWay}" />
-                            <RadioButton Content="Romanian" GroupName="Lang" Style="{StaticResource SegmentRight}"
-                                         IsChecked="{Binding IsRomanian, Mode=TwoWay}" />
-                        </UniformGrid>
+                        <StackPanel>
+                            <UniformGrid Rows="1">
+                                <RadioButton Content="English"  GroupName="Lang" Style="{StaticResource SegmentLeft}"
+                                             IsChecked="{Binding IsEnglish, Mode=TwoWay}" />
+                                <RadioButton Content="Romanian" GroupName="Lang" Style="{StaticResource SegmentRight}"
+                                             IsChecked="{Binding IsRomanian, Mode=TwoWay}" />
+                            </UniformGrid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="Translate to English" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
+                                    <TextBlock Text="Speak the language above, paste English" FontSize="10" Foreground="{StaticResource Text.W38}"
+                                               TextWrapping="Wrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                          Style="{StaticResource MonoSwitch}"
+                                          IsChecked="{Binding TranslateToEnglish, Mode=TwoWay}" />
+                            </Grid>
+                        </StackPanel>
                     </ui:DarkSection>
 
                     <!-- CUSTOM WORDS (orange) -->
@@ -319,6 +423,23 @@
                             </StackPanel>
                             <TextBlock Text="Default: Ctrl + Shift + Space" FontSize="10"
                                        Foreground="{StaticResource Text.W35}" Margin="0,8,0,0" />
+
+                            <!-- Optional undo-last-paste chord (off by default; a global chord is swallowed
+                                 system-wide, so it's opt-in — pick a rare combo). -->
+                            <Rectangle Height="0.5" Fill="{StaticResource Settings.Border}" Margin="0,12,0,12" />
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Undo Last Paste:" FontSize="11" Foreground="{StaticResource Text.W75}"
+                                           VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <ui:HotkeyRecorder x:Name="UndoRecorder" MinWidth="120" Padding="8,4" Content="None"
+                                                   Background="{StaticResource Settings.InputBg}"
+                                                   Foreground="{StaticResource Text.W75}" />
+                                <Button Content="Clear" Style="{StaticResource DarkPrimaryButton}" Margin="8,0,0,0"
+                                        Foreground="{StaticResource Settings.Gray}" Tag="{StaticResource Settings.Gray}"
+                                        Click="OnClearUndoHotkey"
+                                        Visibility="{Binding HasUndoHotkey, Converter={StaticResource BoolToVis}}" />
+                            </StackPanel>
+                            <TextBlock Text="Optional — sends the app's Undo (Ctrl+Z) to reverse the last paste." FontSize="10"
+                                       Foreground="{StaticResource Text.W35}" TextWrapping="Wrap" Margin="0,8,0,0" />
                         </StackPanel>
                     </ui:DarkSection>
 
