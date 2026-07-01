@@ -59,6 +59,15 @@ public static class SettingsStateJson
                 virtualKey = state.Hotkey.VirtualKey,
                 keyName = state.Hotkey.KeyName,
             },
+            // ── v3 dictation-feature keys (Windows-only) ──
+            copyToClipboardOnly = state.CopyToClipboardOnly,
+            // Nullable: serialized as JSON null when undo-last-paste is disabled (the opt-in default).
+            undoHotkey = state.UndoHotkey is { } uh
+                ? (object?)new { modifiers = (int)uh.Modifiers, virtualKey = uh.VirtualKey, keyName = uh.KeyName }
+                : null,
+            translateToEnglish = state.TranslateToEnglish,
+            appAwareModes = state.AppAwareModes,
+            appModeRules = state.AppModeRules.Select(r => new { appMatch = r.AppMatch, mode = r.Mode.ToString() }),
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -88,7 +97,12 @@ public static class SettingsStateJson
             Corrections: ParseCorrections(root),
             Hotkey: ParseHotkey(root),
             GameMode: ParseGameMode(TryGetString(root, "gameMode")),
-            DeveloperTerms: TryGetBool(root, "developerTerms") ?? true);
+            DeveloperTerms: TryGetBool(root, "developerTerms") ?? true,
+            CopyToClipboardOnly: TryGetBool(root, "copyToClipboardOnly") ?? false,
+            UndoHotkey: ParseUndoHotkey(root),
+            TranslateToEnglish: TryGetBool(root, "translateToEnglish") ?? false,
+            AppAwareModes: TryGetBool(root, "appAwareModes") ?? true,
+            AppModeRules: ParseAppModeRules(root));
     }
 
     // field parsers (each falls back to the field default)
@@ -179,6 +193,41 @@ public static class SettingsStateJson
             return HotkeyChord.Default;
 
         return new HotkeyChord((HotkeyModifiers)modifiers.Value, virtualKey.Value, keyName);
+    }
+
+    /// v3 opt-in undo-last-paste chord. Unlike the required `hotkey`, an absent / wrong-typed /
+    /// incomplete value falls back to null (feature DISABLED), never to a default chord.
+    private static HotkeyChord? ParseUndoHotkey(JsonElement root)
+    {
+        if (!root.TryGetProperty("undoHotkey", out var h) || h.ValueKind != JsonValueKind.Object)
+            return null;
+
+        int? modifiers = TryGetInt(h, "modifiers");
+        int? virtualKey = TryGetInt(h, "virtualKey");
+        string? keyName = TryGetString(h, "keyName");
+
+        if (modifiers is null || virtualKey is not (> 0 and <= 0xFF) || string.IsNullOrEmpty(keyName))
+            return null;
+
+        return new HotkeyChord((HotkeyModifiers)modifiers.Value, virtualKey.Value, keyName);
+    }
+
+    /// v3 per-app mode rules: `[{ "appMatch": "code", "mode": "Code" }]`. Absent / wrong-typed
+    /// array => empty. Entries missing a string `appMatch` are skipped; an absent / unrecognised
+    /// `mode` falls back to Casual (ParseTone) — the per-field-fallback philosophy, never throwing.
+    private static IReadOnlyList<AppModeRule> ParseAppModeRules(JsonElement root)
+    {
+        if (!root.TryGetProperty("appModeRules", out var arr) || arr.ValueKind != JsonValueKind.Array)
+            return Array.Empty<AppModeRule>();
+        var list = new List<AppModeRule>();
+        foreach (var el in arr.EnumerateArray())
+        {
+            if (el.ValueKind != JsonValueKind.Object) continue;
+            string? appMatch = TryGetString(el, "appMatch");
+            if (appMatch is null) continue;
+            list.Add(new AppModeRule(appMatch, ParseTone(TryGetString(el, "mode"))));
+        }
+        return list;
     }
 
     // lenient scalar readers (wrong type => null => field default)

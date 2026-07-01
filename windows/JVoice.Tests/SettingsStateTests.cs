@@ -10,7 +10,7 @@ public class SettingsStateTests
     public void Default_MatchesSwiftDefaults()
     {
         var s = SettingsState.Default;
-        Assert.Equal(2, s.SchemaVersion);
+        Assert.Equal(3, s.SchemaVersion);
         Assert.Equal(ToneStyle.Casual, s.Mode);
         Assert.Equal(WhisperModelOption.Tiny, s.Model);
         Assert.Equal(TranscriptionLanguage.English, s.Language);
@@ -20,11 +20,17 @@ public class SettingsStateTests
         Assert.True(s.DeveloperTerms);   // Windows-only pack, default ON
         Assert.Equal(GameDetectionMode.Balanced, s.GameMode);
         Assert.Equal(HotkeyChord.Default, s.Hotkey);  // Windows-only; Ctrl+Shift+Space
+        // v3 (Windows-only dictation features)
+        Assert.False(s.CopyToClipboardOnly);   // auto-paste by default
+        Assert.Null(s.UndoHotkey);             // undo-last-paste is opt-in (no default chord)
+        Assert.False(s.TranslateToEnglish);
+        Assert.True(s.AppAwareModes);          // app-aware modes ON by default
+        Assert.Empty(s.AppModeRules);          // no user rules (built-in code apps are implicit)
     }
 
     [Fact]
-    public void CurrentSchemaVersion_Is2()
-        => Assert.Equal(2, SettingsState.CurrentSchemaVersion);
+    public void CurrentSchemaVersion_Is3()
+        => Assert.Equal(3, SettingsState.CurrentSchemaVersion);
 
     [Fact]
     public void Record_With_OverridesOnlyNamedFields()
@@ -33,7 +39,7 @@ public class SettingsStateTests
         Assert.Equal(ToneStyle.Formal, s.Mode);
         Assert.False(s.RemoveFillerWords);
         Assert.Equal(WhisperModelOption.Tiny, s.Model);   // unchanged
-        Assert.Equal(2, s.SchemaVersion);
+        Assert.Equal(3, s.SchemaVersion);
         Assert.Equal(GameDetectionMode.Balanced, s.GameMode);  // unchanged
     }
 
@@ -87,7 +93,7 @@ public class SettingsStateTests
     [Fact]
     public void Deserialize_SchemaVersionEqualToCurrent_IsAccepted()
     {
-        var s = SettingsStateJson.Deserialize("""{"schemaVersion":2,"mode":"Formal"}""");
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":3,"mode":"Formal"}""");
         Assert.Equal(ToneStyle.Formal, s.Mode);
     }
 

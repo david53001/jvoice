@@ -50,11 +50,11 @@ public class SettingsStoreJsonTests
     public void Deserialize_ForwardVersion_Throws()
     {
         string json = """
-            { "schemaVersion": 3, "mode": "Casual", "model": "Tiny",
+            { "schemaVersion": 4, "mode": "Casual", "model": "Tiny",
               "language": "English", "customWords": [], "removeFillerWords": true }
             """;
         var ex = Assert.Throws<ForwardVersionException>(() => SettingsStateJson.Deserialize(json));
-        Assert.Equal(3, ex.FileVersion);
+        Assert.Equal(4, ex.FileVersion);
         Assert.Equal(SettingsState.CurrentSchemaVersion, ex.CurrentVersion);
     }
 
@@ -115,19 +115,18 @@ public class SettingsStoreJsonTests
     // ===== Serialize-side fidelity + round-trip fuzz =====
 
     // Swift's CodingKeys are schemaVersion/mode/model/language/customWords/removeFillerWords. The
-    // Windows port adds four extra on-disk keys with no macOS counterpart: `corrections`,
-    // `developerTerms` (the developer-terms pack toggle), `gameMode` (the game-detection
-    // suppression setting), and `hotkey` (the global-hotkey chord) — so Serialize emits exactly
-    // those ten keys. Older builds / the macOS app simply ignore the unknown keys on read;
-    // Deserialize tolerates their absence (a v1 file with no `gameMode` defaults to Balanced, no
-    // `developerTerms` defaults to ON, no `hotkey` defaults to Ctrl+Shift+Space).
+    // Windows port adds Windows-only on-disk keys with no macOS counterpart: `corrections`,
+    // `developerTerms`, `gameMode`, `hotkey` (schema v2), then the v3 dictation-feature keys
+    // `copyToClipboardOnly`, `undoHotkey`, `translateToEnglish`, `appAwareModes`, `appModeRules`.
+    // Serialize emits exactly these fifteen keys. Older builds / the macOS app ignore the unknown
+    // keys on read; Deserialize tolerates their absence (each falls back to its default).
     [Fact]
-    public void Serialize_EmitsExactlyTheTenKeys()
+    public void Serialize_EmitsExactlyTheFifteenKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "language", "mode", "model", "removeFillerWords", "schemaVersion" },
+            new[] { "appAwareModes", "appModeRules", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "language", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "undoHotkey" },
             keys);
     }
 
@@ -362,4 +361,85 @@ public class SettingsStoreJsonTests
         for (int i = 0; i < n; i++) sb.Append(alpha[rng.Next(alpha.Length)]);
         return sb.ToString();
     }
+
+    // ===== v3 dictation-feature fields (Windows-only) =====
+
+    // All five v3 fields round-trip losslessly, including a non-null undo hotkey and app-mode rules.
+    [Fact]
+    public void RoundTrip_V3Fields()
+    {
+        var state = SettingsState.Default with
+        {
+            CopyToClipboardOnly = true,
+            TranslateToEnglish = true,
+            AppAwareModes = false,
+            UndoHotkey = new HotkeyChord(HotkeyModifiers.Control | HotkeyModifiers.Alt, 0x5A, "Z"),
+            AppModeRules = new[]
+            {
+                new AppModeRule("code", ToneStyle.Code),
+                new AppModeRule("slack", ToneStyle.VeryCasual),
+            },
+        };
+        var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(state));
+        Assert.True(back.CopyToClipboardOnly);
+        Assert.True(back.TranslateToEnglish);
+        Assert.False(back.AppAwareModes);
+        Assert.Equal(state.UndoHotkey, back.UndoHotkey);
+        Assert.Equal(state.AppModeRules, back.AppModeRules);
+    }
+
+    // An older (v1/v2) file with none of the v3 keys deserializes cleanly to the v3 defaults.
+    [Fact]
+    public void Deserialize_MissingV3Fields_UseDefaults()
+    {
+        var s = SettingsStateJson.Deserialize(
+            """{ "schemaVersion": 2, "mode": "Casual", "customWords": ["X"] }""");
+        Assert.False(s.CopyToClipboardOnly);
+        Assert.False(s.TranslateToEnglish);
+        Assert.True(s.AppAwareModes);
+        Assert.Null(s.UndoHotkey);          // opt-in: absent => disabled, NOT the default chord
+        Assert.Empty(s.AppModeRules);
+    }
+
+    // undoHotkey is nullable: it must serialize as JSON null when disabled and read back null.
+    [Fact]
+    public void UndoHotkey_Null_SerializesNull_AndRoundTrips()
+    {
+        using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
+        Assert.Equal(JsonValueKind.Null, doc.RootElement.GetProperty("undoHotkey").ValueKind);
+        var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(SettingsState.Default));
+        Assert.Null(back.UndoHotkey);
+    }
+
+    // A malformed undoHotkey (unlike the required `hotkey`) falls back to null (disabled), not Default.
+    [Theory]
+    [InlineData("""{ "undoHotkey": { "modifiers": 5, "keyName": "Z" } }""")]                  // missing virtualKey
+    [InlineData("""{ "undoHotkey": { "modifiers": 5, "virtualKey": 0, "keyName": "Z" } }""")] // VK out of range
+    [InlineData("""{ "undoHotkey": "nope" }""")]                                              // wrong type
+    public void Deserialize_MalformedUndoHotkey_FallsBackToNull(string json)
+        => Assert.Null(SettingsStateJson.Deserialize(json).UndoHotkey);
+
+    // App-mode rules parse leniently: non-object entries and entries missing a string appMatch are
+    // skipped; an unknown/absent mode falls back to Casual.
+    [Fact]
+    public void Deserialize_MalformedAppModeRules_AreSkipped()
+    {
+        string json = """
+            { "appModeRules": [
+                { "appMatch": "code", "mode": "Code" },
+                { "appMatch": "slack" },
+                { "mode": "Formal" },
+                { "appMatch": 5, "mode": "Casual" },
+                "not-an-object"
+            ] }
+            """;
+        var rules = SettingsStateJson.Deserialize(json).AppModeRules;
+        Assert.Equal(2, rules.Count);
+        Assert.Equal(new AppModeRule("code", ToneStyle.Code), rules[0]);
+        Assert.Equal(new AppModeRule("slack", ToneStyle.Casual), rules[1]); // absent mode => Casual
+    }
+
+    [Fact]
+    public void Deserialize_AppModeRulesWrongType_DefaultsToEmpty()
+        => Assert.Empty(SettingsStateJson.Deserialize("""{ "appModeRules": "nope" }""").AppModeRules);
 }

@@ -10,9 +10,24 @@ public sealed record SettingsState(
     IReadOnlyList<CorrectionRule> Corrections,
     HotkeyChord Hotkey,
     GameDetectionMode GameMode = GameDetectionMode.Balanced,
-    bool DeveloperTerms = true)
+    bool DeveloperTerms = true,
+    // ── v3 (Windows-only dictation features; no macOS counterpart) ──
+    // Paste target: when true, dictation copies to the clipboard instead of auto-pasting.
+    bool CopyToClipboardOnly = false,
+    // Opt-in "undo last paste" chord. null = disabled (any registered global chord is swallowed
+    // system-wide, so there is deliberately no default — the user assigns a rare chord).
+    HotkeyChord? UndoHotkey = null,
+    // Whisper "translate" task: output English regardless of the spoken/source Language.
+    bool TranslateToEnglish = false,
+    // Master toggle for app-aware modes (auto-switch tone by foreground app; built-in code apps).
+    bool AppAwareModes = true,
+    // User per-app rules (built-in code apps are implicit in AppModeResolver, not persisted).
+    // Nullable param + normalized property so a defaulted/positional construction never yields null.
+    IReadOnlyList<AppModeRule>? AppModeRules = null)
 {
-    public const int CurrentSchemaVersion = 2;
+    public const int CurrentSchemaVersion = 3;
+
+    public IReadOnlyList<AppModeRule> AppModeRules { get; init; } = AppModeRules ?? Array.Empty<AppModeRule>();
 
     public static SettingsState Default => new(
         SchemaVersion: CurrentSchemaVersion,
@@ -28,5 +43,10 @@ public sealed record SettingsState(
         // Ctrl+Shift+Space (HotkeyChord.Default).
         Hotkey: HotkeyChord.Default,
         GameMode: GameDetectionMode.Balanced,
-        DeveloperTerms: true);
+        DeveloperTerms: true,
+        CopyToClipboardOnly: false,
+        UndoHotkey: null,
+        TranslateToEnglish: false,
+        AppAwareModes: true,
+        AppModeRules: Array.Empty<AppModeRule>());
 }
