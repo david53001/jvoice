@@ -32,7 +32,14 @@ public sealed record SettingsState(
     public static SettingsState Default => new(
         SchemaVersion: CurrentSchemaVersion,
         Mode: ToneStyle.Casual,
-        Model: WhisperModelOption.Tiny,
+        // Windows-only divergence from macOS (which defaults to .tiny — see
+        // ../../../Sources/JVoice/Models/SettingsState.swift). On Windows the default is the
+        // most-accurate model: with GPU acceleration Large ("large-v3-turbo") is both the best
+        // and fast, so it is the right out-of-the-box choice. The Settings "Whisper Model" card
+        // shows a warning advising the user to keep this on Large unless they know they need a
+        // smaller model. Kept in sync with SettingsStateJson.ParseModel's fallback so any
+        // unspecified-model path lands on the same default.
+        Model: WhisperModelOption.LargeTurbo,
         Language: TranscriptionLanguage.English,
         CustomWords: Array.Empty<string>(),
         RemoveFillerWords: true,

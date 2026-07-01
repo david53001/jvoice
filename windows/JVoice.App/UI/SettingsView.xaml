@@ -170,6 +170,32 @@
                             </UniformGrid>
                             <TextBlock Text="{Binding ModelGuidance}" FontSize="10" Foreground="{StaticResource Text.W38}"
                                        TextWrapping="Wrap" Margin="0,7,0,0" />
+
+                            <!-- Recommendation / warning callout (monochrome). Large is the default and the
+                                 recommended choice; this always advises keeping it, and an extra caution line
+                                 (bound to IsLarge via InverseBoolToVis) appears only when a smaller model is
+                                 picked. Segoe MDL2 Assets glyph E7BA is the standard Warning triangle, matching
+                                 the icon font used elsewhere in Settings. -->
+                            <Border CornerRadius="6" Background="#14FFFFFF" BorderBrush="{StaticResource Settings.Border}"
+                                    BorderThickness="1" Padding="9,8" Margin="0,10,0,0">
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="*" />
+                                    </Grid.ColumnDefinitions>
+                                    <TextBlock Grid.Column="0" FontFamily="Segoe MDL2 Assets" Text="&#xE7BA;" FontSize="13"
+                                               Foreground="White" VerticalAlignment="Top" Margin="0,1,8,0" />
+                                    <StackPanel Grid.Column="1">
+                                        <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="{StaticResource Text.W75}">
+                                            <Run FontWeight="SemiBold" Foreground="White">Keep this on Large.</Run>
+                                            <Run Text=" It's the most accurate model, and with GPU acceleration it's just as fast as the smaller ones. Only switch to a smaller model if you really know why you need to &#8212; for example an older, CPU-only PC where Large runs slowly." />
+                                        </TextBlock>
+                                        <TextBlock FontSize="10" Foreground="White" TextWrapping="Wrap" Margin="0,6,0,0"
+                                                   Text="You've picked a smaller model &#8212; accuracy may drop. Switch back to Large unless you have a specific reason."
+                                                   Visibility="{Binding IsLarge, Converter={StaticResource InverseBoolToVis}}" />
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
                         </StackPanel>
                     </ui:DarkSection>
 

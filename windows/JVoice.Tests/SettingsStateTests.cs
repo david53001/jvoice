@@ -12,7 +12,9 @@ public class SettingsStateTests
         var s = SettingsState.Default;
         Assert.Equal(3, s.SchemaVersion);
         Assert.Equal(ToneStyle.Casual, s.Mode);
-        Assert.Equal(WhisperModelOption.Tiny, s.Model);
+        // Windows-only divergence: macOS defaults to .tiny; Windows defaults to Large (most
+        // accurate, and fast with GPU acceleration). See SettingsState.Default.
+        Assert.Equal(WhisperModelOption.LargeTurbo, s.Model);
         Assert.Equal(TranscriptionLanguage.English, s.Language);
         Assert.Empty(s.CustomWords);
         Assert.True(s.RemoveFillerWords);
@@ -38,7 +40,7 @@ public class SettingsStateTests
         var s = SettingsState.Default with { Mode = ToneStyle.Formal, RemoveFillerWords = false };
         Assert.Equal(ToneStyle.Formal, s.Mode);
         Assert.False(s.RemoveFillerWords);
-        Assert.Equal(WhisperModelOption.Tiny, s.Model);   // unchanged
+        Assert.Equal(WhisperModelOption.LargeTurbo, s.Model);   // unchanged (the Windows default)
         Assert.Equal(3, s.SchemaVersion);
         Assert.Equal(GameDetectionMode.Balanced, s.GameMode);  // unchanged
     }

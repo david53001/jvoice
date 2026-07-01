@@ -76,7 +76,8 @@ public class SettingsStoreJsonTests
             """;
         var s = SettingsStateJson.Deserialize(json);
         Assert.Equal(ToneStyle.Casual, s.Mode);
-        Assert.Equal(WhisperModelOption.Tiny, s.Model);
+        // Unparseable model falls back to the app default, which on Windows is Large (not Tiny).
+        Assert.Equal(WhisperModelOption.LargeTurbo, s.Model);
         Assert.Equal(TranscriptionLanguage.English, s.Language);
         Assert.True(s.RemoveFillerWords);
         Assert.Empty(s.CustomWords);

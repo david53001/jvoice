@@ -116,7 +116,11 @@ public static class SettingsStateJson
 
     private static WhisperModelOption ParseModel(string? raw)
     {
-        if (raw is null) return WhisperModelOption.Tiny;
+        // Fallback is the app default (LargeTurbo), NOT Tiny: the per-field-fallback philosophy
+        // means a missing/unparseable model field resolves to SettingsState.Default.Model. On
+        // Windows that default is Large (Windows-only divergence from macOS's .tiny — see
+        // SettingsState.Default). Keep these two in sync.
+        if (raw is null) return WhisperModelOption.LargeTurbo;
         // Legacy macOS raw values (Swift WhisperModelOption rawValues + the pre-2026-06 alias).
         switch (raw)
         {
@@ -128,7 +132,7 @@ public static class SettingsStateJson
             case "small": return WhisperModelOption.Small;
         }
         if (Enum.TryParse<WhisperModelOption>(raw, ignoreCase: true, out var v)) return v;
-        return WhisperModelOption.Tiny;
+        return WhisperModelOption.LargeTurbo;
     }
 
     private static TranscriptionLanguage ParseLanguage(string? raw)
