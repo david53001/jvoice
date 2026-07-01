@@ -194,11 +194,20 @@ public partial class App : Application
         var view = new SettingsView { DataContext = coordinator };
 
         const double scale = 2.0;
-        // Follow the view's own declared Width/Height (set in SettingsView.xaml) so this
-        // harness never goes stale when the panel is resized — SettingsView.xaml is the
-        // single source of truth, exactly as the live SizeToContent window tracks it.
-        var size = new Size(view.Width, view.Height);
-        view.Measure(size);
+        // The view declares a fixed Width but sizes its Height to content (SettingsView.xaml has
+        // no Height — the live SizeToContent window does the same). Measure at that width with
+        // unbounded height to get the natural size, then render exactly that, so this harness
+        // tracks the panel's real on-screen size and never goes stale when the panel is resized.
+        //
+        // Two full layout passes are REQUIRED: the panel's outer ScrollViewer settles its
+        // Auto scrollbar / content extent only after a Measure→Arrange→UpdateLayout cycle, so
+        // DesiredSize.Height read straight after the first Measure is under-reported (it would
+        // clip the tallest column). Re-measure after the first cycle to get the settled height.
+        view.Measure(new Size(view.Width, double.PositiveInfinity));
+        view.Arrange(new Rect(view.DesiredSize));
+        view.UpdateLayout();
+        view.Measure(new Size(view.Width, double.PositiveInfinity));
+        var size = new Size(view.Width, view.DesiredSize.Height);
         view.Arrange(new Rect(size));
         view.UpdateLayout();
 

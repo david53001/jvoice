@@ -2,16 +2,29 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:ui="clr-namespace:JVoice.App.UI"
-             Width="640" Height="1080" Background="{StaticResource Settings.PanelBg}">
-    <!-- ===== Two-column (masonry) Settings layout =====
-         A full-width header (row 0), a two-column body of cards (row 1), and a full-width
-         footer (row 2). The two body columns are independent vertical StackPanels so cards of
-         very different heights pack tip-to-tail with no cross-column height coupling. The 10
-         cards are split to keep the three growing lists apart (Recent Transcripts in the left
-         column; Custom Words + Corrections in the right) so neither column balloons when
-         populated. HorizontalScrollBarVisibility="Disabled" is REQUIRED: it gives the body a
-         finite width so the star columns resolve — without it the layout collapses at an
-         infinite measure width. -->
+             Width="960" Background="{StaticResource Settings.PanelBg}">
+    <!-- ===== Three-column (masonry) Settings layout =====
+         A full-width header (row 0), a three-column body of cards (row 1), and a full-width
+         footer (row 2). The three body columns are independent vertical StackPanels so cards of
+         very different heights pack tip-to-tail with no cross-column height coupling. Three
+         columns (was two) keep the whole panel SHORT — everything is visible at once without the
+         window growing taller than the screen's work area, so the title-bar close (X) is always
+         reachable (David runs a non-native 1600x1080 desktop; a ~1080-tall window pushed the X
+         off the top). Each column is still ~300px wide — identical to the old two-column card
+         width — so no card gets more cramped than before; the panel just got wider, not the cards
+         narrower.
+
+         The four list cards (Recent Transcripts, Custom Words, Corrections, App Modes rules) are
+         spread so no single column balloons when populated; each list is also internally height-
+         capped (MaxHeight + inner scroll).
+
+         The view has NO fixed Height: it sizes to its content and the hosting SettingsWindow uses
+         SizeToContent, so the window is exactly as tall as the cards need. SettingsWindow also
+         clamps MaxHeight to the screen work area as a guard, and the outer ScrollViewer scrolls if
+         a future card ever overflows — the X can never be pushed off-screen again.
+
+         HorizontalScrollBarVisibility="Disabled" is REQUIRED: it gives the body a finite width so
+         the star columns resolve — without it the layout collapses at an infinite measure width. -->
     <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
         <Grid Margin="16">
             <Grid.RowDefinitions>
@@ -26,15 +39,17 @@
                 <TextBlock Text="Voice dictation controls" FontSize="11" Foreground="{StaticResource Text.W45}" Margin="0,3,0,0" />
             </StackPanel>
 
-            <!-- ===== Two-column body ===== -->
+            <!-- ===== Three-column body ===== -->
             <Grid Grid.Row="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" />
                     <ColumnDefinition Width="14" />
                     <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="14" />
+                    <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
 
-                <!-- ===================== LEFT COLUMN ===================== -->
+                <!-- ===================== COLUMN 1 ===================== -->
                 <StackPanel Grid.Column="0">
 
                     <!-- STATS (green) — three-up: total words | avg WPM | time saved -->
@@ -158,6 +173,49 @@
                         </StackPanel>
                     </ui:DarkSection>
 
+                    <!-- VOICE STYLE (purple) -->
+                    <ui:DarkSection HeaderText="Voice Style" AccentBrush="{StaticResource Settings.Purple}">
+                        <UniformGrid Rows="1">
+                            <RadioButton Content="Casual"      GroupName="Tone" Style="{StaticResource SegmentLeft}"
+                                         IsChecked="{Binding IsCasual, Mode=TwoWay}" />
+                            <RadioButton Content="Formal"      GroupName="Tone" Style="{StaticResource SegmentMid}"
+                                         IsChecked="{Binding IsFormal, Mode=TwoWay}" />
+                            <RadioButton Content="Very Casual" GroupName="Tone" Style="{StaticResource SegmentRight}"
+                                         IsChecked="{Binding IsVeryCasual, Mode=TwoWay}" />
+                        </UniformGrid>
+                    </ui:DarkSection>
+
+                </StackPanel>
+
+                <!-- ===================== COLUMN 2 ===================== -->
+                <StackPanel Grid.Column="2">
+
+                    <!-- LANGUAGE (indigo) -->
+                    <ui:DarkSection HeaderText="Language" AccentBrush="{StaticResource Settings.Indigo}">
+                        <StackPanel>
+                            <UniformGrid Rows="1">
+                                <RadioButton Content="English"  GroupName="Lang" Style="{StaticResource SegmentLeft}"
+                                             IsChecked="{Binding IsEnglish, Mode=TwoWay}" />
+                                <RadioButton Content="Romanian" GroupName="Lang" Style="{StaticResource SegmentRight}"
+                                             IsChecked="{Binding IsRomanian, Mode=TwoWay}" />
+                            </UniformGrid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="Translate to English" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
+                                    <TextBlock Text="Speak the language above, paste English" FontSize="10" Foreground="{StaticResource Text.W38}"
+                                               TextWrapping="Wrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                          Style="{StaticResource MonoSwitch}"
+                                          IsChecked="{Binding TranslateToEnglish, Mode=TwoWay}" />
+                            </Grid>
+                        </StackPanel>
+                    </ui:DarkSection>
+
                     <!-- PROCESSING (teal) -->
                     <ui:DarkSection HeaderText="Processing" AccentBrush="{StaticResource Settings.Teal}">
                         <StackPanel>
@@ -209,17 +267,66 @@
                         </StackPanel>
                     </ui:DarkSection>
 
-                    <!-- VOICE STYLE (purple) -->
-                    <ui:DarkSection HeaderText="Voice Style" AccentBrush="{StaticResource Settings.Purple}">
-                        <UniformGrid Rows="1">
-                            <RadioButton Content="Casual"      GroupName="Tone" Style="{StaticResource SegmentLeft}"
-                                         IsChecked="{Binding IsCasual, Mode=TwoWay}" />
-                            <RadioButton Content="Formal"      GroupName="Tone" Style="{StaticResource SegmentMid}"
-                                         IsChecked="{Binding IsFormal, Mode=TwoWay}" />
-                            <RadioButton Content="Very Casual" GroupName="Tone" Style="{StaticResource SegmentRight}"
-                                         IsChecked="{Binding IsVeryCasual, Mode=TwoWay}" />
-                        </UniformGrid>
+                    <!-- CUSTOM WORDS (orange) -->
+                    <ui:DarkSection HeaderText="Custom Words" AccentBrush="{StaticResource Settings.Orange}">
+                        <StackPanel>
+                            <TextBlock Text="No custom words added." FontSize="11" Foreground="{StaticResource Text.W40}"
+                                       Visibility="{Binding HasCustomWords, Converter={StaticResource InverseBoolToVis}}" />
+                            <ScrollViewer MaxHeight="88" VerticalScrollBarVisibility="Auto"
+                                          Visibility="{Binding HasCustomWords, Converter={StaticResource BoolToVis}}">
+                                <ItemsControl ItemsSource="{Binding CustomWords}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Margin="0,2">
+                                                <TextBlock Text="{Binding}" FontSize="11" Foreground="{StaticResource Text.W75}" HorizontalAlignment="Left" />
+                                                <Button HorizontalAlignment="Right" Style="{StaticResource PressableButton}"
+                                                        Click="OnRemoveWord" Tag="{Binding}"
+                                                        FontFamily="Segoe MDL2 Assets" Content="&#xECC9;"
+                                                        Foreground="#B3FFFFFF" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                            <!-- Flexible add row: star input column + Auto button, so "Add" is never clipped. -->
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <Border Grid.Column="0" CornerRadius="6" Background="{StaticResource Settings.InputBg}"
+                                        BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
+                                    <TextBox x:Name="NewWordBox" Background="Transparent" BorderThickness="0"
+                                             Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                             KeyDown="OnNewWordKeyDown" />
+                                </Border>
+                                <Button Grid.Column="1" Content="Add" Style="{StaticResource DarkPrimaryButton}" Margin="6,0,0,0"
+                                        Foreground="{StaticResource Settings.Orange}" Tag="{StaticResource Settings.Orange}"
+                                        Click="OnAddWord" />
+                            </Grid>
+                        </StackPanel>
                     </ui:DarkSection>
+
+                    <!-- GAMING (gray) -->
+                    <ui:DarkSection HeaderText="Gaming" AccentBrush="{StaticResource Settings.Gray}">
+                        <StackPanel>
+                            <UniformGrid Rows="1">
+                                <RadioButton Content="Off"        GroupName="GameMode" Style="{StaticResource SegmentLeft}"
+                                             IsChecked="{Binding IsGameOff, Mode=TwoWay}" />
+                                <RadioButton Content="Balanced"   GroupName="GameMode" Style="{StaticResource SegmentMid}"
+                                             IsChecked="{Binding IsGameBalanced, Mode=TwoWay}" />
+                                <RadioButton Content="Aggressive" GroupName="GameMode" Style="{StaticResource SegmentRight}"
+                                             IsChecked="{Binding IsGameAggressive, Mode=TwoWay}" />
+                            </UniformGrid>
+                            <TextBlock Text="Pause the hotkey while a game is in focus. Balanced = detected games only; Aggressive = also any fullscreen app."
+                                       FontSize="10" Foreground="{StaticResource Text.W38}" TextWrapping="Wrap" Margin="0,7,0,0" />
+                        </StackPanel>
+                    </ui:DarkSection>
+
+                </StackPanel>
+
+                <!-- ===================== COLUMN 3 ===================== -->
+                <StackPanel Grid.Column="4">
 
                     <!-- APP MODES (teal) — auto-switch the tone by foreground app -->
                     <ui:DarkSection HeaderText="App Modes" AccentBrush="{StaticResource Settings.Teal}">
@@ -338,77 +445,6 @@
                         </StackPanel>
                     </ui:DarkSection>
 
-                </StackPanel>
-
-                <!-- ===================== RIGHT COLUMN ===================== -->
-                <StackPanel Grid.Column="2">
-
-                    <!-- LANGUAGE (indigo) -->
-                    <ui:DarkSection HeaderText="Language" AccentBrush="{StaticResource Settings.Indigo}">
-                        <StackPanel>
-                            <UniformGrid Rows="1">
-                                <RadioButton Content="English"  GroupName="Lang" Style="{StaticResource SegmentLeft}"
-                                             IsChecked="{Binding IsEnglish, Mode=TwoWay}" />
-                                <RadioButton Content="Romanian" GroupName="Lang" Style="{StaticResource SegmentRight}"
-                                             IsChecked="{Binding IsRomanian, Mode=TwoWay}" />
-                            </UniformGrid>
-                            <Grid Margin="0,12,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
-                                    <TextBlock Text="Translate to English" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
-                                    <TextBlock Text="Speak the language above, paste English" FontSize="10" Foreground="{StaticResource Text.W38}"
-                                               TextWrapping="Wrap" Margin="0,2,0,0" />
-                                </StackPanel>
-                                <CheckBox Grid.Column="1" VerticalAlignment="Center"
-                                          Style="{StaticResource MonoSwitch}"
-                                          IsChecked="{Binding TranslateToEnglish, Mode=TwoWay}" />
-                            </Grid>
-                        </StackPanel>
-                    </ui:DarkSection>
-
-                    <!-- CUSTOM WORDS (orange) -->
-                    <ui:DarkSection HeaderText="Custom Words" AccentBrush="{StaticResource Settings.Orange}">
-                        <StackPanel>
-                            <TextBlock Text="No custom words added." FontSize="11" Foreground="{StaticResource Text.W40}"
-                                       Visibility="{Binding HasCustomWords, Converter={StaticResource InverseBoolToVis}}" />
-                            <ScrollViewer MaxHeight="88" VerticalScrollBarVisibility="Auto"
-                                          Visibility="{Binding HasCustomWords, Converter={StaticResource BoolToVis}}">
-                                <ItemsControl ItemsSource="{Binding CustomWords}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <Grid Margin="0,2">
-                                                <TextBlock Text="{Binding}" FontSize="11" Foreground="{StaticResource Text.W75}" HorizontalAlignment="Left" />
-                                                <Button HorizontalAlignment="Right" Style="{StaticResource PressableButton}"
-                                                        Click="OnRemoveWord" Tag="{Binding}"
-                                                        FontFamily="Segoe MDL2 Assets" Content="&#xECC9;"
-                                                        Foreground="#B3FFFFFF" />
-                                            </Grid>
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                            <!-- Flexible add row: star input column + Auto button, so "Add" is never clipped. -->
-                            <Grid Margin="0,8,0,0">
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*" />
-                                    <ColumnDefinition Width="Auto" />
-                                </Grid.ColumnDefinitions>
-                                <Border Grid.Column="0" CornerRadius="6" Background="{StaticResource Settings.InputBg}"
-                                        BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
-                                    <TextBox x:Name="NewWordBox" Background="Transparent" BorderThickness="0"
-                                             Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
-                                             KeyDown="OnNewWordKeyDown" />
-                                </Border>
-                                <Button Grid.Column="1" Content="Add" Style="{StaticResource DarkPrimaryButton}" Margin="6,0,0,0"
-                                        Foreground="{StaticResource Settings.Orange}" Tag="{StaticResource Settings.Orange}"
-                                        Click="OnAddWord" />
-                            </Grid>
-                        </StackPanel>
-                    </ui:DarkSection>
-
                     <!-- CORRECTIONS (pink) — Windows-only; kept adjacent to Custom Words -->
                     <ui:DarkSection HeaderText="Corrections" AccentBrush="{StaticResource Settings.Pink}">
                         <StackPanel>
@@ -495,22 +531,6 @@
                             </StackPanel>
                             <TextBlock Text="Optional — sends the app's Undo (Ctrl+Z) to reverse the last paste." FontSize="10"
                                        Foreground="{StaticResource Text.W35}" TextWrapping="Wrap" Margin="0,8,0,0" />
-                        </StackPanel>
-                    </ui:DarkSection>
-
-                    <!-- GAMING (gray) -->
-                    <ui:DarkSection HeaderText="Gaming" AccentBrush="{StaticResource Settings.Gray}">
-                        <StackPanel>
-                            <UniformGrid Rows="1">
-                                <RadioButton Content="Off"        GroupName="GameMode" Style="{StaticResource SegmentLeft}"
-                                             IsChecked="{Binding IsGameOff, Mode=TwoWay}" />
-                                <RadioButton Content="Balanced"   GroupName="GameMode" Style="{StaticResource SegmentMid}"
-                                             IsChecked="{Binding IsGameBalanced, Mode=TwoWay}" />
-                                <RadioButton Content="Aggressive" GroupName="GameMode" Style="{StaticResource SegmentRight}"
-                                             IsChecked="{Binding IsGameAggressive, Mode=TwoWay}" />
-                            </UniformGrid>
-                            <TextBlock Text="Pause the hotkey while a game is in focus. Balanced = detected games only; Aggressive = also any fullscreen app."
-                                       FontSize="10" Foreground="{StaticResource Text.W38}" TextWrapping="Wrap" Margin="0,7,0,0" />
                         </StackPanel>
                     </ui:DarkSection>
 

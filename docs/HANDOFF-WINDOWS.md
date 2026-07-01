@@ -1165,6 +1165,34 @@ These are real corrections discovered during execution — preserve them.
       **non-elevated**. So the installed app is now the `feat/dictation-modes` build, NOT `windows-port`/`main`
       — reinstall from `JVoice-Setup-GPU.exe` (or re-mirror a `windows-port` publish) to revert.
 
+33. **Settings went two-column → three-column so the window fits the screen (David-requested, 2026-07-01).**
+    David reported the Settings window was "very very long and not as wide" — so tall he **couldn't click the
+    title-bar X to close it**. Root cause: `SettingsView` was a fixed `640×1080` and `SettingsWindow` uses
+    `SizeToContent.WidthAndHeight` + `CenterScreen`, so on his **non-native 1600×1080** desktop a ~1090-tall
+    window (centered in a ~1032 work area) pushed the title bar off the top of the screen. The §32 additions
+    (App Modes card + Translate row) had made the two-column layout hit the full 1080. **Fix — three-column
+    masonry** (`SettingsView.xaml`): Width **640→960**, body Grid `* 14 * 14 *`, the 11 cards redistributed
+    across three independent vertical-StackPanel columns —
+    col1: Stats / Recent Transcripts / Whisper Model / Voice Style;
+    col2: Language / Processing / Custom Words / Gaming;
+    col3: App Modes / Corrections / Keyboard Shortcut
+    (the four list cards kept in separate columns so none balloons). Each column stays ~300px wide (identical
+    to the old per-card width, so **no card is more cramped** — the panel got wider, not the cards narrower).
+    The view's **fixed `Height` was removed** (it now sizes to content, exactly what the live `SizeToContent`
+    window does); result is **960×757**, rendered-verified via `--settings-render` — comfortably inside the
+    work area, X always reachable. Two structural guards so this can't recur: `SettingsWindow` clamps
+    `MaxHeight = SystemParameters.WorkArea.Height − 16`, and the view's outer `ScrollViewer` scrolls if a
+    future card ever overflows. **Harness gotcha fixed too:** `RenderSettingsToFile` now does **two**
+    Measure→Arrange→UpdateLayout passes before reading `DesiredSize.Height` — the outer ScrollViewer settles
+    its content extent only after the first pass, so a single pass under-measured (683 vs the true 757) and
+    clipped the tallest column + footer. Brain untouched; `dotnet test` **608/608**; NOT pushed. Code-behind
+    unchanged (all `x:Name`d elements — `Recorder`, `UndoRecorder`, `NewWordBox`, `CorrectionFromBox/ToBox`,
+    `AppRuleBox`, `AppRuleWatermark`, `AppPickerPopup`, `AppPickerList`, `AppRuleModeButton` — were moved with
+    their cards, names preserved). ⚠ **Not yet dogfooded live** — the two-pass need in the harness means the
+    live `SizeToContent` window *should* settle on its own (WPF runs the layout loop to completion), and worst
+    case the `MaxHeight` guard + outer ScrollViewer keep the X reachable, but David should confirm the live
+    window opens at ~757 tall (not showing an outer scrollbar).
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 3** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
