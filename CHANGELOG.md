@@ -4,9 +4,18 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
-## [Unreleased] — 2026-06-29
+## [Unreleased] — 2026-07-02
 
 ### Added
+
+- **Dictation feature parity with the Windows port (six features).** JVoice has an in-progress Windows port (on the `origin/windows-port` git branch); these six dictation features were ported back to macOS so the two apps behave the same. Each is TDD-tested — pure logic is executed locally by `scripts/run-logic-tests.sh` and mirrored in the CI (continuous integration) swift-testing suite under `Tests/JVoiceTests/`.
+  1. **Developer-terms correction pack** (`Sources/JVoice/Services/Transcription/DeveloperTerms.swift`). An opt-out (on by default) pack of ~165 canonical spellings of common programming terms (e.g. "node js" → "Node.js", "type script" → "TypeScript", "c sharp" → "C#", "jason" → "JSON"), keyed by how Whisper tends to mis-render them. It is folded into the post-processing correction dictionary *underneath* the user's own custom words (their words win). Ambiguous everyday English words (cursor, bolt, render, warp, grok, llama, …) are deliberately excluded so ordinary dictation is never corrupted. Toggle: Settings → Processing → "Developer Terms".
+  2. **Dictate-to-translate** (`translateToEnglish`). Speak any supported language and paste English: sets WhisperKit's decode task to `.translate` (WhisperKit is the on-device Whisper inference library; `DecodingOptions.task = .translate` makes Whisper translate to English). The spoken language is kept as the source hint. Toggle: Settings → Language → "Translate to English".
+  3. **App-aware modes + a new "Code" tone.** A new `AppMode.code` tone applies minimal formatting (keeps casing, symbols and punctuation exactly as spoken — for terminals/editors). A pure resolver (`Sources/JVoice/Services/Transcription/AppModeResolver.swift`) picks a tone from the paste target's macOS bundle identifier: user rules first (case-insensitive substring), then a built-in list of code apps (VS Code, Terminal, iTerm2, Xcode, JetBrains IDEs, Cursor, Warp, …) → Code. Settings → "App Modes": a master "Auto-switch by App" toggle plus a per-app rule list with a click-to-cycle tone chip. `Code` is selectable only as a per-app override, not in the manual tone picker.
+  4. **Clipboard-only paste** (`copyToClipboardOnly`). Puts the transcript on the clipboard (visible to clipboard-history managers) instead of auto-pasting it with a synthesized ⌘V. Needs no Accessibility permission. Toggle: Settings → Processing → "Copy to Clipboard".
+  5. **Time-saved stat** (`StatsStore.estimatedMinutesSaved`). Estimates minutes saved by dictating vs. typing at a 40-words-per-minute baseline, floored at 0. Shown as a third cell in the Settings Stats card.
+  6. **Undo-last-paste hotkey** (opt-in second global shortcut, no default). Sends the target app's own Undo (⌘Z) to reverse the last paste. One-shot and gated on that app still being frontmost; unset for clipboard-only dictations. Recorder: Settings → Keyboard Shortcut → "Undo Last Paste".
+- New test files (CI): `Tests/JVoiceTests/DeveloperTermsTests.swift`, `Tests/JVoiceTests/AppModeResolverTests.swift`. New `AppModeRule` model (`Sources/JVoice/Models/AppModeRule.swift`).
 
 - **Monochrome dark/light theme.** A new `AppTheme` enum (`dark` / `light`, in `Sources/JVoice/Models/AppTheme.swift`) is persisted in `SettingsState` at schema version 2. A sun/moon toggle in the Settings window flips the appearance at runtime. `VoiceCoordinator.appTheme` exposes the active theme as a `@Published` (SwiftUI reactive) property. A `Theme` struct (`Sources/JVoice/UI/Theme.swift`) provides the design tokens — pure blacks, whites, and neutral greys, no hue — used by the HUD (heads-up display) pill and Settings window. Unknown theme values decode safely to `.dark`.
 
@@ -23,6 +32,8 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 - **Wider, 2-column Settings window** (`Sources/JVoice/UI/SettingsView.swift`, `SettingsWindow.swift`). Window width increased to 700 pt. Controls (Whisper Model, Processing, Voice Style, Language, Keyboard Shortcut) occupy the left column; user data (Recent Transcripts, Custom Words) the right. Stats appear full-width at the top. The sun/moon theme toggle is in the top-right corner. A Restore-Defaults / Quit row is pinned at the footer.
 
 - `SettingsState` schema bumped to version 2 to store the persisted `appTheme` field.
+
+- `SettingsState` (`Sources/JVoice/Models/SettingsState.swift`) schema bumped to version 3 for the five new dictation-parity settings (`developerTerms` — defaults ON; `translateToEnglish`, `copyToClipboardOnly`, `appAwareModes` — default OFF; `appModeRules` — defaults empty). Old version-1/version-2 settings blobs decode cleanly with the new fields at their defaults.
 
 ### Fixed
 
