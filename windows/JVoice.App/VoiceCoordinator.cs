@@ -271,12 +271,20 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         set { if (_translateToEnglish == value) return; _translateToEnglish = value; SwapEngine(); PersistSettings(); Raise(); }
     }
 
-    // ---- auto update-check toggle (v4; persisted only — read by Start() for the startup check) ----
+    // ---- auto update-check toggle (v4) — drives the ongoing background detection in Updates ----
     private bool _checkForUpdates;
     public bool CheckForUpdatesAutomatically
     {
         get => _checkForUpdates;
-        set { if (_checkForUpdates == value) return; _checkForUpdates = value; PersistSettings(); Raise(); }
+        set
+        {
+            if (_checkForUpdates == value) return;
+            _checkForUpdates = value;
+            // Honor the toggle live: start/stop the periodic detection without needing a restart.
+            if (value) Updates.StartAutoCheck(); else Updates.StopAutoCheck();
+            PersistSettings();
+            Raise();
+        }
     }
 
     // ---- app-aware modes (post-processing only; no engine reload) ----
@@ -394,10 +402,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
         _ = _engine.PrewarmAsync();
 
-        // Silent startup check for a newer release (opt-out via the Updates card). No-ops while the
-        // repo is private (the anonymous GitHub API 404s → "no update"); when a newer version exists
-        // it surfaces in the tray + Settings without interrupting the user.
-        if (_checkForUpdates) _ = Updates.CheckAsync(userInitiated: false);
+        // Automatic update detection (opt-out via the Updates card): a silent check on launch, then a
+        // quiet daily re-check for as long as the app runs — so a release published while JVoice is
+        // sitting in the tray still gets noticed. No-ops while the repo is private (the anonymous
+        // GitHub API 404s → "no update"); when a newer version exists it surfaces in the tray +
+        // Settings without interrupting the user.
+        if (_checkForUpdates) Updates.StartAutoCheck();
     }
 
     public void BootstrapLaunchAtLogin()

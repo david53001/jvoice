@@ -90,11 +90,44 @@ public sealed class UpdateCoordinator : INotifyPropertyChanged
     private CancellationTokenSource? _cts;
     private DispatcherTimer? _progressTimer;
     private DispatcherTimer? _quitTimer;
+    private DispatcherTimer? _autoCheckTimer;
     private long _received;          // written by the download thread (Interlocked), read by the UI timer
     private long _total = -1;        // -1 = unknown length
     private volatile bool _downloadDone;
     private DateTime _downloadStartUtc;
     private double _shown;           // the eased value currently displayed
+
+    // ---------- automatic detection ----------
+
+    // How often the running app re-checks GitHub for a newer release. A tray app can stay open for
+    // days/weeks (it launches at login), so a once-at-launch check would miss any release published
+    // while it's running. One anonymous GET per day is negligible against GitHub's 60/hr anon limit.
+    public static readonly TimeSpan AutoCheckInterval = TimeSpan.FromHours(24);
+
+    /// Turn on automatic update detection: one silent check now, then a quiet re-check every
+    /// <see cref="AutoCheckInterval"/> for as long as the app runs. Every re-check reuses the same
+    /// silent path as the startup check — no popups, and 404 (private repo) / offline stay quiet.
+    /// Idempotent: calling it again just restarts the timer.
+    public void StartAutoCheck()
+    {
+        _ = CheckAsync(userInitiated: false);
+
+        _autoCheckTimer?.Stop();
+        _autoCheckTimer = new DispatcherTimer { Interval = AutoCheckInterval };
+        _autoCheckTimer.Tick += (_, _) =>
+        {
+            // Once we've already surfaced an update (or are mid-download), stop hitting the network —
+            // the "Update available" state persists until the user acts on it.
+            if (State is UpdateUiState.Available or UpdateUiState.Downloading or UpdateUiState.ReadyToRestart)
+                return;
+            _ = CheckAsync(userInitiated: false);
+        };
+        _autoCheckTimer.Start();
+    }
+
+    /// Stop the periodic auto-check (e.g. the user turned "Automatic Updates" off). The manual
+    /// "Check Now" button still works.
+    public void StopAutoCheck() => _autoCheckTimer?.Stop();
 
     // ---------- check ----------
 

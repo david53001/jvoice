@@ -12,8 +12,12 @@ fast-start / slow-finish). This is that feature. Recorded as `HANDOFF-WINDOWS.md
 
 ## What it does
 
-- On startup (opt-out), and on demand from **Settings → Updates → "Check Now"**, JVoice asks GitHub
-  for the latest release and compares it to the running build's version.
+- On startup **and then every 24 h while it runs** (opt-out), plus on demand from **Settings →
+  Updates → "Check Now"**, JVoice asks GitHub for the latest release and compares it to the running
+  build's version. The periodic re-check (added 2026-07-02) means a release published while JVoice is
+  sitting in the tray still gets noticed without a restart — `UpdateCoordinator.StartAutoCheck()`
+  fires the first check and schedules the daily one; the toggle starts/stops it live, and it stops
+  hitting the network once an update is already surfaced.
 - When a newer version exists: the **tray** shows a bold "**Update Available — Open Settings…**"
   item at the top, and the **Updates card** shows "Update available — vX.Y.Z" + an **"Update Now"**
   button.
