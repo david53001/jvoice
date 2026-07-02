@@ -1,0 +1,109 @@
+name: Windows
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows.yml"
+  push:
+    branches: [main, "windows-port", "feat/**", "fix/**"]
+    paths:
+      - "windows/**"
+      - ".github/workflows/windows.yml"
+
+# No special permissions — this workflow never writes to the repo, never releases.
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: build + dotnet test
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Restore
+        run: dotnet restore windows/JVoice.sln
+
+      - name: Build (Release)
+        run: dotnet build windows/JVoice.sln -c Release --no-restore
+
+      # Run the xUnit suite (JVoice.Core's brain + pure helpers). The native Whisper
+      # engine, the WPF GUI, and the verify-transcription harness are NOT exercised
+      # here — they need a GPU/mic/model and a desktop session, which CI runners lack.
+      - name: Test (JVoice.Tests)
+        run: >
+          dotnet test windows/JVoice.Tests/JVoice.Tests.csproj
+          -c Release --no-build
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory "${{ github.workspace }}/test-results"
+
+      # Guard against the silent "0 tests ran" trap (the Windows analog of the macOS
+      # workflow's swift-testing count check). Parse the .trx counters and fail if 0.
+      - name: Assert tests actually ran
+        shell: pwsh
+        run: |
+          $trx = Get-ChildItem "${{ github.workspace }}/test-results" -Recurse -Filter *.trx | Select-Object -First 1
+          if (-not $trx) {
+            Write-Error "No .trx test result file was produced — the test run did not execute."
+            exit 1
+          }
+          [xml]$doc = Get-Content $trx.FullName
+          $counters = $doc.TestRun.ResultSummary.Counters
+          $total    = [int]$counters.total
+          $executed = [int]$counters.executed
+          $passed   = [int]$counters.passed
+          $failed   = [int]$counters.failed
+          Write-Host "Tests — total=$total executed=$executed passed=$passed failed=$failed"
+          if ($total -le 0 -or $executed -le 0) {
+            Write-Error "0 tests executed (total=$total, executed=$executed). The suite is being silently skipped."
+            exit 1
+          }
+          if ($failed -gt 0) {
+            Write-Error "$failed test(s) failed."
+            exit 1
+          }
+          Write-Host "PASS: $passed/$total tests passed."
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test-results
+          path: "${{ github.workspace }}/test-results/*.trx"
+          if-no-files-found: warn
+
+  # OPTIONAL, OFF BY DEFAULT: produce the CPU build as a CI artifact for inspection.
+  # It does NOT create a Release, does NOT push, does NOT run on PRs/forks.
+  # Manually triggered via the Actions "Run workflow" UI (workflow_dispatch) only.
+  build-artifact:
+    name: build CPU single-file (artifact only)
+    needs: build-test
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: windows-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "9.0.x"
+      - name: Publish CPU single-file
+        run: >
+          dotnet publish windows/JVoice.App/JVoice.App.csproj -c Release -r win-x64
+          -p:JVoiceFlavor=cpu -p:PublishSingleFile=true -p:SelfContained=true
+          -p:PublishTrimmed=false -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:PublishReadyToRun=true -o ${{ github.workspace }}/out/cpu
+      - name: Upload exe artifact (NOT a release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: JVoice-cpu-win-x64
+          path: ${{ github.workspace }}/out/cpu/JVoice.exe
+          if-no-files-found: error

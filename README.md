@@ -1,15 +1,15 @@
 <div align="center">
 
+<img src="docs/assets/icon.png" alt="JVoice" width="104" height="104">
+
 # JVoice
 
-**Free, open-source voice dictation for macOS. 100% on-device. No subscription, no cloud, no accounts.**
+**Free, open-source voice dictation for macOS &amp; Windows — 100% on-device.**
+No subscription, no cloud, no accounts.
 
-<!-- DEMO GIF GOES HERE — hosted on GitHub CDN, ~10s: hotkey → speak → text appears -->
-<img src="docs/assets/demo.gif" alt="JVoice demo: press Option+Space, speak, and polished text appears in any app" width="640">
+Press a hotkey anywhere, talk, and clean, tone-styled text lands at your cursor — in any app.
 
-Press <kbd>⌥ Option</kbd>+<kbd>Space</kbd> anywhere, talk, and clean, tone-styled text lands at your cursor — in any app.
-
-[Download](https://github.com/USER/jvoice/releases/latest) · [First launch on macOS](#first-launch-on-macos) · [Build from source](#build-from-source)
+[Download for macOS](#macos) · [Download for Windows](#windows) · [Why JVoice](#why-jvoice) · [Build from source](#build-from-source)
 
 </div>
 
@@ -17,60 +17,83 @@ Press <kbd>⌥ Option</kbd>+<kbd>Space</kbd> anywhere, talk, and clean, tone-sty
 
 ## Why JVoice
 
-Dictation tools like Wispr Flow and superwhisper cost $8–15/month for something your Mac can do by itself. JVoice runs [WhisperKit](https://github.com/argmaxinc/WhisperKit) locally on Apple Silicon — your voice never leaves your machine, and it costs nothing, forever.
+Dictation tools like Wispr Flow and superwhisper charge $8–15/month for something your computer can already do by itself. JVoice runs OpenAI's Whisper **locally** — on macOS via [WhisperKit](https://github.com/argmaxinc/WhisperKit) (Apple Silicon), on Windows via [Whisper.net](https://github.com/sandrohanea/whisper.net) (CPU, or NVIDIA GPU acceleration). Your voice never leaves your machine, and it costs nothing, forever.
 
-- 🎙️ **System-wide dictation** — global hotkey (<kbd>⌥Space</kbd>), works in any app: Messages, Mail, Docs, your IDE
-- 🧠 **On-device Whisper** — choose tiny → large-turbo models depending on your Mac; nothing is sent anywhere
+- 🎙️ **System-wide dictation** — one global hotkey, works in any app: chat, mail, docs, your IDE
+- 🧠 **On-device Whisper** — pick a model to match your machine; nothing is ever sent anywhere
 - ✍️ **Tone styles** — Casual, Formal, or Very Casual: JVoice rewrites your rambling into the register you want
 - 🧹 **Filler-word removal** — "um", "uh", "like" are gone before the text lands
-- 📖 **Custom dictionary** — teach it your name, your school, your project names. Words aren't just find-replaced afterwards: they bias Whisper itself at recognition time, and a phonetic matcher catches the mishearings that slip through ("jay voice" → "JVoice")
-- 🎧 **Headphone-friendly** — keeps Bluetooth audio quality intact by routing recording to the built-in mic
-- 📊 **Stats** — total words dictated and average WPM (you talk ~3× faster than you type)
-- 🌍 **English & Romanian** (more languages easy to add — Whisper supports ~100)
+- 📖 **Custom dictionary** — teach it your name, your project names. Words don't just get find-replaced afterwards: they bias Whisper itself at recognition time, and a phonetic matcher catches the mishearings that slip through ("jay voice" → "JVoice")
+- 📊 **Stats** — words dictated, time saved, and average WPM (you talk ~3× faster than you type)
+- 🌍 **English &amp; Romanian** — Whisper supports ~100 languages, so more are easy to add
 
-## Privacy
+## Download
 
-- **Zero network calls** during use. The only download ever is the Whisper model itself (fetched once from Hugging Face on first run).
-- No telemetry, no analytics, no accounts, no launch-at-startup surprises.
-- Open source — read the code, build it yourself.
+> JVoice is **free and unsigned** — no $99/yr Apple developer account, no paid Windows certificate. Each OS shows a one-time "unverified developer" prompt the first time you open it. The steps below clear it in a few seconds.
 
-## Install
+### macOS
 
-1. Download `JVoice.dmg` from the [latest release](https://github.com/USER/jvoice/releases/latest) and drag **JVoice** into **Applications**.
-2. See [First launch on macOS](#first-launch-on-macos) below — one extra step because this is a free, unsigned app.
+**[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/latest)** — macOS 14+ (Apple Silicon recommended)
 
-### First launch on macOS
-
-JVoice is free and isn't notarized by Apple (that requires a $99/yr developer subscription). macOS will warn you once:
-
-1. Open JVoice. macOS says it *"can't verify the developer."* Click **Done** (not "Move to Trash").
-2. Open **System Settings → Privacy & Security**, scroll to the bottom, and click **Open Anyway** next to JVoice.
-3. Enter your password, open JVoice again, and click **Open**. That's it — you'll never see the warning again.
+1. Open the DMG and drag **JVoice** into **Applications**.
+2. First launch: macOS says it *"can't verify the developer."* Click **Done** (not "Move to Trash").
+3. Open **System Settings → Privacy &amp; Security**, scroll to the bottom, and click **Open Anyway** next to JVoice. Enter your password, open JVoice again, and click **Open**. You'll never see the warning again.
 
 > If you instead see *"JVoice is damaged"*, run this once in Terminal:
 > `xattr -dr com.apple.quarantine /Applications/JVoice.app`
 
-On first run JVoice asks for **Microphone** (to hear you) and **Accessibility** (to type the text into the frontmost app) permissions, then downloads your chosen Whisper model.
+On first run JVoice asks for **Microphone** (to hear you) and **Accessibility** (to type text into the frontmost app) permissions, then downloads your chosen Whisper model.
+
+**Hotkey:** <kbd>⌥ Option</kbd>+<kbd>Space</kbd>
+
+### Windows
+
+| Download | Get this if… | Size |
+| --- | --- | :---: |
+| **[⬇️ `JVoice-Setup.exe`](https://github.com/david53001/jvoice/releases/latest)** ← **most people** | Any Windows 10/11 (x64) PC. CPU-only. | ~65 MB |
+| [`JVoice-Setup-GPU.exe`](https://github.com/david53001/jvoice/releases/latest) | You have an **NVIDIA GPU** and want faster transcription (CUDA/Vulkan). | ~360 MB |
+
+Both produce identical transcripts — the GPU build is just *faster* on supported hardware, and it falls back to CPU anyway. **When in doubt, get `JVoice-Setup.exe`.**
+
+1. Run the installer. It's **unsigned**, so Windows SmartScreen shows *"Windows protected your PC."* Click **More info → Run anyway**. (One-time, per download.)
+2. It installs to `%LOCALAPPDATA%\Programs\JVoice`, adds a Start-Menu shortcut, and launches to the system tray. No admin required.
+3. Your first dictation downloads the Whisper model once (a few hundred MB), then everything is offline.
+
+**Hotkey:** <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd>
 
 ## Usage
 
-1. Press <kbd>⌥Space</kbd> — a recording pill appears.
-2. Talk. Press <kbd>⌥Space</kbd> again to stop.
+1. Press your hotkey (<kbd>⌥Space</kbd> on macOS, <kbd>Ctrl+Shift+Space</kbd> on Windows) — a recording indicator appears.
+2. Talk. Press the hotkey again to stop.
 3. Transcribed, tone-styled text is pasted at your cursor.
 
-Settings (menu bar icon → Settings…): language, tone style, Whisper model, filler-word removal, custom words, and your dictation stats. Your 30 most recent transcripts are kept in Settings too — copy any one back to the clipboard, or clear them. Everything stays on your Mac.
+Open **Settings** (menu-bar / tray icon → Settings…) for language, tone style, Whisper model, filler-word removal, custom words, and your dictation stats. Your recent transcripts are kept there too — copy any one back to the clipboard, or clear them. Everything stays on your machine.
+
+## Privacy
+
+- **Zero network calls during use.** The only network access is a one-time Whisper-model download on first run (from Hugging Face) — plus, on Windows, an optional update check you can turn off.
+- No telemetry, no analytics, no accounts.
+- Open source — read the code, or build it yourself.
 
 ## Build from source
 
-Don't trust an unsigned binary? Good instinct — build it yourself:
+Don't trust an unsigned binary? Good instinct — build it yourself.
+
+**macOS** — macOS 14+, Apple Silicon recommended, Xcode Command Line Tools only (no full Xcode needed):
 
 ```bash
-git clone https://github.com/USER/jvoice && cd jvoice
+git clone https://github.com/david53001/jvoice && cd jvoice
 swift build -c release
 ./scripts/install.sh   # builds, signs locally, installs to /Applications
 ```
 
-Requires macOS 14+, Apple Silicon recommended, Xcode Command Line Tools only (no Xcode needed).
+**Windows** — Windows 10/11 x64, [.NET 9 SDK](https://dotnet.microsoft.com/download):
+
+```powershell
+git clone https://github.com/david53001/jvoice; cd jvoice
+dotnet build windows/JVoice.sln -c Release
+dotnet run --project windows/JVoice.App
+```
 
 ## Support the project
 

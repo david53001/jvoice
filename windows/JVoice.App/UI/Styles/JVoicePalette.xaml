@@ -1,0 +1,336 @@
+<ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:ui="clr-namespace:JVoice.App.UI">
+
+    <!-- ============ Monochrome theme ============
+         The whole app is black & white now. The HUD pill renders its own literal colors
+         (see HudView.xaml); these HUD keys remain only so nothing dangles, recolored to
+         match. Every former per-section accent (blue/indigo/purple/teal/cyan/orange/green/
+         pink/red) collapses to white so the Settings dots, buttons, and highlights read as
+         one cohesive black-and-white set. Grayscale hierarchy comes from the Text.W* keys
+         and Settings.Gray. -->
+
+    <!-- ============ HUD pill colors (legacy keys, monochrome) ============ -->
+    <SolidColorBrush x:Key="Pill.Fill"           Color="#FF000000" />
+    <SolidColorBrush x:Key="Accent.Recording"    Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Recording"      Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Transcribing" Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Transcribing"   Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Preparing"    Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Preparing"      Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Done"         Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Done"           Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Accent.Error"        Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Text.Error"          Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Stop.Red"            Color="#FFFFFFFF" />
+
+    <!-- ============ Settings palette (black & white) ============ -->
+    <SolidColorBrush x:Key="Settings.PanelBg"    Color="#FF000000" />
+    <SolidColorBrush x:Key="Settings.SectionBg"  Color="#FF0E0E0E" />
+    <SolidColorBrush x:Key="Settings.Border"     Color="#FF262626" />
+    <SolidColorBrush x:Key="Settings.HeaderText" Color="#FF9A9A9A" />
+    <SolidColorBrush x:Key="Settings.InputBg"    Color="#FF080808" />
+    <!-- former accents — all white now -->
+    <SolidColorBrush x:Key="Settings.Blue"       Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Gray"       Color="#FF8A8A8A" />
+    <SolidColorBrush x:Key="Settings.Indigo"     Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Purple"     Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Cyan"       Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Orange"     Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Green"      Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Teal"       Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Red"        Color="#FFFFFFFF" />
+    <SolidColorBrush x:Key="Settings.Pink"       Color="#FFFFFFFF" />
+
+    <!-- White-with-opacity text brushes (SwiftUI Color(white:x)) -->
+    <SolidColorBrush x:Key="Text.W85" Color="#FFD9D9D9" />
+    <SolidColorBrush x:Key="Text.W75" Color="#FFBFBFBF" />
+    <SolidColorBrush x:Key="Text.W45" Color="#FF737373" />
+    <SolidColorBrush x:Key="Text.W40" Color="#FF666666" />
+    <SolidColorBrush x:Key="Text.W38" Color="#FF616161" />
+    <SolidColorBrush x:Key="Text.W35" Color="#FF595959" />
+
+    <!-- ============ PressableButton (port of PanelPressableButtonStyle) ============
+         scaleEffect 0.97 + opacity 0.85 on press; chromeless template. -->
+    <Style x:Key="PressableButton" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="0" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="RenderTransformOrigin" Value="0.5,0.5" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Grid x:Name="Root" Background="Transparent" Opacity="1.0">
+                        <Grid.RenderTransform>
+                            <ScaleTransform x:Name="Scale" ScaleX="1" ScaleY="1" CenterX="0" CenterY="0" />
+                        </Grid.RenderTransform>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.85" />
+                            <Trigger.EnterActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="0.97" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="0.97" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.EnterActions>
+                            <Trigger.ExitActions>
+                                <BeginStoryboard>
+                                    <Storyboard>
+                                        <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleX"
+                                                         To="1.0" Duration="0:0:0.08" />
+                                        <DoubleAnimation Storyboard.TargetName="Scale" Storyboard.TargetProperty="ScaleY"
+                                                         To="1.0" Duration="0:0:0.08" />
+                                    </Storyboard>
+                                </BeginStoryboard>
+                            </Trigger.ExitActions>
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Root" Property="Opacity" Value="0.40" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============ DarkPrimaryButton (port of DarkPrimaryButtonStyle) ============
+         font 11 semibold, accent foreground, r7 fill accent@0.12 border accent@0.28,
+         h12 v6 padding, opacity 0.70 on press. Accent defaults to Settings.Blue;
+         set Foreground + Tag (the template binds fill/border to Tag.Color) to recolor. -->
+    <Style x:Key="DarkPrimaryButton" TargetType="Button">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{StaticResource Settings.Blue}" />
+        <Setter Property="Tag" Value="{StaticResource Settings.Blue}" />
+        <Setter Property="Cursor" Value="Hand" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="7" BorderThickness="1" Padding="12,6">
+                        <Border.Background>
+                            <SolidColorBrush Color="{Binding Tag.Color, RelativeSource={RelativeSource TemplatedParent}}" Opacity="0.12" />
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="{Binding Tag.Color, RelativeSource={RelativeSource TemplatedParent}}" Opacity="0.28" />
+                        </Border.BorderBrush>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.70" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.40" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ============ DarkDestructiveButton (port of DarkDestructiveButtonStyle) ============
+         monochrome now: white foreground, r7 fill white@0.10 border white@0.24. The
+         OK/Cancel confirmation dialog (not color) guards the destructive actions. -->
+    <Style x:Key="DarkDestructiveButton" TargetType="Button" BasedOn="{StaticResource DarkPrimaryButton}">
+        <Setter Property="Foreground" Value="{StaticResource Settings.Red}" />
+        <Setter Property="Tag" Value="{StaticResource Settings.Red}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Bg" CornerRadius="7" BorderThickness="1" Padding="12,6">
+                        <Border.Background>
+                            <SolidColorBrush Color="#FFFFFFFF" Opacity="0.10" />
+                        </Border.Background>
+                        <Border.BorderBrush>
+                            <SolidColorBrush Color="#FFFFFFFF" Opacity="0.24" />
+                        </Border.BorderBrush>
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsPressed" Value="True">
+                            <Setter TargetName="Bg" Property="Opacity" Value="0.70" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===== DarkSection (titled dark card) — implicit style ===== -->
+    <Style TargetType="ui:DarkSection">
+        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ui:DarkSection">
+                    <Border CornerRadius="10" Background="{StaticResource Settings.SectionBg}"
+                            BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
+                        <StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="12,9,12,7">
+                                <Ellipse Width="5" Height="5" VerticalAlignment="Center"
+                                         Fill="{TemplateBinding AccentBrush}">
+                                    <Ellipse.Effect>
+                                        <DropShadowEffect BlurRadius="6" ShadowDepth="0"
+                                                          Color="{Binding AccentGlowColor, RelativeSource={RelativeSource TemplatedParent}}"
+                                                          Opacity="0.55" />
+                                    </Ellipse.Effect>
+                                </Ellipse>
+                                <TextBlock Margin="7,0,0,0" VerticalAlignment="Center"
+                                           Text="{TemplateBinding HeaderText}"
+                                           FontSize="9.5" FontWeight="Bold"
+                                           Foreground="{StaticResource Settings.HeaderText}" />
+                            </StackPanel>
+                            <Rectangle Height="0.5" Fill="{StaticResource Settings.Border}" />
+                            <ContentPresenter Margin="12" />
+                        </StackPanel>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===== converters ===== -->
+    <BooleanToVisibilityConverter x:Key="BoolToVis" />
+    <ui:InverseBoolToVisibilityConverter x:Key="InverseBoolToVis" />
+    <ui:FractionToWidthConverter x:Key="FractionToWidth" />
+
+    <!-- ===== segmented radio-button styles (joined toggle row) ===== -->
+    <Style x:Key="SegmentBase" TargetType="RadioButton">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="Foreground" Value="{StaticResource Text.W75}" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+        <Setter Property="Padding" Value="0,5" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RadioButton">
+                    <Border x:Name="Seg" Background="{StaticResource Settings.InputBg}"
+                            BorderBrush="{StaticResource Settings.Border}" BorderThickness="1"
+                            CornerRadius="{TemplateBinding Tag}">
+                        <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Margin="6,5" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Seg" Property="Background">
+                                <Setter.Value>
+                                    <SolidColorBrush Color="#FFFFFFFF" Opacity="0.16" />
+                                </Setter.Value>
+                            </Setter>
+                            <Setter Property="Foreground" Value="White" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+    <Style x:Key="SegmentLeft"  TargetType="RadioButton" BasedOn="{StaticResource SegmentBase}">
+        <Setter Property="Tag" Value="6,0,0,6" />
+    </Style>
+    <Style x:Key="SegmentMid"   TargetType="RadioButton" BasedOn="{StaticResource SegmentBase}">
+        <Setter Property="Tag" Value="0" />
+    </Style>
+    <Style x:Key="SegmentRight" TargetType="RadioButton" BasedOn="{StaticResource SegmentBase}">
+        <Setter Property="Tag" Value="0,6,6,0" />
+    </Style>
+
+    <!-- ===== monochrome scrollbar (implicit — replaces the OS light-gray chrome) =====
+         Track is transparent so it dissolves into the black panel; the thumb is a thin
+         rounded white-at-low-opacity bar that brightens on hover/drag. No arrow repeat
+         buttons. Applies app-wide to every ScrollViewer/TextBox via the keyless style. -->
+    <Style x:Key="MonoScrollThumb" TargetType="Thumb">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="MinHeight" Value="24" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Thumb">
+                    <Border x:Name="Bar" CornerRadius="3" Margin="2" Background="#33FFFFFF" />
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter TargetName="Bar" Property="Background" Value="#59FFFFFF" />
+                        </Trigger>
+                        <Trigger Property="IsDragging" Value="True">
+                            <Setter TargetName="Bar" Property="Background" Value="#80FFFFFF" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="MonoScrollPageButton" TargetType="RepeatButton">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="IsTabStop" Value="False" />
+        <Setter Property="Focusable" Value="False" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="RepeatButton">
+                    <Border Background="Transparent" />
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style TargetType="ScrollBar">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Width" Value="10" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ScrollBar">
+                    <Grid Background="Transparent">
+                        <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True">
+                            <Track.DecreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource MonoScrollPageButton}" Command="ScrollBar.PageUpCommand" />
+                            </Track.DecreaseRepeatButton>
+                            <Track.Thumb>
+                                <Thumb Style="{StaticResource MonoScrollThumb}" />
+                            </Track.Thumb>
+                            <Track.IncreaseRepeatButton>
+                                <RepeatButton Style="{StaticResource MonoScrollPageButton}" Command="ScrollBar.PageDownCommand" />
+                            </Track.IncreaseRepeatButton>
+                        </Track>
+                    </Grid>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="Orientation" Value="Horizontal">
+                            <Setter Property="Width" Value="Auto" />
+                            <Setter Property="Height" Value="10" />
+                            <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- ===== mono switch (CheckBox rendered as a macOS-style switch) =====
+         OFF: dark track + light-gray knob. ON: white track + black knob. -->
+    <Style x:Key="MonoSwitch" TargetType="CheckBox">
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="CheckBox">
+                    <Border x:Name="Track" Width="38" Height="22" CornerRadius="11"
+                            Background="{StaticResource Settings.Border}">
+                        <Ellipse x:Name="Knob" Width="18" Height="18" Fill="#FFCFCFCF"
+                                 HorizontalAlignment="Left" Margin="2,0,0,0" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsChecked" Value="True">
+                            <Setter TargetName="Track" Property="Background" Value="#FFFFFFFF" />
+                            <Setter TargetName="Knob" Property="Fill" Value="#FF000000" />
+                            <Setter TargetName="Knob" Property="HorizontalAlignment" Value="Right" />
+                            <Setter TargetName="Knob" Property="Margin" Value="0,0,2,0" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+</ResourceDictionary>

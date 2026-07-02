@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>JVoice.Core</RootNamespace>
+    <AssemblyName>JVoice.Core</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- White-box test access to internal brain helpers (RepetitionGuard.Core /
+         VocabularyCores / Stopwords), mirroring Swift's @testable import. -->
+    <InternalsVisibleTo Include="JVoice.Tests" />
+  </ItemGroup>
+</Project>

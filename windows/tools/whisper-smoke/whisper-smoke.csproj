@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0</TargetFramework>
+    <RootNamespace>JVoice.Tools.WhisperSmoke</RootNamespace>
+    <AssemblyName>whisper-smoke</AssemblyName>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win-x64</RuntimeIdentifiers>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\JVoice.Core\JVoice.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Link the engine sources (the engine lives in the WinExe app project). They are
+       internal to JVoice.App but compiled INTO this assembly, so internal is fine. -->
+  <ItemGroup>
+    <Compile Include="..\..\JVoice.App\Whisper\EngineTuning.cs" Link="Whisper\EngineTuning.cs" />
+    <Compile Include="..\..\JVoice.App\Platform\System\CpuInfo.cs" Link="Platform\CpuInfo.cs" />
+    <Compile Include="..\..\JVoice.App\Whisper\WhisperRuntime.cs" Link="Whisper\WhisperRuntime.cs" />
+    <Compile Include="..\..\JVoice.App\Whisper\WhisperModelStore.cs" Link="Whisper\WhisperModelStore.cs" />
+    <Compile Include="..\..\JVoice.App\Whisper\WhisperNetTranscriptionEngine.cs" Link="Whisper\WhisperNetTranscriptionEngine.cs" />
+  </ItemGroup>
+
+  <!-- Same pinned Whisper.net versions as JVoice.App. -->
+  <ItemGroup>
+    <PackageReference Include="Whisper.net" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Cuda" Version="1.9.1" />
+    <PackageReference Include="Whisper.net.Runtime.Vulkan" Version="1.9.1" />
+  </ItemGroup>
+
+</Project>
