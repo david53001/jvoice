@@ -113,6 +113,44 @@ The installer already relaunches JVoice when it finishes.
 - Visuals: `--settings-render <png> available|downloading|error` — the card renders in the
   three-column layout; the downloading state shows the eased white fill with **no % text**.
 
+## How to turn updates ON — release runbook (2026-07-02)
+
+The feature is code-complete and detection is ongoing (startup + 24 h re-check). It is **dormant
+end-to-end** only because nothing is published for it to find. To make updates actually work, in
+order:
+
+**A. Prerequisite for CI automation — commit the packaging scripts.** The IExpress installer scripts
+(`windows/artifacts/*.sed`, `install.ps1`, `uninstall.ps1`) are **gitignored → they live only on
+David's machine**, so no GitHub Actions job can build the installers without them. To automate
+releases, un-ignore + commit them (they hold no secrets). While there, add a `Get-Process JVoice`
+wait-for-exit at the top of `install.ps1`'s copy step (the app quits *as* it launches the installer,
+so robocopy must not race a still-locked file).
+
+**B. Build the release-cutting workflow** (`.github/workflows/windows-release.yml`, ~follow-up, not
+built): trigger on `push: tags: ['v*']`; `permissions: contents: write`; on `windows-latest` (which
+has `iexpress.exe`): for each flavor {cpu, gpu} `dotnet publish -p:JVoiceFlavor=<f>` → zip the folder
+→ `iexpress /N /Q windows/artifacts/JVoice-<f>.sed` → attach `JVoice-Setup.exe` +
+`JVoice-Setup-GPU.exe` (+ `LICENSE.txt`) to a GitHub Release via `softprops/action-gh-release` with
+`tag_name` = the pushed tag. **Pass `-p:Version=${TAG#v}` so the build version is derived from the
+tag** — this kills the "forgot to bump `<Version>` → updates silently never detect" footgun.
+
+**C. Version discipline.** The installed build is `1.0.0.0` (`JVoice.App.csproj <Version>`). A release
+is only *detected* when its tag parses **higher** than the running build. So the first release
+existing installs upgrade to must be e.g. **`v1.0.1`**.
+
+**D. Prove the loop BEFORE trusting it.** The risky half — download → the installer overwrites JVoice
+*while it runs* → relaunch — has **never been tested live**. Point `UpdateConfig.RepoSlug` at a
+throwaway **public** test repo, cut a dummy `v1.0.1` release with a real installer asset, and watch
+the app detect → download (eased bar) → install → reopen. Only then flip the real repo public.
+
+**E. Ship a build that HAS the ongoing-detection change.** The periodic re-check (commit `a5f7f5c`)
+currently sits on branch `docs/cross-platform-landing`; make sure the first public installer is built
+from a branch that includes it (reconcile onto `windows-port`).
+
+**F. Go live (David's call).** Make repo/Releases public → push a `v1.0.1` tag → CI cuts the Release →
+running apps detect it within a day (or on next launch). Confirm anytime with
+`JVoice.exe --update-check` (expect `available: True`).
+
 ## Still to do (David)
 
 1. **Dogfood** the live flow once there's a real public release to point at (or temporarily aim
