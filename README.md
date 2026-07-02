@@ -44,7 +44,7 @@ Dictation tools like Wispr Flow and superwhisper charge $8–15/month for someth
 
 On first run JVoice asks for **Microphone** (to hear you) and **Accessibility** (to type text into the frontmost app) permissions, then downloads your chosen Whisper model.
 
-**Hotkey:** <kbd>⌥ Option</kbd>+<kbd>Space</kbd>
+**Default hotkey:** <kbd>⌥ Option</kbd>+<kbd>Space</kbd> — rebind it to whatever you like in Settings.
 
 ### Windows
 
@@ -59,11 +59,11 @@ Both produce identical transcripts — the GPU build is just *faster* on support
 2. It installs to `%LOCALAPPDATA%\Programs\JVoice`, adds a Start-Menu shortcut, and launches to the system tray. No admin required.
 3. Your first dictation downloads the Whisper model once (a few hundred MB), then everything is offline.
 
-**Hotkey:** <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd>
+**Default hotkey:** <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> — rebind it to whatever you like in Settings.
 
 ## Usage
 
-1. Press your hotkey (<kbd>⌥Space</kbd> on macOS, <kbd>Ctrl+Shift+Space</kbd> on Windows) — a recording indicator appears.
+1. Press your hotkey — by default <kbd>⌥Space</kbd> on macOS or <kbd>Ctrl+Shift+Space</kbd> on Windows, and rebindable in Settings — a recording indicator appears.
 2. Talk. Press the hotkey again to stop.
 3. Transcribed, tone-styled text is pasted at your cursor.
 
