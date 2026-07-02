@@ -33,7 +33,7 @@ Dictation tools like Wispr Flow and superwhisper charge $8–15/month for someth
 
 ### macOS
 
-**[⬇️ Download `JVoice.dmg`](https://github.com/USER/jvoice/releases/latest)** — macOS 14+ (Apple Silicon recommended)
+**[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/latest)** — macOS 14+ (Apple Silicon recommended)
 
 1. Open the DMG and drag **JVoice** into **Applications**.
 2. First launch: macOS says it *"can't verify the developer."* Click **Done** (not "Move to Trash").
@@ -50,8 +50,8 @@ On first run JVoice asks for **Microphone** (to hear you) and **Accessibility** 
 
 | Download | Get this if… | Size |
 | --- | --- | :---: |
-| **[⬇️ `JVoice-Setup.exe`](https://github.com/USER/jvoice/releases/latest)** ← **most people** | Any Windows 10/11 (x64) PC. CPU-only. | ~65 MB |
-| [`JVoice-Setup-GPU.exe`](https://github.com/USER/jvoice/releases/latest) | You have an **NVIDIA GPU** and want faster transcription (CUDA/Vulkan). | ~360 MB |
+| **[⬇️ `JVoice-Setup.exe`](https://github.com/david53001/jvoice/releases/latest)** ← **most people** | Any Windows 10/11 (x64) PC. CPU-only. | ~65 MB |
+| [`JVoice-Setup-GPU.exe`](https://github.com/david53001/jvoice/releases/latest) | You have an **NVIDIA GPU** and want faster transcription (CUDA/Vulkan). | ~360 MB |
 
 Both produce identical transcripts — the GPU build is just *faster* on supported hardware, and it falls back to CPU anyway. **When in doubt, get `JVoice-Setup.exe`.**
 
@@ -82,7 +82,7 @@ Don't trust an unsigned binary? Good instinct — build it yourself.
 **macOS** — macOS 14+, Apple Silicon recommended, Xcode Command Line Tools only (no full Xcode needed):
 
 ```bash
-git clone https://github.com/USER/jvoice && cd jvoice
+git clone https://github.com/david53001/jvoice && cd jvoice
 swift build -c release
 ./scripts/install.sh   # builds, signs locally, installs to /Applications
 ```
@@ -90,7 +90,7 @@ swift build -c release
 **Windows** — Windows 10/11 x64, [.NET 9 SDK](https://dotnet.microsoft.com/download):
 
 ```powershell
-git clone https://github.com/USER/jvoice; cd jvoice
+git clone https://github.com/david53001/jvoice; cd jvoice
 dotnet build windows/JVoice.sln -c Release
 dotnet run --project windows/JVoice.App
 ```
