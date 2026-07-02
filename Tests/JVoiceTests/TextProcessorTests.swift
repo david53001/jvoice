@@ -173,6 +173,24 @@ func processAppliesPhoneticVocabularyCorrection() {
     #expect(result == "open JVoice now")
 }
 
+// MARK: - Code tone (per-app override): verbatim, whitespace-trim only
+
+@Test
+func codeToneTrimsWhitespaceOnly() {
+    #expect(TextProcessor.format("  const x = 5;  ", mode: .code) == "const x = 5;")
+}
+
+@Test
+func codeTonePreservesCasingAndSymbols() {
+    #expect(TextProcessor.process("MyClass.someMethod()", mode: .code) == "MyClass.someMethod()")
+}
+
+@Test
+func codeToneDoesNotCapitalizeOrAddPeriod() {
+    // Contrast with Formal ("Hello world.") and Casual: Code leaves it verbatim.
+    #expect(TextProcessor.process("hello world", mode: .code) == "hello world")
+}
+
 // MARK: - TRX-01: no double/triple custom-word substitution
 
 @Test func punctuatedCustomWordCorrectedOnce() {

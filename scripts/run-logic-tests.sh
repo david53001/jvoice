@@ -79,6 +79,70 @@ expectEqual(TextProcessor.process("hello world", mode: .formal), "Hello world.",
 expectEqual(TextProcessor.process("Um, hello world", mode: .casual, removeFillerWords: true), "hello world", "filler removal unchanged")
 expectEqual(TextProcessor.process("please use j voice with whisper kit", mode: .casual), "please use JVoice with WhisperKit", "built-in dictionary unchanged")
 
+print("TextProcessor .code tone (verbatim — trims whitespace only, no caps/punctuation changes)")
+expectEqual(TextProcessor.format("  const x = 5;  ", mode: .code), "const x = 5;", "code: trims surrounding whitespace only")
+expectEqual(TextProcessor.process("MyClass.someMethod()", mode: .code), "MyClass.someMethod()", "code: preserves casing + symbols as spoken")
+expectEqual(TextProcessor.process("hello world", mode: .code), "hello world", "code: no capitalization, no terminal period")
+expectEqual(TextProcessor.process("let x = 5", mode: .code, removeFillerWords: true), "let x = 5", "code: filler-removal harmless on code")
+
+print("DeveloperTerms — pack + augment")
+expectEqual(DeveloperTerms.map["node js"] ?? "", "Node.js", "node js → Node.js")
+expectEqual(DeveloperTerms.map["nodejs"] ?? "", "Node.js", "nodejs → Node.js")
+expectEqual(DeveloperTerms.map["type script"] ?? "", "TypeScript", "type script → TypeScript")
+expectEqual(DeveloperTerms.map["c sharp"] ?? "", "C#", "c sharp → C#")
+expectEqual(DeveloperTerms.map["vs code"] ?? "", "VS Code", "vs code → VS Code")
+expectEqual(DeveloperTerms.map["json"] ?? "", "JSON", "json → JSON")
+expectEqual(DeveloperTerms.map["supabase"] ?? "", "Supabase", "supabase deduped → Supabase (C# last-wins)")
+// Kept homophones / near-collisions (same call as "jason").
+expectEqual(DeveloperTerms.map["jason"] ?? "", "JSON", "jason → JSON (kept homophone)")
+expectEqual(DeveloperTerms.map["groq"] ?? "", "Groq", "groq → Groq (kept, NOT grok)")
+expectEqual(DeveloperTerms.map["gemini"] ?? "", "Gemini", "gemini → Gemini (safe both senses)")
+expectEqual(DeveloperTerms.map["mistral"] ?? "", "Mistral", "mistral → Mistral (kept)")
+// Ambiguous English words are deliberately EXCLUDED (protect ordinary dictation).
+let devExclusions = ["cursor","bolt","continue","render","railway","remix","warp","astro","svelte","bun","pinecone","chroma","cohere","perplexity","grok","drizzle","lovable","llama"]
+for w in devExclusions { expect(DeveloperTerms.map[w] == nil, "excluded ambiguous word absent: \(w)") }
+// augment lays the pack UNDERNEATH base (base wins); pack-only keys survive.
+expectEqual(DeveloperTerms.augment([:])["vs code"] ?? "", "VS Code", "augment keeps pack entries")
+expectEqual(DeveloperTerms.augment(["node js": "CustomNode"])["node js"] ?? "", "CustomNode", "augment: base value wins over pack")
+// End-to-end through process(): pack corrections applied, built-in still wins.
+expectEqual(TextProcessor.process("i use node js and type script daily", mode: .casual, extraDictionary: DeveloperTerms.augment([:])), "i use Node.js and TypeScript daily", "dev pack applied in process")
+expectEqual(TextProcessor.process("send me the jason file", mode: .casual, extraDictionary: DeveloperTerms.augment([:])), "send me the JSON file", "jason → JSON in process")
+
+print("StatsStore.estimatedMinutesSaved (40-wpm typing baseline)")
+do {
+    let suite = "jvoice.test.stats.\(UUID().uuidString)"
+    let d = UserDefaults(suiteName: suite)!
+    let store = StatsStore(defaults: d)
+    expectEqual(store.estimatedMinutesSaved, 0, "no words → 0 minutes saved")
+    // 40 words spoken in 6s: typing = 40/40 = 1 min; spoken = 6/60 = 0.1 min; saved = 0.9.
+    store.record(words: 40, durationSeconds: 6)
+    expect(abs(store.estimatedMinutesSaved - 0.9) < 1e-9, "40 words in 6s → 0.9 min saved (got \(store.estimatedMinutesSaved))")
+    d.removePersistentDomain(forName: suite)
+}
+do {
+    // Slow dictation floors at 0: 10 words in 60s → typing 0.25 min < spoken 1 min.
+    let suite = "jvoice.test.stats.\(UUID().uuidString)"
+    let d = UserDefaults(suiteName: suite)!
+    let store = StatsStore(defaults: d)
+    store.record(words: 10, durationSeconds: 60)
+    expectEqual(store.estimatedMinutesSaved, 0, "slow dictation floors saved at 0")
+    d.removePersistentDomain(forName: suite)
+}
+
+print("AppModeResolver")
+expect(AppModeResolver.resolve(bundleId: "com.microsoft.VSCode", userRules: [], enabled: false) == nil, "disabled → nil")
+expect(AppModeResolver.resolve(bundleId: nil, userRules: [], enabled: true) == nil, "nil bundleId → nil")
+expect(AppModeResolver.resolve(bundleId: "   ", userRules: [], enabled: true) == nil, "blank bundleId → nil")
+expectEqual(AppModeResolver.resolve(bundleId: "com.microsoft.VSCode", userRules: [], enabled: true), .code, "VS Code → code (built-in)")
+expectEqual(AppModeResolver.resolve(bundleId: "com.apple.Terminal", userRules: [], enabled: true), .code, "Terminal → code (built-in)")
+expectEqual(AppModeResolver.resolve(bundleId: "com.jetbrains.pycharm", userRules: [], enabled: true), .code, "JetBrains wildcard → code")
+expectEqual(AppModeResolver.resolve(bundleId: "com.apple.dt.Xcode", userRules: [], enabled: true), .code, "Xcode → code")
+expect(AppModeResolver.resolve(bundleId: "com.apple.Safari", userRules: [], enabled: true) == nil, "non-code app → nil")
+// User rules win, in order, case-insensitive substring of the bundle id.
+expectEqual(AppModeResolver.resolve(bundleId: "com.tinyspeck.slackmacgap", userRules: [AppModeRule(appMatch: "slack", mode: .formal)], enabled: true), .formal, "user rule substring match")
+expectEqual(AppModeResolver.resolve(bundleId: "com.microsoft.VSCode", userRules: [AppModeRule(appMatch: "VSCode", mode: .veryCasual)], enabled: true), .veryCasual, "user rule wins over built-in code app (case-insensitive)")
+expectEqual(AppModeResolver.resolve(bundleId: "com.apple.Terminal", userRules: [AppModeRule(appMatch: "safari", mode: .formal), AppModeRule(appMatch: "terminal", mode: .veryCasual)], enabled: true), .veryCasual, "first matching user rule in list order")
+
 print("TextProcessor.removeDisfluencies — m-trailing hesitation fillers (uhm/erm)")
 expectEqual(TextProcessor.removeDisfluencies("uhm, I was thinking"), "I was thinking", "leading 'uhm' removed")
 expectEqual(TextProcessor.removeDisfluencies("I was uhm thinking"), "I was thinking", "mid-sentence 'uhm' removed")
@@ -349,10 +413,14 @@ EOF
 
 xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Models/AppMode.swift" \
+    "$REPO_ROOT/Sources/JVoice/Models/AppModeRule.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/AppModeResolver.swift" \
     "$REPO_ROOT/Sources/JVoice/Models/AppTheme.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Orchestration/DictationError.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Audio/AudioLevel.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Orchestration/StatsStore.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/TextProcessor.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/DeveloperTerms.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/VocabularyPrompt.swift" \

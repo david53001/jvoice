@@ -6,6 +6,10 @@ public typealias HotKeyShortcutName = KeyboardShortcuts.Name
 
 public extension KeyboardShortcuts.Name {
     static let toggleRecording = Self("toggleRecording", default: .init(.space, modifiers: [.option]))
+    /// Opt-in "undo last paste" chord. NO default: unset means disabled (a
+    /// registered global chord is swallowed system-wide, so it must stay unset
+    /// until the user assigns one). Mirrors the Windows port.
+    static let undoLastPaste = Self("undoLastPaste")
 }
 #else
 public struct HotKeyShortcutName: Hashable, Sendable {
@@ -16,6 +20,7 @@ public struct HotKeyShortcutName: Hashable, Sendable {
     }
 
     public static let toggleRecording = HotKeyShortcutName("toggleRecording")
+    public static let undoLastPaste = HotKeyShortcutName("undoLastPaste")
 }
 #endif
 

@@ -111,6 +111,7 @@ private struct ThemeToggle: View {
 struct SettingsView: View {
     @ObservedObject var coordinator: VoiceCoordinator
     @State private var newWord = ""
+    @State private var newAppMatch = ""
     @State private var showResetConfirm = false
 
     var body: some View {
@@ -144,6 +145,7 @@ struct SettingsView: View {
                         processingSection(theme)
                         voiceStyleSection(theme)
                         languageSection(theme)
+                        appModesSection(theme)
                         shortcutSection(theme)
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
@@ -172,9 +174,19 @@ struct SettingsView: View {
                 stat("\(coordinator.totalWordsSpoken)", "total words", theme)
                 Rectangle().fill(theme.hairline).frame(width: 0.5, height: 44)
                 stat(coordinator.averageWPM > 0 ? String(format: "%.0f", coordinator.averageWPM) : "—", "avg WPM", theme)
+                Rectangle().fill(theme.hairline).frame(width: 0.5, height: 44)
+                stat(timeSavedDisplay(coordinator.minutesSaved), "time saved", theme)
             }
             .frame(maxWidth: .infinity)
         }
+    }
+
+    /// Human-readable "time saved" cell: "—" under a minute, "{n} min" up to an
+    /// hour, "{n} h" beyond. Mirrors the Windows port's display.
+    private func timeSavedDisplay(_ minutes: Double) -> String {
+        if minutes < 1 { return "—" }
+        if minutes < 60 { return "\(Int(minutes)) min" }
+        return "\(Int(minutes / 60)) h"
     }
 
     private func stat(_ value: String, _ label: String, _ theme: Theme) -> some View {
@@ -212,20 +224,36 @@ struct SettingsView: View {
 
     private func processingSection(_ theme: Theme) -> some View {
         SettingsSection("Processing", theme: theme) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Remove Filler Words")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(theme.textPrimary)
-                    Text("Strip um, uh, er, ah, hmm from output")
-                        .font(.system(size: 10))
-                        .foregroundStyle(theme.textMuted)
-                }
-                Spacer()
-                Toggle("", isOn: $coordinator.removeFillerWords)
-                    .labelsHidden()
-                    .toggleStyle(.switch)
+            VStack(spacing: 12) {
+                toggleRow("Developer Terms",
+                          "Fix coding terms: Node.js, GitHub, TypeScript, JSON, C#…",
+                          isOn: $coordinator.developerTerms, theme)
+                toggleRow("Remove Filler Words",
+                          "Strip um, uh, er, ah, hmm from output",
+                          isOn: $coordinator.removeFillerWords, theme)
+                toggleRow("Copy to Clipboard",
+                          "Copy the text instead of auto-pasting it",
+                          isOn: $coordinator.copyToClipboardOnly, theme)
             }
+        }
+    }
+
+    /// A labelled switch row matching the original Processing toggle style.
+    private func toggleRow(_ title: String, _ subtitle: String, isOn: Binding<Bool>, _ theme: Theme) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(theme.textPrimary)
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            Toggle("", isOn: isOn)
+                .labelsHidden()
+                .toggleStyle(.switch)
         }
     }
 
@@ -242,13 +270,100 @@ struct SettingsView: View {
 
     private func languageSection(_ theme: Theme) -> some View {
         SettingsSection("Language", theme: theme) {
-            Picker("Language", selection: $coordinator.transcriptionLanguage) {
-                ForEach(TranscriptionLanguage.allCases) { lang in
-                    Text(lang.displayName).tag(lang)
+            VStack(alignment: .leading, spacing: 12) {
+                Picker("Language", selection: $coordinator.transcriptionLanguage) {
+                    ForEach(TranscriptionLanguage.allCases) { lang in
+                        Text(lang.displayName).tag(lang)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+
+                toggleRow("Translate to English",
+                          "Speak the language above, paste English",
+                          isOn: $coordinator.translateToEnglish, theme)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    private func appModesSection(_ theme: Theme) -> some View {
+        SettingsSection("App Modes", theme: theme) {
+            VStack(alignment: .leading, spacing: 12) {
+                toggleRow("Auto-switch by App",
+                          "Match the app's bundle ID; code apps → Code tone",
+                          isOn: $coordinator.appAwareModes, theme)
+
+                if coordinator.appAwareModes {
+                    if coordinator.appModeRules.isEmpty {
+                        Text("No rules yet. Terminals and editors already default to Code.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(theme.textMuted)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(coordinator.appModeRules, id: \.appMatch) { rule in
+                                HStack(spacing: 6) {
+                                    Text(rule.appMatch)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(theme.textSecondary)
+                                        .lineLimit(1)
+                                        .truncationMode(.middle)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+
+                                    Button {
+                                        coordinator.cycleAppModeRuleMode(rule)
+                                    } label: {
+                                        Text(rule.mode.displayName)
+                                            .font(.system(size: 10, weight: .semibold))
+                                            .foregroundStyle(theme.textPrimary)
+                                            .padding(.horizontal, 8)
+                                            .padding(.vertical, 3)
+                                            .background(
+                                                Capsule().fill(theme.barFill.opacity(0.14))
+                                                    .overlay(Capsule().strokeBorder(theme.hairline, lineWidth: 1))
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .help("Click to change tone")
+
+                                    Button {
+                                        coordinator.removeAppModeRule(rule)
+                                    } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(theme.textMuted)
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                            }
+                        }
+                    }
+
+                    HStack(spacing: 6) {
+                        TextField("App bundle ID or name (e.g. slack)", text: $newAppMatch)
+                            .textFieldStyle(.plain)
+                            .font(.system(size: 11))
+                            .foregroundStyle(theme.textSecondary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 5)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                    .fill(theme.inputBackground)
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
+                                            .strokeBorder(theme.hairline, lineWidth: 1)
+                                    )
+                            )
+                            .onSubmit { submitAppRule() }
+
+                        Button("Add") { submitAppRule() }
+                            .buttonStyle(SettingsButtonStyle(theme: theme))
+                            .disabled(newAppMatch.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
                 }
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -266,6 +381,16 @@ struct SettingsView: View {
                 Text("Default: ⌥ Space")
                     .font(.system(size: 10))
                     .foregroundStyle(theme.textMuted)
+
+                #if canImport(KeyboardShortcuts)
+                Rectangle().fill(theme.hairline).frame(height: 0.5).padding(.vertical, 2)
+                KeyboardShortcuts.Recorder("Undo Last Paste:", name: .undoLastPaste)
+                    .foregroundStyle(theme.textSecondary)
+                Text("Optional — sends the app's Undo (⌘Z) to reverse the last paste")
+                    .font(.system(size: 10))
+                    .foregroundStyle(theme.textMuted)
+                    .fixedSize(horizontal: false, vertical: true)
+                #endif
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -389,6 +514,13 @@ struct SettingsView: View {
         guard !trimmed.isEmpty else { return }
         coordinator.addCustomWord(trimmed)
         newWord = ""
+    }
+
+    private func submitAppRule() {
+        let trimmed = newAppMatch.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+        coordinator.addAppModeRule(match: trimmed, mode: .code)
+        newAppMatch = ""
     }
 }
 

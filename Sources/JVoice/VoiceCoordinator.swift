@@ -69,14 +69,22 @@ final class VoiceCoordinator: ObservableObject {
 
     @Published var whisperModel: WhisperModelChoice {
         didSet {
-            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage, vocabulary: customWords))
+            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage, vocabulary: customWords, translate: translateToEnglish))
             persistSettings()
         }
     }
 
     @Published var transcriptionLanguage: TranscriptionLanguage {
         didSet {
-            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage, vocabulary: customWords))
+            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage, vocabulary: customWords, translate: translateToEnglish))
+            persistSettings()
+        }
+    }
+
+    /// Dictate-to-translate: rebuild the engine (like a language change), then persist.
+    @Published var translateToEnglish: Bool {
+        didSet {
+            transcriptionManager.updateEngine(Self.makeTranscriptionEngine(for: whisperModel.modelOption, language: transcriptionLanguage, vocabulary: customWords, translate: translateToEnglish))
             persistSettings()
         }
     }
@@ -89,6 +97,34 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     @Published var removeFillerWords: Bool {
+        didSet {
+            persistSettings()
+        }
+    }
+
+    /// Opt-out curated developer-terms correction pack (post-processing only).
+    @Published var developerTerms: Bool {
+        didSet {
+            persistSettings()
+        }
+    }
+
+    /// Copy the transcript to the clipboard instead of auto-pasting it.
+    @Published var copyToClipboardOnly: Bool {
+        didSet {
+            persistSettings()
+        }
+    }
+
+    /// Auto-switch tone by the target app (post-processing only; no engine reload).
+    @Published var appAwareModes: Bool {
+        didSet {
+            persistSettings()
+        }
+    }
+
+    /// Per-app tone rules (built-in code apps are implicit in `AppModeResolver`).
+    @Published var appModeRules: [AppModeRule] {
         didSet {
             persistSettings()
         }
@@ -108,6 +144,7 @@ final class VoiceCoordinator: ObservableObject {
     @Published private(set) var hudState: HUDState = .idle
     @Published private(set) var totalWordsSpoken: Int = 0
     @Published private(set) var averageWPM: Double = 0
+    @Published private(set) var minutesSaved: Double = 0
 
     private let settingsStore: SettingsStore
     private let recordingManager: RecordingManager
@@ -121,6 +158,17 @@ final class VoiceCoordinator: ObservableObject {
             }
         }
     }()
+    /// Second global hook for the opt-in "undo last paste" chord (unset by default
+    /// → disabled until the user assigns one via the Settings recorder).
+    private lazy var undoHotKeyManager: HotKeyManager = {
+        HotKeyManager(shortcutName: .undoLastPaste) { [weak self] in
+            Task { @MainActor in self?.undoLastPaste() }
+        }
+    }()
+    /// One-shot undo record set on a successful paste (unset for clipboard-only);
+    /// the undo hotkey only fires while `lastPastedPID` is still frontmost.
+    private var lastPastedText: String = ""
+    private var lastPastedPID: pid_t?
     private var hudDismissTask: Task<Void, Never>?
     private var currentTranscriptionTask: Task<Void, Never>?
     private var streamingSession: StreamingTranscriptionSession?
@@ -153,18 +201,24 @@ final class VoiceCoordinator: ObservableObject {
         self.settingsStore = settingsStore
         self.recordingManager = RecordingManager()
         self.transcriptionManager = TranscriptionManager(
-            engine: Self.makeTranscriptionEngine(for: settingsStore.state.model, language: settingsStore.state.language, vocabulary: settingsStore.state.customWords)
+            engine: Self.makeTranscriptionEngine(for: settingsStore.state.model, language: settingsStore.state.language, vocabulary: settingsStore.state.customWords, translate: settingsStore.state.translateToEnglish)
         )
         self.pasteManager = PasteManager()
         self.settingsState = settingsStore.state
         self.toneMode = ToneMode(appMode: settingsStore.state.mode)
         self.whisperModel = WhisperModelChoice(model: settingsStore.state.model)
         self.transcriptionLanguage = settingsStore.state.language
+        self.translateToEnglish = settingsStore.state.translateToEnglish
         self.customWords = settingsStore.state.customWords
         self.removeFillerWords = settingsStore.state.removeFillerWords
+        self.developerTerms = settingsStore.state.developerTerms
+        self.copyToClipboardOnly = settingsStore.state.copyToClipboardOnly
+        self.appAwareModes = settingsStore.state.appAwareModes
+        self.appModeRules = settingsStore.state.appModeRules
         self.appTheme = settingsStore.state.theme
         self.totalWordsSpoken = statsStore.totalWords
         self.averageWPM = statsStore.averageWPM
+        self.minutesSaved = statsStore.estimatedMinutesSaved
         self.lastTranscript = lastTranscriptStore.transcript
         self.recentTranscripts = transcriptHistoryStore.entries
         self.isInitializing = false
@@ -190,6 +244,7 @@ final class VoiceCoordinator: ObservableObject {
         ensureAccessibilityOnceForLaunch()
 
         hotKeyManager.register()
+        undoHotKeyManager.register()
         menuBarController.installStatusItem()
         updateHUD(.idle)
 
@@ -384,8 +439,13 @@ final class VoiceCoordinator: ObservableObject {
         toneMode = ToneMode(appMode: settingsStore.state.mode)
         whisperModel = WhisperModelChoice(model: settingsStore.state.model)
         transcriptionLanguage = settingsStore.state.language
+        translateToEnglish = settingsStore.state.translateToEnglish
         customWords = settingsStore.state.customWords
         removeFillerWords = settingsStore.state.removeFillerWords
+        developerTerms = settingsStore.state.developerTerms
+        copyToClipboardOnly = settingsStore.state.copyToClipboardOnly
+        appAwareModes = settingsStore.state.appAwareModes
+        appModeRules = settingsStore.state.appModeRules
         appTheme = settingsStore.state.theme
         isInitializing = false
         settingsStore.flush()
@@ -490,13 +550,17 @@ final class VoiceCoordinator: ObservableObject {
         }
         updateHUD(.transcribing)
 
+        // Capture the paste target's bundle id now (for app-aware modes) — the
+        // frontmost app may change while WhisperKit runs.
+        let targetBundleId = NSRunningApplication(processIdentifier: targetPID)?.bundleIdentifier
+
         currentTranscriptionTask?.cancel()
         currentTranscriptionTask = Task { [weak self] in
-            await self?.finishTranscription(audioURL: audioURL, targetPID: targetPID, session: session)
+            await self?.finishTranscription(audioURL: audioURL, targetPID: targetPID, targetBundleId: targetBundleId, session: session)
         }
     }
 
-    private func finishTranscription(audioURL: URL?, targetPID: pid_t?, session: StreamingTranscriptionSession? = nil) async {
+    private func finishTranscription(audioURL: URL?, targetPID: pid_t?, targetBundleId: String? = nil, session: StreamingTranscriptionSession? = nil) async {
         guard let audioURL else {
             if let session { await session.cancel() }
             show(.recorderFailedToStart)
@@ -547,42 +611,64 @@ final class VoiceCoordinator: ObservableObject {
                 // The user moved on; don't paste into whatever app is now frontmost.
                 return
             }
+            // App-aware modes: dictate under the target app's tone (a user rule,
+            // or a built-in code app → Code) instead of the global one; gated on
+            // the master toggle so the bundle-id probe is skipped when off.
+            let effectiveMode = appAwareModes
+                ? (AppModeResolver.resolve(bundleId: targetBundleId, userRules: appModeRules, enabled: true) ?? toneMode.appMode)
+                : toneMode.appMode
             let userDict = TextProcessor.buildUserDictionary(from: customWords)
-            let processed = removeBlankTranscriptPlaceholder(from: TextProcessor.process(transcript, mode: toneMode.appMode, extraDictionary: userDict, removeFillerWords: removeFillerWords, vocabulary: customWords))
+            // Lay the curated developer-terms pack UNDER the user's own custom-word
+            // variants (their words win); the built-in dictionary still wins over both.
+            let extra = developerTerms ? DeveloperTerms.augment(userDict) : userDict
+            let processed = removeBlankTranscriptPlaceholder(from: TextProcessor.process(transcript, mode: effectiveMode, extraDictionary: extra, removeFillerWords: removeFillerWords, vocabulary: customWords))
 
             guard !processed.isEmpty else {
                 show(.noSpeechHeard)
                 return
             }
 
-            // Bring the target app back to focus before synthesizing Cmd+V.
-            // WhisperKit can take several seconds; the window may have lost key status.
-            if let pid = targetPID,
-               let targetApp = NSRunningApplication(processIdentifier: pid) {
-                targetApp.activate()
-                try? await Task.sleep(nanoseconds: UInt64(AppTimings.pasteActivationDelay * 1_000_000_000))
-            }
-
-            let outcome: PasteOutcome
-            if let pid = targetPID {
-                outcome = pasteManager.paste(processed, targetPID: pid)
+            if copyToClipboardOnly {
+                // Clipboard-only: put the text on the clipboard and stop — the user
+                // pastes it themselves. No Cmd+V is synthesized, so this path needs
+                // NO Accessibility trust. Nothing landed in an app, so the undo
+                // record stays unset.
+                pasteManager.copyOnly(processed)
             } else {
-                outcome = pasteManager.paste(processed)
-            }
+                // Bring the target app back to focus before synthesizing Cmd+V.
+                // WhisperKit can take several seconds; the window may have lost key status.
+                if let pid = targetPID,
+                   let targetApp = NSRunningApplication(processIdentifier: pid) {
+                    targetApp.activate()
+                    try? await Task.sleep(nanoseconds: UInt64(AppTimings.pasteActivationDelay * 1_000_000_000))
+                }
 
-            switch outcome {
-            case .ok:
-                break
-            case .accessibilityDenied:
-                PermissionError.accessibilityDenied.surfaceAndOpenSettings()
-                scheduleHUDReset()
-                return
-            case .pasteboardLocked:
-                show(.clipboardBusy)
-                return
-            case .targetRejected:
-                show(.pasteFailed)
-                return
+                let outcome: PasteOutcome
+                if let pid = targetPID {
+                    outcome = pasteManager.paste(processed, targetPID: pid)
+                } else {
+                    outcome = pasteManager.paste(processed)
+                }
+
+                switch outcome {
+                case .ok:
+                    // Remember the paste (and where it landed) so the opt-in undo
+                    // hotkey can reverse it, but only while that app stays frontmost.
+                    if let pid = targetPID {
+                        lastPastedText = processed
+                        lastPastedPID = pid
+                    }
+                case .accessibilityDenied:
+                    PermissionError.accessibilityDenied.surfaceAndOpenSettings()
+                    scheduleHUDReset()
+                    return
+                case .pasteboardLocked:
+                    show(.clipboardBusy)
+                    return
+                case .targetRejected:
+                    show(.pasteFailed)
+                    return
+                }
             }
 
             let wordCount = processed.split(separator: " ").count
@@ -592,6 +678,7 @@ final class VoiceCoordinator: ObservableObject {
             statsStore.record(words: wordCount, durationSeconds: lastRecordingDuration)
             totalWordsSpoken = statsStore.totalWords
             averageWPM = statsStore.averageWPM
+            minutesSaved = statsStore.estimatedMinutesSaved
 
             updateHUD(.done(processed))
             scheduleHUDReset()
@@ -626,6 +713,11 @@ final class VoiceCoordinator: ObservableObject {
         s.language = transcriptionLanguage
         s.customWords = customWords
         s.removeFillerWords = removeFillerWords
+        s.developerTerms = developerTerms
+        s.translateToEnglish = translateToEnglish
+        s.copyToClipboardOnly = copyToClipboardOnly
+        s.appAwareModes = appAwareModes
+        s.appModeRules = appModeRules
         s.theme = appTheme
         settingsStore.state = s
         settingsState = s
@@ -646,6 +738,51 @@ final class VoiceCoordinator: ObservableObject {
 
     func removeCustomWord(_ word: String) {
         customWords.removeAll { $0 == word }
+    }
+
+    /// Opt-in one-shot: send the target app's own Undo (Cmd+Z) to reverse the last
+    /// paste — but only while that same app is still frontmost (so alt-tabbing away
+    /// can't undo an unrelated app's edit). Clears the record after firing so a
+    /// second press never re-sends. Clipboard-only dictations leave the record
+    /// unset, so this is a no-op for them.
+    private func undoLastPaste() {
+        guard !lastPastedText.isEmpty, let pid = lastPastedPID else { return }
+        guard NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else { return }
+        _ = pasteManager.sendUndo(targetPID: pid)
+        lastPastedText = ""
+        lastPastedPID = nil
+    }
+
+    /// Add a per-app tone rule. No-op when the match is blank or a rule with the
+    /// same match (case-insensitive) already exists. Post-processing only.
+    @discardableResult
+    func addAppModeRule(match: String, mode: AppMode = .code) -> Bool {
+        let trimmed = match.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        guard !appModeRules.contains(where: { $0.appMatch.caseInsensitiveCompare(trimmed) == .orderedSame }) else { return false }
+        appModeRules.append(AppModeRule(appMatch: trimmed, mode: mode))
+        return true
+    }
+
+    func removeAppModeRule(_ rule: AppModeRule) {
+        appModeRules.removeAll { $0 == rule }
+    }
+
+    /// Cycle a rule's tone through all four styles (Casual → Formal → Very Casual →
+    /// Code → …). Distinct from `AppMode.toggled`, which excludes Code — a per-app
+    /// rule is the only place Code is selectable.
+    func cycleAppModeRuleMode(_ rule: AppModeRule) {
+        guard let idx = appModeRules.firstIndex(where: { $0.appMatch.caseInsensitiveCompare(rule.appMatch) == .orderedSame }) else { return }
+        appModeRules[idx].mode = Self.nextAppModeChip(appModeRules[idx].mode)
+    }
+
+    private static func nextAppModeChip(_ mode: AppMode) -> AppMode {
+        switch mode {
+        case .casual: return .formal
+        case .formal: return .veryCasual
+        case .veryCasual: return .code
+        case .code: return .casual
+        }
     }
 
     func fixLastTranscript(_ corrected: String) {
@@ -729,9 +866,9 @@ final class VoiceCoordinator: ObservableObject {
         return !trusted && !hasPrompted
     }
 
-    private static func makeTranscriptionEngine(for model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = []) -> any TranscriptionEngine {
+    private static func makeTranscriptionEngine(for model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = [], translate: Bool = false) -> any TranscriptionEngine {
         #if canImport(WhisperKit)
-        return WhisperKitTranscriptionEngine(model: model, language: language, vocabulary: vocabulary)
+        return WhisperKitTranscriptionEngine(model: model, language: language, vocabulary: vocabulary, translate: translate)
         #else
         return FileBackedTranscriptionEngine()
         #endif
@@ -747,6 +884,11 @@ private extension ToneMode {
             self = .formal
         case .veryCasual:
             self = .veryCasual
+        // `.code` is only ever an effective per-app override (never the persisted
+        // global tone), so it should not reach here; fall back to Casual in the
+        // 3-way UI picker if it somehow does.
+        case .code:
+            self = .casual
         }
     }
 
