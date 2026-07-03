@@ -1441,6 +1441,40 @@ These are real corrections discovered during execution — preserve them.
       logs + the kept WAV in `%APPDATA%\JVoice\capture\` then show exactly which stage lost the
       words (same calibration loop as #38). (c) The two half-audio capture outliers are unexplained.
 
+40. **First PUBLIC Windows release cut — `windows-v1.0.0` (2026-07-04, David-authorized: "get that
+    release so people can download those files for windows").** The repo went public 2026-07-03;
+    David then published the **macOS** release himself as tag **`v1.0.0`** (asset `JVoice-1.0.0.dmg`,
+    macOS notes). Windows had no release, so this session cut a **separate** one and left the mac
+    `v1.0.0` release **untouched** (don't merge Windows assets into it — two products, one mono-repo).
+    - **Build provenance:** fresh from the `windows-port` tip `ede0233` — NOT the 3-day-stale
+      `~/Downloads` installers, which predated the freeze fix (#37), hallucination gate (#38), and the
+      tail-cutoff fixes (#39). Test gate 733/733 first. Both flavors published self-contained **FOLDER**
+      builds with **`-p:PublishSingleFile=false`** — the `cpu` csproj PropertyGroup still sets
+      `PublishSingleFile=true`, which is the broken-native-load trap of §7 #4, so the override is
+      MANDATORY (the `JVOICE_CPU` define still applies from the same group). Verified each: whisper
+      natives present under `runtimes\win-x64\`, `--update-check` boots clean at `1.0.0.0` with the
+      right flavor. Packaged via the gitignored `windows/artifacts` IExpress flow (`iexpress /N /Q
+      JVoice-<flavor>.sed`) → `JVoice-Setup.exe` (66.6 MB) + `JVoice-Setup-GPU.exe` (365.2 MB), which
+      also refreshed the copies in `~/Downloads`.
+    - **Release:** `gh release create windows-v1.0.0 --target ede0233 --title 'JVoice for Windows —
+      v1.0.0'` with both installers + `LICENSE.txt`; not draft/prerelease. Assets confirmed
+      **anonymously** downloadable (302→release-assets CDN→200, correct `filename=` disposition). It
+      took the repo **"Latest"** badge from the mac release (cosmetic; `gh release edit v1.0.0 --latest`
+      reverts if David prefers macOS to hold it).
+    - **In-app updater — mono-repo tag gap (OPEN, David decision):** `UpdateConfig.RepoSlug` was already
+      `david53001/jvoice` + `Enabled=true`, so no publish-time edit was needed. BUT the updater polls
+      repo-wide `releases/latest` and `ReleaseVersion.TryParse` only accepts `v`/bare-numeric tags, so
+      `windows-v1.0.0` is UNPARSEABLE → the Windows app reports `available: False` (verified live — which
+      is the *correct* no-false-prompt behavior on a fresh 1.0.0.0 install). Consequence: with macOS on
+      the `v1.x` tag namespace and Windows needing a distinct one, **live auto-update detection cannot
+      work as-is.** To run a Windows update channel later, David must choose: (a) a dedicated Windows
+      releases repo, or (b) teach the updater to pick releases by asset name / `windows-` tag prefix
+      instead of raw `releases/latest`. The *download* deliverable is complete regardless; the
+      auto-update loop stays David's pending dogfood item (§8; `docs/launch/windows-in-app-updates.md`).
+    - **Still not automated:** the CI release workflow (`windows-in-app-updates.md` step B) is unbuilt and
+      `windows/artifacts/*.sed` + `install.ps1` remain gitignored — this release was built and uploaded
+      locally. Committing those scripts + a `windows-release.yml` is the follow-up for hands-off releases.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
