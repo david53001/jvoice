@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using JVoice.App.Platform;
 using JVoice.Core;
 using JVoice.Core.Audio;
 using JVoice.Core.Models;
@@ -215,15 +216,30 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         var factory = await LoadFactoryAsync(ct).ConfigureAwait(false);
         var vocabulary = await CurrentVocabularyAsync().ConfigureAwait(false);
         float[] samples = WavTail.FloatSamples(pcm);
+        double audioSeconds = pcm.Length / 16_000.0;
 
         // Same decode-and-recover policy as Swift decodeRecoveringFromRegurgitation:
         // prompted decode; on regurgitation/empty, a prompt-free re-decode. One decode
         // path (DecodeSamplesAsync) serves both whole-file and chunk transcription.
         // NonSpeechAnnotation.Reduce maps a whole-transcript annotation to "" (no-speech).
+        // `lastOutcome` tracks the segment coverage of the LAST decode executed — i.e. the
+        // one whose text RegurgitationRecovery returned (calls are sequential) — for the
+        // §7 #39 tail-coverage guard below. The witness/tail decodes deliberately do NOT
+        // update it.
+        DecodeOutcome lastOutcome = default;
         string guarded = NonSpeechAnnotation.Reduce(await RegurgitationRecovery.Decode(
             _useVocabularyPrompt,
             vocabulary,
-            usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false));
+            async usePrompt =>
+            {
+                var outcome = await DecodeSamplesAsync(samples, factory, usePrompt, ct).ConfigureAwait(false);
+                lastOutcome = outcome;
+                DiagnosticLog.Write(
+                    $"Engine decode prompt={(usePrompt ? "on" : "off")} chars={outcome.Text.Length} " +
+                    $"segs={outcome.SegmentCount} lastEnd={outcome.LastSegmentEndSeconds:0.00}s " +
+                    $"audio={audioSeconds:0.00}s rawRms={rawRms:0.0000}");
+                return outcome.Text;
+            }).ConfigureAwait(false));
 
         // §7 #38 silence-hallucination gate: on a NEAR-SILENT clip the prompted decode can
         // confidently invent text ("you're welcome.") that escapes the blocklist. Measured
@@ -239,8 +255,37 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             && await CurrentPromptAsync().ConfigureAwait(false) is { Length: > 0 })
         {
             string witness = TextProcessor.RemoveWhisperHallucinations(NonSpeechAnnotation.Reduce(
-                await DecodeSamplesAsync(samples, factory, usePrompt: false, ct).ConfigureAwait(false)));
+                (await DecodeSamplesAsync(samples, factory, usePrompt: false, ct).ConfigureAwait(false)).Text));
             guarded = SilenceHallucinationGate.Resolve(guarded, witness);
+            DiagnosticLog.Write(
+                $"Engine witness rawRms={rawRms:0.0000} witnessChars={witness.Length} -> " +
+                (guarded.Length == 0 ? "no-speech" : "kept"));
+        }
+
+        // §7 #39 tail-coverage guard: the decode sometimes ends EARLY on David's quiet
+        // audio — EOT after the louder leading clause — leaving trailing words that ARE in
+        // the WAV untranscribed (confirmed 2026-07-02 23:58: 3.48 s of audio on disk,
+        // decode covered ~the first clause only; he re-dictated). Whisper's own segment
+        // timestamps expose it: a big uncovered tail after the last segment. Recover by
+        // decoding JUST the uncovered tail (unprompted, witness-style, fully reduced) and
+        // appending what the model finds; a trailing thinking-pause decodes to empty and
+        // merges to nothing. Trigger is timestamp coverage — never an RMS level (§7 #21).
+        if (guarded.Length > 0 && TailCoverageGuard.ShouldRecover(audioSeconds, lastOutcome.LastSegmentEndSeconds))
+        {
+            int startSample = Math.Clamp((int)(lastOutcome.LastSegmentEndSeconds * 16_000), 0, pcm.Length);
+            string tailText = "";
+            if (pcm.Length - startSample >= 16_000) // ≥1 s — enough audio to decode on its own
+            {
+                var tailOutcome = await DecodeSamplesAsync(
+                    WavTail.FloatSamples(pcm.AsSpan(startSample)), factory, usePrompt: false, ct).ConfigureAwait(false);
+                tailText = TextProcessor.RemoveWhisperHallucinations(NonSpeechAnnotation.Reduce(tailOutcome.Text));
+            }
+            string merged = TailCoverageGuard.Merge(guarded, tailText);
+            DiagnosticLog.Write(
+                $"Engine tailGuard lastEnd={lastOutcome.LastSegmentEndSeconds:0.00}s audio={audioSeconds:0.00}s " +
+                $"uncovered={audioSeconds - lastOutcome.LastSegmentEndSeconds:0.00}s tail=\"{tailText}\" -> " +
+                (merged.Length > guarded.Length ? "RECOVERED" : "unchanged"));
+            guarded = merged;
         }
 
         if (guarded.Length == 0)
@@ -251,6 +296,11 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     }
 
     // ---- the single shared sample decode ------------------------------------
+
+    /// One decode's result plus its segment coverage: how far (in seconds) whisper's
+    /// LAST segment claims to reach into the audio. Fuel for the §7 #39 tail-coverage
+    /// guard — an early-EOT truncation shows up as LastSegmentEndSeconds ≪ audio length.
+    private readonly record struct DecodeOutcome(string Text, double LastSegmentEndSeconds, int SegmentCount);
 
     /// The single decode implementation for both the whole-file and chunk paths.
     /// Builds a fresh WhisperProcessor (cheap relative to the factory load),
@@ -269,7 +319,7 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     ///                                   WithSingleSegment() (it would force one segment / truncate).
     ///   - suppress_blank stays ON    ← we never call WithoutSuppressBlank(), so the WhisperKit
     ///                                   SuppressBlankFilter trap cannot occur (§6.3; verified T6 S4).
-    private async Task<string> DecodeSamplesAsync(
+    private async Task<DecodeOutcome> DecodeSamplesAsync(
         float[] samples, WhisperFactory factory, bool usePrompt, CancellationToken ct)
     {
         string? promptText = usePrompt ? await CurrentPromptAsync().ConfigureAwait(false) : null;
@@ -304,12 +354,19 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         await using var processor = builder.Build();
 
         var sb = new StringBuilder();
+        double lastEnd = 0;
+        int segmentCount = 0;
         await foreach (var segment in processor.ProcessAsync(samples, ct).ConfigureAwait(false))
+        {
             sb.Append(segment.Text);
+            segmentCount++;
+            double end = segment.End.TotalSeconds;
+            if (end > lastEnd) lastEnd = end;
+        }
 
         string text = sb.ToString().Trim();
         // Remove "[BLANK_AUDIO]"-style decoder sentinels that leak in on silence.
-        return TextProcessor.StripDecoderArtifacts(text);
+        return new DecodeOutcome(TextProcessor.StripDecoderArtifacts(text), lastEnd, segmentCount);
     }
 
     /// Isolated so the temperature/threshold knobs are easy to adapt. Reproduces
@@ -345,11 +402,14 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         var factory = await LoadFactoryAsync(ct).ConfigureAwait(false);
         var vocabulary = await CurrentVocabularyAsync().ConfigureAwait(false);
         // Reduce a whisper no-speech annotation chunk to "" — the streaming session treats
-        // an empty chunk decode as "fall back to whole-file" (lossless), never a silent drop.
+        // an empty chunk decode as "fall back to whole-file" (lossless), never a silent drop
+        // (and, since §7 #39, as "confirmed silence — skip" for a silent-classified chunk).
         return NonSpeechAnnotation.Reduce(await RegurgitationRecovery.Decode(
             _useVocabularyPrompt,
             vocabulary,
-            usePrompt => DecodeSamplesAsync(samples, factory, usePrompt, ct)).ConfigureAwait(false));
+            async usePrompt =>
+                (await DecodeSamplesAsync(samples, factory, usePrompt, ct).ConfigureAwait(false)).Text)
+            .ConfigureAwait(false));
     }
 
     // ---- streaming session integration (Task 4) -----------------------------
@@ -373,6 +433,7 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         return new StreamingTranscriptionSession(
             transcribe: samples => TranscribeChunkSamplesAsync(samples, CancellationToken.None),
             config: new ChunkPlanner.Config(),
-            pollMilliseconds: pollMilliseconds);
+            pollMilliseconds: pollMilliseconds,
+            log: DiagnosticLog.Write);
     }
 }
