@@ -253,6 +253,96 @@ public class StreamingSessionTests
         finally { File.Delete(path); }
     }
 
+    // ===== 2026-07-03 tail-cutoff fix (Windows divergence #2, HANDOFF §7 #39) =====
+    // Mid-recording chunks cut at "silence" used to be DROPPED without a decode
+    // (`decision.IsSilent → consumed += AtSample`). On David's low-level mic real speech
+    // reads below the 0.005 SilenceRmsFloor (peak ≈0.0005–0.004), so entire 15–25 s
+    // chunks of REAL SPEECH could vanish mid-dictation. Silent-classified chunks are now
+    // DECODED like any other chunk; the model (not an RMS floor) decides: empty decode ⇒
+    // legitimately silent, skip losslessly; non-empty ⇒ rescued speech, appended.
+
+    // A sub-floor quiet chunk mid-stream carries David's real words: it must be decoded
+    // and its text included — never silently dropped.
+    [Fact]
+    public async Task MidStreamQuietChunk_IsDecoded_NotDropped()
+    {
+        // 1.2 s quiet-speech-level (peak ≈0.003 < floor 0.005) then 1.3 s loud: the first
+        // cut (~1.0 s, all-quiet) is silent-classified, the rest is non-silent.
+        var quiet = new short[19200];
+        for (int i = 0; i < quiet.Length; i++) quiet[i] = (short)(i % 2 == 0 ? 100 : -100);
+        string path = WriteTemp(Concat(quiet, LoudN(20800)));
+        try
+        {
+            var counter = new Counter();
+            var session = new StreamingTranscriptionSession(counter.Next, FastCfg, FastPollMs);
+            session.Start(path);
+            await Task.Delay(300);
+            var result = await session.Finish();
+
+            Assert.NotNull(result);
+            int n = counter.Calls.Count;
+            // Every piece present in order — including the quiet chunk's decode.
+            Assert.Equal(string.Join(" ", Enumerable.Range(1, n).Select(i => $"piece{i}")), result);
+            Assert.Equal(40000, counter.Calls.Sum()); // every sample decoded exactly once
+        }
+        finally { File.Delete(path); }
+    }
+
+    // A digital-silence chunk that the model confirms empty ("" decode) is skipped
+    // losslessly — NOT a session failure (that policy is only for non-silent chunks).
+    [Fact]
+    public async Task MidStreamTrueSilenceChunk_EmptyDecode_IsSkippedNotFailed()
+    {
+        string path = WriteTemp(Concat(SilenceN(19200), LoudN(20800))); // 1.2 s zeros + 1.3 s loud
+        try
+        {
+            // "" for all-zero chunks (whisper's verdict on true silence), text otherwise.
+            var pieces = new List<string>();
+            var sizes = new List<int>();
+            var gate = new object();
+            Func<float[], Task<string>> mock = samples =>
+            {
+                lock (gate)
+                {
+                    sizes.Add(samples.Length);
+                    string text = samples.All(s => s == 0f) ? "" : $"piece{sizes.Count}";
+                    if (text.Length > 0) pieces.Add(text);
+                    return Task.FromResult(text);
+                }
+            };
+            var session = new StreamingTranscriptionSession(mock, FastCfg, FastPollMs);
+            session.Start(path);
+            await Task.Delay(300);
+            var result = await session.Finish();
+
+            Assert.NotNull(result);                              // no failure, no fallback
+            Assert.Equal(string.Join(" ", pieces), result);      // speech pieces kept, in order
+            Assert.NotEmpty(pieces);                             // the loud audio WAS transcribed
+            // Sum proves the silent chunk went THROUGH a decode (a drop would leave sum < total).
+            Assert.Equal(40000, sizes.Sum());
+        }
+        finally { File.Delete(path); }
+    }
+
+    // A decode error on a silent-classified chunk is still a failure → whole-file fallback
+    // (the new decode site keeps the same lossless error policy as every other decode).
+    [Fact]
+    public async Task MidStreamQuietChunk_DecodeThrows_FailsToNull()
+    {
+        var quiet = new short[19200];
+        for (int i = 0; i < quiet.Length; i++) quiet[i] = (short)(i % 2 == 0 ? 100 : -100);
+        string path = WriteTemp(Concat(quiet, LoudN(20800)));
+        try
+        {
+            var session = new StreamingTranscriptionSession(
+                _ => Task.FromException<string>(new InvalidOperationException("boom")), FastCfg, FastPollMs);
+            session.Start(path);
+            await Task.Delay(150);
+            Assert.Null(await session.Finish());
+        }
+        finally { File.Delete(path); }
+    }
+
     // File vanishes mid-recording (failure teardown): the next poll's read returns null → the
     // session fails → finish() returns null. Mirrors Swift vanishedFileFailsSessionSafely.
     [Fact]
