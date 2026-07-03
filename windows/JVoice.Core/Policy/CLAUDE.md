@@ -18,6 +18,10 @@ keep `namespace JVoice.Core`.)
   a verify TRIGGER only — never a rejector, §7 #21) means the prompted transcript must be vouched
   for by an unprompted decode; an empty reduced witness ⇒ no-speech. Calibrated on David's real
   clips (whisper confidence is INVERTED — don't threshold it).
+- `TailCoverageGuard.cs` — the §7 #39 tail-recovery policy: when a decode's last segment ends
+  ≥1.5 s before the end of the audio (early-EOT truncation fingerprint; the trigger is timestamp
+  coverage, never RMS), the uncovered tail is re-decoded and merged with normalized-containment
+  dedupe. A trailing pause decodes empty and merges to nothing.
 - `AppTimings.cs` — shared timing constants.
 
 ## Invariant
