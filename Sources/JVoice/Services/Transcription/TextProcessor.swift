@@ -126,6 +126,11 @@ public struct TextProcessor: Sendable {
             // (so corrections survive); re-lowering here would destroy them.
             let tidied = collapseRepeatedCommas(trimmed)
             return ensureTerminalDotOrQuestion(tidied)
+        case .code:
+            // Verbatim: casing, symbols and punctuation are kept exactly as
+            // spoken (terminals/editors). Whitespace-trim only — no capitalizing,
+            // no terminal-punctuation fixups. Mirrors Windows `ToneStyle.Code`.
+            return trimmed
         }
     }
 
