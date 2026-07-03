@@ -33,7 +33,7 @@ Dictation tools like Wispr Flow and superwhisper charge $8–15/month for someth
 
 ### macOS
 
-**[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/latest)** — macOS 14+ (Apple Silicon recommended)
+**[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/download/v1.0.0/JVoice-1.0.0.dmg)** — macOS 14+ (Apple Silicon recommended)
 
 1. Open the DMG and drag **JVoice** into **Applications**.
 2. First launch: macOS says it *"can't verify the developer."* Click **Done** (not "Move to Trash").
@@ -50,8 +50,8 @@ On first run JVoice asks for **Microphone** (to hear you) and **Accessibility** 
 
 | Download | Get this if… | Size |
 | --- | --- | :---: |
-| **[⬇️ `JVoice-Setup.exe`](https://github.com/david53001/jvoice/releases/latest)** ← **most people** | Any Windows 10/11 (x64) PC. CPU-only. | ~65 MB |
-| [`JVoice-Setup-GPU.exe`](https://github.com/david53001/jvoice/releases/latest) | You have an **NVIDIA GPU** and want faster transcription (CUDA/Vulkan). | ~360 MB |
+| **[⬇️ `JVoice-Setup.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.0.0/JVoice-Setup.exe)** ← **most people** | Any Windows 10/11 (x64) PC. CPU-only. | ~65 MB |
+| [`JVoice-Setup-GPU.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.0.0/JVoice-Setup-GPU.exe) | You have an **NVIDIA GPU** and want faster transcription (CUDA/Vulkan). | ~360 MB |
 
 Both produce identical transcripts — the GPU build is just *faster* on supported hardware, and it falls back to CPU anyway. **When in doubt, get `JVoice-Setup.exe`.**
 
