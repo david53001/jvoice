@@ -323,7 +323,7 @@
                                 <Border Grid.Column="0" CornerRadius="6" Background="{StaticResource Settings.InputBg}"
                                         BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
                                     <TextBox x:Name="NewWordBox" Background="Transparent" BorderThickness="0"
-                                             Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                             Foreground="{StaticResource Text.W75}" CaretBrush="White" FontSize="11" Padding="8,5"
                                              KeyDown="OnNewWordKeyDown" />
                                 </Border>
                                 <Button Grid.Column="1" Content="Add" Style="{StaticResource DarkPrimaryButton}" Margin="6,0,0,0"
@@ -408,7 +408,7 @@
                                         BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
                                     <Grid>
                                         <TextBox x:Name="AppRuleBox" Background="Transparent" BorderThickness="0"
-                                                 Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                                 Foreground="{StaticResource Text.W75}" CaretBrush="White" FontSize="11" Padding="8,5"
                                                  GotKeyboardFocus="OnAppRuleFocus" TextChanged="OnAppRuleTextChanged"
                                                  KeyDown="OnAppRuleKeyDown" />
                                         <!-- Watermark (toggled in code-behind when the box is empty). -->
@@ -510,7 +510,7 @@
                                 <Border Grid.Column="0" CornerRadius="6" Background="{StaticResource Settings.InputBg}"
                                         BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
                                     <TextBox x:Name="CorrectionFromBox" Background="Transparent" BorderThickness="0"
-                                             Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                             Foreground="{StaticResource Text.W75}" CaretBrush="White" FontSize="11" Padding="8,5"
                                              KeyDown="OnCorrectionKeyDown" />
                                 </Border>
                                 <TextBlock Grid.Column="1" Text="&#x2192;" FontSize="12" Foreground="{StaticResource Text.W40}"
@@ -518,7 +518,7 @@
                                 <Border Grid.Column="2" CornerRadius="6" Background="{StaticResource Settings.InputBg}"
                                         BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
                                     <TextBox x:Name="CorrectionToBox" Background="Transparent" BorderThickness="0"
-                                             Foreground="{StaticResource Text.W75}" FontSize="11" Padding="8,5"
+                                             Foreground="{StaticResource Text.W75}" CaretBrush="White" FontSize="11" Padding="8,5"
                                              KeyDown="OnCorrectionKeyDown" />
                                 </Border>
                                 <Button Grid.Column="3" Content="Add" Style="{StaticResource DarkPrimaryButton}" Margin="6,0,0,0"
