@@ -2,27 +2,31 @@
 
 **Effective date:** 7 July 2026 · Applies to JVoice for macOS and Windows.
 
-> **In one sentence:** JVoice is free, open-source software provided **as-is, with no
-> warranty** — you may use, build, and modify it under the GPL-3.0 license, and you use
+> **In one sentence:** JVoice is free, source-available software provided **as-is, with no
+> warranty** — you may use it free of charge for noncommercial purposes, read the source,
+> and build it yourself, but you may not sell or commercially redistribute it, and you use
 > it at your own risk.
 
 These Terms explain the expectations for using the official JVoice builds. They are
 written in plain language. Where anything here appears to conflict with the software
-license below, **the GPL-3.0 license wins.**
+license below, **the PolyForm Noncommercial License wins.**
 
 ---
 
 ## 1. Your licence to use JVoice
 
-JVoice is licensed under the **GNU General Public License, version 3 (GPL-3.0)**. The
-full license text is in [`LICENSE`](LICENSE). Your rights to **run, copy, study, modify,
-and redistribute** JVoice — in source or binary form — come from that license and that
-license alone.
+JVoice is licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE)** — a
+source-available license. The full, controlling text is in [`LICENSE`](LICENSE); this
+section is a plain-language guide, and the license itself governs. In short, it lets you:
 
-**These Terms add no restrictions to the rights the GPL grants you.** They exist only to
-state the warranty disclaimer in words a normal person will read, and to set sensible
-expectations for the pre-built downloads we publish. If you build JVoice from source, the
-GPL is the only document that governs your rights.
+- **use JVoice free of charge for any noncommercial purpose** — personal use, study,
+  hobby and amateur projects, and use by nonprofits, schools, and government bodies;
+- **read the source, build it yourself, and make changes** for those purposes;
+- **share copies**, as long as you pass along this license and the copyright notice.
+
+What it does **not** permit: **selling JVoice, or using or redistributing it for a
+commercial purpose**, without a separate license from the copyright holder. If you'd like
+to use JVoice commercially, ask — a commercial licence can be arranged.
 
 ## 2. No warranty
 

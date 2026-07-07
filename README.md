@@ -4,7 +4,7 @@
 
 # JVoice
 
-**Free, open-source voice dictation for macOS &amp; Windows — 100% on-device.**
+**Free, source-available voice dictation for macOS &amp; Windows — 100% on-device.**
 No subscription, no cloud, no accounts.
 
 Press a hotkey anywhere, talk, and clean, tone-styled text lands at your cursor — in any app.
@@ -73,7 +73,7 @@ Open **Settings** (menu-bar / tray icon → Settings…) for language, tone styl
 
 - **Zero network calls during use.** The only network access is a one-time Whisper-model download on first run (from Hugging Face) — plus, on Windows, an optional update check you can turn off.
 - No telemetry, no analytics, no accounts.
-- Open source — read the code, or build it yourself.
+- Source-available — read the code, or build it yourself.
 - Full details in the [Privacy Policy](PRIVACY.md).
 
 ## Build from source
@@ -102,7 +102,7 @@ JVoice is free forever. If it saves you a subscription, a ⭐ on this repo is th
 
 ## License &amp; legal
 
-GPL-3.0 — free to use, build, and modify; derivatives must stay open. Full text in [`LICENSE`](LICENSE).
+JVoice is **free to use and source-available**, licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Use it free of charge for any noncommercial purpose, read the source, and build it yourself. **Selling or commercially redistributing JVoice is not permitted** without permission.
 
 - **[Terms of Use](TERMS.md)** — JVoice is provided *as-is, with no warranty*; you use it at your own risk.
 - **[Privacy Policy](PRIVACY.md)** — everything stays on your device; nothing is collected.

@@ -1,12 +1,13 @@
 # Third-Party Notices
 
-JVoice is licensed under the **GPL-3.0** (see [`LICENSE`](LICENSE)). It is built with, and
-distributes, the open-source components listed below, each under its own license. We thank
-their authors. Their copyright notices are preserved here as those licenses require.
+JVoice is licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE)**. It is
+built with, and distributes, the open-source components listed below, each under its own
+license. We thank their authors. Their copyright notices are preserved here as those
+licenses require.
 
-All bundled components are under the permissive **MIT License**, which is compatible with
-GPL-3.0. The MIT license text is reproduced once at the end; each component remains under
-the copyright of its own authors.
+All bundled components are under the permissive **MIT License**, which permits their
+inclusion and redistribution as part of JVoice. The MIT license text is reproduced once at
+the end; each component remains under the copyright of its own authors.
 
 The Whisper speech-recognition **models** are downloaded on first run (not bundled in the
 installer) from the hosts noted below; they are also MIT-licensed.

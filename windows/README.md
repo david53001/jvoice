@@ -3,7 +3,7 @@
 A native **Windows** port of JVoice — a hotkey-driven, on-device voice-dictation app.
 Press **Ctrl+Shift+Space** anywhere → record → transcribe locally with Whisper
 (whisper.cpp via Whisper.net, GPU-accelerated when available) → tone-styled,
-custom-word-accurate text pasted into the focused app. Free, open-source (GPL-3.0),
+custom-word-accurate text pasted into the focused app. Free, source-available (PolyForm Noncommercial License 1.0.0),
 privacy-first: **zero network calls at runtime except the one-time speech-model download**. Works in
 elevated/admin windows too when run as administrator (tray → Restart / Run as Administrator at Login — §7 #25).
 
@@ -96,7 +96,7 @@ dotnet publish windows/JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=cpu \
 ## Constraints
 
 - **.NET 9**, C# latest, nullable + implicit usings. Primary RID `win-x64` (CUDA is x64-only).
-- **GPL-3.0**; all NuGet deps MIT-compatible (Whisper.net, NAudio, H.NotifyIcon.Wpf, SkiaSharp).
+- **PolyForm Noncommercial License 1.0.0** (free, source-available, no commercial resale); all NuGet deps MIT-compatible (Whisper.net, NAudio, H.NotifyIcon.Wpf, SkiaSharp).
 - **Privacy:** no runtime network except the one-time model download. No telemetry. WAVs deleted after use + swept on launch.
 - **Default hotkey Ctrl+Shift+Space** (Alt+Space is the Windows window menu). Rebindable in Settings. The global hook **swallows** the chord's main key on a match, so no stray space leaks into the focused app (§7 #25).
 - **Elevated (admin) windows:** a non-elevated process's keyboard hook can't see keys going to an admin window (UIPI), so the hotkey is dead there until JVoice runs elevated. Tray → **Restart as Administrator** (this session) or **Run as Administrator at Login** (a HIGHEST Task-Scheduler logon task, no per-boot UAC). The manifest stays `asInvoker`; elevation is opt-in. See `../docs/HANDOFF-WINDOWS.md` §7 #25.
