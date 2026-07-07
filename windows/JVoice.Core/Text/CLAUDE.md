@@ -18,6 +18,9 @@ the decoder hallucinate or loop. Ported 1:1 from macOS; every constant is test-l
   hallucination-sentinel stripping.
 - `PhoneticMatcher.cs` — fuzzy sound-alike correction ("jay voice" → "JVoice").
 - `UserCorrections.cs`, `DeveloperTerms.cs` — correction-rule data.
+- `BiblicalTerms.cs` — an **always-on** capitalization pack for God/Jesus/popular Biblical proper
+  nouns ("god"→God, "jesus christ"→Jesus Christ). Like `DeveloperTerms` (a `Map` + `Augment`) but
+  wired in **unconditionally** at `VoiceCoordinator` — no toggle, every tone (root `CLAUDE.md` §7 #39).
 
 ## Invariants / traps
 - Constants are ported verbatim from macOS and asserted by tests — don't tune them blind.

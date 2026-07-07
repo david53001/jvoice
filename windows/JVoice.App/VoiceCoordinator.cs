@@ -952,6 +952,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             // Lay the curated developer-terms pack UNDER the user's own custom-word
             // variants (their words win), then let user correction rules win over both.
             var withPack = _developerTermsEnabled ? DeveloperTerms.Augment(userDict) : userDict;
+            // Biblical/God/Jesus capitalization is ALWAYS ON — no toggle, every tone. Laid in as
+            // the floor (user words/corrections and the dev pack still win) so "god"/"jesus"/
+            // "the lord" always come out capitalized. See BiblicalTerms.
+            withPack = BiblicalTerms.Augment(withPack);
             var extraDict = UserCorrections.Merge(withPack, Corrections.ToList());
             // App-aware modes: if the paste target matches a user rule (or a built-in code app),
             // dictate under that tone instead of the global one; otherwise keep _toneMode. Gated on

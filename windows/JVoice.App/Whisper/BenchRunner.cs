@@ -198,8 +198,10 @@ internal static class BenchRunner
                 $"max={times[^1]:0.000}s  (n={times.Count}, warm-up excluded)");
             Console.WriteLine($"raw:       \"{raw}\"");
             var userDict = TextProcessor.BuildUserDictionary(vocabulary);
+            // Biblical capitalization is always-on in the real pipeline; mirror it here.
+            var extraDict = BiblicalTerms.Augment(userDict);
             string processed = TextProcessor.Process(
-                raw, ToneStyle.Casual, userDict, removeFillerWords: false, vocabulary: vocabulary);
+                raw, ToneStyle.Casual, extraDict, removeFillerWords: false, vocabulary: vocabulary);
             Console.WriteLine($"processed: \"{processed}\"");
             return 0;
         }

@@ -1386,6 +1386,38 @@ These are real corrections discovered during execution — preserve them.
       (never observed — unprompted always gave blocklisted stock phrases), the text still pastes;
       and "noisy silence" above 0.004 rawRMS relies on whisper's own annotation (#21 behavior).
       Re-calibrate any time with the same capture → `nospeech-probe --analyze` loop.
+39. **Biblical / God / Jesus capitalization — ALWAYS-ON pack (David-requested, 2026-07-08, branch
+    `feat/biblical-terms`).** David asked that "every single term related to God and Jesus and popular
+    Biblical terms that are supposed to be capitalized" be capitalized **automatically, with no toggle,
+    in every mode**. Implemented as a new pure pack `JVoice.Core/Text/BiblicalTerms.cs` — same shape as
+    `DeveloperTerms` (`Map` of lower-cased heard form → canonical capitalized value + `Augment`) — but
+    wired in **UNCONDITIONALLY** at `VoiceCoordinator.cs` (one line right after the dev-pack toggle:
+    `withPack = BiblicalTerms.Augment(withPack);`, NOT gated by any setting) and in `BenchRunner`.
+    Because it flows through the existing post-processing correction channel it fires in **all four
+    tones** — Casual/Formal/Code, and **Very Casual** (which lower-cases first, then corrections run
+    after, so the capitals survive — test-locked).
+    - **Curation:** intentionally more assertive than the conservative dev pack because David wants it
+      aggressive — it DOES capitalize bare `god`→God and `lord`→Lord despite their lower-case common-noun
+      senses ("a Greek god", "House of Lords"); the `\b…\b` matcher already shields compounds
+      (godzilla/goddess/landlord/warlord never match). Kept terms: God, Lord, Jesus, Christ, Jesus Christ,
+      Messiah, Yahweh, Jehovah, Emmanuel/Immanuel, Savior/Saviour, Redeemer, Holy Spirit/Ghost/Trinity,
+      Trinity, Son/Lamb/Word/Kingdom of God, King of Kings, Prince of Peace, Almighty God, Bible/Holy
+      Bible, Scripture(s), Gospel(s), Old/New Testament, Ten Commandments, Garden of Eden, Satan, Lucifer,
+      Christian(s)/Christianity.
+    - **Deliberate EXCLUSIONS (test-locked `Map_ExcludesDangerousWords`):** reverential pronouns
+      (he/him/his/thee/thou/…) — would wreck every sentence; book names that collide with English/first
+      names (numbers, acts, kings, judges, **job**, mark, john, luke, matthew, james, revelation, genesis,
+      exodus) — "a job" alone makes the whole book category unsafe; bare abstractions/roles that are
+      ordinary English or names (father, son, spirit, grace, faith, hope, cross, word, king, **creator**
+      ["content creator"!], devil); and stylistically-optional words (heaven, hell, amen, hallelujah, holy,
+      divine, blessed, sacred, bare almighty). Those stay reachable via the user's own custom-words /
+      correction rules, which outrank this pack (`Augment` lays it in as the floor; `UserCorrections.Merge`
+      and the builtin `CorrectionDictionary` still win). No schema/settings/UI change.
+    - **VERIFICATION:** `dotnet build JVoice.sln -c Release` 0 errors; `dotnet test` **787/787** (~75 new
+      `BiblicalTermsTests` covering map hygiene, value idempotence, all-four-tones capitalization, the
+      exclusion list, compound-word safety, and layering with the dev/user/builtin stacks). NOT dogfooded
+      live yet (the unit tests exercise the exact `TextProcessor.Process` path the coordinator uses); NOT
+      pushed.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
