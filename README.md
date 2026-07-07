@@ -74,6 +74,7 @@ Open **Settings** (menu-bar / tray icon → Settings…) for language, tone styl
 - **Zero network calls during use.** The only network access is a one-time Whisper-model download on first run (from Hugging Face) — plus, on Windows, an optional update check you can turn off.
 - No telemetry, no analytics, no accounts.
 - Open source — read the code, or build it yourself.
+- Full details in the [Privacy Policy](PRIVACY.md).
 
 ## Build from source
 
@@ -99,6 +100,12 @@ dotnet run --project windows/JVoice.App
 
 JVoice is free forever. If it saves you a subscription, a ⭐ on this repo is the best way to help others find it.
 
-## License
+## License &amp; legal
 
-GPL-3.0 — free to use, build, and modify; derivatives must stay open.
+GPL-3.0 — free to use, build, and modify; derivatives must stay open. Full text in [`LICENSE`](LICENSE).
+
+- **[Terms of Use](TERMS.md)** — JVoice is provided *as-is, with no warranty*; you use it at your own risk.
+- **[Privacy Policy](PRIVACY.md)** — everything stays on your device; nothing is collected.
+- **[Third-Party Notices](THIRD-PARTY-NOTICES.md)** — attributions for the open-source libraries and Whisper models JVoice builds on.
+
+JVoice is an independent project — not affiliated with, or endorsed by, OpenAI, Apple, or Microsoft.
