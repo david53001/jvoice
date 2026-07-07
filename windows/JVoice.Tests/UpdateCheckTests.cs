@@ -93,6 +93,87 @@ public class UpdateCheckTests
     [InlineData("1.0.0", "v0.9.9", false)]  // older release — never offer a downgrade
     [InlineData("1.0.0", "garbage", false)] // unparseable tag — fail safe, no prompt
     [InlineData("1.0.0", "v1.2.0-beta", true)] // pre-release metadata ignored; 1.2.0 > 1.0.0
+    [InlineData("1.0.0.0", "windows-v1.1.0", true)]  // mono-repo Windows tag, newer → offer
+    [InlineData("1.0.0.0", "windows-v1.0.0", false)] // mono-repo Windows tag, same → no prompt
     public void Decision_IsUpdateAvailable(string current, string latest, bool expected)
         => Assert.Equal(expected, UpdateDecision.IsUpdateAvailable(current, latest));
+
+    // A shape-faithful GitHub `/releases` (list) payload for the mono-repo: a macOS release with a
+    // HIGHER version number but only a .dmg, a stable Windows release with both installer exes, and a
+    // Windows PRE-RELEASE with an even higher number. The Windows updater must pick the stable
+    // Windows release (windows-v1.1.0) — never the macOS dmg-only release and never the prerelease.
+    private const string ReleasesListJson = """
+    [
+      {
+        "tag_name": "v1.2.0", "name": "JVoice 1.2.0 (macOS)", "draft": false, "prerelease": false,
+        "html_url": "https://github.com/owner/jvoice/releases/tag/v1.2.0",
+        "assets": [ { "name": "JVoice-1.2.0.dmg", "browser_download_url": "https://example.com/JVoice-1.2.0.dmg" } ]
+      },
+      {
+        "tag_name": "windows-v1.3.0", "name": "JVoice for Windows — v1.3.0 (beta)", "draft": false, "prerelease": true,
+        "html_url": "https://github.com/owner/jvoice/releases/tag/windows-v1.3.0",
+        "assets": [ { "name": "JVoice-Setup.exe", "browser_download_url": "https://example.com/beta/JVoice-Setup.exe" } ]
+      },
+      {
+        "tag_name": "windows-v1.1.0", "name": "JVoice for Windows — v1.1.0", "draft": false, "prerelease": false,
+        "html_url": "https://github.com/owner/jvoice/releases/tag/windows-v1.1.0",
+        "assets": [
+          { "name": "JVoice-Setup.exe",     "browser_download_url": "https://example.com/JVoice-Setup.exe" },
+          { "name": "JVoice-Setup-GPU.exe", "browser_download_url": "https://example.com/JVoice-Setup-GPU.exe" }
+        ]
+      }
+    ]
+    """;
+
+    [Fact]
+    public void ParseList_ReadsEveryRelease_WithFlags()
+    {
+        Assert.True(GitHubReleaseParser.TryParseList(ReleasesListJson, out var releases));
+        Assert.Equal(3, releases.Count);
+        var beta = releases.Single(r => r.TagName == "windows-v1.3.0");
+        Assert.True(beta.Prerelease);
+        Assert.False(beta.Draft);
+    }
+
+    [Fact]
+    public void ParseList_Rejects_NonArrayOrMalformed()
+    {
+        Assert.False(GitHubReleaseParser.TryParseList("{ not json", out _));
+        Assert.False(GitHubReleaseParser.TryParseList("""{ "tag_name": "v1.0.0" }""", out _)); // object, not array
+    }
+
+    [Fact]
+    public void WindowsSelector_PicksStableWindowsRelease_IgnoringMacOsAndPrereleases()
+    {
+        Assert.True(GitHubReleaseParser.TryParseList(ReleasesListJson, out var releases));
+        var pick = WindowsReleaseSelector.PickLatestWindows(releases);
+        Assert.NotNull(pick);
+        // NOT the higher-numbered macOS v1.2.0 (dmg only) and NOT the windows-v1.3.0 prerelease.
+        Assert.Equal("windows-v1.1.0", pick!.TagName);
+    }
+
+    [Fact]
+    public void WindowsSelector_PicksHighestStableWindowsVersion()
+    {
+        var releases = new[]
+        {
+            new ReleaseInfo("windows-v1.1.0", null, null, new[] { new ReleaseAsset("JVoice-Setup.exe", "u1") }),
+            new ReleaseInfo("windows-v1.4.2", null, null, new[] { new ReleaseAsset("JVoice-Setup.exe", "u2") }),
+            new ReleaseInfo("windows-v1.2.0", null, null, new[] { new ReleaseAsset("JVoice-Setup.exe", "u3") }),
+        };
+        var pick = WindowsReleaseSelector.PickLatestWindows(releases);
+        Assert.Equal("windows-v1.4.2", pick!.TagName);
+    }
+
+    [Fact]
+    public void WindowsSelector_ReturnsNull_WhenNoWindowsInstallerExists()
+    {
+        // Only a macOS dmg release present → the Windows updater must find nothing (not the dmg).
+        var releases = new[]
+        {
+            new ReleaseInfo("v9.9.9", null, null, new[] { new ReleaseAsset("JVoice-9.9.9.dmg", "u") }),
+        };
+        Assert.Null(WindowsReleaseSelector.PickLatestWindows(releases));
+        Assert.Null(WindowsReleaseSelector.PickLatestWindows(Array.Empty<ReleaseInfo>()));
+    }
 }

@@ -45,7 +45,7 @@ public sealed class UpdateService
         string json;
         try
         {
-            using var resp = await Http.GetAsync(UpdateConfig.LatestReleaseApiUrl, ct);
+            using var resp = await Http.GetAsync(UpdateConfig.ReleasesApiUrl, ct);
             if (!resp.IsSuccessStatusCode)
             {
                 // 404 = private repo or no releases yet → treat as "no update", not an error, so the
@@ -64,8 +64,14 @@ public sealed class UpdateService
             return new UpdateQueryResult(false, Error: "Couldn't reach the update server.");
         }
 
-        if (!GitHubReleaseParser.TryParse(json, out var release))
+        if (!GitHubReleaseParser.TryParseList(json, out var releases))
             return new UpdateQueryResult(false, Error: "Update information was unreadable.");
+
+        // Mono-repo: pick the newest FINAL release that ships a Windows installer, ignoring macOS
+        // (.dmg-only) releases and pre-releases. No such release → nothing to offer.
+        var release = WindowsReleaseSelector.PickLatestWindows(releases);
+        if (release is null)
+            return new UpdateQueryResult(false);
 
         bool available = UpdateDecision.IsUpdateAvailable(UpdateConfig.CurrentVersion, release.TagName);
         DiagnosticLog.Write($"Update check: current={UpdateConfig.CurrentVersion} latest={release.TagName} available={available}");

@@ -5,18 +5,23 @@ namespace JVoice.Core.Policy;
 /// One downloadable file attached to a GitHub release (the installer .exe, a .zip, …).
 public sealed record ReleaseAsset(string Name, string DownloadUrl);
 
-/// The parsed subset of a GitHub `releases/latest` payload the updater needs.
+/// The parsed subset of a GitHub release payload the updater needs. `Draft`/`Prerelease` let the
+/// Windows-channel selector skip non-final releases (they default false so existing construction and
+/// the single-object parse are unaffected).
 public sealed record ReleaseInfo(
     string TagName,
     string? Body,
     string? HtmlUrl,
-    IReadOnlyList<ReleaseAsset> Assets);
+    IReadOnlyList<ReleaseAsset> Assets,
+    bool Draft = false,
+    bool Prerelease = false);
 
-/// Pure parser for a GitHub `releases/latest` JSON body. All HTTP lives in the App layer
-/// (UpdateService); this is a string→model transform so it is unit-locked (UpdateCheckTests),
-/// with the same lenient, never-throw philosophy as SettingsStateJson.
+/// Pure parser for GitHub release JSON. All HTTP lives in the App layer (UpdateService); this is a
+/// string→model transform so it is unit-locked (UpdateCheckTests), with the same lenient, never-throw
+/// philosophy as SettingsStateJson.
 public static class GitHubReleaseParser
 {
+    /// Parse a single release object (a `releases/latest` body).
     public static bool TryParse(string json, out ReleaseInfo release)
     {
         release = default!;
@@ -26,36 +31,89 @@ public static class GitHubReleaseParser
 
         using (doc)
         {
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return false;
+            if (doc.RootElement.ValueKind != JsonValueKind.Object) return false;
+            return TryParseElement(doc.RootElement, out release);
+        }
+    }
 
-            string? tag = Str(root, "tag_name");
-            if (string.IsNullOrWhiteSpace(tag)) return false; // no version → nothing to decide
+    /// Parse a GitHub `/repos/{owner}/{repo}/releases` array (all releases, newest first) into
+    /// models. Same lenient philosophy as the single-object parse; a non-array or malformed body
+    /// yields false so the caller treats it as "no update". Elements that don't parse are skipped.
+    public static bool TryParseList(string json, out IReadOnlyList<ReleaseInfo> releases)
+    {
+        releases = Array.Empty<ReleaseInfo>();
+        JsonDocument doc;
+        try { doc = JsonDocument.Parse(json); }
+        catch (JsonException) { return false; }
 
-            string? body = Str(root, "body");
-            string? htmlUrl = Str(root, "html_url");
+        using (doc)
+        {
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return false;
 
-            var assets = new List<ReleaseAsset>();
-            if (root.TryGetProperty("assets", out var arr) && arr.ValueKind == JsonValueKind.Array)
-            {
-                foreach (var el in arr.EnumerateArray())
-                {
-                    if (el.ValueKind != JsonValueKind.Object) continue;
-                    string? name = Str(el, "name");
-                    string? url = Str(el, "browser_download_url");
-                    if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) continue;
-                    assets.Add(new ReleaseAsset(name!, url!));
-                }
-            }
+            var list = new List<ReleaseInfo>();
+            foreach (var el in doc.RootElement.EnumerateArray())
+                if (TryParseElement(el, out var info)) list.Add(info);
 
-            release = new ReleaseInfo(tag!, body, htmlUrl, assets);
+            releases = list;
             return true;
         }
+    }
+
+    private static bool TryParseElement(JsonElement el, out ReleaseInfo release)
+    {
+        release = default!;
+        if (el.ValueKind != JsonValueKind.Object) return false;
+
+        string? tag = Str(el, "tag_name");
+        if (string.IsNullOrWhiteSpace(tag)) return false; // no version → nothing to decide
+
+        var assets = new List<ReleaseAsset>();
+        if (el.TryGetProperty("assets", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var a in arr.EnumerateArray())
+            {
+                if (a.ValueKind != JsonValueKind.Object) continue;
+                string? name = Str(a, "name");
+                string? url = Str(a, "browser_download_url");
+                if (string.IsNullOrWhiteSpace(name) || string.IsNullOrWhiteSpace(url)) continue;
+                assets.Add(new ReleaseAsset(name!, url!));
+            }
+        }
+
+        release = new ReleaseInfo(tag!, Str(el, "body"), Str(el, "html_url"), assets,
+                                  Bool(el, "draft"), Bool(el, "prerelease"));
+        return true;
     }
 
     private static string? Str(JsonElement obj, string name)
         => obj.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.String
             ? e.GetString() : null;
+
+    private static bool Bool(JsonElement obj, string name)
+        => obj.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.True;
+}
+
+/// Selects the update the *Windows* app should track from a repo-wide releases list. This is a
+/// mono-repo (macOS `v1.x` + Windows `windows-v1.x` under one repo), so the naive `releases/latest`
+/// can return a macOS release; this picks the newest FINAL release that actually ships a Windows
+/// installer (`.exe`), which structurally excludes macOS `.dmg`-only releases and any pre-release/
+/// draft. Returns null when no such release exists (caller → "no update").
+public static class WindowsReleaseSelector
+{
+    public static ReleaseInfo? PickLatestWindows(IReadOnlyList<ReleaseInfo> releases)
+    {
+        ReleaseInfo? best = null;
+        ReleaseVersion bestVer = default;
+        foreach (var rel in releases)
+        {
+            if (rel.Draft || rel.Prerelease) continue;                     // finals only
+            if (!rel.Assets.Any(a => a.Name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)))
+                continue;                                                  // Windows-installer channel only
+            if (!ReleaseVersion.TryParse(rel.TagName, out var ver)) continue;
+            if (best is null || ver.CompareTo(bestVer) > 0) { best = rel; bestVer = ver; }
+        }
+        return best;
+    }
 }
 
 /// Picks the installer asset matching the running build's flavor (CPU vs GPU). The two shipped

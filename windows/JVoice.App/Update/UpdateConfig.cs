@@ -17,8 +17,11 @@ public static class UpdateConfig
     /// the updater silently reports no update. NOTE: publishing is on David's call (hard rules).
     public const string RepoSlug = "david53001/jvoice";
 
-    /// The GitHub "latest release" endpoint for <see cref="RepoSlug"/>.
-    public static string LatestReleaseApiUrl => $"https://api.github.com/repos/{RepoSlug}/releases/latest";
+    /// The GitHub "list releases" endpoint for <see cref="RepoSlug"/> (newest first). We list rather
+    /// than use `/releases/latest` because this is a mono-repo: `/releases/latest` is repo-wide and
+    /// can return a macOS release, so the updater filters the list down to the Windows channel
+    /// (see WindowsReleaseSelector). 50 covers a long interleaved macOS+Windows release history.
+    public static string ReleasesApiUrl => $"https://api.github.com/repos/{RepoSlug}/releases?per_page=50";
 
     /// True when THIS build is the CPU installer flavor, so the updater downloads `JVoice-Setup.exe`
     /// rather than the NVIDIA `JVoice-Setup-GPU.exe`. Mirrors the engine's JVOICE_CPU flavor switch.

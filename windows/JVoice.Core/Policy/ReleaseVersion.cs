@@ -4,10 +4,12 @@ namespace JVoice.Core.Policy;
 
 /// A tolerant numeric version, used by the in-app updater to compare the running build against a
 /// GitHub release tag. Windows-only feature; no macOS counterpart (like the other Policy update
-/// helpers). Parses the shapes a release tag realistically takes: an optional `v`/`V` prefix, two
-/// to four dotted numeric components, and trailing SemVer pre-release/build metadata (`-rc.1`,
-/// `+build`) which is ignored. Anything without a leading integer component fails to parse — the
-/// caller treats a parse failure as "no update" so a weird tag can never trigger a prompt.
+/// helpers). Parses the shapes a release tag realistically takes: an optional leading tag prefix
+/// (a bare `v`/`V`, or a mono-repo product prefix like `windows-` — this one repo tags the Windows
+/// line `windows-v1.2.3` so it can coexist with the macOS `v1.2.3`), two to four dotted numeric
+/// components, and trailing SemVer pre-release/build metadata (`-rc.1`, `+build`) which is ignored.
+/// Anything without a numeric component (e.g. `windows-latest`) fails to parse — the caller treats a
+/// parse failure as "no update" so a weird tag can never trigger a prompt.
 public readonly struct ReleaseVersion : IComparable<ReleaseVersion>, IEquatable<ReleaseVersion>
 {
     public int Major { get; }
@@ -29,7 +31,14 @@ public readonly struct ReleaseVersion : IComparable<ReleaseVersion>, IEquatable<
         if (string.IsNullOrWhiteSpace(raw)) return false;
 
         string s = raw.Trim();
-        if (s.Length > 0 && (s[0] == 'v' || s[0] == 'V')) s = s[1..];
+
+        // Skip any leading tag prefix that isn't part of the number: a bare `v`/`V`, and also a
+        // mono-repo product prefix like `windows-` (so `v1.2.3` and `windows-v1.2.3` both reduce to
+        // `1.2.3`). We advance to the first digit; a tag with no digit at all (e.g. `windows-latest`)
+        // has nothing to advance to and falls through to the "no numeric component" failure below.
+        int start = 0;
+        while (start < s.Length && !char.IsAsciiDigit(s[start])) start++;
+        s = s[start..];
 
         // Drop SemVer pre-release / build metadata: everything from the first '-' or '+'.
         int cut = s.IndexOfAny(new[] { '-', '+' });

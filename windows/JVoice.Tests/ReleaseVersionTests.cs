@@ -18,6 +18,9 @@ public class ReleaseVersionTests
     [InlineData("1.2.3-beta.1", 1, 2, 3, 0)]   // pre-release metadata stripped
     [InlineData("1.2.3+build5", 1, 2, 3, 0)]   // build metadata stripped
     [InlineData("2026.7.1", 2026, 7, 1, 0)]
+    [InlineData("windows-v1.0.0", 1, 0, 0, 0)]   // mono-repo Windows tag prefix skipped
+    [InlineData("windows-v1.2.3", 1, 2, 3, 0)]
+    [InlineData("windows-v2.0.0-rc.1", 2, 0, 0, 0)] // prefix skipped AND pre-release metadata stripped
     public void TryParse_ValidTags(string raw, int maj, int min, int pat, int build)
     {
         Assert.True(ReleaseVersion.TryParse(raw, out var v));
@@ -34,6 +37,7 @@ public class ReleaseVersionTests
     [InlineData("v")]
     [InlineData("abc")]
     [InlineData("x.y.z")]
+    [InlineData("windows-latest")] // a prefix with no numeric component still fails safe → no update
     public void TryParse_Rejects_NonVersions(string? raw)
         => Assert.False(ReleaseVersion.TryParse(raw, out _));
 
@@ -47,6 +51,9 @@ public class ReleaseVersionTests
         Assert.Equal(0, Parse("1.2.3").CompareTo(Parse("1.2.3")));
         Assert.Equal(0, Parse("v1.0.0").CompareTo(Parse("1.0.0")));  // v-prefix is cosmetic
         Assert.True(Parse("1.0.0").CompareTo(Parse("1.0.1")) < 0);
+        // The Windows mono-repo tag prefix is cosmetic too, and orders by the numeric part.
+        Assert.True(Parse("windows-v1.1.0").CompareTo(Parse("windows-v1.0.0")) > 0);
+        Assert.Equal(0, Parse("windows-v1.0.0").CompareTo(Parse("1.0.0")));
     }
 
     private static ReleaseVersion Parse(string raw)

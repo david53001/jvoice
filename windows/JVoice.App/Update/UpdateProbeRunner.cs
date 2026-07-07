@@ -21,7 +21,7 @@ internal static class UpdateProbeRunner
     {
         Console.WriteLine($"JVoice --update-check");
         Console.WriteLine($"  repo     : {UpdateConfig.RepoSlug}");
-        Console.WriteLine($"  endpoint : {UpdateConfig.LatestReleaseApiUrl}");
+        Console.WriteLine($"  endpoint : {UpdateConfig.ReleasesApiUrl}");
         Console.WriteLine($"  current  : {UpdateConfig.CurrentVersion}  (flavor: {(UpdateConfig.PreferCpuInstaller ? "cpu" : "gpu")})");
         try
         {
