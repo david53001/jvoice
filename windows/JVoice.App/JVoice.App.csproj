@@ -18,7 +18,7 @@
     <!-- Assembly metadata mirroring Resources/Info.plist (Phase 5 Task 2). -->
     <Description>JVoice — free, on-device voice dictation for Windows (Whisper, no cloud).</Description>
     <Company>JVoice</Company>
-    <Copyright>GPL-3.0-only — © JVoice contributors</Copyright>
+    <Copyright>© 2026 David Gherman Steinberg — PolyForm Noncommercial License 1.0.0</Copyright>
     <Version>1.0.0</Version>
     <AssemblyVersion>1.0.0.0</AssemblyVersion>
     <FileVersion>1.0.0.0</FileVersion>
