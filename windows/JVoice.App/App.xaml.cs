@@ -249,20 +249,29 @@ public partial class App : Application
         Shutdown();
     }
 
-    /// Render the HUD pill off-screen to a PNG (`--hud-render [path]`) so its real shape and
-    /// proportions can be inspected headlessly (the live `--hud-preview` can't be captured, and
-    /// a fullscreen game can cover the on-screen overlay). The bars are posed in a representative
-    /// static frame (the per-frame animation loop never runs in this path).
+    /// Render the HUD pill off-screen to a PNG (`--hud-render [path] [state]`) so its real shape
+    /// and proportions can be inspected headlessly (the live `--hud-preview` can't be captured, and
+    /// a fullscreen game can cover the on-screen overlay). Default poses the bars in a representative
+    /// static frame; pass `error` to capture the error pill (the only text-bearing state) so its
+    /// glyph crispness can be judged. The per-frame animation loop never runs in this path.
     private void RenderHudToFile(string[] args)
     {
         var idx = Array.FindIndex(args,
             a => string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase));
-        var path = (idx >= 0 && idx + 1 < args.Length)
-            ? args[idx + 1]
-            : Path.Combine(Path.GetTempPath(), "jvoice-hud.png");
+
+        // Args after the flag: an optional output path and an optional state token, told apart by
+        // the known state names (mirrors --settings-render's path/state disambiguation).
+        var known = new[] { "recording", "transcribing", "preparing", "downloading", "error" };
+        var rest = idx >= 0 ? args.Skip(idx + 1).ToArray() : Array.Empty<string>();
+        string? stateArg = rest.FirstOrDefault(a => known.Contains(a.ToLowerInvariant()));
+        string? pathArg = rest.FirstOrDefault(a => !known.Contains(a.ToLowerInvariant()));
+        var path = pathArg ?? Path.Combine(Path.GetTempPath(), "jvoice-hud.png");
 
         var view = new HudView();
-        view.PrepareStaticCapture();
+        if (string.Equals(stateArg, "error", StringComparison.OrdinalIgnoreCase))
+            view.Apply(HudState.Error("No speech detected."));  // static error pose (no loop)
+        else
+            view.PrepareStaticCapture();
 
         // Let the pill size itself to content (SizeToContent in the real window).
         view.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));

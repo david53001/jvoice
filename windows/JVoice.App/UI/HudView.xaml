@@ -53,14 +53,31 @@
                     <StackPanel x:Name="Bars" Orientation="Horizontal"
                                 Height="32" HorizontalAlignment="Center" VerticalAlignment="Center" />
 
-                    <!-- ===== error layout (the only state with text) ===== -->
+                    <!-- ===== error layout (the only state with text) =====
+                         Font sizes are deliberately large. Two things soften this text and only
+                         a bigger glyph fixes both (you can't get ClearType here — WPF renders
+                         grayscale AA inside the AllowsTransparency window, and no app can exempt
+                         its window from a below-native monitor's hardware stretch):
+                           • grayscale AA blurs small glyphs even at native resolution — the pill
+                             historically carried a 1.1× enlargement JUST for text legibility,
+                             which the bars-only redesign dropped (HudBaseScale → 1.0) because
+                             solid bars don't need it. The error text still does, so it's restored
+                             here at the font level (15px vs the old, too-small 11.5px).
+                           • below native (e.g. 1600×1080 on a 1920×1080 panel) the monitor
+                             interpolates the framebuffer; bigger glyphs get proportionally more
+                             device pixels and survive the smear far more legibly.
+                         The per-resolution part is automatic: the whole pill is multiplied by
+                         DisplayMetrics.HudScale (the stretch ratio) via HudRootScale, so these
+                         base sizes scale up further the more the desktop runs below native — the
+                         text stays crisp at EVERY resolution without a fixed per-res table.
+                         MaxWidth scaled up in step so a typical one-line error doesn't wrap. -->
                     <StackPanel x:Name="ErrorPanel" Orientation="Horizontal" Visibility="Collapsed"
                                 HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock x:Name="ErrorGlyph" FontFamily="Segoe MDL2 Assets" FontSize="13"
+                        <TextBlock x:Name="ErrorGlyph" FontFamily="Segoe MDL2 Assets" FontSize="15"
                                    Foreground="#FFFFFFFF" VerticalAlignment="Center" Text="&#xE7BA;" />
-                        <TextBlock x:Name="ErrorText" FontSize="11.5" FontWeight="SemiBold"
+                        <TextBlock x:Name="ErrorText" FontSize="15" FontWeight="SemiBold"
                                    Foreground="#FFFFFFFF" VerticalAlignment="Center"
-                                   Margin="8,0,0,0" MaxWidth="240" TextWrapping="Wrap"
+                                   Margin="9,0,0,0" MaxWidth="300" TextWrapping="Wrap"
                                    Text="Something went wrong" />
                     </StackPanel>
                 </Grid>
