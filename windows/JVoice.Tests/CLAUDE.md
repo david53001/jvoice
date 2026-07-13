@@ -1,6 +1,6 @@
 # JVoice.Tests — the brain's lock
 
-xUnit suite (733 tests) that pins `JVoice.Core` to the macOS Swift behavior. Each `*Tests.cs`
+xUnit suite (819 tests) that pins `JVoice.Core` to the macOS Swift behavior. Each `*Tests.cs`
 mirrors a Swift test file; the constants are asserted verbatim. White-box access to internal
 helpers is granted via `InternalsVisibleTo("JVoice.Tests")` in `JVoice.Core.csproj` (mirrors
 Swift's `@testable import`).

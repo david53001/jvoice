@@ -1401,7 +1401,9 @@ These are real corrections discovered during execution — preserve them.
       transcript. Synthetic repro at his exact levels (TTS ×0.01–0.04, 120 Hz hum floor, trailing
       fade) did NOT reproduce the whole-file tail drop — whisper decoded everything — so the
       short-clip truncation mechanism still needs a REAL failing clip (see Residual).
-    - **Fix 1 — streaming silent-chunk drop (code-certain hole; Windows divergence #2):**
+    - **Fix 1 — streaming silent-chunk drop (code-certain hole; Windows divergence #2)
+      [rescue half SUPERSEDED by #41 — a non-empty decode of a silent-classified chunk is no
+      longer trusted]:**
       `StreamingTranscriptionSession.PollOnce` and `Finish()`'s drain loop dropped silent-classified
       chunks UNHEARD (`ChunkPlanner.IsSilent` = peak 0.3 s-window RMS < 0.005 — but David's real
       speech peaks 0.0005–0.005, so entire 15–25 s clauses could vanish from long dictations; the
@@ -1473,6 +1475,42 @@ These are real corrections discovered during execution — preserve them.
       live yet (the unit tests exercise the exact `TextProcessor.Process` path the coordinator uses); NOT
       pushed.
 
+41. **Start/end-of-dictation cutoffs — regression root-caused (branch divergence) + the §7 #39
+    "real failing clip" finally caught + rescue policy refined (2026-07-13, branch
+    `feat/biblical-terms`, David-reported: "it sometimes cuts out the end of my transcriptions
+    or the start, usually when I speak a little lower").**
+    - **Root cause 1 — the installed build had REGRESSED the §7 #39 fixes.** The 2026-07-08
+      install (`1.0.0+56bdf0b`, cut from `feat/biblical-terms`) did **not** descend from
+      `origin/windows-port`, so it shipped the pre-#39 streaming code that drops
+      silent-classified chunks unheard. Fixed by merging `origin/windows-port`
+      (`0047550`+`48eca25`+`ede0233`) into `feat/biblical-terms` (merge `2c8b731`; the S7
+      numbering collision resolved: tail-cutoff keeps #39, Biblical renumbered #40).
+      **Lesson: reconcile diverged branches BEFORE cutting an install/release build.**
+    - **Root cause 2 — the #39 "rescue" was not enough.** The real failing clip
+      (`capture-20260713-194513-901.wav`, 21.85 s live dictation, streamed to only its final
+      clause) shows whisper decoding the silent-classified 16.35 s chunk to ONLY its last
+      40 chars in ONE segment claiming full coverage (`lastEnd=16.34s audio=16.35s`,
+      deterministic 3/3) — the rescued text was itself truncated and timestamp-coverage
+      guards (TailCoverageGuard-style) are structurally blind to it. **Refined policy
+      (`StreamingTranscriptionSession`, PollOnce + Finish drain): silent-classified chunk
+      decodes EMPTY ⇒ confirmed silence, skip; decodes NON-EMPTY ⇒ classifier/model
+      disagreement, decode may be partial ⇒ FAIL → lossless whole-file fallback** (the
+      whole-file decode of that clip provably yields all 287 chars / 5 sentences; on the GPU
+      it costs <1 s even on 2–3 min clips). Normal-level chunks are untouched (regression-swept
+      on 2 real clips — still stream complete text).
+    - **Also:** `whisper-smoke.csproj` now links `DiagnosticLog.cs`+`PlatformPaths.cs` (the
+      #39-instrumented engine wouldn't compile in the sln-wide build otherwise — windows-port's
+      "x64 build 0 errors" claim had covered the App project only).
+    - **VERIFICATION:** `dotnet test` **819/819** (the #39 rescue test replaced by
+      `MidStreamQuietChunk_NonEmptyDecode_ForcesWholeFileFallback` +
+      `DrainedQuietChunk_NonEmptyDecode_ForcesWholeFileFallback`); on-device `--bench --stream`
+      of the failing clip → `streamed: nil (session fell back)` + full whole-file text.
+    - **Residual:** the §7 #39 whole-file short-clip truncation ("please get this") remains
+      un-reproduced; `JVOICE_KEEP_WAV=1` stays armed. If a WHOLE-FILE decode is ever caught
+      losing the START of a quiet clip the same one-segment-full-coverage fingerprint applies —
+      a head-coverage analog of TailCoverageGuard won't work; a witness-style re-decode
+      comparison would be needed.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
@@ -1498,14 +1536,12 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    the discriminator (confidence measured INVERTED, as predicted), and the gate shipped as
    `Core/Policy/SilenceHallucinationGate` + a witness decode in `WhisperNetTranscriptionEngine`.
    17/17 clips verdict-correct through the real engine; 713/713 tests. See §7 #38.
-1b. **Tail-cutoff hunt — catch the real clip (§7 #39, PRIORITY).** The streaming silent-chunk drop is
-   fixed and the tail-coverage guard + full decode instrumentation shipped (branch `fix/tail-cutoff`),
-   but the short-clip whole-file truncation ("please get this") is not reproducible synthetically.
-   Refresh David's install with the `fix/tail-cutoff` build, set **`JVOICE_KEEP_WAV=1`** in his user
-   env, and dictate normally until a cutoff strikes — then the `Engine decode …` log lines plus the
-   kept WAV in `%APPDATA%\JVoice\capture\` identify the failing stage exactly (then delete the kept
-   clips + unset the env var, privacy, as after #38). Also open: the two half-audio capture outliers
-   (§7 #39 Evidence).
+1b. **✅ Tail-cutoff hunt — the real STREAMING clip was caught 2026-07-13 (§7 #41).** The kept-WAV
+   loop worked exactly as designed: `capture-20260713-194513-901.wav` pinpointed a partial chunk
+   decode the #39 rescue trusted; the policy is now "silent-classified + non-empty decode ⇒
+   whole-file fallback". Still open: the short-clip WHOLE-FILE truncation ("please get this") has
+   never been caught (keep `JVOICE_KEEP_WAV=1` armed; the §7 #41 Residual sketches the approach if
+   it strikes), and the two half-audio capture outliers (§7 #39 Evidence).
 2. **Dogfood the GUI (David, interactive):** run `docs/launch/windows-dogfood-checklist.md` — the live
    Ctrl+Shift+Space → record → transcribe → paste loop, the new black-&-white HUD bars reacting to your
    voice (and the silent-success / error-only-text behaviour), the 640×846 two-column monochrome Settings round-trip,
