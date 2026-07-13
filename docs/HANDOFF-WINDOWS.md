@@ -1386,7 +1386,61 @@ These are real corrections discovered during execution — preserve them.
       (never observed — unprompted always gave blocklisted stock phrases), the text still pastes;
       and "noisy silence" above 0.004 rawRMS relies on whisper's own annotation (#21 behavior).
       Re-calibrate any time with the same capture → `nospeech-probe --analyze` loop.
-39. **Biblical / God / Jesus capitalization — ALWAYS-ON pack (David-requested, 2026-07-08, branch
+39. **Tail-cutoff hunt — mid-stream silent-chunk drop FIXED, tail-coverage recovery added, decode
+    instrumentation added (2026-07-03, branch `fix/tail-cutoff`, David-reported).** "Sometimes it
+    just cuts the last part of what I'm trying to say."
+    - **Evidence (`%APPDATA%\JVoice\diagnostic.log`, 104 paired dictations analyzed):** the loss is
+      DECODE-side, not capture. Smoking gun 2026-07-02 23:58: rec=3.52 s with 3.48 s of audio on
+      disk decoded to just "please get this" — he re-dictated "please get this into an actual app
+      that I can run." 5 s later. Capture layer clean overall (avg recSecs−audioSecs = **0.086 s**)
+      EXCEPT two unexplained half-audio outliers (07-02 00:33/00:42, gaps 4.3 s/2.7 s — suspected
+      pump-timer starvation under game load + the 5 s `BufferedWaveProvider` overflow-discard;
+      OPEN). Long streamed dictations ran 0.78–1.05 words/sec vs his normal ≈2.5–3 → mid-stream
+      chunk loss. The post-decode guards (`RepetitionGuard.Scrub`, `RegurgitationRecovery`,
+      `SilenceHallucinationGate.Resolve`) are ruled out by construction — none can emit a partial
+      transcript. Synthetic repro at his exact levels (TTS ×0.01–0.04, 120 Hz hum floor, trailing
+      fade) did NOT reproduce the whole-file tail drop — whisper decoded everything — so the
+      short-clip truncation mechanism still needs a REAL failing clip (see Residual).
+    - **Fix 1 — streaming silent-chunk drop (code-certain hole; Windows divergence #2):**
+      `StreamingTranscriptionSession.PollOnce` and `Finish()`'s drain loop dropped silent-classified
+      chunks UNHEARD (`ChunkPlanner.IsSilent` = peak 0.3 s-window RMS < 0.005 — but David's real
+      speech peaks 0.0005–0.005, so entire 15–25 s clauses could vanish from long dictations; the
+      2026-06-23 bug-#2 fix protected only the FINAL tail). Now EVERY cut chunk is decoded and the
+      MODEL decides: empty decode ⇒ confirmed silence, skipped losslessly (NOT a failure — that
+      policy stays reserved for non-silent chunks); non-empty ⇒ rescued speech, appended; decode
+      error ⇒ fail → whole-file fallback (invariant intact). On-device proof: a 43 s clip
+      (loud 20 s + sub-floor quiet 20 s + loud coda) streams to the full text with
+      `Stream chunk cut@242400: silent-classified but decoded 257 chars -> RESCUED` — the old code
+      deleted that entire middle sentence.
+    - **Fix 2 — tail-coverage guard (whole-file path):** new pure
+      `JVoice.Core/Policy/TailCoverageGuard.cs` + wiring in
+      `WhisperNetTranscriptionEngine.TranscribeAsync`. When the decode's LAST segment ends
+      ≥ **1.5 s** (`MinUncoveredSeconds`) before the end of the audio — the early-EOT truncation
+      fingerprint; the trigger is whisper's own timestamp coverage, never an RMS level (#21
+      stands) — the uncovered tail alone is re-decoded (unprompted witness-style, fully reduced)
+      and merged with a normalized-containment dedupe so a boundary word can never paste twice.
+      A trailing thinking-pause decodes to empty and merges to nothing. On-device: fires with
+      `uncovered=3.57s` on a digital-silence tail and merges nothing (no-harm), does NOT fire when
+      whisper stretches the last segment across a hum tail (`lastEnd≈audio`), and stays quiet on
+      covered decodes (whisper rounds lastEnd PAST the clip end: 6.32 s on 5.40 s audio).
+    - **Instrumentation (one real occurrence now pinpoints the failing stage):** the engine logs
+      every decode (`Engine decode prompt=… chars=… segs=… lastEnd=… audio=… rawRms=…`), the
+      witness verdict (`Engine witness … -> kept|no-speech`), and the tail-guard decision
+      (`Engine tailGuard … -> RECOVERED|unchanged`); `StreamingTranscriptionSession` gained an
+      optional `log` callback (wired to `DiagnosticLog.Write`) reporting cuts, rescues, failures,
+      and the finish path. Pure Core stays platform-free (callback injection).
+    - **VERIFICATION:** `dotnet test` **733/733** (+3 StreamingSessionTests, +17
+      TailCoverageGuardTests); x64 build 0 errors; on-device `--bench` sweep with his exact
+      model/vocab: short-clip regression clean, tail-guard trigger + no-harm confirmed, streaming
+      rescue confirmed.
+    - **Residual (OPEN):** (a) whisper can still skip very quiet words INSIDE one decode when much
+      louder speech follows (observed only in a −10 dB synthetic worst case); (b) the short-clip
+      whole-file truncation ("please get this") is not yet reproducible synthetically. Both need a
+      real failing clip: run David with **`JVOICE_KEEP_WAV=1`** until a cutoff strikes — the new
+      logs + the kept WAV in `%APPDATA%\JVoice\capture\` then show exactly which stage lost the
+      words (same calibration loop as #38). (c) The two half-audio capture outliers are unexplained.
+
+40. **Biblical / God / Jesus capitalization — ALWAYS-ON pack (David-requested, 2026-07-08, branch
     `feat/biblical-terms`).** David asked that "every single term related to God and Jesus and popular
     Biblical terms that are supposed to be capitalized" be capitalized **automatically, with no toggle,
     in every mode**. Implemented as a new pure pack `JVoice.Core/Text/BiblicalTerms.cs` — same shape as
@@ -1444,6 +1498,14 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    the discriminator (confidence measured INVERTED, as predicted), and the gate shipped as
    `Core/Policy/SilenceHallucinationGate` + a witness decode in `WhisperNetTranscriptionEngine`.
    17/17 clips verdict-correct through the real engine; 713/713 tests. See §7 #38.
+1b. **Tail-cutoff hunt — catch the real clip (§7 #39, PRIORITY).** The streaming silent-chunk drop is
+   fixed and the tail-coverage guard + full decode instrumentation shipped (branch `fix/tail-cutoff`),
+   but the short-clip whole-file truncation ("please get this") is not reproducible synthetically.
+   Refresh David's install with the `fix/tail-cutoff` build, set **`JVOICE_KEEP_WAV=1`** in his user
+   env, and dictate normally until a cutoff strikes — then the `Engine decode …` log lines plus the
+   kept WAV in `%APPDATA%\JVoice\capture\` identify the failing stage exactly (then delete the kept
+   clips + unset the env var, privacy, as after #38). Also open: the two half-audio capture outliers
+   (§7 #39 Evidence).
 2. **Dogfood the GUI (David, interactive):** run `docs/launch/windows-dogfood-checklist.md` — the live
    Ctrl+Shift+Space → record → transcribe → paste loop, the new black-&-white HUD bars reacting to your
    voice (and the silent-success / error-only-text behaviour), the 640×846 two-column monochrome Settings round-trip,
