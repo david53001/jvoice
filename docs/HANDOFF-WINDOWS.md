@@ -1510,6 +1510,16 @@ These are real corrections discovered during execution — preserve them.
       losing the START of a quiet clip the same one-segment-full-coverage fingerprint applies —
       a head-coverage analog of TailCoverageGuard won't work; a witness-style re-decode
       comparison would be needed.
+    - **SHIPPED as `windows-v1.0.1` (David-authorized, 2026-07-13):** version bumped 1.0.0→1.0.1,
+      both installers rebuilt from `6227e46` (IExpress flow; `install.ps1` gained the
+      wait-for-exit loop + version-from-exe ARP entry the runbook asked for), tag + GitHub
+      Release published with `JVoice-Setup.exe` (67 MB) / `JVoice-Setup-GPU.exe` (365 MB) /
+      `LICENSE.txt` (PolyForm). **`--update-check` from the installed `1.0.0.0` app: available=True,
+      latest=windows-v1.0.1, correct GPU asset** — David's install was deliberately left at 1.0.0.0
+      so he can run the one-click in-app update himself (its self-overwrite leg is still the one
+      never-live-tested step; the Downloads installers are the manual fallback). NOTE: the PUBLIC
+      v1.0.0 build predates the 56bdf0b mono-repo parser fix, so ITS updater may not see this
+      release (called out in the release notes).
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
