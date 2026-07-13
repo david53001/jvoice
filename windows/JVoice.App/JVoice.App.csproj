@@ -19,9 +19,15 @@
     <Description>JVoice — free, on-device voice dictation for Windows (Whisper, no cloud).</Description>
     <Company>JVoice</Company>
     <Copyright>© 2026 David Gherman Steinberg — PolyForm Noncommercial License 1.0.0</Copyright>
-    <Version>1.0.1</Version>
-    <AssemblyVersion>1.0.1.0</AssemblyVersion>
-    <FileVersion>1.0.1.0</FileVersion>
+    <!-- Single source of truth for the app version. Both the in-app updater
+         (UpdateConfig.CurrentVersion reads AssemblyVersion) and the installer's ARP
+         DisplayVersion (install.ps1 reads the exe's ProductVersion, which mirrors <Version>)
+         derive from these three lines — so bumping them per release keeps the auto-update
+         (+0.0.1) chain intact with no other edits. This is 1.0.0: the first real release
+         baseline (the earlier 1.0.1 was an update-loop test build, not a production bump). -->
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
     <NeutralLanguage>en</NeutralLanguage>
   </PropertyGroup>
 
