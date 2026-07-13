@@ -1515,11 +1515,24 @@ These are real corrections discovered during execution — preserve them.
       wait-for-exit loop + version-from-exe ARP entry the runbook asked for), tag + GitHub
       Release published with `JVoice-Setup.exe` (67 MB) / `JVoice-Setup-GPU.exe` (365 MB) /
       `LICENSE.txt` (PolyForm). **`--update-check` from the installed `1.0.0.0` app: available=True,
-      latest=windows-v1.0.1, correct GPU asset** — David's install was deliberately left at 1.0.0.0
-      so he can run the one-click in-app update himself (its self-overwrite leg is still the one
-      never-live-tested step; the Downloads installers are the manual fallback). NOTE: the PUBLIC
-      v1.0.0 build predates the 56bdf0b mono-repo parser fix, so ITS updater may not see this
-      release (called out in the release notes).
+      latest=windows-v1.0.1, correct GPU asset.** NOTE: the PUBLIC v1.0.0 build predates the
+      56bdf0b mono-repo parser fix, so ITS updater may not see this release (called out in the
+      release notes).
+    - **✅ The in-app update loop is LIVE-VERIFIED (David ran it, 2026-07-13 20:35):** detect →
+      download (eased bar) → quit → installer overwrites → relaunch all worked; installed exe now
+      `1.0.1+6227e46`, ARP shows 1.0.1, app relaunched to tray (pid 27516) — the previously
+      never-live-tested self-overwrite leg is CLOSED. David's one complaint: the install step
+      **popped a PowerShell console** ("might be scary for some users"). Fixed same session:
+      the `.sed`s now launch `wscript.exe launch.vbs` (GUI host → **no console ever**, not even
+      the `-WindowStyle Hidden` flash; `Run …, 0, True` — the wait keeps IExpress from deleting
+      its temp files mid-install) and `install.ps1` shows a black borderless **"Updating JVoice" /
+      "Installing JVoice"** splash with a real per-entry-extraction progress bar; the install-dir
+      swap is extract-to-temp + instant same-volume `Move-Item` (a failed extraction can't break
+      the existing install). Tested: script-level (fresh + update paths) and end-to-end through
+      the rebuilt setup exe via the `JVOICE_*` env overrides (exit 0, correct version/ARP/
+      shortcuts, 274 files); **both release assets replaced in place** (`gh release upload
+      --clobber`, content verified by `/T /C` extraction — same 1.0.1 app bits, only the installer
+      wrapper changed).
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`

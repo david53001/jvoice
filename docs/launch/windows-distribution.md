@@ -32,8 +32,17 @@ just faster on capable hardware.
 
 The installers are built with IExpress from `windows/artifacts/` (gitignored): publish each flavor
 to a folder, zip the folder as `app.zip` (top-level `JVoice\`), then `iexpress /N /Q JVoice-<flavor>.sed`
-packages `app.zip` + `install.ps1` + `uninstall.ps1` into the setup `.exe`. See the `.sed` files and
-`install.ps1` in `windows/artifacts/sfx-build/` / `windows/artifacts/JVoice-<gpu|cpu>.sed`.
+packages `app.zip` + `install.ps1` + `launch.vbs` + `uninstall.ps1` into the setup `.exe`. See the
+`.sed` files and `install.ps1` in `windows/artifacts/pkg-<gpu|cpu>/sources/`.
+
+**No console, branded splash (2026-07-13):** IExpress launches `wscript.exe launch.vbs` (a GUI host,
+so no console window ever appears — David saw the old `powershell -WindowStyle Hidden` console during
+the first live in-app update and flagged it as scary), which runs `install.ps1` fully hidden with
+`Run …, 0, True` (the wait matters: IExpress deletes its extracted temp files when AppLaunched
+returns). The script shows a black borderless **"Updating JVoice" / "Installing JVoice"** splash
+(matches the app's monochrome look) with a real progress bar driven by per-entry zip extraction;
+the install-dir swap is an instant same-volume `Move-Item` after extracting to temp, so a failed
+extraction never breaks the existing install.
 
 ## What the user sees (SmartScreen)
 
@@ -77,9 +86,10 @@ relaunch.
 - **Privacy:** this is the only runtime network call besides the one-time model download and sends
   **no user data**; it's opt-out in Settings ("Automatic Updates", default on). Note it on the
   download page alongside the SmartScreen step.
-- **Installer wait-for-exit:** since the app quits right as it launches the installer, add a
-  `Get-Process JVoice` wait at the top of `install.ps1`'s copy step so robocopy never races a still-
-  locked file.
+- **Installer wait-for-exit: DONE (2026-07-13).** `install.ps1` now kills any running JVoice and
+  polls `Get-Process JVoice` (up to ~10 s) before touching the install dir, so the updater's
+  quit-then-install handoff can't race a still-locked file. The full loop (detect → download →
+  installer overwrites → relaunch) was **live-verified** on David's machine updating 1.0.0 → 1.0.1.
 
 ## Zipping the build (PowerShell, in-box)
 
