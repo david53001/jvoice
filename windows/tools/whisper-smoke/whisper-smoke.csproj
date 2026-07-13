@@ -18,6 +18,10 @@
   <ItemGroup>
     <Compile Include="..\..\JVoice.App\Whisper\EngineTuning.cs" Link="Whisper\EngineTuning.cs" />
     <Compile Include="..\..\JVoice.App\Platform\System\CpuInfo.cs" Link="Platform\CpuInfo.cs" />
+    <!-- The engine logs every decode via DiagnosticLog (§7 #39 instrumentation); link it
+         and its PlatformPaths dependency so the linked engine source keeps compiling here. -->
+    <Compile Include="..\..\JVoice.App\Platform\System\DiagnosticLog.cs" Link="Platform\DiagnosticLog.cs" />
+    <Compile Include="..\..\JVoice.App\Platform\Persistence\PlatformPaths.cs" Link="Platform\PlatformPaths.cs" />
     <Compile Include="..\..\JVoice.App\Whisper\WhisperRuntime.cs" Link="Whisper\WhisperRuntime.cs" />
     <Compile Include="..\..\JVoice.App\Whisper\WhisperModelStore.cs" Link="Whisper\WhisperModelStore.cs" />
     <Compile Include="..\..\JVoice.App\Whisper\WhisperNetTranscriptionEngine.cs" Link="Whisper\WhisperNetTranscriptionEngine.cs" />

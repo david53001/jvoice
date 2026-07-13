@@ -215,7 +215,8 @@ public class StreamingSessionTests
     // losslessly via whole-file (where whisper authoritatively yields empty on true silence
     // and full text on quiet speech). WINDOWS DIVERGENCE from Swift (mac mic is normal-level
     // so its silent-tail drop never misfires); see docs HANDOFF-WINDOWS §7 and the
-    // 2026-06-23 no-speech/tail plan. Mid-recording silent-chunk dropping is unchanged.
+    // 2026-06-23 no-speech/tail plan. (Mid-recording silent-classified chunks have their
+    // own policy since §7 #39 — see the 2026-07-03/07-13 section below.)
     [Fact]
     public async Task SilentTail_ForcesWholeFileFallback_NotDropped()
     {
@@ -259,12 +260,21 @@ public class StreamingSessionTests
     // reads below the 0.005 SilenceRmsFloor (peak ≈0.0005–0.004), so entire 15–25 s
     // chunks of REAL SPEECH could vanish mid-dictation. Silent-classified chunks are now
     // DECODED like any other chunk; the model (not an RMS floor) decides: empty decode ⇒
-    // legitimately silent, skip losslessly; non-empty ⇒ rescued speech, appended.
+    // legitimately silent, skip losslessly.
+    //
+    // REFINED 2026-07-13 (real clip capture-20260713-194513-901.wav): a NON-EMPTY decode
+    // of a silent-classified chunk is NOT trusted either — whisper decoded a 16.35 s
+    // quiet chunk to only its final 40 chars while its one segment claimed to span the
+    // whole chunk (lastEnd 16.34 s), so timestamp-coverage guards can't see the loss.
+    // Classifier and model disagreeing ⇒ the decode may be partial ⇒ fail the session →
+    // lossless whole-file fallback (which provably transcribes the full clip). Only a
+    // decode of a NON-silent-classified chunk is trusted with text.
 
-    // A sub-floor quiet chunk mid-stream carries David's real words: it must be decoded
-    // and its text included — never silently dropped.
+    // A sub-floor quiet chunk mid-stream carries David's real words, and its isolated
+    // decode can be PARTIAL: it must force the whole-file fallback — never paste a
+    // truncated rescue, never be dropped undecoded.
     [Fact]
-    public async Task MidStreamQuietChunk_IsDecoded_NotDropped()
+    public async Task MidStreamQuietChunk_NonEmptyDecode_ForcesWholeFileFallback()
     {
         // 1.2 s quiet-speech-level (peak ≈0.003 < floor 0.005) then 1.3 s loud: the first
         // cut (~1.0 s, all-quiet) is silent-classified, the rest is non-silent.
@@ -279,11 +289,31 @@ public class StreamingSessionTests
             await Task.Delay(300);
             var result = await session.Finish();
 
-            Assert.NotNull(result);
-            int n = counter.Calls.Count;
-            // Every piece present in order — including the quiet chunk's decode.
-            Assert.Equal(string.Join(" ", Enumerable.Range(1, n).Select(i => $"piece{i}")), result);
-            Assert.Equal(40000, counter.Calls.Sum()); // every sample decoded exactly once
+            Assert.Null(result); // quiet chunk decoded non-empty → defer to whole-file
+            Assert.NotEmpty(counter.Calls); // …but it WAS decoded, not dropped unheard
+        }
+        finally { File.Delete(path); }
+    }
+
+    // Same policy on the Finish() drain path (chunks the poll loop never got to): a
+    // silent-classified drained cut that decodes non-empty must also fall back.
+    [Fact]
+    public async Task DrainedQuietChunk_NonEmptyDecode_ForcesWholeFileFallback()
+    {
+        // Loud first cut (streamed by the immediate first poll), then a quiet cut plus a
+        // loud tail left for Finish() to drain (poll interval far longer than the test).
+        var quiet = new short[19200];
+        for (int i = 0; i < quiet.Length; i++) quiet[i] = (short)(i % 2 == 0 ? 100 : -100);
+        string path = WriteTemp(Concat(LoudN(19200), quiet, LoudN(8000)));
+        try
+        {
+            var counter = new Counter();
+            var session = new StreamingTranscriptionSession(counter.Next, FastCfg, pollMilliseconds: 60_000);
+            session.Start(path);
+            await Task.Delay(150); // one immediate poll consumes the loud head, then sleeps
+            var result = await session.Finish();
+
+            Assert.Null(result); // drained quiet cut decoded non-empty → whole-file fallback
         }
         finally { File.Delete(path); }
     }

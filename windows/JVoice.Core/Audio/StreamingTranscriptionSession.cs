@@ -10,11 +10,16 @@ namespace JVoice.Core.Audio;
 /// classification cannot be trusted to mean "no speech" here):
 ///  #1 (2026-06-23, bug #2): a FINAL tail judged silent returns null → lossless
 ///     whole-file fallback instead of being dropped.
-///  #2 (2026-07-03, §7 #39): a MID-STREAM chunk cut as "silent" is DECODED like any
-///     other chunk instead of being dropped unheard. The model decides: an empty decode
+///  #2 (2026-07-03, §7 #39; REFINED 2026-07-13): a MID-STREAM chunk cut as "silent" is
+///     DECODED like any other chunk instead of being dropped unheard. An empty decode
 ///     confirms silence (skip losslessly — NOT a failure; that policy stays reserved for
-///     non-silent chunks), a non-empty decode is rescued speech and is appended. Decode
-///     errors still fail the session → whole-file fallback.
+///     non-silent chunks). A NON-EMPTY decode is NOT appended either: classifier and
+///     model disagreeing means the isolated decode may be PARTIAL — on the real clip
+///     capture-20260713-194513-901.wav whisper decoded a 16.35 s quiet chunk to only its
+///     final 40 chars while its single segment claimed to span the whole chunk
+///     (lastEnd 16.34 s), so no timestamp-coverage guard can see the loss. The session
+///     fails instead → the caller's whole-file decode provably recovers the full text.
+///     Decode errors still fail the session → whole-file fallback.
 public sealed class StreamingTranscriptionSession
 {
     private readonly Func<float[], Task<string>> _transcribe;
@@ -85,7 +90,7 @@ public sealed class StreamingTranscriptionSession
             if (decision.Kind != ChunkPlanner.DecisionKind.Cut) break;
             if (!await AppendPiece(
                     WavTail.FloatSamples(tail.AsSpan(0, decision.AtSample)),
-                    emptyMeansSilence: decision.IsSilent))
+                    silentClassified: decision.IsSilent))
                 return null;
             tail = tail[decision.AtSample..];
         }
@@ -106,7 +111,7 @@ public sealed class StreamingTranscriptionSession
                 _log?.Invoke($"Stream finish -> null (silent final tail, {tail.Length} samples -> whole-file)");
                 return null;
             }
-            if (!await AppendPiece(WavTail.FloatSamples(tail), emptyMeansSilence: false))
+            if (!await AppendPiece(WavTail.FloatSamples(tail), silentClassified: false))
                 return null;
         }
 
@@ -126,24 +131,32 @@ public sealed class StreamingTranscriptionSession
         _pieces.Clear();
     }
 
-    /// Decode one chunk and append its text. `emptyMeansSilence` carries ChunkPlanner's
+    /// Decode one chunk and append its text. `silentClassified` carries ChunkPlanner's
     /// classification: for a silent-classified chunk an empty decode is the model
-    /// CONFIRMING silence (skip, keep going); for a non-silent chunk an empty decode
-    /// would silently delete speech, so it fails the session → whole-file fallback.
-    private async Task<bool> AppendPiece(float[] samples, bool emptyMeansSilence)
+    /// CONFIRMING silence (skip, keep going) and a NON-EMPTY decode is a classifier/model
+    /// disagreement whose text may be partial (divergence #2) → fail → whole-file
+    /// fallback. For a non-silent chunk an empty decode would silently delete speech,
+    /// so it fails the session → whole-file fallback.
+    private async Task<bool> AppendPiece(float[] samples, bool silentClassified)
     {
         try
         {
             string text = await _transcribe(samples);
             if (text.Length == 0)
             {
-                if (emptyMeansSilence)
+                if (silentClassified)
                 {
                     _log?.Invoke($"Stream chunk {samples.Length} samples: silent-classified, model confirmed empty -> skipped");
                     return true;
                 }
                 _failed = true; // non-silent chunk decoded to nothing → never silently drop
                 _log?.Invoke($"Stream FAILED: non-silent chunk ({samples.Length} samples) decoded empty");
+                return false;
+            }
+            if (silentClassified)
+            {
+                _failed = true; // quiet speech: the isolated decode may be partial → whole-file
+                _log?.Invoke($"Stream chunk {samples.Length} samples: silent-classified but decoded {text.Length} chars -> whole-file fallback (partial-decode risk)");
                 return false;
             }
             _pieces.Add(text);
@@ -189,10 +202,13 @@ public sealed class StreamingTranscriptionSession
         var decision = ChunkPlanner.Plan(unconsumed, _config);
         if (decision.Kind != ChunkPlanner.DecisionKind.Cut) return;
 
-        // Divergence #2 (§7 #39): silent-classified chunks are decoded too — on David's
-        // low-level mic "silent" can be a whole clause of real speech, and dropping it
-        // unheard deleted the middle/end of long dictations. The model is the authority:
-        // empty ⇒ true silence, skip; non-empty ⇒ speech, keep.
+        // Divergence #2 (§7 #39, refined 2026-07-13): silent-classified chunks are decoded
+        // too — on David's low-level mic "silent" can be a whole clause of real speech, and
+        // dropping it unheard deleted the middle/end of long dictations. Empty decode ⇒
+        // true silence, skip. Non-empty decode ⇒ the classifier and the model DISAGREE and
+        // the isolated decode may be partial (whisper kept only the last 40 chars of a real
+        // 16.35 s quiet chunk while claiming full timestamp coverage) → fail → the caller's
+        // whole-file decode recovers the full text losslessly.
         var chunk = WavTail.FloatSamples(unconsumed.AsSpan(0, decision.AtSample));
         try
         {
@@ -208,11 +224,15 @@ public sealed class StreamingTranscriptionSession
                 }
                 _log?.Invoke($"Stream chunk cut@{decision.AtSample}: silent-classified, model confirmed empty -> skipped");
             }
+            else if (decision.IsSilent)
+            {
+                _failed = true; // quiet speech: the isolated decode may be partial → whole-file
+                _log?.Invoke($"Stream chunk cut@{decision.AtSample}: silent-classified but decoded {text.Length} chars -> whole-file fallback (partial-decode risk)");
+                return;
+            }
             else
             {
                 _pieces.Add(text);
-                if (decision.IsSilent)
-                    _log?.Invoke($"Stream chunk cut@{decision.AtSample}: silent-classified but decoded {text.Length} chars -> RESCUED");
             }
             _consumedSamples += decision.AtSample;
         }
