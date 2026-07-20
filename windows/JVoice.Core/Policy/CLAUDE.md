@@ -18,6 +18,13 @@ keep `namespace JVoice.Core`.)
   a verify TRIGGER only — never a rejector, §7 #21) means the prompted transcript must be vouched
   for by an unprompted decode; an empty reduced witness ⇒ no-speech. Calibrated on David's real
   clips (whisper confidence is INVERTED — don't threshold it).
+- `PhraseLoopGuard.cs` — the §7 #42 repetition-loop policy: detects/collapses runs of ≥4
+  consecutive identical phrases (≤12 tokens, case/punctuation-insensitive) — whisper's
+  prompt-induced decode loop ("You're not a man of Caesar." ×16), which sits MID-transcript with
+  full timestamp coverage, so RepetitionGuard and TailCoverageGuard are blind to it. The engine
+  answers a detected loop with an unprompted witness re-decode (`Resolve` prefers the witness —
+  the loop overwrote real speech); genuine "Crucify him, crucify him" (2×) / "Holy, holy, holy"
+  (3×) stay below the threshold, test-locked.
 - `TailCoverageGuard.cs` — the §7 #39 tail-recovery policy: when a decode's last segment ends
   ≥1.5 s before the end of the audio (early-EOT truncation fingerprint; the trigger is timestamp
   coverage, never RMS), the uncovered tail is re-decoded and merged with normalized-containment

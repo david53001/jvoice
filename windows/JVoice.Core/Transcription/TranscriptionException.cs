@@ -6,6 +6,10 @@ public enum TranscriptionErrorKind
     UnsupportedAudioFile,
     EmptyTranscript,
     ModelLoadFailed,
+    // Windows-only (§7 #42): a chunk decode produced a phrase loop; the streaming session
+    // treats the throw as a chunk failure → lossless whole-file fallback, where the
+    // engine's witness re-decode heals the loop.
+    DegenerateDecode,
 }
 
 public sealed class TranscriptionException : Exception
@@ -24,4 +28,6 @@ public sealed class TranscriptionException : Exception
             detail is null ? "No transcript was produced." : $"No transcript was produced. ({detail})");
     public static TranscriptionException ModelLoadFailed(string message)
         => new(TranscriptionErrorKind.ModelLoadFailed, message);
+    public static TranscriptionException DegenerateDecode(string detail)
+        => new(TranscriptionErrorKind.DegenerateDecode, $"Decode degenerated into a repetition loop. ({detail})");
 }

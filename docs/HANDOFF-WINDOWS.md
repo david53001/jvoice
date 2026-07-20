@@ -1534,6 +1534,48 @@ These are real corrections discovered during execution — preserve them.
       --clobber`, content verified by `/T /C` extraction — same 1.0.1 app bits, only the installer
       wrapper changed).
 
+42. **Repetition-loop spam mid-transcript — root-caused + PhraseLoopGuard (2026-07-20, branch
+    `fix/phrase-loop-guard`, David-reported: a Bible-study dictation pasted "You're not a man
+    of Caesar." ~17 times; "this issue has been recurring in the past … I want to get this
+    permanently fixed").**
+    - **Root cause — a PROMPT-INDUCED whisper repetition loop that every existing guard is
+      structurally blind to.** The real clip (`capture-20260720-225708-670.wav`, 97.14 s,
+      whole-file decode after the #41 streaming fallback fired) reproduces it 3/3 with
+      `--bench`: the vocabulary-PROMPTED decode locks into "You're not a man of Caesar." × 16
+      MID-transcript and **overwrites real speech** ("Now John 19." at the head, "You oppose
+      Caesar." mid-text), while claiming FULL timestamp coverage (`segs=32 lastEnd=97.10s
+      audio=97.10s`). So: TailCoverageGuard sees no uncovered tail; RepetitionGuard only
+      strips a TRAILING vocab/loop-dense run (this loop sits mid-text, normal prose resumes
+      after it, and its phrase is stopword-heavy — loop-token density 3/6 = 0.5 < 0.7).
+      The **UNPROMPTED decode of the same audio is clean and MORE complete** (restores both
+      swallowed fragments) — the same prompt-failure class RegurgitationRecovery exists for.
+    - **Fix (brain + engine, no decode-parameter changes):** new pure
+      `JVoice.Core/Policy/PhraseLoopGuard.cs` — detects/collapses runs of **≥ 4 consecutive
+      identical phrases** (≤ 12 tokens, matched on `RepetitionGuard.Core` normalization, so
+      case/punctuation variants match; first occurrence kept verbatim; trailing partial
+      repeat deliberately left). Genuine liturgical repeats stay: "Crucify him, crucify him"
+      (2×), "Holy, holy, holy" (3×) are test-locked below the threshold. Wiring
+      (`WhisperNetTranscriptionEngine`): **whole-file** — a detected loop triggers an
+      unprompted witness re-decode; `PhraseLoopGuard.Resolve` prefers the witness WHOLESALE
+      (unlike the #38 gate where the witness only vouches — here the looped primary is
+      known-lossy; this mirrors RegurgitationRecovery returning the unprompted decode), else
+      deterministically collapses. **Streaming chunk** — a looped chunk decode throws the new
+      `TranscriptionException.DegenerateDecode` ⇒ session fails ⇒ lossless whole-file
+      fallback (NOT reduced to "" — for a silent-classified chunk empty means "confirmed
+      silence, skip", which would drop the chunk's real speech). Cost when no loop: one
+      token-scan per decode (µs). Decode-side knobs (`no_context`, entropy thresholds) were
+      deliberately NOT touched — they'd alter every decode to fix a rare failure.
+    - **VERIFICATION:** `dotnet test` **846/846** (27 new `PhraseLoopGuardTests`, incl. the
+      verbatim Caesar loop). On-device `--bench` of the real clip: loop gone, full text incl.
+      the previously swallowed "Now John 19." / "You oppose Caesar."; `--bench --stream` →
+      session falls back, whole-file clean; 2-clip regression sweep (tonight's real captures)
+      byte-identical to their live transcripts — one of them SAYS "you are not a man of
+      caesar" twice non-consecutively and is correctly untouched.
+    - **Residual:** whisper's classic single end-duplicate ("And he got handed over to be
+      crucified." × 2) is below the 4× threshold and intentionally kept — collapsing 2–3×
+      repeats would eat genuine dictation. The installed app does NOT have this fix until a
+      new build is installed/released.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`

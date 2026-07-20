@@ -262,6 +262,28 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
                 (guarded.Length == 0 ? "no-speech" : "kept"));
         }
 
+        // §7 #42 phrase-loop guard: on a long dictation the PROMPTED decode can lock into
+        // whisper's classic repetition loop ("You're not a man of Caesar." × 16 on the real
+        // clip capture-20260720-225708-670.wav) MID-transcript, overwriting real speech
+        // while claiming full timestamp coverage — invisible to RepetitionGuard (trailing,
+        // vocab-dense runs only) and to the tail guard (no uncovered tail). Measured on the
+        // real clip: the UNPROMPTED decode of the same audio is clean and restores the
+        // swallowed words — so a detected loop triggers a witness re-decode without the
+        // prompt (RegurgitationRecovery's remedy), and PhraseLoopGuard.Resolve prefers that
+        // witness, else deterministically collapses the run. Looped text can never paste.
+        if (guarded.Length > 0 && PhraseLoopGuard.HasLoop(guarded))
+        {
+            string loopWitness = "";
+            if (_useVocabularyPrompt && await CurrentPromptAsync().ConfigureAwait(false) is { Length: > 0 })
+                loopWitness = TextProcessor.RemoveWhisperHallucinations(NonSpeechAnnotation.Reduce(
+                    (await DecodeSamplesAsync(samples, factory, usePrompt: false, ct).ConfigureAwait(false)).Text));
+            string healed = PhraseLoopGuard.Resolve(guarded, loopWitness);
+            DiagnosticLog.Write(
+                $"Engine phraseLoop chars={guarded.Length} witnessChars={loopWitness.Length} -> " +
+                $"{(loopWitness.Length > 0 ? "witness" : "collapsed")} ({healed.Length} chars)");
+            guarded = healed;
+        }
+
         // §7 #39 tail-coverage guard: the decode sometimes ends EARLY on David's quiet
         // audio — EOT after the louder leading clause — leaving trailing words that ARE in
         // the WAV untranscribed (confirmed 2026-07-02 23:58: 3.48 s of audio on disk,
@@ -404,12 +426,25 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         // Reduce a whisper no-speech annotation chunk to "" — the streaming session treats
         // an empty chunk decode as "fall back to whole-file" (lossless), never a silent drop
         // (and, since §7 #39, as "confirmed silence — skip" for a silent-classified chunk).
-        return NonSpeechAnnotation.Reduce(await RegurgitationRecovery.Decode(
+        string text = NonSpeechAnnotation.Reduce(await RegurgitationRecovery.Decode(
             _useVocabularyPrompt,
             vocabulary,
             async usePrompt =>
                 (await DecodeSamplesAsync(samples, factory, usePrompt, ct).ConfigureAwait(false)).Text)
             .ConfigureAwait(false));
+
+        // §7 #42: a chunk decode that degenerated into a phrase loop must never be pasted —
+        // and collapsing it here would hide the speech the loop overwrote. Throwing fails
+        // the session (its catch → whole-file fallback, lossless by contract), where the
+        // whole-file phrase-loop guard heals via the unprompted witness. Deliberately NOT
+        // "" — an empty decode of a silent-classified chunk means "confirmed silence, skip",
+        // which would silently drop the chunk's real speech.
+        if (PhraseLoopGuard.HasLoop(text))
+        {
+            DiagnosticLog.Write($"Engine chunk phraseLoop chars={text.Length} -> chunk decode failed (whole-file fallback)");
+            throw TranscriptionException.DegenerateDecode($"streaming chunk, {text.Length} chars");
+        }
+        return text;
     }
 
     // ---- streaming session integration (Task 4) -----------------------------

@@ -7,7 +7,8 @@ the decoder hallucinate or loop. Ported 1:1 from macOS; every constant is test-l
 - `VocabularyPrompt.cs` — builds the decoder-conditioning prompt from the user's custom words
   (the main accuracy lever; kept ON by default).
 - `RepetitionGuard.cs` — detects/strips "prompt regurgitation" (the decoder reciting the vocab
-  list on pauses/silence); flags it via `scrub`.
+  list on pauses/silence); flags it via `scrub`. TRAILING runs only — mid-transcript phrase
+  loops are handled by `../Policy/PhraseLoopGuard.cs` (§7 #42).
 - `RegurgitationRecovery.cs` — re-decodes the same audio *without* the prompt **only when** a
   decode regurgitated or returned empty. Keeps prompt accuracy in the common case while making
   the loop/insertion/drop failure mode unreachable.
