@@ -284,6 +284,31 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             guarded = healed;
         }
 
+        // §7 #43 sparse-transcript guard: on a long dictation the PROMPTED decode can
+        // silently SKIP whole stretches of speech — the real clip capture-20260720-231246-541
+        // .wav (32 s) decoded to just its head + tail (61 chars ≈ 1.9 chars/s) with the last
+        // segment near the audio end, so the loop, repetition, tail, and silence guards were
+        // all blind. Measured on the 2026-07-20 30-clip sweep: legitimate ≥10 s dictation
+        // never dips below 8.9 chars/s, so conspicuous sparseness TRIGGERS an unprompted
+        // witness re-decode; the witness replaces the prompted text only when it carries ≥2×
+        // the characters (the skip's witness was 9.3× — legit drift measured ≤1.1×). When the
+        // witness is adopted, its segment coverage drives the tail guard below.
+        if (guarded.Length > 0 && _useVocabularyPrompt
+            && SparseTranscriptGuard.ShouldVerify(audioSeconds, guarded)
+            && await CurrentPromptAsync().ConfigureAwait(false) is { Length: > 0 })
+        {
+            var witnessOutcome = await DecodeSamplesAsync(samples, factory, usePrompt: false, ct).ConfigureAwait(false);
+            string witness = TextProcessor.RemoveWhisperHallucinations(
+                NonSpeechAnnotation.Reduce(witnessOutcome.Text));
+            string resolved = SparseTranscriptGuard.Resolve(guarded, witness);
+            bool adopted = !ReferenceEquals(resolved, guarded);
+            if (adopted) lastOutcome = witnessOutcome;
+            DiagnosticLog.Write(
+                $"Engine sparseGuard chars={guarded.Length} audio={audioSeconds:0.00}s " +
+                $"witnessChars={witness.Length} -> {(adopted ? "witness" : "kept")}");
+            guarded = resolved;
+        }
+
         // §7 #39 tail-coverage guard: the decode sometimes ends EARLY on David's quiet
         // audio — EOT after the louder leading clause — leaving trailing words that ARE in
         // the WAV untranscribed (confirmed 2026-07-02 23:58: 3.48 s of audio on disk,
@@ -443,6 +468,22 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         {
             DiagnosticLog.Write($"Engine chunk phraseLoop chars={text.Length} -> chunk decode failed (whole-file fallback)");
             throw TranscriptionException.DegenerateDecode($"streaming chunk, {text.Length} chars");
+        }
+
+        // §7 #43: a conspicuously sparse chunk decode is the same skip fingerprint the
+        // whole-file sparse guard catches (and the #41 lesson says never trust a suspicious
+        // chunk decode). Failing the session is lossless by contract — the whole-file
+        // fallback re-decodes everything and its own sparse guard heals via the witness.
+        // Deliberately NOT "" — an empty decode of a silent-classified chunk means
+        // "confirmed silence, skip", which would silently drop the chunk's real speech.
+        double chunkSeconds = samples.Length / 16_000.0;
+        if (text.Length > 0 && SparseTranscriptGuard.ShouldVerify(chunkSeconds, text))
+        {
+            DiagnosticLog.Write(
+                $"Engine chunk sparse chars={text.Length} audio={chunkSeconds:0.00}s -> " +
+                "chunk decode failed (whole-file fallback)");
+            throw TranscriptionException.DegenerateDecode(
+                $"sparse streaming chunk, {text.Length} chars over {chunkSeconds:0.0}s");
         }
         return text;
     }

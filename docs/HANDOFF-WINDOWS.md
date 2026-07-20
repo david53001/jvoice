@@ -1576,6 +1576,54 @@ These are real corrections discovered during execution — preserve them.
       repeats would eat genuine dictation. The installed app does NOT have this fix until a
       new build is installed/released.
 
+43. **Mid-transcript SKIP (head + tail only, middle swallowed) — root-caused +
+    SparseTranscriptGuard (2026-07-20, branch `fix/sparse-decode-guard`, David-reported:
+    a 32 s Bible-study dictation pasted only "Now next, Jesus appears to his disciples.
+    not forgiven. Amen." — he re-dictated the whole middle 40 s later).**
+    - **Root cause — a PROMPT-INDUCED whisper skip: the prompted decode silently drops whole
+      stretches of speech while looking structurally normal.** The real clip
+      (`capture-20260720-231246-541.wav`, 32.11 s, matched to the paste via
+      `transcript-history.json` + capture timestamps) reproduces it deterministically with
+      `--bench`: the vocabulary-PROMPTED whole-file decode emits ONLY the head + tail
+      (61 chars ≈ **1.9 chars/s**) with its last segment near the audio end — so
+      TailCoverageGuard (no uncovered tail), PhraseLoopGuard (no loop), RepetitionGuard
+      (no repeats), and SilenceHallucinationGate (not near-silent) are ALL blind. The
+      **UNPROMPTED decode of the same audio is complete** (566 chars ≈ 17.6 chars/s) —
+      the same prompt-failure class as #38/#42/RegurgitationRecovery.
+    - **Measured discriminator (30-clip sweep of the day's real captures, prompted vs
+      `--no-prompt`):** every legitimate ≥ 10 s dictation decoded at **8.9–17.8 chars/s**
+      and its witness stayed within ±10% of the prompted length; legitimately terse clips
+      ("*sad music*", 1.2 chars/s) were all SHORT (≤ 8.1 s). Only the failing decode was
+      long + sparse, with a witness 9.3× richer. Sweep script/results referenced from the
+      guard's doc comment; thresholds: trigger = audio ≥ 10 s AND < 4.0 chars/s; adopt =
+      witness ≥ 2× prompted chars.
+    - **Fix (brain + engine, same witness-family shape, no decode-parameter changes):** new
+      pure `JVoice.Core/Policy/SparseTranscriptGuard.cs` (`ShouldVerify`/`Resolve` — density
+      is only the cheap TRIGGER, the replace decision is the model's own unprompted decode,
+      so the §7 #21 no-arithmetic-rejection rule holds). Wiring
+      (`WhisperNetTranscriptionEngine`, after the phrase-loop guard, before the tail guard):
+      **whole-file** — a sparse decode triggers an unprompted witness re-decode;
+      `Resolve` adopts the witness wholesale only when it carries ≥ 2× the text (else the
+      witness merely vouches that the audio really was terse and the vocab-accurate prompted
+      text is kept); an adopted witness also hands its segment coverage to the tail guard.
+      **Streaming chunk** — a sparse chunk decode throws
+      `TranscriptionException.DegenerateDecode` ⇒ session fails ⇒ lossless whole-file
+      fallback, where the whole-file guard heals (the #41 "never trust a suspicious chunk
+      decode" doctrine; NOT reduced to "" — that would read as confirmed-silence skip).
+      Cost when healthy: one length comparison; a false trigger costs one ~1 s witness
+      decode and keeps the prompted text.
+    - **VERIFICATION:** `dotnet test` **865/865** (19 new `SparseTranscriptGuardTests`,
+      thresholds + boundaries locked to the sweep data). On-device `--bench` of the real
+      clip: full paragraph restored (identical to the unprompted decode, incl. the swallowed
+      "peace be with you … receive the Holy Spirit" middle); `--bench --stream` → session
+      falls back, whole-file clean; 6-clip no-harm sweep (incl. the sparsest legit clip at
+      8.87 chars/s and the terse 8.1 s one) **byte-identical** to the pre-fix build; Caesar
+      clip (#42) still healed.
+    - **Residual:** if whisper ever skips the middle of a long clip while still emitting
+      ≥ 4 chars/s of text, this trigger won't fire — no such clip has been observed (the
+      guard's constants are calibrated to be re-tightened from new kept WAVs if one shows
+      up). The installed app does NOT have this fix until a new build is installed/released.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`

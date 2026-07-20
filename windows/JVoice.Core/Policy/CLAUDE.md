@@ -25,6 +25,14 @@ keep `namespace JVoice.Core`.)
   answers a detected loop with an unprompted witness re-decode (`Resolve` prefers the witness —
   the loop overwrote real speech); genuine "Crucify him, crucify him" (2×) / "Holy, holy, holy"
   (3×) stay below the threshold, test-locked.
+- `SparseTranscriptGuard.cs` — the §7 #43 mid-transcript-skip policy: a PROMPTED whole-file decode
+  that emits conspicuously little text for the audio (< 4 chars/s on ≥ 10 s audio — real dictation
+  measured 8.9–17.8 chars/s across the 2026-07-20 30-clip sweep) triggers an unprompted witness
+  re-decode; the witness is adopted only when it carries ≥ 2× the characters (the real skip's
+  witness was 9.3×, legit drift ≤ 1.1×). Catches whisper silently swallowing the MIDDLE of a
+  dictation (head + tail kept, last segment near the audio end), which the loop/repetition/tail/
+  silence guards are all structurally blind to. Density is only the TRIGGER — the replace decision
+  is the model's own unprompted decode, so §7 #21 (no arithmetic rejection) holds.
 - `TailCoverageGuard.cs` — the §7 #39 tail-recovery policy: when a decode's last segment ends
   ≥1.5 s before the end of the audio (early-EOT truncation fingerprint; the trigger is timestamp
   coverage, never RMS), the uncovered tail is re-decoded and merged with normalized-containment

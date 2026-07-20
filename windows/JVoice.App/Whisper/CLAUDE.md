@@ -7,8 +7,9 @@ replacement.
 ## Key files
 - `WhisperNetTranscriptionEngine.cs` — implements `ITranscriptionEngine`; runs the decode, applies
   the duration-gated options, hands results to the brain (`Core/Text`). Guards each decode with
-  the witness/tail/loop policies (§7 #38/#39/#42): a mid-transcript phrase loop triggers an
-  unprompted re-decode (whole-file) or fails the chunk into the whole-file fallback (streaming).
+  the witness/tail/loop/sparse policies (§7 #38/#39/#42/#43): a mid-transcript phrase loop or a
+  conspicuously sparse decode triggers an unprompted re-decode (whole-file) or fails the chunk
+  into the whole-file fallback (streaming).
 - `WhisperRuntime.cs` — picks/loads the native runtime (GPU vs CPU fallback).
 - `WhisperModelStore.cs` — locates/downloads the GGML model. ⚠ **This is the ONLY runtime network
   call in the entire app** (the one-time model download). Privacy invariant: zero network at
