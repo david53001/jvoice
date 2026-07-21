@@ -1622,7 +1622,16 @@ These are real corrections discovered during execution — preserve them.
     - **Residual:** if whisper ever skips the middle of a long clip while still emitting
       ≥ 4 chars/s of text, this trigger won't fire — no such clip has been observed (the
       guard's constants are calibrated to be re-tightened from new kept WAVs if one shows
-      up). The installed app does NOT have this fix until a new build is installed/released.
+      up).
+    - **DEPLOYED LOCALLY (2026-07-20/21):** `%LOCALAPPDATA%\Programs\JVoice` refreshed to
+      `1.0.0+abf6bb8` (gpu publish → robocopy /MIR, LICENSE/uninstaller preserved; the
+      elevated instance bounced UAC-free via `Stop`/`Start-ScheduledTask "JVoice Elevated
+      Autostart"` — a plain Stop-Process is access-denied from a non-elevated shell). Both
+      `~/Downloads` one-click installers rebuilt 2026-07-21 from tip `2068736` via the
+      §7 #30 IExpress `.sed` flow (GPU 365 MB / CPU 67 MB) and smoke-tested end-to-end with
+      the `JVOICE_*` overrides (exit 0, correct version, real install/app untouched). Local
+      `main` + `windows-port` fast-forwarded to `2068736` — **NOT pushed** (release assets
+      on windows-v1.0.0 are still the 74b56f9 build; updating them is David's call).
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
