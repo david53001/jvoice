@@ -25,10 +25,15 @@ namespace JVoice.Core.Text;
 /// as <see cref="JVoice.Core.Audio.HighPassSilence"/>.
 public static class NonSpeechAnnotation
 {
-    // A single bracketed [...] or parenthetical (...) group (non-greedy, no nesting —
-    // whisper annotations never nest).
+    // A single bracketed [...], parenthetical (...), or asterisk-delimited *...* group
+    // (non-greedy, no nesting — whisper annotations never nest). The *...* form is
+    // whisper's third annotation delimiter ("*coughs*", "*music*"); it slipped through
+    // the original [] / () pair and pasted verbatim on 2026-07-23 — a 3.7 s near-silent
+    // press decoded to just "*referred*" (§7 #44). Requires a closing '*', so a lone
+    // dictated asterisk ("use the * wildcard") never forms a group; a real sentence
+    // containing a pair keeps its text outside the group and survives, same as ().
     private static readonly Regex AnnotationGroup =
-        new(@"\[[^\]]*\]|\([^)]*\)", RegexOptions.Compiled);
+        new(@"\[[^\]]*\]|\([^)]*\)|\*[^*]*\*", RegexOptions.Compiled);
 
     /// True when `text` is non-empty but, once every annotation group is removed, contains
     /// no letters or digits — i.e. the whole transcript is whisper's no-speech annotation

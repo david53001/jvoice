@@ -23,6 +23,15 @@ public class NonSpeechAnnotationTests
     [InlineData("[Music] (applause)")]      // multiple annotations, nothing else
     [InlineData("[BLANK_AUDIO].")]          // annotation + lone punctuation
     [InlineData("(...)")]
+    // asterisk-delimited annotations — whisper's third delimiter style. "*referred*" is the
+    // ACTUAL on-device output that pasted verbatim on 2026-07-23 (§7 #44): a 3.7 s near-silent
+    // press decoded to a single *…* token, which the [] / () regex let straight through.
+    [InlineData("*referred*")]
+    [InlineData("*music*")]
+    [InlineData("*sad music*.")]            // annotation + lone punctuation (real bench output)
+    [InlineData("* coughing *")]
+    [InlineData("*music* *applause*")]      // multiple asterisk groups, nothing else
+    [InlineData("[BLANK_AUDIO] *music*")]   // mixed delimiter styles, nothing else
     public void AnnotationOnly_IsNoSpeech(string raw)
     {
         Assert.True(NonSpeechAnnotation.IsAnnotationOnly(raw));
@@ -40,6 +49,10 @@ public class NonSpeechAnnotationTests
     [InlineData("The value is [42] units.")]              // bracket inside real speech
     [InlineData("music")]                                 // the word, not an annotation
     [InlineData("(note to self) buy milk")]               // text outside the group
+    // asterisk pairs inside real speech survive — the mirror of the parenthetical rule:
+    [InlineData("I really *love* this plan.")]            // spoken-emphasis pair inside a sentence
+    [InlineData("the result of 3 * 4 * 5")]               // dictated math keeps its digits
+    [InlineData("use the * wildcard")]                    // a lone (unpaired) asterisk
     public void RealSpeech_IsKept(string raw)
     {
         Assert.False(NonSpeechAnnotation.IsAnnotationOnly(raw));
