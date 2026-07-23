@@ -1633,6 +1633,57 @@ These are real corrections discovered during execution — preserve them.
       `main` + `windows-port` fast-forwarded to `2068736` — **NOT pushed** (release assets
       on windows-v1.0.0 are still the 74b56f9 build; updating them is David's call).
 
+44. **The 2026-07-23 "~5-min dictation pasted only `*referred*`" — root-caused + FIXED
+    (2026-07-23, branch `fix/asterisk-annotations-and-inflight-guard`, David-reported; was
+    the top open item in `docs/windows-roadmap.md` §1).**
+    - **What actually happened (diagnostic.log 03:22–03:25, NOT the hypothesized guard
+      failure):** David dictated **165 s** (03:22:34 → 03:25:19; streaming had already
+      failed over to whole-file, correctly, via the #43 sparse-chunk guard). **313 ms**
+      after the stop press put the HUD into Transcribing, a second chord fire hit
+      `ToggleRecording`'s START branch — which did `_transcriptionCts?.Cancel()` and began
+      a new recording. The in-flight whole-file decode of the 165 s clip died in the
+      silent `OperationCanceledException` "user moved on" handler (no `Engine decode`, no
+      `Transcribed` line — the dictation simply vanished; only `JVOICE_KEEP_WAV` saved the
+      audio). The accidental **3.67 s near-silent re-recording** (rawRms 0.0008) then
+      decoded to `*referred*`; the #38 witness returned 3 non-empty chars so the gate kept
+      it, and `NonSpeechAnnotation` only stripped `[...]`/`(...)` — `*…*` passed straight
+      through and pasted. So SparseTranscriptGuard was never in the path: the long clip
+      was never decoded, and the short clip is < its 10 s floor.
+    - **Root cause 1 — a guard DROPPED in the port:** Swift `toggleRecording()` has
+      `guard !transcriptionManager.isTranscribing else { return }` in the start branch;
+      the Windows port lost it, so a start request could cancel a pending transcript.
+    - **Root cause 2 — hotkey auto-repeat:** the WH_KEYBOARD_LL hook gets a fresh
+      WM_KEYDOWN per auto-repeat and only had the 150 ms debounce — Windows' shortest
+      repeat delay is 250 ms, so a slightly-long hold of the stop chord re-fires the
+      toggle. (A physical double-tap has the same effect; both are now handled.)
+    - **Root cause 3 — the `*…*` annotation hole:** whisper's third annotation delimiter
+      (`*coughs*`, `*music*`, `*referred*`) wasn't in `NonSpeechAnnotation`'s regex.
+    - **Fix (three layers, each test-locked):** **(1)** `NonSpeechAnnotation` regex grew
+      `\*[^*]*\*` — an annotation-only decode like `*referred*` now reduces to "" ⇒
+      "No speech detected." (a sentence merely containing an `*emphasis*` pair survives,
+      mirroring the parenthetical rule; a lone unpaired `*` never forms a group).
+      **(2)** new pure `CoordinatorDecisions.CanStartRecording(isStarting, isTranscribing)`
+      ports BOTH Swift start-branch guards; `VoiceCoordinator` tracks `_isTranscribing`
+      (set at `StopRecordingAndTranscribe`'s launch of `FinishTranscriptionAsync`, cleared
+      on EVERY exit path incl. the pre-try `audioPath is null` return) and the start
+      branch now IGNORES the press (+ a `ToggleRecording start IGNORED` log line) — a
+      pending transcript always outranks a new start request, matching macOS.
+      **(3)** `GlobalHotkey` fires only on the chord key's down TRANSITION: it tracks the
+      held main-key vk (reset on its WM_KEYUP/WM_SYSKEYUP) and a repeat keydown is
+      swallowed WITHOUT triggering (pure gate `HotkeyGate.AllowsKeyDownFire`; tracked by
+      vk so a chord rebind mid-hold can't eat the new chord's first press).
+    - **VERIFICATION:** `dotnet test` **880/880** (15 new). On-device `--bench` with
+      David's live vocab: the `*referred*` clip (`capture-20260723-032524-578.wav`) →
+      "no-speech (model empty/annotation)"; the lost 165 s clip
+      (`capture-20260723-032520-062.wav`) → the FULL ~1,900-char dictation (it was
+      recoverable all along — the guard alone would have saved it); no-harm: the 90 s
+      03:18 clip byte-identical to its logged live raw, and the quiet 22 s witness-kept
+      clip still fully kept (#21 balance holds).
+    - **Residual:** the 165 s clip's decode ends with "so he was added to the eleven
+      apostles as the twelve" ×3 — below PhraseLoopGuard's deliberate ≥4 threshold, so
+      it's kept (collapsing 2–3× eats genuine dictation; unchanged). NOT in the installed
+      app until the next install/release.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`

@@ -7,7 +7,9 @@ contract-locked by the root `CLAUDE.md`; preserve the invariants below.**
 
 ## Key files
 - `GlobalHotkey.cs` — the low-level global keyboard hook (`WH_KEYBOARD_LL`). It **swallows the
-  chord key** so no stray space leaks into the focused app (root `CLAUDE.md` §7 #25).
+  chord key** so no stray space leaks into the focused app (root `CLAUDE.md` §7 #25), and it
+  fires **once per physical press** — auto-repeat keydowns of the held chord key are swallowed
+  WITHOUT triggering (down-transition gate, §7 #44; pure half in `Core/Policy/HotkeyGate`).
 - `Paster.cs` — pastes transcribed text into the foreground app (clipboard + synthetic input);
   `PasteOutcome` reports success/failure.
 - `Elevation.cs` / `ElevatedAutostart.cs` — opt-in "run elevated" so the hotkey works in admin
