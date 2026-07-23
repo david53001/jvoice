@@ -27,10 +27,13 @@ public static class PhraseLoopGuard
     /// holy" (3×) — while the observed loop ran 16×.
     public const int MinRepeats = 4;
 
-    /// Longest phrase (in tokens) considered as a loop unit. The observed loop phrase was
-    /// 6 tokens; decoder loops repeat short n-grams, and a longer window would make an
-    /// entire genuinely-repeated sentence collapsible.
-    public const int MaxPhraseTokens = 12;
+    /// Longest phrase (in tokens) considered as a loop unit. The #42 loop phrase was
+    /// 6 tokens, but the 2026-07-24 live paste (capture-20260724-020028-378.wav, streaming
+    /// chunk) looped a 21-TOKEN clause 6× — beyond the original 12-token window, so the
+    /// guard was structurally blind and the loop pasted. 32 gives headroom over the longest
+    /// observed period. The false-positive shield is MinRepeats, not this cap: genuine
+    /// dictation never says the same ≤32-token clause 4× consecutively verbatim.
+    public const int MaxPhraseTokens = 32;
 
     public readonly record struct CollapseResult(string Text, bool FoundLoop);
 

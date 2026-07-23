@@ -26,13 +26,29 @@ public class PhraseLoopGuardTests
         string.Concat(Enumerable.Repeat(CaesarPhrase + " ", 16)).TrimEnd() +
         " And when Pilate heard this, he just brought Jesus out and gave him to the Jews.";
 
-    // ---- constants (calibrated against the real loop; change = recalibrate) ----
+    // The second real failure (David-reported 2026-07-24, pasted live from the streaming
+    // path of capture-20260724-020028-378.wav): a 21-TOKEN phrase looped 6× inside a chunk
+    // decode — beyond the original MaxPhraseTokens=12 window, so HasLoop stayed false and
+    // the looped chunk pasted. The whole-file decode of the same clip is clean (793 chars,
+    // the phrase spoken ONCE), so detection alone heals it: the chunk throws
+    // DegenerateDecode → lossless whole-file fallback. Verbatim from diagnostic.log.
+    private static readonly string LonelinessLoop =
+        "so on this part it's crazy because in 2026 there was " +
+        string.Concat(Enumerable.Repeat(
+            "a big male loneliness epidemic and i used to have a girlfriend " +
+            "but now i don't so i feel like it's ", 6)) +
+        "a big male loneliness epidemic and i feel like it's " +
+        "a big male loneliness epidemic and i feel like it's " +
+        "a big male loneliness epidemic and i feel like it's " +
+        "a big male and that's kinda like, you know, there's a lot of that";
+
+    // ---- constants (calibrated against the real loops; change = recalibrate) ----
 
     [Fact]
     public void Constants_AreLocked()
     {
         Assert.Equal(4, PhraseLoopGuard.MinRepeats);
-        Assert.Equal(12, PhraseLoopGuard.MaxPhraseTokens);
+        Assert.Equal(32, PhraseLoopGuard.MaxPhraseTokens);
     }
 
     // ---- Collapse: the real loop ----
@@ -47,6 +63,32 @@ public class PhraseLoopGuardTests
         Assert.Contains("you're not a friend of Caesar.", result.Text);
         Assert.StartsWith("And then from there, the Jewish leader said", result.Text);
         Assert.EndsWith("gave him to the Jews.", result.Text);
+    }
+
+    // ---- Collapse: the real 2026-07-24 LONG-period loop (21 tokens — the #42 window missed it) ----
+
+    [Fact]
+    public void Collapse_RealLonelinessLoop_Detected()
+    {
+        var result = PhraseLoopGuard.Collapse(LonelinessLoop);
+        Assert.True(result.FoundLoop);
+        // Exactly ONE full phrase survives the collapsed run; prefix and suffix stay.
+        Assert.Equal(1, CountOf(result.Text, "girlfriend"));
+        Assert.StartsWith("so on this part it's crazy", result.Text);
+        Assert.EndsWith("there's a lot of that", result.Text);
+    }
+
+    [Fact]
+    public void HasLoop_TrueOnRealLonelinessLoop() => Assert.True(PhraseLoopGuard.HasLoop(LonelinessLoop));
+
+    [Fact] // The detection window covers long periods: a 21-token phrase ×4 is a loop.
+    public void Collapse_LongPeriodPhrase_Collapsed()
+    {
+        string phrase = "a big male loneliness epidemic and i used to have a girlfriend " +
+                        "but now i don't so i feel like it's";
+        var result = PhraseLoopGuard.Collapse(string.Join(" ", Enumerable.Repeat(phrase, 4)));
+        Assert.True(result.FoundLoop);
+        Assert.Equal(phrase, result.Text);
     }
 
     // ---- Collapse: genuine repetition below the threshold is untouched ----
@@ -121,7 +163,8 @@ public class PhraseLoopGuardTests
     [Fact] // Phrases longer than MaxPhraseTokens are never treated as loops.
     public void Collapse_PhraseAboveTokenCap_Kept()
     {
-        string phrase = "one two three four five six seven eight nine ten eleven twelve thirteen";
+        // 33 tokens — one above the cap.
+        string phrase = string.Join(" ", Enumerable.Range(1, 33).Select(i => $"w{i}"));
         string text = string.Join(" ", Enumerable.Repeat(phrase, 4));
         var result = PhraseLoopGuard.Collapse(text);
         Assert.False(result.FoundLoop);
