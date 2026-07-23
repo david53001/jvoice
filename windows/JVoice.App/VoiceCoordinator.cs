@@ -49,6 +49,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private int _recordingGeneration;
     private bool _isStartingRecording;
     private bool _isStoppingRecording;
+    // True from StopRecordingAndTranscribe launching FinishTranscriptionAsync until that flight
+    // fully settles (paste/error/no-speech). Read only on the dispatcher thread. Ports the Swift
+    // start-branch guard `!transcriptionManager.isTranscribing` — see ToggleRecording (§7 #44).
+    private bool _isTranscribing;
     private bool _isInitializing = true;
     private DateTime? _recordingStartUtc;
     private double _lastRecordingSeconds;
@@ -801,7 +805,18 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         else
         {
             if (!IsRecording && _gameDetector?.ShouldSuppress == true) return;
-            if (_isStartingRecording) return;
+            // §7 #44: a pending transcription outranks a new start request (Swift's
+            // `guard !transcriptionManager.isTranscribing`, dropped in the original port).
+            // Without this, a key auto-repeat / double-press ~300 ms after the stop press
+            // cancelled the in-flight decode below — silently destroying the finished
+            // dictation (2026-07-23: a 165 s dictation vanished and its accidental 3.7 s
+            // re-recording pasted "*referred*" instead).
+            if (!CoordinatorDecisions.CanStartRecording(_isStartingRecording, _isTranscribing))
+            {
+                if (_isTranscribing)
+                    DiagnosticLog.Write("ToggleRecording start IGNORED - transcription in flight");
+                return;
+            }
             _isStartingRecording = true;
             _transcriptionCts?.Cancel();
             _transcriptionCts = null;
@@ -903,6 +918,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _transcriptionCts?.Cancel();
         _transcriptionCts = new CancellationTokenSource();
         var ct = _transcriptionCts.Token;
+        _isTranscribing = true; // cleared by FinishTranscriptionAsync's finally (§7 #44)
         _ = FinishTranscriptionAsync(audioPath, target, session, ct);
         Tray?.RebuildMenu();
     }
@@ -912,7 +928,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         if (audioPath is null)
         {
             if (session is not null) await session.Cancel();
-            await _dispatcher.InvokeAsync(() => ShowError("No recording was captured."));
+            await _dispatcher.InvokeAsync(() =>
+            {
+                _isTranscribing = false; // this path returns before the try/finally below
+                ShowError("No recording was captured.");
+            });
             return;
         }
 
@@ -1054,6 +1074,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         finally
         {
             TryDelete(audioPath); // privacy: always delete the WAV
+            // Re-open the hotkey's start branch on EVERY exit path (paste, no-speech, error,
+            // cancellation, throw) — a stuck flag would dead-key the hotkey for the session.
+            _ = _dispatcher.InvokeAsync(() => _isTranscribing = false);
         }
     }
 

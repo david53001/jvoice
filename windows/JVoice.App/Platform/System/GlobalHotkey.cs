@@ -25,7 +25,9 @@ public sealed class GlobalHotkey : IDisposable
 
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
+    private const int WM_KEYUP = 0x0101;
     private const int WM_SYSKEYDOWN = 0x0104;
+    private const int WM_SYSKEYUP = 0x0105;
     private const uint WM_QUIT = 0x0012;
     private const uint WM_TIMER = 0x0113;
 
@@ -79,6 +81,14 @@ public sealed class GlobalHotkey : IDisposable
     private long _lastFiredTicks;
     private int _lastCallbackTick; // Environment.TickCount of the last hook callback
                                    // (hook-thread only; the watchdog's liveness signal)
+    // §7 #44 auto-repeat gate (hook-thread only): the vk of the chord main key we last saw go
+    // DOWN with no key-up since (0 = none). A further WM_KEYDOWN of that same vk is keyboard
+    // auto-repeat — a toggle hotkey must fire once per physical press, and the 150 ms debounce
+    // does NOT absorb repeats (shortest Windows repeat delay is 250 ms; a slightly-long hold of
+    // the stop chord re-fired the toggle 313 ms later on 2026-07-23, restarting recording while
+    // the finished dictation was still transcribing). Tracked by vk so a chord rebind mid-hold
+    // can't suppress the new chord's first press.
+    private int _heldMainKeyVk;
     private volatile bool _running;
 
     public void Register(HotkeyChord chord)
@@ -164,7 +174,14 @@ public sealed class GlobalHotkey : IDisposable
         {
             _lastCallbackTick = Environment.TickCount; // proof the hook is alive & receiving
             int msg = (int)wParam;
-            if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
+            if (msg == WM_KEYUP || msg == WM_SYSKEYUP)
+            {
+                // Key-up of the tracked main key re-arms the auto-repeat gate (the next
+                // keydown of it is a genuine new press). Key-ups always pass through.
+                var up = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
+                if ((int)up.vkCode == _heldMainKeyVk) _heldMainKeyVk = 0;
+            }
+            else if (msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN)
             {
                 // TEST-ONLY: one-shot stall to force Windows' eviction (see _testStallMs).
                 if (_testStallMs > 0 && !_didTestStall) { _didTestStall = true; Thread.Sleep(_testStallMs); }
@@ -180,7 +197,17 @@ public sealed class GlobalHotkey : IDisposable
                         Log("chord matched but SUPPRESSED (game foreground) -> passthrough, not swallowed");
                         return CallNextHookEx(_hook, nCode, wParam, lParam);
                     }
-                    if (TryDebounce())
+                    // §7 #44: fire only on the down TRANSITION — a keydown of a main key we
+                    // already saw down (no key-up since) is keyboard auto-repeat, never a new
+                    // press. Still falls through to the swallow below so held repeats can't
+                    // dribble spaces into the focused app.
+                    bool isNewPress = HotkeyGate.AllowsKeyDownFire(_heldMainKeyVk == (int)data.vkCode);
+                    _heldMainKeyVk = (int)data.vkCode;
+                    if (!isNewPress)
+                    {
+                        Log("chord matched but key still held -> auto-repeat, swallowed without trigger");
+                    }
+                    else if (TryDebounce())
                     {
                         Log("chord matched + debounce passed -> raising Triggered");
                         Triggered?.Invoke(); // raised on the hook thread; Phase 4 marshals

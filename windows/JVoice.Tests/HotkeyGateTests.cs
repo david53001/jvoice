@@ -77,4 +77,18 @@ public class HotkeyGateTests
     public void ModifiersMatch_AllFour_True()
         => Assert.True(HotkeyGate.ModifiersMatch(true, true, true, true,
             HotkeyModifiers.Control | HotkeyModifiers.Alt | HotkeyModifiers.Shift | HotkeyModifiers.Win));
+
+    // ---- AllowsKeyDownFire (auto-repeat gate, §7 #44) ----
+    // A chord-key WM_KEYDOWN that arrives while the key is still physically held is keyboard
+    // AUTO-REPEAT, not a new press — a toggle hotkey must fire once per press (down TRANSITION
+    // only). The 150 ms debounce alone does NOT cover this: Windows' shortest repeat delay is
+    // 250 ms, so a slightly-long hold re-fired the toggle 313 ms after the stop press on
+    // 2026-07-23 and restarted recording mid-transcription.
+    [Fact]
+    public void AllowsKeyDownFire_DownTransition_True()
+        => Assert.True(HotkeyGate.AllowsKeyDownFire(mainKeyAlreadyDown: false));
+
+    [Fact]
+    public void AllowsKeyDownFire_AutoRepeat_False()
+        => Assert.False(HotkeyGate.AllowsKeyDownFire(mainKeyAlreadyDown: true));
 }

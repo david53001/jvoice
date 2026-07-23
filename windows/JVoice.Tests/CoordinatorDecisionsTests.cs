@@ -91,4 +91,27 @@ public class CoordinatorDecisionsTests
     [Fact]
     public void Resolve_ForegroundEqualsLastNonSelf_ReturnsForeground()
         => Assert.Equal(AppA, CoordinatorDecisions.ResolveTargetWindow(AppA, currentForegroundIsSelf: false, AppA));
+
+    // ---- CanStartRecording (§7 #44) ----
+    // Ports Swift toggleRecording's `guard !transcriptionManager.isTranscribing else { return }`,
+    // which the original Windows port DROPPED. Without it, a start request arriving while a
+    // transcription is still in flight cancelled that transcription unheard — on 2026-07-23 a key
+    // auto-repeat 313 ms after the stop press silently destroyed a finished 165 s dictation and a
+    // 3.7 s accidental re-recording pasted "*referred*" instead. A pending transcript must always
+    // outrank a new start request.
+    [Fact]
+    public void CanStartRecording_Normally_True()
+        => Assert.True(CoordinatorDecisions.CanStartRecording(isStartingRecording: false, isTranscribing: false));
+
+    [Fact]
+    public void CanStartRecording_WhileTranscribing_False()
+        => Assert.False(CoordinatorDecisions.CanStartRecording(isStartingRecording: false, isTranscribing: true));
+
+    [Fact]
+    public void CanStartRecording_WhileAlreadyStarting_False()
+        => Assert.False(CoordinatorDecisions.CanStartRecording(isStartingRecording: true, isTranscribing: false));
+
+    [Fact]
+    public void CanStartRecording_BothBusy_False()
+        => Assert.False(CoordinatorDecisions.CanStartRecording(isStartingRecording: true, isTranscribing: true));
 }

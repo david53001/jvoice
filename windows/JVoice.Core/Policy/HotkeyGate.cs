@@ -26,4 +26,12 @@ public static class HotkeyGate
         && alt == want.HasFlag(HotkeyModifiers.Alt)
         && shift == want.HasFlag(HotkeyModifiers.Shift)
         && win == want.HasFlag(HotkeyModifiers.Win);
+
+    /// §7 #44 auto-repeat gate: a toggle hotkey fires only on the chord key's down TRANSITION.
+    /// The low-level hook receives a fresh WM_KEYDOWN for every keyboard auto-repeat of a held
+    /// key, and the 150 ms debounce does NOT absorb those — Windows' shortest repeat delay is
+    /// 250 ms, so a slightly-long hold of the stop chord re-fired the toggle 313 ms later on
+    /// 2026-07-23 (restarting recording while the previous dictation was still transcribing).
+    /// `mainKeyAlreadyDown` is the hook's tracked key state (down seen, no key-up yet).
+    public static bool AllowsKeyDownFire(bool mainKeyAlreadyDown) => !mainKeyAlreadyDown;
 }
