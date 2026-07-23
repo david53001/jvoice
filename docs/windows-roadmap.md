@@ -10,6 +10,26 @@
 
 ## 1. Fix first (quality of the core loop)
 
+- **NEW (2026-07-23, David-reported): ~5-minute dictation pasted ONLY `*referred*`.** A long
+  (~5 min) live dictation produced a single asterisk-wrapped token as the entire output. Two
+  work items:
+  1. **Strip asterisk-wrapped annotations.** Whisper emits `*coughs*` / `*music*`-style
+     annotations with `*…*` delimiters, but `windows/JVoice.Core/Text/NonSpeechAnnotation.cs`
+     (regex at line ~31) only strips `[...]` and `(...)` forms — so `*referred*` passes through
+     and gets pasted verbatim. Extend the annotation regex (e.g. add `\*[^*]*\*`) so a decode
+     reduced to only asterisk tokens becomes "No speech detected." like the bracket/paren cases;
+     test-lock it in the NonSpeechAnnotation tests (a real sentence merely *containing* an
+     asterisk pair must survive, mirroring the existing parenthetical rule).
+  2. **Investigate why the degenerate decode wasn't healed.** ~300 s of audio → ~10 chars is
+     ~0.03 chars/s — far below `SparseTranscriptGuard`'s 4 chars/s trigger (HANDOFF §7 #43), so
+     if the installed `1.0.0+abf6bb8` build was running, the guard should have fired: either its
+     unprompted witness re-decode ALSO came back degenerate (adoption needs ≥2× the chars), the
+     paste came via a path outside the guard, or the running instance predated the fix. Evidence
+     path (memory `win-tail-cutoff-investigation` playbook): the `Engine decode …` +
+     witness/tailGuard lines in `%APPDATA%\JVoice\diagnostic.log` around the event, plus the kept
+     WAV in `%APPDATA%\JVoice\capture\` (`JVOICE_KEEP_WAV=1` is still armed) → reproduce with
+     `--bench`. This is the same §7 #39/#41/#43 degenerate-decode family — fix the class, not
+     just this clip.
 1. **~~Silence-hallucination gate~~ — DONE 2026-07-02** (HANDOFF §7 #38). Calibrated on David's
    real clips; discriminator = prompt-vs-no-prompt agreement (confidence measured inverted);
    shipped as `Core/Policy/SilenceHallucinationGate` + a witness decode in the engine. 17/17
