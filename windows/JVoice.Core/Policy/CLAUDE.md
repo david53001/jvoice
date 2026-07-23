@@ -19,7 +19,8 @@ keep `namespace JVoice.Core`.)
   for by an unprompted decode; an empty reduced witness ⇒ no-speech. Calibrated on David's real
   clips (whisper confidence is INVERTED — don't threshold it).
 - `PhraseLoopGuard.cs` — the §7 #42 repetition-loop policy: detects/collapses runs of ≥4
-  consecutive identical phrases (≤12 tokens, case/punctuation-insensitive) — whisper's
+  consecutive identical phrases (≤32 tokens since §7 #45 — a real 21-token loop escaped the
+  original 12-token window; case/punctuation-insensitive) — whisper's
   prompt-induced decode loop ("You're not a man of Caesar." ×16), which sits MID-transcript with
   full timestamp coverage, so RepetitionGuard and TailCoverageGuard are blind to it. The engine
   answers a detected loop with an unprompted witness re-decode (`Resolve` prefers the witness —

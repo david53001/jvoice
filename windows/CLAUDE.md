@@ -13,13 +13,13 @@ Full as-built state, pinned versions, and every deviation live in
   `Transcription/`, `Models/`, `Policy/`.
 - `JVoice.App/` — the WPF Windows shell. Sub-areas: `Whisper/`, `UI/`,
   `Platform/{Capture,Persistence,System}/`. Orchestrator: `VoiceCoordinator.cs`.
-- `JVoice.Tests/` — xUnit suite (880 tests) translated from the Swift tests; locks the brain.
+- `JVoice.Tests/` — xUnit suite (883 tests) translated from the Swift tests; locks the brain.
 - `tools/` — standalone probe/utility CLIs (whisper-smoke, hotkey-probe, nospeech-probe,
   capture-stop-probe, generate-icon).
 
 ## Build / test
 - `dotnet build windows/JVoice.sln -c Release` — 0 errors.
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 880 green.
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 883 green.
 - **Gotcha:** if the tray app is running it locks `JVoice.Core.dll` in `JVoice.App\bin`, so a
   build reports MSB3021/MSB3026 *copy* errors (not compile errors). Close it, or build to a
   throwaway dir with `-o <tmp>`.

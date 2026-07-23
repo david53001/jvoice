@@ -18,7 +18,7 @@ unless that's the explicit task, and update the matching test in the same commit
 - `Policy/` — pure cross-cutting decision logic (coordinator decisions, hotkey/game gating, stats, timings).
 
 ## Verify changes
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 880 tests, must stay green.
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 883 tests, must stay green.
 - `dotnet build windows/JVoice.sln -c Release` — 0 errors.
 
 ## Layout note

@@ -1694,6 +1694,40 @@ These are real corrections discovered during execution — preserve them.
       ("Commit to GitHub"); origin main/windows-port deliberately NOT moved — the
       ~/Downloads installers and the windows-v1.0.0 release assets do NOT have this fix.
 
+45. **Repetition-loop spam AGAIN (long-period variant) — root-caused + FIXED (2026-07-24,
+    branch `fix/phrase-loop-long-period`, David-reported: a Bible-study reflection pasted
+    "a big male loneliness epidemic and i used to have a girlfriend but now i don't so i
+    feel like it's" ×6).**
+    - **What actually happened (diagnostic.log 01:59–02:00 + KeptCapture
+      `capture-20260724-020028-378.wav`, 51.7 s):** the paste came from the STREAMING path
+      ("Stream finish -> 4 pieces, 1277 chars") — a chunk decode locked into a whisper
+      repetition loop, same prompt-induced class as §7 #42. The whole-file decode of the
+      same clip is CLEAN (793 chars — David spoke the phrase ONCE), so the #42 machinery
+      would have healed it… but `PhraseLoopGuard.HasLoop` never fired: the looping unit is
+      **21 tokens**, and `MaxPhraseTokens` was **12** — the guard was structurally blind to
+      any loop period above 12 tokens (the #42 loop was 6). The decayed tail ("and i feel
+      like it's a big male loneliness epidemic" ×3) is separately below the ≥4 threshold.
+    - **Fix (one constant, test-locked):** `PhraseLoopGuard.MaxPhraseTokens` **12 → 32**
+      (headroom over the longest observed period). The false-positive shield is
+      `MinRepeats=4` — genuine dictation never says the same ≤32-token clause 4×
+      consecutively verbatim — and the whole-file remedy stays the model's own unprompted
+      witness, so §7 #21 holds. No other code change: the streaming chunk check
+      (`DegenerateDecode` → lossless whole-file fallback) and the whole-file witness path
+      already did the right thing once detection sees the loop.
+    - **VERIFICATION:** `dotnet test` **883/883** (3 new: the verbatim pasted loop text →
+      `HasLoop` true + collapse shape, a synthetic 21-token ×4 loop; the above-cap
+      kept-test moved to 33 tokens). Red confirmed first: the live pasted text returned
+      `HasLoop=false` on the unfixed guard. On-device `--bench --stream` of the real clip
+      now logs `Engine chunk phraseLoop chars=714 -> chunk decode failed (whole-file
+      fallback)` and returns the clean whole-file transcript — the live failure end-to-end
+      caught. No-harm sweep: the #42 Caesar clip still heals via witness ("Now John 19." /
+      "You oppose Caesar." restored), and 3 of the night's real clips decode byte-identical
+      to their live raw text.
+    - **Residual:** a loop with period >32 tokens would still escape; no such loop has
+      been observed (6 and 21 are the two real data points) and each doubling of the
+      window has zero false-positive cost by the MinRepeats argument, so widen again if a
+      third variant appears.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`

@@ -26,5 +26,5 @@ the tray app, or build to a throwaway dir:
 
 ## Verify
 `dotnet build windows/JVoice.App/JVoice.App.csproj -c Release` (0 errors) ·
-`dotnet test windows/JVoice.Tests` (880 green) ·
+`dotnet test windows/JVoice.Tests` (883 green) ·
 `JVoice.exe --hud-preview <state>` / `--settings-render <png>` / `--hud-render <png>` for visuals.
