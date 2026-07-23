@@ -1727,6 +1727,15 @@ These are real corrections discovered during execution — preserve them.
       been observed (6 and 21 are the two real data points) and each doubling of the
       window has zero false-positive cost by the MinRepeats argument, so widen again if a
       third variant appears.
+    - **DEPLOYED LOCALLY + PUSHED (2026-07-24 ~02:13, David-requested):**
+      `%LOCALAPPDATA%\Programs\JVoice` refreshed to the fix build (fresh
+      `JVoiceFlavor=gpu` publish → `robocopy /MIR /XF LICENSE.txt uninstall.ps1`); the
+      elevated instance was bounced UAC-free via `Stop/Start-ScheduledTask "JVoice
+      Elevated Autostart"` while idle (new pid verified HUD Idle + clean update check,
+      and David's next dictations transcribed on the fixed build). Branch pushed to
+      `origin/fix/phrase-loop-long-period` with David's go-ahead ("push it"); origin
+      main/windows-port deliberately NOT moved (same posture as #44) — the ~/Downloads
+      installers and the windows-v1.0.0 release assets do NOT have this fix.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
