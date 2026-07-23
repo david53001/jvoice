@@ -21,8 +21,9 @@
   `CoordinatorDecisions.CanStartRecording` + `_isTranscribing` make a pending transcript
   outrank a new start request; `GlobalHotkey` fires only on the chord key's down transition
   (auto-repeat swallowed without triggering). Bench-verified on the real clips: `*referred*`
-  → no-speech, the 165 s WAV → the full ~1,900-char dictation. Not in the installed app until
-  the next install/release.
+  → no-speech, the 165 s WAV → the full ~1,900-char dictation. Installed locally 2026-07-23
+  (David-requested) and pushed to `origin/fix/asterisk-annotations-and-inflight-guard`; the
+  installers/release assets do NOT have it yet.
 1. **~~Silence-hallucination gate~~ — DONE 2026-07-02** (HANDOFF §7 #38). Calibrated on David's
    real clips; discriminator = prompt-vs-no-prompt agreement (confidence measured inverted);
    shipped as `Core/Policy/SilenceHallucinationGate` + a witness decode in the engine. 17/17

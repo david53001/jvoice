@@ -1681,8 +1681,18 @@ These are real corrections discovered during execution — preserve them.
       clip still fully kept (#21 balance holds).
     - **Residual:** the 165 s clip's decode ends with "so he was added to the eleven
       apostles as the twelve" ×3 — below PhraseLoopGuard's deliberate ≥4 threshold, so
-      it's kept (collapsing 2–3× eats genuine dictation; unchanged). NOT in the installed
-      app until the next install/release.
+      it's kept (collapsing 2–3× eats genuine dictation; unchanged). Also observed: the
+      custom word "vercel" phonetically overcorrects "a verse from the book" → "a vercel"
+      (pre-existing PhoneticMatcher behavior; David may want to drop that custom word or
+      add a correction rule).
+    - **DEPLOYED LOCALLY (2026-07-23 22:44, David-requested):** `%LOCALAPPDATA%\Programs\
+      JVoice` refreshed to the fix build (fresh `JVoiceFlavor=gpu` publish → `robocopy /MIR
+      /XF LICENSE.txt uninstall.ps1`; the running instance was NOT elevated this time, so a
+      plain `Stop-Process` worked; relaunched via `Start-ScheduledTask "JVoice Elevated
+      Autostart"`, new pid verified HUD Idle + clean update check). Branch pushed to
+      `origin/fix/asterisk-annotations-and-inflight-guard` with David's go-ahead
+      ("Commit to GitHub"); origin main/windows-port deliberately NOT moved — the
+      ~/Downloads installers and the windows-v1.0.0 release assets do NOT have this fix.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
