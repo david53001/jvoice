@@ -85,7 +85,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         case .downloadingModel(let downloaded, let total):
             return "\(ModelDownloadProgress.label(downloaded: downloaded, total: total)) — needs the network."
         case .preparingModel:
-            return "One-time per login. Keep JVoice open."
+            return "One-time per model. Keep JVoice open."
         case .transcribing:
             return "Processing the latest recording…"
         case .done:

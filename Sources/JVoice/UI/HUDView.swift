@@ -303,7 +303,7 @@ private struct PreparingModelPill: View {
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.textPrimary)
                 TimelineView(.periodic(from: startDate, by: 1)) { context in
-                    Text("Once per login — keep JVoice open · \(Self.elapsed(startDate, context.date))")
+                    Text("One-time per model — keep JVoice open · \(Self.elapsed(startDate, context.date))")
                         .monospacedDigit()
                 }
                 .font(.system(size: 10, weight: .medium))
