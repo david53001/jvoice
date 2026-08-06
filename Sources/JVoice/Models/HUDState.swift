@@ -3,6 +3,11 @@ import Foundation
 public enum HUDState: Equatable, Codable, Sendable {
     case idle
     case recording
+    /// Fetching the model over the network. Split out from `preparingModel` so
+    /// a multi-hundred-megabyte download never hides behind a label that reads
+    /// as a hang — `downloadedBytes` is measured on disk each poll, `totalBytes`
+    /// is the model's approximate published size (see `ModelDownloadProgress`).
+    case downloadingModel(downloadedBytes: Int64, totalBytes: Int64)
     case preparingModel
     case transcribing
     case done(String)
@@ -19,11 +24,14 @@ public enum HUDState: Equatable, Codable, Sendable {
     private enum CodingKeys: String, CodingKey {
         case kind
         case payload
+        case downloadedBytes
+        case totalBytes
     }
 
     private enum Kind: String, Codable {
         case idle
         case recording
+        case downloadingModel
         case preparingModel
         case transcribing
         case done
@@ -36,6 +44,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Ready"
         case .recording:
             return "Recording"
+        case .downloadingModel(let downloaded, let total):
+            return "Downloading model… \(ModelDownloadProgress.label(downloaded: downloaded, total: total))"
         case .preparingModel:
             return "Preparing model…"
         case .transcribing:
@@ -53,8 +63,10 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Ready"
         case .recording:
             return "Listening"
+        case .downloadingModel:
+            return "Downloading Model"
         case .preparingModel:
-            return "Preparing Model"
+            return "Optimizing for Neural Engine"
         case .transcribing:
             return "Transcribing"
         case .done:
@@ -70,8 +82,10 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "JVoice is standing by."
         case .recording:
             return "Capturing audio for transcription."
+        case .downloadingModel(let downloaded, let total):
+            return "\(ModelDownloadProgress.label(downloaded: downloaded, total: total)) — needs the network."
         case .preparingModel:
-            return "First use of a model can take a few minutes."
+            return "One-time per login. Keep JVoice open."
         case .transcribing:
             return "Processing the latest recording…"
         case .done:
@@ -87,6 +101,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "waveform"
         case .recording:
             return "mic.fill"
+        case .downloadingModel:
+            return "arrow.down.circle"
         case .preparingModel:
             return "gearshape.2"
         case .transcribing:
@@ -104,6 +120,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return .secondary
         case .recording:
             return .red
+        case .downloadingModel:
+            return .blue
         case .preparingModel:
             return .blue
         case .transcribing:
@@ -119,14 +137,14 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .idle:
             return false
-        case .recording, .preparingModel, .transcribing, .done, .error:
+        case .recording, .downloadingModel, .preparingModel, .transcribing, .done, .error:
             return true
         }
     }
 
     public var isBusy: Bool {
         switch self {
-        case .recording, .preparingModel, .transcribing:
+        case .recording, .downloadingModel, .preparingModel, .transcribing:
             return true
         case .idle, .done, .error:
             return false
@@ -137,7 +155,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .done, .error:
             return true
-        case .idle, .recording, .preparingModel, .transcribing:
+        case .idle, .recording, .downloadingModel, .preparingModel, .transcribing:
             return false
         }
     }
@@ -146,7 +164,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .done(let text), .error(let text):
             return text
-        case .idle, .recording, .preparingModel, .transcribing:
+        case .idle, .recording, .downloadingModel, .preparingModel, .transcribing:
             return nil
         }
     }
@@ -160,6 +178,11 @@ public enum HUDState: Equatable, Codable, Sendable {
             self = .idle
         case .recording:
             self = .recording
+        case .downloadingModel:
+            self = .downloadingModel(
+                downloadedBytes: try container.decode(Int64.self, forKey: .downloadedBytes),
+                totalBytes: try container.decode(Int64.self, forKey: .totalBytes)
+            )
         case .preparingModel:
             self = .preparingModel
         case .transcribing:
@@ -179,6 +202,10 @@ public enum HUDState: Equatable, Codable, Sendable {
             try container.encode(Kind.idle, forKey: .kind)
         case .recording:
             try container.encode(Kind.recording, forKey: .kind)
+        case .downloadingModel(let downloadedBytes, let totalBytes):
+            try container.encode(Kind.downloadingModel, forKey: .kind)
+            try container.encode(downloadedBytes, forKey: .downloadedBytes)
+            try container.encode(totalBytes, forKey: .totalBytes)
         case .preparingModel:
             try container.encode(Kind.preparingModel, forKey: .kind)
         case .transcribing:

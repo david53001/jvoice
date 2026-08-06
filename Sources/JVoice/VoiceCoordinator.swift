@@ -375,11 +375,46 @@ final class VoiceCoordinator: ObservableObject {
         switch state {
         case .recording:
             menuBarController.updateActivity(.recording)
-        case .preparingModel, .transcribing:
+        case .downloadingModel, .preparingModel, .transcribing:
             menuBarController.updateActivity(.transcribing)
         case .idle, .done, .error:
             menuBarController.updateActivity(.idle)
         }
+    }
+
+    /// Keep the HUD honest while the model loads. The wait has two very
+    /// different halves and the user needs to tell them apart: a model folder
+    /// that is missing or half-fetched means we are downloading it (hundreds of
+    /// megabytes, needs the network), and once it is complete on disk the
+    /// remaining wait is the CoreML/Neural-Engine compile. Collapsing both into
+    /// one static label is what made a silent 632 MB fetch read as a hang.
+    ///
+    /// Polls once a second because neither half publishes progress we can
+    /// subscribe to — see `ModelDownloadProgress` for why WhisperKit's own
+    /// `Progress` is unusable here. Cancelled by the caller once the load ends.
+    private func startModelPreparationHUD() -> Task<Void, Never> {
+        let model = whisperModel.modelOption
+        return Task { @MainActor [weak self] in
+            while !Task.isCancelled {
+                guard let self else { return }
+                self.updateHUD(Self.modelPreparationState(for: model))
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+    }
+
+    private static func modelPreparationState(for model: WhisperModelOption) -> HUDState {
+        guard let documents = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            return .preparingModel
+        }
+        let folderName = model.whisperKitFolderName
+        if WhisperModelLocator.completeModelFolder(named: folderName, documentsDirectory: documents) != nil {
+            return .preparingModel
+        }
+        return .downloadingModel(
+            downloadedBytes: ModelDownloadProgress.downloadedBytes(folderName: folderName, documentsDirectory: documents),
+            totalBytes: model.approximateDownloadBytes
+        )
     }
 
     /// Re-render theme-dependent surfaces when the user flips the sun/moon
@@ -589,8 +624,9 @@ final class VoiceCoordinator: ObservableObject {
         // specialization), tell the user instead of showing a silent
         // "Transcribing…" hang.
         if await !transcriptionManager.isEngineReady() {
-            updateHUD(.preparingModel)
+            let progress = startModelPreparationHUD()
             await transcriptionManager.prewarmAndWait()
+            progress.cancel()
             if Task.isCancelled { return }
             updateHUD(.transcribing)
         }
