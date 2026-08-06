@@ -115,6 +115,34 @@ public final class PasteManager: ObservableObject {
         stage(text)
     }
 
+    /// Put `text` on the clipboard as a plain string and stop — for the
+    /// clipboard-only mode, where the user pastes it themselves. Unlike `stage`,
+    /// this adds NO Transient/Concealed markers, so the entry stays visible to
+    /// clipboard-history managers (which is what the user wants here). Synthesizes
+    /// no Cmd+V, so it needs no Accessibility trust.
+    public func copyOnly(_ text: String) {
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
+
+    /// Synthesize the target app's own Undo (Cmd+Z) to reverse the last paste.
+    /// Gated on Accessibility trust (posting synthetic key events requires it),
+    /// posted directly to `targetPID` — the app the paste landed in.
+    @discardableResult
+    public func sendUndo(targetPID: pid_t) -> Bool {
+        guard accessibilityTrusted() else { return false }
+        guard let source = CGEventSource(stateID: .hidSystemState) else { return false }
+        guard let keyDown = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: true),
+              let keyUp = CGEvent(keyboardEventSource: source, virtualKey: CGKeyCode(kVK_ANSI_Z), keyDown: false) else {
+            return false
+        }
+        keyDown.flags = .maskCommand
+        keyUp.flags = .maskCommand
+        keyDown.postToPid(targetPID)
+        keyUp.postToPid(targetPID)
+        return true
+    }
+
     @discardableResult
     public func paste(_ text: String? = nil) -> PasteOutcome {
         guard accessibilityTrusted() else { return .accessibilityDenied }

@@ -124,6 +124,9 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     /// (see `decodeRecoveringFromRegurgitation`). Only the bench's `--no-prompt`
     /// turns this off, to A/B the biasing.
     private let useVocabularyPrompt: Bool
+    /// Dictate-to-translate: when true the decoder runs the `.translate` task,
+    /// which always outputs English regardless of the spoken (source) language.
+    private let translate: Bool
     /// Token IDs for the vocabulary prompt, computed once per vocabulary
     /// change (requires the loaded model's tokenizer). Empty array = computed,
     /// nothing to bias. nil = needs (re)computation.
@@ -131,11 +134,12 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     private var whisperKit: WhisperKit?
     private var loadTask: Task<Void, Error>?
 
-    public init(model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = [], useVocabularyPrompt: Bool = true) {
+    public init(model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = [], useVocabularyPrompt: Bool = true, translate: Bool = false) {
         self.model = model
         self.language = language
         self.vocabulary = vocabulary
         self.useVocabularyPrompt = useVocabularyPrompt
+        self.translate = translate
     }
 
     public func updateVocabulary(_ words: [String]) {
@@ -195,6 +199,9 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     private func decodeFile(_ audioURL: URL, kit: WhisperKit, withoutTimestamps: Bool, usePrompt: Bool) async throws -> String {
         var decodeOptions = DecodingOptions()
         decodeOptions.language = language.whisperCode
+        // Dictate-to-translate: Whisper's translate task always targets English;
+        // `language` above stays the SOURCE hint.
+        if translate { decodeOptions.task = .translate }
         // Language is fixed by the user — skip the language-detection pass.
         decodeOptions.detectLanguage = false
         // Fewer temperature-fallback retries on a hard window → lower tail latency.
@@ -213,6 +220,7 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     private func decodeSamples(_ samples: [Float], kit: WhisperKit, usePrompt: Bool) async throws -> String {
         var decodeOptions = DecodingOptions()
         decodeOptions.language = language.whisperCode
+        if translate { decodeOptions.task = .translate }
         decodeOptions.detectLanguage = false
         decodeOptions.temperatureFallbackCount = 2
         decodeOptions.withoutTimestamps = true
@@ -457,9 +465,9 @@ public final class TranscriptionManager: ObservableObject {
         await engine.makeStreamingSession()
     }
 
-    private static func makeDefaultEngine(model: WhisperModelOption, language: TranscriptionLanguage = .english) -> any TranscriptionEngine {
+    private static func makeDefaultEngine(model: WhisperModelOption, language: TranscriptionLanguage = .english, translate: Bool = false) -> any TranscriptionEngine {
         #if canImport(WhisperKit)
-        return WhisperKitTranscriptionEngine(model: model, language: language)
+        return WhisperKitTranscriptionEngine(model: model, language: language, translate: translate)
         #else
         return FileBackedTranscriptionEngine()
         #endif

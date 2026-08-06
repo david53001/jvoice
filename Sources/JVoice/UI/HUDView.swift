@@ -10,6 +10,8 @@ struct HUDView: View {
         switch state {
         case .recording:
             RecordingPill(theme: theme, meter: meter, onStop: onStop)
+        case .downloadingModel(let downloaded, let total):
+            DownloadingModelPill(downloaded: downloaded, total: total, theme: theme)
         case .preparingModel:
             PreparingModelPill(theme: theme)
         case .transcribing:
@@ -228,6 +230,60 @@ private struct TranscribingPill: View {
 /// (~2¼ min for Large on first use). The ticking counter proves the app is
 /// alive — a static pill reads as a hang and invites a force-quit that restarts
 /// the compile from zero.
+/// The network half of the model wait. Kept separate from `PreparingModelPill`
+/// because a download and a CoreML compile fail for different reasons and want
+/// different reassurance: this one is bounded and measurable, so it shows real
+/// megabytes and a determinate bar rather than an elapsed timer.
+private struct DownloadingModelPill: View {
+    let downloaded: Int64
+    let total: Int64
+    let theme: Theme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "arrow.down.circle")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(theme.textPrimary)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Downloading Model")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.textPrimary)
+                Text(ModelDownloadProgress.label(downloaded: downloaded, total: total))
+                    .font(.system(size: 10, weight: .medium))
+                    .monospacedDigit()
+                    .foregroundStyle(theme.textSecondary)
+                ProgressBar(
+                    fraction: ModelDownloadProgress.fraction(downloaded: downloaded, total: total),
+                    theme: theme
+                )
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .pillChrome(theme: theme)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Downloading model, \(ModelDownloadProgress.label(downloaded: downloaded, total: total))")
+    }
+}
+
+private struct ProgressBar: View {
+    let fraction: Double
+    let theme: Theme
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(theme.hairline)
+                Capsule()
+                    .fill(theme.barFill)
+                    .frame(width: geometry.size.width * fraction)
+            }
+        }
+        .frame(width: 150, height: 3)
+    }
+}
+
 private struct PreparingModelPill: View {
     let theme: Theme
     @State private var startDate = Date()
@@ -243,11 +299,11 @@ private struct PreparingModelPill: View {
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(theme.textPrimary)
             VStack(alignment: .leading, spacing: 2) {
-                Text("Preparing Model")
+                Text("Optimizing for Neural Engine")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.textPrimary)
                 TimelineView(.periodic(from: startDate, by: 1)) { context in
-                    Text("One-time setup — keep JVoice open · \(Self.elapsed(startDate, context.date))")
+                    Text("One-time per model — keep JVoice open · \(Self.elapsed(startDate, context.date))")
                         .monospacedDigit()
                 }
                 .font(.system(size: 10, weight: .medium))

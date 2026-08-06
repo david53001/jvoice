@@ -40,6 +40,24 @@ public enum WhisperModelOption: String, Codable, CaseIterable, Identifiable, Sen
         "openai_whisper-\(whisperKitModelName)"
     }
 
+    /// Published download size of `whisperKitFolderName`, used only as the
+    /// denominator of the HUD's model-download progress. Approximate on
+    /// purpose: the numerator is measured on disk and the fraction is clamped
+    /// (see `ModelDownloadProgress`), so a drifting published size can shade the
+    /// readout slightly but can never push the bar past 100%.
+    public var approximateDownloadBytes: Int64 {
+        switch self {
+        case .tiny:
+            return 77_000_000
+        case .base:
+            return 145_000_000
+        case .small:
+            return 483_000_000
+        case .largeTurbo:
+            return 632_000_000
+        }
+    }
+
     public var approximateRelativeSize: String {
         switch self {
         case .tiny:

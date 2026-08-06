@@ -22,6 +22,17 @@ final class StatsStore {
         return (Double(totalWords) / totalSeconds) * 60.0
     }
 
+    /// Estimated minutes saved by dictating instead of typing: how much longer it
+    /// would have taken to TYPE the dictated words (at a 40-wpm typist baseline)
+    /// than it took to SPEAK them. Floored at 0 so a slow dictation never reports
+    /// negative savings. Port of the Windows `StatsMath.EstimatedMinutesSaved`.
+    var estimatedMinutesSaved: Double {
+        guard totalWords > 0 else { return 0 }
+        let typingMinutes = Double(totalWords) / 40.0
+        let spokenMinutes = totalSeconds > 0 ? totalSeconds / 60.0 : 0
+        return max(0, typingMinutes - spokenMinutes)
+    }
+
     func record(words: Int, durationSeconds: Double) {
         guard words > 0, durationSeconds > 0 else { return }
         totalWords += words
