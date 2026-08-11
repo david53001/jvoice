@@ -18,6 +18,10 @@ public interface IAudioRecorder
     /// float read/write is atomic, so no lock is needed (see NAudioRecorder).
     float CurrentLevel { get; }
 
+    /// The capture endpoint the user picked in Settings; null = follow the system default.
+    /// Applied on the next TryStart, so a Settings change needs no restart (schema v5, §7 #46).
+    string? PreferredDeviceId { get; set; }
+
     /// Raised when a recording fails mid-stream (device lost, write error). The
     /// partial WAV has already been torn down. Analog of the Swift delegate
     /// failure callbacks (encodeFailure / finishedUnsuccessfully / config change).

@@ -70,6 +70,9 @@ public static class SettingsStateJson
             appModeRules = state.AppModeRules.Select(r => new { appMatch = r.AppMatch, mode = r.Mode.ToString() }),
             // ── v4 key (Windows-only) ── Absent in older / macOS files; Deserialize falls back to true.
             checkForUpdates = state.CheckForUpdates,
+            // ── v5 keys (Windows-only) ── Chosen capture endpoint; JSON null = system default.
+            inputDeviceId = state.InputDeviceId,
+            inputDeviceName = state.InputDeviceName,
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -105,7 +108,11 @@ public static class SettingsStateJson
             TranslateToEnglish: TryGetBool(root, "translateToEnglish") ?? false,
             AppAwareModes: TryGetBool(root, "appAwareModes") ?? true,
             AppModeRules: ParseAppModeRules(root),
-            CheckForUpdates: TryGetBool(root, "checkForUpdates") ?? true);
+            CheckForUpdates: TryGetBool(root, "checkForUpdates") ?? true,
+            // v5: absent / JSON null / wrong-typed => null = follow the system default endpoint.
+            // A blank string is normalized to null so an empty field can't mean "device ''".
+            InputDeviceId: NullIfBlank(TryGetString(root, "inputDeviceId")),
+            InputDeviceName: NullIfBlank(TryGetString(root, "inputDeviceName")));
     }
 
     // field parsers (each falls back to the field default)
@@ -246,6 +253,9 @@ public static class SettingsStateJson
     private static string? TryGetString(JsonElement root, string name)
         => root.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.String
             ? e.GetString() : null;
+
+    private static string? NullIfBlank(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value;
 
     private static bool? TryGetBool(JsonElement root, string name)
         => root.TryGetProperty(name, out var e) && e.ValueKind is JsonValueKind.True or JsonValueKind.False

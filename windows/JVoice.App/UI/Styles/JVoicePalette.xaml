@@ -309,6 +309,88 @@
         </Setter>
     </Style>
 
+    <!-- ===== mono combo box (monochrome dropdown) =====
+         The Settings design otherwise avoids ComboBoxes (App Modes uses a click-to-cycle chip),
+         but the microphone picker can hold an arbitrary number of endpoints — this machine has
+         six — so cycling would be poor. Fully templated because the OS default ComboBox renders
+         light-gray chrome that clashes with the black panel. -->
+    <Style x:Key="MonoComboItem" TargetType="ComboBoxItem">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Padding" Value="9,6" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBoxItem">
+                    <Border x:Name="Row" Background="Transparent" Padding="{TemplateBinding Padding}">
+                        <ContentPresenter />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsHighlighted" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="#1FFFFFFF" />
+                        </Trigger>
+                        <Trigger Property="IsSelected" Value="True">
+                            <Setter TargetName="Row" Property="Background" Value="#2EFFFFFF" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <Style x:Key="MonoComboBox" TargetType="ComboBox">
+        <Setter Property="OverridesDefaultStyle" Value="True" />
+        <Setter Property="Foreground" Value="{StaticResource Text.W85}" />
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="MinHeight" Value="30" />
+        <Setter Property="ItemContainerStyle" Value="{StaticResource MonoComboItem}" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="ComboBox">
+                    <Grid>
+                        <!-- Canonical WPF ComboBox structure: the ToggleButton is chrome only and the
+                             selection ContentPresenter sits in the ComboBox template itself, so
+                             SelectionBoxItem/SelectionBoxItemTemplate resolve via TemplateBinding.
+                             (Nesting the presenter inside the ToggleButton leaves
+                             SelectionBoxItemTemplate unresolved and the item renders as ToString().) -->
+                        <ToggleButton x:Name="Toggle" Focusable="False" ClickMode="Press"
+                                      IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                            <ToggleButton.Template>
+                                <ControlTemplate TargetType="ToggleButton">
+                                    <Border x:Name="Chrome" CornerRadius="6"
+                                            Background="{StaticResource Settings.InputBg}"
+                                            BorderBrush="{StaticResource Settings.Border}" BorderThickness="1">
+                                        <TextBlock HorizontalAlignment="Right" Margin="0,0,9,0" VerticalAlignment="Center"
+                                                   FontFamily="Segoe MDL2 Assets" Text="&#xE70D;" FontSize="9"
+                                                   Foreground="{StaticResource Text.W45}" />
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="Chrome" Property="Background" Value="#14FFFFFF" />
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </ToggleButton.Template>
+                        </ToggleButton>
+                        <ContentPresenter x:Name="ContentSite" IsHitTestVisible="False"
+                                          Margin="9,0,26,0" VerticalAlignment="Center"
+                                          Content="{TemplateBinding SelectionBoxItem}"
+                                          ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                          TextElement.Foreground="{TemplateBinding Foreground}" />
+                        <Popup x:Name="PART_Popup" AllowsTransparency="True" Placement="Bottom"
+                               IsOpen="{TemplateBinding IsDropDownOpen}" Focusable="False" PopupAnimation="Fade">
+                            <Border Background="#FF121212" BorderBrush="{StaticResource Settings.Border}"
+                                    BorderThickness="1" CornerRadius="6" Margin="0,4,0,0"
+                                    MinWidth="{TemplateBinding ActualWidth}" MaxHeight="260">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="2">
+                                    <ItemsPresenter />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== mono switch (CheckBox rendered as a macOS-style switch) =====
          OFF: dark track + light-gray knob. ON: white track + black knob. -->
     <Style x:Key="MonoSwitch" TargetType="CheckBox">

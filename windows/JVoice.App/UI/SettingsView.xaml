@@ -216,6 +216,34 @@
                 <!-- ===================== COLUMN 2 ===================== -->
                 <StackPanel Grid.Column="2">
 
+                    <!-- MICROPHONE (white) — schema v5, §7 #46.
+                         "System default" is the default, but the OS default capture endpoint is not
+                         reliably a real microphone: virtual devices (Voicemod, NVIDIA Broadcast,
+                         VB-Cable, Elgato Wave Link, OBS) commonly own it and emit digital silence
+                         whenever their app isn't running, which reads as "no speech / gibberish".
+                         Picking the endpoint here fixes that inside JVoice, without changing the
+                         OS-wide default that other apps may deliberately depend on. -->
+                    <ui:DarkSection HeaderText="Microphone" AccentBrush="{StaticResource Settings.Blue}">
+                        <StackPanel>
+                            <!-- ItemTemplate (not DisplayMemberPath) so long endpoint names such as
+                                 "Microphone (Voicemod Virtual Audio Device (WDM))" ellipsize inside the
+                                 ~300px column instead of clipping. It also supplies the selection box's
+                                 template (WPF derives SelectionBoxItemTemplate from ItemTemplate). -->
+                            <ComboBox Style="{StaticResource MonoComboBox}"
+                                      ItemsSource="{Binding InputDevices}"
+                                      SelectedItem="{Binding SelectedInputDevice, Mode=TwoWay}">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Name}" TextTrimming="CharacterEllipsis" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <TextBlock FontSize="10" Foreground="{StaticResource Text.W38}" TextWrapping="Wrap"
+                                       Margin="0,7,0,0"
+                                       Text="Which microphone JVoice records from. Leave on System default unless dictation returns nothing &#8212; virtual mics (Voicemod, NVIDIA Broadcast, VB-Cable, Wave Link) can hold the system default and send silence when their app isn't running. Pick your real mic here instead." />
+                        </StackPanel>
+                    </ui:DarkSection>
+
                     <!-- LANGUAGE (indigo) -->
                     <ui:DarkSection HeaderText="Language" AccentBrush="{StaticResource Settings.Indigo}">
                         <StackPanel>

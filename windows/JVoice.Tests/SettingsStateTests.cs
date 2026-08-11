@@ -10,7 +10,7 @@ public class SettingsStateTests
     public void Default_MatchesSwiftDefaults()
     {
         var s = SettingsState.Default;
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Equal(ToneStyle.Casual, s.Mode);
         // Windows-only divergence: macOS defaults to .tiny; Windows defaults to Large (most
         // accurate, and fast with GPU acceleration). See SettingsState.Default.
@@ -30,11 +30,14 @@ public class SettingsStateTests
         Assert.Empty(s.AppModeRules);          // no user rules (built-in code apps are implicit)
         // v4 (Windows-only)
         Assert.True(s.CheckForUpdates);        // auto update-check ON by default
+        // v5 (Windows-only): no explicit microphone → follow the system default capture endpoint.
+        Assert.Null(s.InputDeviceId);
+        Assert.Null(s.InputDeviceName);
     }
 
     [Fact]
-    public void CurrentSchemaVersion_Is4()
-        => Assert.Equal(4, SettingsState.CurrentSchemaVersion);
+    public void CurrentSchemaVersion_Is5()
+        => Assert.Equal(5, SettingsState.CurrentSchemaVersion);
 
     [Fact]
     public void Record_With_OverridesOnlyNamedFields()
@@ -43,7 +46,7 @@ public class SettingsStateTests
         Assert.Equal(ToneStyle.Formal, s.Mode);
         Assert.False(s.RemoveFillerWords);
         Assert.Equal(WhisperModelOption.LargeTurbo, s.Model);   // unchanged (the Windows default)
-        Assert.Equal(4, s.SchemaVersion);
+        Assert.Equal(5, s.SchemaVersion);
         Assert.Equal(GameDetectionMode.Balanced, s.GameMode);  // unchanged
     }
 
@@ -97,7 +100,7 @@ public class SettingsStateTests
     [Fact]
     public void Deserialize_SchemaVersionEqualToCurrent_IsAccepted()
     {
-        var s = SettingsStateJson.Deserialize("""{"schemaVersion":4,"mode":"Formal"}""");
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":5,"mode":"Formal"}""");
         Assert.Equal(ToneStyle.Formal, s.Mode);
     }
 
@@ -109,7 +112,52 @@ public class SettingsStateTests
     {
         var s = SettingsStateJson.Deserialize("""{"schemaVersion":3,"mode":"Casual"}""");
         Assert.True(s.CheckForUpdates);
-        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // normalized forward to 4
+        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // normalized forward
+    }
+
+    // ===== InputDeviceId / InputDeviceName (schema v5, §7 #46) =====
+
+    // A v4 file (no microphone fields) must deserialize cleanly and mean "system default".
+    [Fact]
+    public void Deserialize_PreV5File_DefaultsInputDeviceToNull()
+    {
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":4,"mode":"Casual"}""");
+        Assert.Null(s.InputDeviceId);
+        Assert.Null(s.InputDeviceName);
+        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion);
+    }
+
+    [Fact]
+    public void InputDevice_RoundTrips()
+    {
+        var original = SettingsState.Default with
+        {
+            InputDeviceId = "{0.0.1.00000000}.{9d7dd97d-51e1-4aca-98f6-d0c83dd168c7}",
+            InputDeviceName = "Microphone (Yeti Classic)",
+        };
+        var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(original));
+        Assert.Equal(original.InputDeviceId, back.InputDeviceId);
+        Assert.Equal(original.InputDeviceName, back.InputDeviceName);
+    }
+
+    [Fact]
+    public void InputDevice_NullRoundTripsAsSystemDefault()
+    {
+        var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(SettingsState.Default));
+        Assert.Null(back.InputDeviceId);
+        Assert.Null(back.InputDeviceName);
+    }
+
+    // A blank id must never be treated as "device with the empty name" — it means system default.
+    [Theory]
+    [InlineData("\"\"")]
+    [InlineData("\"   \"")]
+    [InlineData("null")]
+    [InlineData("123")]
+    public void Deserialize_BlankOrWrongTypedInputDeviceId_IsNull(string rawValue)
+    {
+        var s = SettingsStateJson.Deserialize($$"""{"schemaVersion":5,"inputDeviceId":{{rawValue}}}""");
+        Assert.Null(s.InputDeviceId);
     }
 
     // CheckForUpdates round-trips: false survives serialize → deserialize (a user opting out sticks).
@@ -135,7 +183,7 @@ public class SettingsStateTests
         string[] langs = { "English", "english", "Romanian", "Klingon" };
         for (int i = 0; i < 400; i++)
         {
-            int version = rng.Next(0, 6); // 0..5 — anything > 4 (CurrentSchemaVersion) must throw
+            int version = rng.Next(0, 7); // 0..6 — anything > 5 (CurrentSchemaVersion) must throw
             var dto = new
             {
                 schemaVersion = version,

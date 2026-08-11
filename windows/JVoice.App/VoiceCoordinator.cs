@@ -90,6 +90,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _appAwareModes = s.AppAwareModes;
         AppModeRules = new ObservableCollection<AppModeRule>(s.AppModeRules);
         _checkForUpdates = s.CheckForUpdates;
+        // v5 input device: null = system default. Pushed to the recorder before any recording
+        // can start, so the very first press already records from the chosen endpoint.
+        _inputDeviceId = s.InputDeviceId;
+        _inputDeviceName = s.InputDeviceName;
+        _recorder.PreferredDeviceId = _inputDeviceId;
+        InputDevices = new ObservableCollection<AudioInputRouter.InputDeviceChoice>(
+            AudioInputRouter.ListInputDevices());
         Updates = new UpdateCoordinator(_updateService, _dispatcher, QuitApp, () => Tray?.RebuildMenu());
         _totalWordsSpoken = _statsStore.TotalWords;
         _averageWpm = _statsStore.AverageWpm;
@@ -158,6 +165,54 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     {
         get => _developerTermsEnabled;
         set { if (_developerTermsEnabled == value) return; _developerTermsEnabled = value; PersistSettings(); Raise(); }
+    }
+
+    // ---- v5: microphone selection (Windows-only; §7 #46) ----
+    // The system default capture endpoint is NOT reliably a real microphone — virtual devices
+    // (Voicemod, NVIDIA Broadcast, VB-Cable, Elgato Wave Link) commonly own it and emit digital
+    // silence when their app isn't running. Recording from a user-chosen endpoint fixes that
+    // in-app, without changing the OS-wide default other apps may depend on.
+    private string? _inputDeviceId;
+    private string? _inputDeviceName;
+
+    /// Selectable microphones, "System default" first. Re-enumerated by RefreshInputDevices()
+    /// when Settings opens, since devices are plugged/unplugged while the app runs.
+    public ObservableCollection<AudioInputRouter.InputDeviceChoice> InputDevices { get; }
+
+    /// Bound to the Settings picker. Setting it persists the choice and re-points the recorder;
+    /// the next recording uses the new endpoint (no restart, no engine reload).
+    public AudioInputRouter.InputDeviceChoice SelectedInputDevice
+    {
+        get
+        {
+            foreach (var d in InputDevices)
+                if (string.Equals(d.Id, _inputDeviceId, StringComparison.Ordinal)) return d;
+            // Chosen device isn't currently present (unplugged/disabled). Show the default row
+            // rather than a blank combo — the stored id is kept so it re-binds when it returns.
+            return InputDevices.Count > 0 ? InputDevices[0] : new(null, AudioInputRouter.SystemDefaultLabel);
+        }
+        set
+        {
+            if (string.Equals(_inputDeviceId, value.Id, StringComparison.Ordinal)) return;
+            _inputDeviceId = value.Id;
+            _inputDeviceName = value.Id is null ? null : value.Name;
+            _recorder.PreferredDeviceId = _inputDeviceId;
+            PersistSettings();
+            Raise(); Raise(nameof(InputDeviceName));
+        }
+    }
+
+    /// Friendly name of the chosen microphone for display ("System default" when unset).
+    public string InputDeviceName => _inputDeviceName ?? AudioInputRouter.SystemDefaultLabel;
+
+    /// Re-enumerate the available microphones (devices come and go while the app runs).
+    /// Called when the Settings window opens so the picker is never stale.
+    public void RefreshInputDevices()
+    {
+        var current = AudioInputRouter.ListInputDevices();
+        InputDevices.Clear();
+        foreach (var d in current) InputDevices.Add(d);
+        Raise(nameof(SelectedInputDevice));
     }
 
     public ObservableCollection<string> CustomWords { get; }
@@ -539,6 +594,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     public void ShowSettings()
     {
+        // Re-enumerate microphones every time Settings opens — endpoints are plugged, unplugged
+        // and enabled/disabled while the app runs, so a list captured at startup goes stale.
+        RefreshInputDevices();
         _settingsWindow ??= new SettingsWindow(this);
         _settingsWindow.ShowOrActivate();
     }
@@ -606,6 +664,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             AppAwareModes = _appAwareModes,
             AppModeRules = AppModeRules.ToList(),
             CheckForUpdates = _checkForUpdates,
+            InputDeviceId = _inputDeviceId,
+            InputDeviceName = _inputDeviceName,
         });
     }
 
@@ -632,6 +692,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _translateToEnglish = s.TranslateToEnglish;
         _appAwareModes = s.AppAwareModes;
         _checkForUpdates = s.CheckForUpdates;
+        // v5: back to "System default" — and push it to the recorder for the next recording.
+        _inputDeviceId = s.InputDeviceId;
+        _inputDeviceName = s.InputDeviceName;
+        _recorder.PreferredDeviceId = _inputDeviceId;
         AppModeRules.Clear();
         foreach (var r in s.AppModeRules) AppModeRules.Add(r);
         // Undo hotkey back to its default (null = disabled): tear down the 2nd hook, or re-register.
@@ -650,6 +714,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(Hotkey)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
         Raise(nameof(CopyToClipboardOnly)); Raise(nameof(TranslateToEnglish)); Raise(nameof(AppAwareModes)); Raise(nameof(HasAppModeRules));
         Raise(nameof(CheckForUpdatesAutomatically));
+        Raise(nameof(InputDeviceName)); Raise(nameof(SelectedInputDevice));
         _engine = MakeEngine(_whisperModel, _language, CustomWords.ToList());
         _ = _engine.PrewarmAsync();
     }
@@ -991,7 +1056,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
             if (string.IsNullOrEmpty(processed))
             {
-                await _dispatcher.InvokeAsync(() => { UpdateHud(HudState.Error("No speech detected.")); ScheduleHudReset(AppTimings.HudResetDelay); });
+                string message = NoSpeechMessage(audioPath);
+                await _dispatcher.InvokeAsync(() => { UpdateHud(HudState.Error(message)); ScheduleHudReset(AppTimings.HudResetDelay); });
                 return;
             }
 
@@ -1054,11 +1120,14 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             // "No speech detected." HUD the post-processing empty-result path uses (above),
             // so "I didn't say anything" never looks like an error or pastes a hallucination.
             if (tex.Kind == TranscriptionErrorKind.EmptyTranscript)
+            {
+                string message = NoSpeechMessage(audioPath);
                 await _dispatcher.InvokeAsync(() =>
                 {
-                    UpdateHud(HudState.Error("No speech detected."));
+                    UpdateHud(HudState.Error(message));
                     ScheduleHudReset(AppTimings.HudResetDelay);
                 });
+            }
             else
                 await _dispatcher.InvokeAsync(() => ShowError(tex.Message));
         }
@@ -1078,6 +1147,30 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             // cancellation, throw) — a stuck flag would dead-key the hotkey for the session.
             _ = _dispatcher.InvokeAsync(() => _isTranscribing = false);
         }
+    }
+
+    /// The message to show when nothing was transcribed. Normally "No speech detected." — but if
+    /// the recording is bit-exact digital silence the microphone sent nothing at all, and blaming
+    /// the user's voice is actively misleading (that wording hid a dead virtual-mic default for a
+    /// whole session; §7 #46). Fail-safe: only ever reached when the transcript is already empty,
+    /// so it can change the wording of an error but never suppress a transcript.
+    private string NoSpeechMessage(string? audioPath)
+    {
+        const string Default = "No speech detected.";
+        if (audioPath is null) return Default;
+        try
+        {
+            var stats = CaptureSignal.Measure(audioPath);
+            if (stats is not { } s) return Default;
+            DiagnosticLog.Write($"CaptureSignal  samples={s.TotalSamples}  nonZero={s.NonZeroSamples}  " +
+                $"ratio={s.NonZeroRatio:0.000000}  secs={s.Seconds:0.00}");
+            if (!SilentCaptureDetector.IsDeadInput(s)) return Default;
+
+            string? name = _inputDeviceName ?? AudioInputRouter.ResolveDeviceName(_inputDeviceId);
+            DiagnosticLog.Write($"CaptureSignal  DEAD INPUT — device=\"{name ?? "<unknown>"}\"");
+            return SilentCaptureDetector.DeadInputMessage(name);
+        }
+        catch { return Default; }
     }
 
     private static void ActivateWindow(IntPtr hwnd)

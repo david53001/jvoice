@@ -45,6 +45,11 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
     public bool IsRecording { get; private set; }
     public DateTime? StartedAt { get; private set; }
 
+    /// The user's explicitly chosen capture endpoint id from Settings; null = follow the system
+    /// default (the pre-v5 behavior). Read at TryStart, so changing it in Settings takes effect
+    /// on the next recording without restarting the app.
+    public string? PreferredDeviceId { get; set; }
+
     /// Latest microphone peak level (0..1). 0 when not recording.
     public float CurrentLevel => _level;
 
@@ -61,7 +66,7 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
             error = null;
             try
             {
-                _device = ResolveCaptureDevice();
+                _device = ResolveCaptureDevice(PreferredDeviceId);
                 _capture = new WasapiCapture(_device, useEventSync: true);
 
                 string path = MakeTemporaryRecordingPath();
@@ -372,10 +377,10 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
 
     // device selection
 
-    private static MMDevice ResolveCaptureDevice()
+    private static MMDevice ResolveCaptureDevice(string? userChoiceId)
     {
         var enumerator = new MMDeviceEnumerator();
-        string? preferredId = AudioInputRouter.PreferredCaptureDeviceId();
+        string? preferredId = AudioInputRouter.PreferredCaptureDeviceId(userChoiceId);
         if (preferredId is not null)
         {
             try { return enumerator.GetDevice(preferredId); } catch { /* fall through */ }

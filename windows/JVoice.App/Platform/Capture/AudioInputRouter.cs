@@ -27,7 +27,9 @@ public static class AudioInputRouter
     private const int FormFactorHeadset = 5;
 
     /// The device id to record from, or null = use the system default capture device.
-    public static string? PreferredCaptureDeviceId()
+    /// <paramref name="userChoiceId"/> is the user's explicit Settings pick (null = "System
+    /// default"); it wins whenever that endpoint is still active (CaptureDeviceSelection).
+    public static string? PreferredCaptureDeviceId(string? userChoiceId = null)
     {
         try
         {
@@ -49,7 +51,7 @@ public static class AudioInputRouter
                     IsBuiltIn: IsBuiltIn(dev)));
             }
 
-            string? pick = BluetoothDevicePolicy.PickNonBluetooth(defaultIsBluetooth, endpoints);
+            string? pick = CaptureDeviceSelection.Resolve(userChoiceId, defaultIsBluetooth, endpoints);
             defaultDevice?.Dispose();
             return pick;
         }
@@ -57,6 +59,51 @@ public static class AudioInputRouter
         {
             return null; // any HAL/enumeration error → fall back to system default
         }
+    }
+
+    /// One selectable microphone in Settings. A null <see cref="Id"/> is the "System default" row.
+    public readonly record struct InputDeviceChoice(string? Id, string Name);
+
+    /// Active capture endpoints for the Settings picker, "System default" first. Enumeration
+    /// failures degrade to just the system-default row so the picker is never empty.
+    public static IReadOnlyList<InputDeviceChoice> ListInputDevices()
+    {
+        var list = new List<InputDeviceChoice> { new(null, SystemDefaultLabel) };
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            foreach (var dev in enumerator.EnumerateAudioEndPoints(DataFlow.Capture, DeviceState.Active))
+            {
+                try { list.Add(new InputDeviceChoice(dev.ID, dev.FriendlyName)); }
+                catch { /* odd driver — skip this endpoint, keep the rest */ }
+                finally { dev.Dispose(); }
+            }
+        }
+        catch { /* fall through with just the default row */ }
+        return list;
+    }
+
+    /// Label for the "follow the OS default" row (also what Settings shows when nothing is picked).
+    public const string SystemDefaultLabel = "System default";
+
+    /// Friendly name of the endpoint JVoice would actually open right now, for error messages
+    /// ("<name> is not sending any audio"). Never throws; falls back to a generic label.
+    public static string? ResolveDeviceName(string? userChoiceId)
+    {
+        try
+        {
+            using var enumerator = new MMDeviceEnumerator();
+            string? id = PreferredCaptureDeviceId(userChoiceId);
+            if (id is not null)
+            {
+                using var dev = enumerator.GetDevice(id);
+                return dev.FriendlyName;
+            }
+            if (!enumerator.HasDefaultAudioEndpoint(DataFlow.Capture, Role.Console)) return null;
+            using var def = enumerator.GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console);
+            return def.FriendlyName;
+        }
+        catch { return null; }
     }
 
     private static bool IsBluetooth(MMDevice device)

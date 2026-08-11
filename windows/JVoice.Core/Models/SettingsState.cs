@@ -28,9 +28,20 @@ public sealed record SettingsState(
     // Automatically check GitHub for a newer JVoice release and offer an in-app update. On by
     // default; the check is a single anonymous GET to the GitHub API that sends no user data (the
     // second and only other network call besides the one-time model download). No macOS counterpart.
-    bool CheckForUpdates = true)
+    bool CheckForUpdates = true,
+    // ── v5 (Windows-only) ──
+    // The capture endpoint to record from. null = follow the system default (the behavior before
+    // v5, and still the default). Stored because the system default is NOT always a real
+    // microphone: virtual devices (Voicemod, NVIDIA Broadcast, VB-Cable, Elgato Wave Link, OBS)
+    // routinely own the default and emit digital silence when their app isn't running, and
+    // changing the OS-wide default to work around that would break the apps that want it (§7 #46).
+    string? InputDeviceId = null,
+    // Friendly name of InputDeviceId, cached purely so Settings and error messages can name the
+    // device without enumerating, and so a re-plugged device is still recognizable to the user.
+    // Never used for matching — InputDeviceId is the identity.
+    string? InputDeviceName = null)
 {
-    public const int CurrentSchemaVersion = 4;
+    public const int CurrentSchemaVersion = 5;
 
     public IReadOnlyList<AppModeRule> AppModeRules { get; init; } = AppModeRules ?? Array.Empty<AppModeRule>();
 
@@ -61,5 +72,8 @@ public sealed record SettingsState(
         TranslateToEnglish: false,
         AppAwareModes: true,
         AppModeRules: Array.Empty<AppModeRule>(),
-        CheckForUpdates: true);
+        CheckForUpdates: true,
+        // null = follow the system default capture endpoint (v5).
+        InputDeviceId: null,
+        InputDeviceName: null);
 }
