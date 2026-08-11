@@ -1737,10 +1737,86 @@ These are real corrections discovered during execution — preserve them.
       main/windows-port deliberately NOT moved (same posture as #44) — the ~/Downloads
       installers and the windows-v1.0.0 release assets do NOT have this fix.
 
+#### #46 — "no speech / random gibberish": the system default mic was a SILENT virtual device (2026-08-11, branch `fix/input-device-selection`)
+
+**David-reported:** "JVoice right now is not working, there is no speech being detected or random jibberish
+is being sent, I think it might be an input issue." He was right — and it was **not** a brain bug.
+
+**Root cause.** JVoice always recorded from the **system default** capture endpoint. On 2026-08-11 that
+default was **"Microphone (Voicemod Virtual Audio Device (WDM))"** — a virtual mic installed by Voicemod
+(`C:\Program Files\Voicemod V3`) with the Voicemod app **not running**, so it delivered **bit-exact digital
+silence**: correct WAV length, correct format, every sample zero. Whisper decoding pure silence produced
+either hallucinated filler (the paste `"Thank you. Thank you. Thank you."`) or nothing at all → the
+misleading `"No speech detected."`. **Both reported symptoms, one cause.**
+
+Evidence chain (all reproducible via the new probe):
+- every decode that day logged `rawRms=0.0000` (2026-07-29 logged `0.0186`/`0.0206`);
+- `capture-20260811-151829-989.wav`: **0 of 1,224,640 samples non-zero** across 76.54 s;
+- microphone privacy consent was `Allow` in HKCU/HKLM/NonPackaged — **not** the privacy gate;
+- a 3 s capture of all six active endpoints: Voicemod virtual, Razer Kraken V3 (muted), and the three
+  Elgato Virtual Audio endpoints all returned **0 non-zero samples**; only **Microphone (Yeti Classic)**
+  returned real audio (283,584/285,120 non-zero, peak 0.045). **Five of six endpoints are silent.**
+
+**Fix 1 — the user picks the microphone (schema v4 → v5).** New pure
+`JVoice.Core/Audio/CaptureDeviceSelection.Resolve(userChoiceId, defaultIsBluetooth, endpoints)` layers an
+explicit choice over the existing `BluetoothDevicePolicy`: the chosen endpoint wins **when still active**,
+an explicit pick **outranks** the Bluetooth heuristic, a vanished pick **degrades to the automatic policy**
+(the stored id is kept so it re-binds when the device returns), and `null` = system default = the exact
+pre-v5 behavior. Persisted as `inputDeviceId` / `inputDeviceName` (per-field null fallback; a blank string
+normalizes to null). Plumbed `AudioInputRouter.PreferredCaptureDeviceId(userChoiceId)` →
+`IAudioRecorder.PreferredDeviceId` → `NAudioRecorder.ResolveCaptureDevice`, **read at `TryStart`** so a
+Settings change applies to the next recording with no restart and no engine reload. New monochrome Settings
+**"Microphone"** card (first in column 2) with a new `MonoComboBox` style — the design otherwise avoids
+ComboBoxes (App Modes uses a click-to-cycle chip), but an arbitrary endpoint count makes cycling wrong.
+`ShowSettings()` re-enumerates every time it opens, since devices come and go.
+
+> **Why in-app and not "just change the Windows default":** a virtual device usually owns the default
+> **deliberately** (Voicemod/Wave Link/Broadcast route other apps through it). Changing the OS-wide default
+> to fix JVoice would break those. JVoice now records where the user tells it to, and leaves the OS alone.
+
+**Fix 2 — a dead input says so.** New pure `JVoice.Core/Policy/SilentCaptureDetector` +
+`JVoice.App/Platform/Capture/CaptureSignal` (reuses `WavTail.ParseHeader`). When a transcript comes back
+empty **and** the recording is digital silence, the HUD now names the device — *"«Microphone (X)» is not
+sending any audio. Pick a different microphone in JVoice Settings, or check that it isn't muted."* —
+instead of `"No speech detected."`, the wording that blames the user's voice and hid this outage all
+session. Wired at both empty-transcript sites in `VoiceCoordinator` (post-processing empty, and the
+`EmptyTranscript` catch), and logged as `CaptureSignal …` / `DEAD INPUT …` lines.
+
+> **This is NOT the retired RMS gate (§7 #21).** It keys on **exact-zero samples**, not amplitude, and the
+> two populations do not overlap: dead endpoints measure **0.000000** non-zero, a live-but-idle Yeti
+> measures **0.146** in the written 16 kHz/16-bit WAV (0.995 in the raw 48 kHz float capture) and real
+> quiet dictation measures **0.75–0.84**. Threshold `MaxNonZeroRatio = 0.0005`, `MinSecondsToJudge = 0.35`.
+> It is also **fail-safe by construction**: it is consulted *only* once the transcript is already empty, so
+> it can change an error's wording but can **never** reject audio or suppress a transcript.
+
+**New tool — `windows/tools/audio-input-probe`** (compiles the REAL `AudioInputRouter`/`NAudioRecorder`/
+`CaptureSignal`, capture-stop-probe precedent):
+- no args — passive enumeration: every endpoint with mute state, master level, form factor, enumerator,
+  mix format, plus which one the shipping router would open (and the inactive/unplugged ones);
+- `--record <s> [--all]` — opens endpoints directly and grades peak/RMS/non-zero;
+- `--recorder <s>` — **end-to-end**: reads `settings.json`, records via the real `NAudioRecorder`, grades
+  with the real `CaptureSignal`/`SilentCaptureDetector`;
+- `--measure <wav…>` — replays existing captures through the same decision (no mic needed).
+
+**Verification.** `dotnet test` **917/917** (34 new: `CaptureDeviceSelectionTests`,
+`SilentCaptureDetectorTests` — both calibrated on the real measured numbers — plus v5 settings round-trip
+and the updated schema locks). On device: `--measure` gave the correct verdict on **6/6 real captures**
+(the 3 silent ones → DEAD INPUT, the 3 real-speech ones → live audio); `--recorder 3` with the new setting
+captured real audio from the Yeti through the full production path; `--bench` of a real speech clip decoded
+identically to its original log line (brain untouched); Settings rendered via `--settings-render`.
+
+**Deployed** to `%LOCALAPPDATA%\Programs\JVoice` (GPU publish, `robocopy /MIR`; old install backed up first)
+and `settings.json` set to `inputDeviceId = {0.0.1.00000000}.{9d7dd97d-51e1-4aca-98f6-d0c83dd168c7}`
+("Microphone (Yeti Classic)"), schemaVersion 5. App bounced via `Stop/Start-ScheduledTask 'JVoice Elevated
+Autostart'`. **NOT pushed; installers / release assets do not have this fix.**
+
+**Still open:** a live dictation by David is the only thing not verified (it needs his voice). If the Yeti
+is not the mic he actually speaks into, he just picks the right one in Settings → Microphone.
+
 ### Persistence paths (overview §4.9)
-`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 4** — v2 added `gameMode`
+`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 5** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
-(§7 #32); v4 added `checkForUpdates` (§7 #36)),
+(§7 #32); v4 added `checkForUpdates` (§7 #36); v5 added `inputDeviceId`/`inputDeviceName` (§7 #46)),
 `stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
 (value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
