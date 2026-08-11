@@ -1810,8 +1810,8 @@ and `settings.json` set to `inputDeviceId = {0.0.1.00000000}.{9d7dd97d-51e1-4aca
 ("Microphone (Yeti Classic)"), schemaVersion 5. App bounced via `Stop/Start-ScheduledTask 'JVoice Elevated
 Autostart'`. **NOT pushed; installers / release assets do not have this fix.**
 
-**Still open:** a live dictation by David is the only thing not verified (it needs his voice). If the Yeti
-is not the mic he actually speaks into, he just picks the right one in Settings → Microphone.
+**✅ LIVE-VERIFIED by David the same session** ("yeah it works") — the Yeti was indeed the right mic and
+dictation works again on the deployed build. Nothing left open on this item.
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 5** — v2 added `gameMode`
