@@ -35,6 +35,31 @@ to a folder, zip the folder as `app.zip` (top-level `JVoice\`), then `iexpress /
 packages `app.zip` + `install.ps1` + `launch.vbs` + `uninstall.ps1` into the setup `.exe`. See the
 `.sed` files and `install.ps1` in `windows/artifacts/pkg-<gpu|cpu>/sources/`.
 
+```powershell
+# stage the publish under a folder literally named JVoice, so the zip has the top-level JVoicedotnet publish windows/JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=gpu `
+  -p:SelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=true `
+  -o windows/artifacts/publish-gpu/JVoice
+Copy-Item LICENSE windows/artifacts/publish-gpu/JVoice/LICENSE.txt
+Compress-Archive -Path windows/artifacts/publish-gpu/JVoice `
+  -DestinationPath windows/artifacts/pkg-gpu/sources/app.zip -Force
+iexpress.exe /N /Q windows/artifacts/JVoice-gpu.sed        # writes ~/Downloads/JVoice-Setup-GPU.exe
+```
+
+> **ALWAYS smoke-test a rebuilt installer before shipping it, and never by just running it** — a
+> real run kills David's tray app and overwrites his install. Redirect every side effect instead:
+> `JVOICE_INSTALL_DIR` / `JVOICE_DESKTOP_DIR` / `JVOICE_STARTMENU_DIR` / `JVOICE_ARP_NAME` into a temp
+> sandbox plus **`JVOICE_NO_STOP=1`** (leaves the running instance alone), `JVOICE_SKIP_LAUNCH=1`,
+> `JVOICE_NO_UI=1`; then assert `JVoice.exe` landed and runs. This is not optional: on 2026-08-22 it
+> caught a packaging break that would have made **every** one-click install fail with *"JVoice install
+> failed: Exception calling ExtractToFile … The directory name is invalid"* (see below).
+
+**Zip directory entries (2026-08-22 bug, fixed):** `Compress-Archive` writes a directory entry using a
+**backslash** separator (`JVoiceuntimes\`). `install.ps1` used to detect directories with
+`FullName.EndsWith('/')`, so it treated that entry as a file, and `ExtractToFile` failed with *"The
+directory name is invalid"* — nothing extracted and the installer aborted. It now tests
+`[string]::IsNullOrEmpty($entry.Name)`, which is empty for **every** directory entry regardless of
+separator, and normalises `/` → `\` before joining. Don't reintroduce a separator-based test.
+
 **No console, branded splash (2026-07-13):** IExpress launches `wscript.exe launch.vbs` (a GUI host,
 so no console window ever appears — David saw the old `powershell -WindowStyle Hidden` console during
 the first live in-app update and flagged it as scary), which runs `install.ps1` fully hidden with
