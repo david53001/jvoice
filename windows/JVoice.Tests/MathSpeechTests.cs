@@ -179,6 +179,34 @@ public class MathSpeechTests
     }
 
     [Fact]
+    public void ARealParagraphConvertsOnlyItsMathematics()
+    {
+        const string spoken =
+            "okay so I was working through the homework and the first problem says find x where " +
+            "x squared minus 5 x plus 6 equals 0, which factors into open parenthesis x minus 2 " +
+            "close parenthesis times open parenthesis x minus 3 close parenthesis, so x equals 2 " +
+            "or x equals 3, and honestly that took me way longer than it should have";
+        const string expected =
+            "okay so I was working through the homework and the first problem says find x where " +
+            "x² - 5x + 6 = 0, which factors into (x - 2) × (x - 3), so x = 2 " +
+            "or x = 3, and honestly that took me way longer than it should have";
+
+        Assert.Equal(expected, MathSpeech.Convert(spoken));
+    }
+
+    [Fact]
+    public void ARealBibleStudyParagraphIsUntouched()
+    {
+        const string spoken =
+            "alright so for the Bible study tonight we are in John chapter 3 verse 16, for God so " +
+            "loved the world that he gave his only begotten son, and I want to talk about what " +
+            "that means for us today, because a lot of people read that verse a hundred times " +
+            "and never actually stop to think about it";
+
+        Assert.Same(spoken, MathSpeech.Convert(spoken));
+    }
+
+    [Fact]
     public void ScriptTablesArePaired()
     {
         // Every character that can be super/subscripted must have exactly one mapping.
