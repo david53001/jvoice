@@ -73,6 +73,9 @@ public static class SettingsStateJson
             // ── v5 keys (Windows-only) ── Chosen capture endpoint; JSON null = system default.
             inputDeviceId = state.InputDeviceId,
             inputDeviceName = state.InputDeviceName,
+            // ── v6 key (Windows-only) ── Opt-out spoken-mathematics notation. Absent in older /
+            // macOS files; Deserialize falls back to true (default ON).
+            mathNotation = state.MathNotation,
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -112,7 +115,9 @@ public static class SettingsStateJson
             // v5: absent / JSON null / wrong-typed => null = follow the system default endpoint.
             // A blank string is normalized to null so an empty field can't mean "device ''".
             InputDeviceId: NullIfBlank(TryGetString(root, "inputDeviceId")),
-            InputDeviceName: NullIfBlank(TryGetString(root, "inputDeviceName")));
+            InputDeviceName: NullIfBlank(TryGetString(root, "inputDeviceName")),
+            // v6: absent (a pre-v6 / macOS file) or wrong-typed => true = spoken maths ON.
+            MathNotation: TryGetBool(root, "mathNotation") ?? true);
     }
 
     // field parsers (each falls back to the field default)

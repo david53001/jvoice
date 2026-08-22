@@ -10,7 +10,7 @@ public class SettingsStateTests
     public void Default_MatchesSwiftDefaults()
     {
         var s = SettingsState.Default;
-        Assert.Equal(5, s.SchemaVersion);
+        Assert.Equal(6, s.SchemaVersion);
         Assert.Equal(ToneStyle.Casual, s.Mode);
         // Windows-only divergence: macOS defaults to .tiny; Windows defaults to Large (most
         // accurate, and fast with GPU acceleration). See SettingsState.Default.
@@ -33,11 +33,13 @@ public class SettingsStateTests
         // v5 (Windows-only): no explicit microphone → follow the system default capture endpoint.
         Assert.Null(s.InputDeviceId);
         Assert.Null(s.InputDeviceName);
+        // v6 (Windows-only): spoken-mathematics notation ON by default (opt-out).
+        Assert.True(s.MathNotation);
     }
 
     [Fact]
-    public void CurrentSchemaVersion_Is5()
-        => Assert.Equal(5, SettingsState.CurrentSchemaVersion);
+    public void CurrentSchemaVersion_Is6()
+        => Assert.Equal(6, SettingsState.CurrentSchemaVersion);
 
     [Fact]
     public void Record_With_OverridesOnlyNamedFields()
@@ -46,7 +48,7 @@ public class SettingsStateTests
         Assert.Equal(ToneStyle.Formal, s.Mode);
         Assert.False(s.RemoveFillerWords);
         Assert.Equal(WhisperModelOption.LargeTurbo, s.Model);   // unchanged (the Windows default)
-        Assert.Equal(5, s.SchemaVersion);
+        Assert.Equal(6, s.SchemaVersion);
         Assert.Equal(GameDetectionMode.Balanced, s.GameMode);  // unchanged
     }
 
@@ -100,7 +102,7 @@ public class SettingsStateTests
     [Fact]
     public void Deserialize_SchemaVersionEqualToCurrent_IsAccepted()
     {
-        var s = SettingsStateJson.Deserialize("""{"schemaVersion":5,"mode":"Formal"}""");
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":6,"mode":"Formal"}""");
         Assert.Equal(ToneStyle.Formal, s.Mode);
     }
 
@@ -160,6 +162,29 @@ public class SettingsStateTests
         Assert.Null(s.InputDeviceId);
     }
 
+    // ===== MathNotation (schema v6) =====
+
+    // A v5 file (no "mathNotation" field) must deserialize cleanly and default it to true.
+    [Fact]
+    public void Deserialize_PreV6File_DefaultsMathNotationToTrue()
+    {
+        var s = SettingsStateJson.Deserialize("""{"schemaVersion":5,"mode":"Casual"}""");
+        Assert.True(s.MathNotation);
+        Assert.Equal(SettingsState.CurrentSchemaVersion, s.SchemaVersion); // normalized forward
+    }
+
+    // MathNotation round-trips: false survives serialize → deserialize (a user opting out sticks).
+    [Fact]
+    public void MathNotation_RoundTrips()
+    {
+        foreach (var expected in new[] { true, false })
+        {
+            var original = SettingsState.Default with { MathNotation = expected };
+            var roundTripped = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(original));
+            Assert.Equal(expected, roundTripped.MathNotation);
+        }
+    }
+
     // CheckForUpdates round-trips: false survives serialize → deserialize (a user opting out sticks).
     [Fact]
     public void CheckForUpdates_RoundTrips()
@@ -183,7 +208,7 @@ public class SettingsStateTests
         string[] langs = { "English", "english", "Romanian", "Klingon" };
         for (int i = 0; i < 400; i++)
         {
-            int version = rng.Next(0, 7); // 0..6 — anything > 5 (CurrentSchemaVersion) must throw
+            int version = rng.Next(0, 8); // 0..7 — anything > 6 (CurrentSchemaVersion) must throw
             var dto = new
             {
                 schemaVersion = version,

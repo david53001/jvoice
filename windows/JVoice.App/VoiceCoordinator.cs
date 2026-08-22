@@ -81,6 +81,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             _historyStore.Entries.Select(e => new TranscriptRow(e.Id, e.Text)));
         _removeFillerWords = s.RemoveFillerWords;
         _developerTermsEnabled = s.DeveloperTerms;
+        _mathNotationEnabled = s.MathNotation;
         _hotkeyChord = s.Hotkey;
         _gameMode = s.GameMode;
         // v3 dictation features
@@ -165,6 +166,17 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     {
         get => _developerTermsEnabled;
         set { if (_developerTermsEnabled == value) return; _developerTermsEnabled = value; PersistSettings(); Raise(); }
+    }
+
+    private bool _mathNotationEnabled;
+    /// Opt-out toggle for spoken-mathematics notation (<see cref="MathSpeech"/>):
+    /// "a subscript n equals 1 plus 7n" → "aₙ = 1 + 7n". Like DeveloperTermsEnabled this
+    /// only persists — it's read fresh in the transcription path (ProcessAndPaste), so no
+    /// engine reload is needed.
+    public bool MathNotationEnabled
+    {
+        get => _mathNotationEnabled;
+        set { if (_mathNotationEnabled == value) return; _mathNotationEnabled = value; PersistSettings(); Raise(); }
     }
 
     // ---- v5: microphone selection (Windows-only; §7 #46) ----
@@ -666,6 +678,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             CheckForUpdates = _checkForUpdates,
             InputDeviceId = _inputDeviceId,
             InputDeviceName = _inputDeviceName,
+            MathNotation = _mathNotationEnabled,
         });
     }
 
@@ -685,6 +698,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         foreach (var c in s.Corrections) Corrections.Add(c);
         RemoveFillerWords = s.RemoveFillerWords;
         DeveloperTermsEnabled = s.DeveloperTerms;
+        MathNotationEnabled = s.MathNotation;
         GameMode = s.GameMode;
         // v3 dictation features — set the backing fields directly (not the properties) to avoid an
         // extra engine SwapEngine mid-reset; the final MakeEngine below reads the reset _translate.
@@ -711,7 +725,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _isInitializing = false;
         _settingsStore.Flush();
         RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags(); RaiseGameModeFlags(); RaiseUndoHotkeyFlags();
-        Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(Hotkey)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
+        Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(MathNotationEnabled)); Raise(nameof(Hotkey)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
         Raise(nameof(CopyToClipboardOnly)); Raise(nameof(TranslateToEnglish)); Raise(nameof(AppAwareModes)); Raise(nameof(HasAppModeRules));
         Raise(nameof(CheckForUpdatesAutomatically));
         Raise(nameof(InputDeviceName)); Raise(nameof(SelectedInputDevice));
@@ -1053,6 +1067,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             }
             string processed = TextProcessor.RemoveWhisperHallucinations(
                 TextProcessor.Process(transcript, effectiveTone, extraDict, _removeFillerWords, vocab));
+
+            // Spoken maths LAST, deliberately: tone formatting, filler removal and the correction
+            // dictionaries all operate on English words, so running them first means no maths
+            // symbol they'd never recognise can be mangled by them. MathSpeech returns the same
+            // string when nothing activated, so ordinary dictation is untouched.
+            if (_mathNotationEnabled) processed = MathSpeech.Convert(processed);
 
             if (string.IsNullOrEmpty(processed))
             {

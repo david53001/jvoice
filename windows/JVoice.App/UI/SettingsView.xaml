@@ -310,6 +310,20 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                    <TextBlock Text="Math Notation" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
+                                    <TextBlock Text="Speak equations: &#8220;x squared plus 1&#8221; &#8594; x&#178; + 1" FontSize="10" Foreground="{StaticResource Text.W38}"
+                                               TextWrapping="Wrap" Margin="0,2,0,0" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" VerticalAlignment="Center"
+                                          Style="{StaticResource MonoSwitch}"
+                                          IsChecked="{Binding MathNotationEnabled, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Margin="0,0,12,0">
                                     <TextBlock Text="Copy to Clipboard" FontSize="12" FontWeight="Medium" Foreground="{StaticResource Text.W85}" />
                                     <TextBlock Text="Copy the text instead of auto-pasting it" FontSize="10" Foreground="{StaticResource Text.W38}"
                                                TextWrapping="Wrap" Margin="0,2,0,0" />

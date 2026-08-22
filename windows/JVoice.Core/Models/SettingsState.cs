@@ -39,9 +39,15 @@ public sealed record SettingsState(
     // Friendly name of InputDeviceId, cached purely so Settings and error messages can name the
     // device without enumerating, and so a re-plugged device is still recognizable to the user.
     // Never used for matching — InputDeviceId is the identity.
-    string? InputDeviceName = null)
+    string? InputDeviceName = null,
+    // ── v6 (Windows-only) ──
+    // Opt-out toggle for spoken-mathematics notation ("x squared plus 1" → "x² + 1"). Windows-only;
+    // no macOS counterpart. Default ON like DeveloperTerms: MathSpeech only rewrites a run of words
+    // when an activating construct found its operands, so ordinary speech comes back byte-identical
+    // and the feature is invisible until someone actually dictates mathematics.
+    bool MathNotation = true)
 {
-    public const int CurrentSchemaVersion = 5;
+    public const int CurrentSchemaVersion = 6;
 
     public IReadOnlyList<AppModeRule> AppModeRules { get; init; } = AppModeRules ?? Array.Empty<AppModeRule>();
 
@@ -75,5 +81,7 @@ public sealed record SettingsState(
         CheckForUpdates: true,
         // null = follow the system default capture endpoint (v5).
         InputDeviceId: null,
-        InputDeviceName: null);
+        InputDeviceName: null,
+        // Spoken-mathematics notation ON by default (v6) — opt-out, like DeveloperTerms.
+        MathNotation: true);
 }

@@ -19,7 +19,8 @@ public class SettingsStoreJsonTests
             Corrections: new[] { new CorrectionRule("web api", "web app") },
             Hotkey: new HotkeyChord(HotkeyModifiers.Control | HotkeyModifiers.Alt, 0x70, "F1"),
             GameMode: GameDetectionMode.Aggressive,
-            DeveloperTerms: false);
+            DeveloperTerms: false,
+            MathNotation: false);
 
         string json = SettingsStateJson.Serialize(original);
         var back = SettingsStateJson.Deserialize(json);
@@ -33,6 +34,7 @@ public class SettingsStoreJsonTests
         Assert.Equal(original.Hotkey, back.Hotkey);
         Assert.Equal(original.GameMode, back.GameMode);
         Assert.Equal(original.DeveloperTerms, back.DeveloperTerms);
+        Assert.Equal(original.MathNotation, back.MathNotation);
         Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
     }
 
@@ -50,11 +52,11 @@ public class SettingsStoreJsonTests
     public void Deserialize_ForwardVersion_Throws()
     {
         string json = """
-            { "schemaVersion": 6, "mode": "Casual", "model": "Tiny",
+            { "schemaVersion": 7, "mode": "Casual", "model": "Tiny",
               "language": "English", "customWords": [], "removeFillerWords": true }
             """;
         var ex = Assert.Throws<ForwardVersionException>(() => SettingsStateJson.Deserialize(json));
-        Assert.Equal(6, ex.FileVersion);
+        Assert.Equal(7, ex.FileVersion);
         Assert.Equal(SettingsState.CurrentSchemaVersion, ex.CurrentVersion);
     }
 
@@ -120,16 +122,16 @@ public class SettingsStoreJsonTests
     // `developerTerms`, `gameMode`, `hotkey` (schema v2), then the v3 dictation-feature keys
     // `copyToClipboardOnly`, `undoHotkey`, `translateToEnglish`, `appAwareModes`, `appModeRules`,
     // then the v4 key `checkForUpdates`, then the v5 microphone keys `inputDeviceId` /
-    // `inputDeviceName`. Serialize emits exactly these eighteen keys. Older builds / the macOS app
-    // ignore the unknown keys on read; Deserialize tolerates their absence (each falls back to its
-    // default).
+    // `inputDeviceName`, then the v6 key `mathNotation`. Serialize emits exactly these nineteen
+    // keys. Older builds / the macOS app ignore the unknown keys on read; Deserialize tolerates
+    // their absence (each falls back to its default).
     [Fact]
-    public void Serialize_EmitsExactlyTheEighteenKeys()
+    public void Serialize_EmitsExactlyTheNineteenKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "appAwareModes", "appModeRules", "checkForUpdates", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "inputDeviceId", "inputDeviceName", "language", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "undoHotkey" },
+            new[] { "appAwareModes", "appModeRules", "checkForUpdates", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "inputDeviceId", "inputDeviceName", "language", "mathNotation", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "undoHotkey" },
             keys);
     }
 
@@ -200,7 +202,8 @@ public class SettingsStoreJsonTests
                 UndoHotkey: rng.Next(2) == 0 ? RandomChord(rng) : (HotkeyChord?)null,
                 TranslateToEnglish: rng.Next(2) == 0,
                 AppAwareModes: rng.Next(2) == 0,
-                AppModeRules: appRules);
+                AppModeRules: appRules,
+                MathNotation: rng.Next(2) == 0);
 
             var back = SettingsStateJson.Deserialize(SettingsStateJson.Serialize(state));
             Assert.Equal(state.Mode, back.Mode);
@@ -217,6 +220,7 @@ public class SettingsStoreJsonTests
             Assert.Equal(state.TranslateToEnglish, back.TranslateToEnglish);
             Assert.Equal(state.AppAwareModes, back.AppAwareModes);
             Assert.Equal(state.AppModeRules, back.AppModeRules);
+            Assert.Equal(state.MathNotation, back.MathNotation);
             Assert.Equal(SettingsState.CurrentSchemaVersion, back.SchemaVersion);
         }
     }
@@ -369,6 +373,31 @@ public class SettingsStoreJsonTests
     {
         var s = SettingsStateJson.Deserialize("""{ "developerTerms": "notabool" }""");
         Assert.True(s.DeveloperTerms);
+    }
+
+    // ===== mathNotation field (schema v6, Windows-only, default ON) =====
+
+    [Fact]
+    public void Deserialize_MissingMathNotation_DefaultsToTrue()
+    {
+        // A v5 file (written before the key existed) → spoken maths is ON.
+        var s = SettingsStateJson.Deserialize(
+            """{ "schemaVersion": 5, "mode": "Casual", "customWords": ["X"] }""");
+        Assert.True(s.MathNotation);
+    }
+
+    [Fact]
+    public void Deserialize_MathNotationFalse_IsHonored()
+    {
+        var s = SettingsStateJson.Deserialize("""{ "mathNotation": false }""");
+        Assert.False(s.MathNotation);
+    }
+
+    [Fact]
+    public void Deserialize_MathNotationWrongType_DefaultsToTrue()
+    {
+        var s = SettingsStateJson.Deserialize("""{ "mathNotation": "notabool" }""");
+        Assert.True(s.MathNotation);
     }
 
     private static string RandomWord(Random rng)
