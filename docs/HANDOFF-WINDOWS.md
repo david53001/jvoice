@@ -1933,6 +1933,37 @@ via `--settings-render` and inspected. `--math-probe` verified from the built ex
 stdin modes. Built by four parallel agents in isolated git worktrees (engine + calibration here,
 vocabulary / numbers / plumbing dispatched), each merged and re-verified against the real corpus.
 
+**SHIPPED (2026-08-22, David-requested — "update my app and launcher and github").** App, installers
+and repo all moved to the same build:
+
+- **App** — `%LOCALAPPDATA%\Programs\JVoice` refreshed from a fresh `JVoiceFlavor=gpu` publish
+  (`robocopy /MIR /XF LICENSE.txt uninstall.ps1`), elevated instance bounced UAC-free via
+  `Stop`/`Start-ScheduledTask 'JVoice Elevated Autostart'`. Old install backed up to
+  `…\Programs\JVoice-backup-pre-math-2026-08-22`, settings to `%APPDATA%\JVoice\settings.pre-v6.bak`
+  — **delete both once he is happy.** (settings.json is still v5 on disk and becomes v6 on the first
+  write; an OLDER JVoice build would read v6 as forward-version and reset to defaults.) Post-deploy:
+  file set identical to the backup (292 files, 33 whisper natives), tray relaunched clean
+  (`HUD Idle`, clean update check), and `--bench` on a real capture decoded on the **GPU** (Vulkan,
+  large-v3-turbo, 0.45 s) — engine, model load and GPU path all survived the swap.
+- **Installers** — both `~/Downloads/JVoice-Setup.exe` (CPU) and `JVoice-Setup-GPU.exe` rebuilt through
+  the IExpress `.sed` flow; flavor split re-verified (GPU carries `cuda/` + `vulkan/` natives, CPU only
+  CPU ones). Smoke-tested into a temp sandbox with `JVOICE_NO_STOP=1` so the running elevated instance
+  was never touched: CPU 274 files / GPU 294 files, 2 shortcuts each, version
+  `1.0.0+aff3d81`, and `--math-probe` from the freshly-installed copy returned `aₙ = 1 + 7n`.
+- **⚠ That smoke test earned its keep.** The FIRST rebuild produced installers that failed on **every**
+  install — *"JVoice install failed: Exception calling ExtractToFile … The directory name is invalid"*.
+  `Compress-Archive` writes a directory entry with a **backslash** separator (`JVoiceuntimes\`) and
+  `install.ps1` detected directories with `FullName.EndsWith('/')`, so it handed a directory path to
+  `ExtractToFile`. Fixed to test `[string]::IsNullOrEmpty($entry.Name)` (empty for every directory
+  entry, whatever the separator) and to normalise `/` → `\` before joining. `windows/artifacts/` is
+  gitignored, so **the fix lives on the build machine** — the recipe and the diagnosis are in
+  `docs/launch/windows-distribution.md`. **Never ship a rebuilt installer without the sandbox run.**
+- **GitHub** — `feat/math-notation` pushed and **`main` + `windows-port` fast-forwarded to it**
+  (`74b56f9 → aff3d81`, 34 commits), which also publishes §7 #46 (the input-device fix) — both had been
+  local-only. The `windows-v1.0.0` release assets were **clobbered** with the rebuilt installers, so a
+  fresh download gets this build. Version stays `1.0.0` against tag `windows-v1.0.0`, so
+  `--update-check` is still `available=False` — nobody is auto-updated, only new downloads change.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
