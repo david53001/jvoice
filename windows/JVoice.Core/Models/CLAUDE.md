@@ -4,9 +4,10 @@ Plain data shared across the app: enums, value types, and the JSON shapes persis
 
 ## Key files
 - `SettingsState.cs` / `SettingsStateJson.cs` — the settings model + its on-disk JSON DTO
-  (schema **v3**; v2 added `gameMode`, v3 added the Windows-only dictation-feature fields
+  (schema **v6**; v2 added `gameMode`, v3 the Windows-only dictation-feature fields
   `copyToClipboardOnly` / `undoHotkey` (nullable) / `translateToEnglish` / `appAwareModes` /
-  `appModeRules`). The DTO is the persistence contract. **`Default.Model` is `LargeTurbo` (Large)
+  `appModeRules`, v4 `checkForUpdates`, v5 `inputDeviceId`/`inputDeviceName`, v6 `mathNotation`).
+  The DTO is the persistence contract. **`Default.Model` is `LargeTurbo` (Large)
   on Windows — a deliberate divergence from macOS's `.tiny`; `SettingsStateJson.ParseModel`'s
   fallback is kept in sync with it. Don't "fix" it back to Tiny** (root `CLAUDE.md` §7 #35).
 - `ToneStyle.cs`, `TranscriptionLanguage.cs`, `WhisperModelOption.cs`, `GameDetectionMode.cs`,

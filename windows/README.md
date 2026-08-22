@@ -44,6 +44,9 @@ dotnet run   --project windows/JVoice.App            # launches to the tray (+ f
 
 - **Transcribe a WAV without the GUI:** `dotnet run --project windows/tools/whisper-smoke -- <file.wav> --model tiny`
 - **Hidden bench CLI** (also on the app exe): `JVoice.exe --bench <file.wav> [--model tiny|base|small|large] [--lang en|ro] [--vocab "A,B"] [--stream] [--no-prompt]`
+- **Spoken-maths probe:** `JVoice.exe --math-probe "a subscript n equals 1 plus 7n"` (or pipe a file of
+  transcripts through stdin) — prints `CHANGED | before | after` / `same | text` for the Math Notation
+  converter, so a whole corpus can be swept for false positives (§7 #47)
 - **Regenerate icons:** `dotnet run --project windows/tools/generate-icon`
 
 The bench/smoke tools need a 16 kHz / mono / 16-bit PCM WAV. Generate one with Windows TTS:
