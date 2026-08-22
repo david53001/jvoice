@@ -43,7 +43,9 @@ public sealed record MathSymbol(string Text, MathKind Kind)
 {
     /// True when finding this symbol (with its operands satisfied) is enough to turn the
     /// surrounding run of words into mathematics.
-    public bool Activates => Kind is MathKind.Relation or MathKind.Operator or MathKind.Prefix;
+    public bool Activates =>
+        Kind is MathKind.Relation or MathKind.Operator
+        || (Kind == MathKind.Prefix && !MathSymbols.WeakPrefixes.Contains(Text));
 
     /// Big operators take their body after a space ("∑ᵢ₌₁ⁿ i²"); every other prefix binds
     /// tight to its operand ("√x", "-5", "¬p").

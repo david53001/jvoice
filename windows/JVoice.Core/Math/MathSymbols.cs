@@ -25,6 +25,12 @@ namespace JVoice.Core.Text;
 /// their operands). They must never appear as keys here — <c>MathSymbolsTests</c> asserts it.
 public static class MathSymbols
 {
+    /// Prefixes that do NOT count as evidence of mathematics. A spoken sign is a number FORM,
+    /// not an operation: measured against 1,174 of David's real dictations, "negative" was the
+    /// one prefix that fired in ordinary speech ("between 60 and negative 50" in a Minecraft
+    /// design note). It still renders inside a run something else activated ("x = -5").
+    public static readonly IReadOnlySet<string> WeakPrefixes = new HashSet<string> { "-" };
+
     /// Prefixes whose body follows after a SPACE ("∑ᵢ₌₁ⁿ i²") rather than binding tight ("√x").
     public static readonly IReadOnlySet<string> BigOperators =
         new HashSet<string> { "∑", "∏", "∫", "∬", "∭", "∮", "⋃", "⋂", "lim" };
@@ -45,6 +51,7 @@ public static class MathSymbols
         // structural constructs
         "absolute value of", "absolute value", "derivative of", "partial derivative of",
         "with respect to", "limit", "limit as", "as", "approaches", "tends to", "goes to",
+        "to the", "base", "choose", "the",
         // explicit span markers
         "start equation", "begin equation", "end equation", "end of equation",
     };

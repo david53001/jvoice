@@ -170,7 +170,7 @@ public static class MathSpeech
     private enum Kw
     {
         None, Sub, Sup, Pow2, Pow3, Power, Root, Over, From, To, Of,
-        Abs, Deriv, PartialDeriv, Wrt, Limit, As, Approaches,
+        Abs, Deriv, PartialDeriv, Wrt, Limit, As, Approaches, Base, Choose, The,
     }
 
     private sealed record Item(
@@ -196,6 +196,17 @@ public static class MathSpeech
             ["raised to the power of"] = (Kw.Power, ""),
             ["raised to the power"] = (Kw.Power, ""),
             ["raised to"] = (Kw.Power, ""),
+            // "e to the x" is as common as "e to the power of x". Safe because a power still
+            // needs an operand on the left AND a real operand on the right, so "listen to the
+            // alpha version" and "go to the store" can never take it.
+            ["to the"] = (Kw.Power, ""),
+            ["base"] = (Kw.Base, ""),          // after a function: "log base 2 of x" → log₂(x)
+            // "the" belongs to the maths phrase when it sits in OPERAND position
+            // ("x equals the square root of 2" → "x = √2") and to the sentence anywhere else
+            // ("the sum from ..." keeps its "the"). Lexing it as a keyword lets the parser
+            // make that distinction instead of the run simply ending here.
+            ["the"] = (Kw.The, ""),
+            ["choose"] = (Kw.Choose, ""),      // "n choose k" -> C(n, k)
             ["square root of"] = (Kw.Root, "2"),
             ["square root"] = (Kw.Root, "2"),
             ["cube root of"] = (Kw.Root, "3"),
@@ -244,15 +255,7 @@ public static class MathSpeech
             string core = cores[i];
             if (core.Length == 0) { items.Add(new Item(ItemKind.Word, "", i, 1)); i++; continue; }
 
-            // 1) structural keywords (reserved — they outrank the vocabulary)
-            if (TryKeyword(cores, i, out Kw key, out string payload, out int kwLen))
-            {
-                items.Add(new Item(ItemKind.Keyword, payload, i, kwLen, Key: key));
-                i += kwLen;
-                continue;
-            }
-
-            // 2) "<ordinal> root of x" → ⁿ√x
+            // 1) "<ordinal> root of x" → ⁿ√x
             var ord = SpokenNumbers.TryReadOrdinal(cores, i);
             if (ord is { } o && i + o.Consumed < cores.Count
                 && cores[i + o.Consumed].Equals("root", StringComparison.OrdinalIgnoreCase))
@@ -264,7 +267,7 @@ public static class MathSpeech
                 continue;
             }
 
-            // 3) "sum"/"product" — only a big operator when bounds follow
+            // 2) "sum"/"product" — only a big operator when bounds follow
             if (BoundedOnly.TryGetValue(core, out string? bigOp)
                 && i + 1 < cores.Count && cores[i + 1].Equals("from", StringComparison.OrdinalIgnoreCase))
             {
@@ -273,7 +276,7 @@ public static class MathSpeech
                 continue;
             }
 
-            // 4) numbers ("twenty five" → 25, "7", "7n")
+            // 3) numbers ("twenty five" → 25, "7", "7n")
             if (Coefficient.IsMatch(core))
             {
                 items.Add(new Item(ItemKind.Number, core, i, 1));
@@ -288,15 +291,25 @@ public static class MathSpeech
                 continue;
             }
 
-            // 5) the vocabulary
-            if (MathSymbols.TryMatch(cores, i, out var sym, out int symLen))
+            // 4) structural keywords vs the vocabulary — the LONGER phrase wins, so the
+            //    vocabulary name "the reals" (ℝ) beats the bare keyword "the"; a tie goes to
+            //    the engine, which owns the reserved forms.
+            bool hasKw = TryKeyword(cores, i, out Kw key, out string payload, out int kwLen);
+            bool hasSym = MathSymbols.TryMatch(cores, i, out var sym, out int symLen);
+            if (hasKw && !(hasSym && symLen > kwLen))
+            {
+                items.Add(new Item(ItemKind.Keyword, payload, i, kwLen, Key: key));
+                i += kwLen;
+                continue;
+            }
+            if (hasSym)
             {
                 items.Add(new Item(ItemKind.Symbol, sym.Text, i, symLen, sym));
                 i += symLen;
                 continue;
             }
 
-            // 6) single-letter variables ("I" is the pronoun, never a variable)
+            // 5) single-letter variables ("I" is the pronoun, never a variable)
             if (core.Length == 1 && char.IsAsciiLetter(core[0]) && core != "I")
             {
                 items.Add(new Item(ItemKind.Variable, core, i, 1, Weak: core is "a" or "A"));
@@ -491,7 +504,7 @@ public static class MathSpeech
             if (TryOperand(i, out string operand, out int next))
             {
                 expr.PushOperand(operand);
-                if (it.Kind == ItemKind.Symbol && it.Sym!.Kind == MathKind.Prefix) _activated = true;
+                if (it.Kind == ItemKind.Symbol && it.Sym!.Activates) _activated = true;
                 i = next;
                 return true;
             }
@@ -524,11 +537,13 @@ public static class MathSpeech
                     return true;
                 }
                 case Kw.Root:
+                case Kw.Abs:
                 {
-                    int j = i + 1;
-                    if (j < items.Count && items[j].Key == Kw.Of) j++;
-                    if (!TryOperand(j, out string radicand, out int after)) return false;
-                    expr.PushOperand(RootSign(it.Text) + radicand);
+                    // Both build a self-contained operand, so TryOperand owns the one
+                    // implementation and they also work in operand position ("x equals the
+                    // square root of 2", "from 0 to the square root of 2").
+                    if (!TryOperand(i, out string built, out int after)) return false;
+                    expr.PushOperand(built);
                     _activated = true;
                     i = after;
                     return true;
@@ -542,12 +557,13 @@ public static class MathSpeech
                     i = after;
                     return true;
                 }
-                case Kw.Abs:
+                case Kw.Choose:
                 {
-                    if (!TryOperand(i + 1, out string inner, out int after)) return false;
-                    expr.PushOperand("|" + inner + "|");
+                    if (!expr.LastIsOperand) return false;
+                    if (!TryOperand(i + 1, out string k, out int afterK)) return false;
+                    expr.ReplaceLast($"C({expr.LastText}, {k})");
                     _activated = true;
-                    i = after;
+                    i = afterK;
                     return true;
                 }
                 case Kw.Deriv:
@@ -598,7 +614,10 @@ public static class MathSpeech
             if (j < items.Count && items[j].Key == Kw.From)
             {
                 if (!TryBound(j + 1, out string lower, out int afterLower)) return false;
-                if (afterLower >= items.Count || items[afterLower].Key != Kw.To) return false;
+                // "from 0 to the square root of 2" lexes "to the" as a power keyword; as a
+                // bounds separator it means the same "to".
+                if (afterLower >= items.Count
+                    || items[afterLower].Key is not (Kw.To or Kw.Power)) return false;
                 if (!TryBound(afterLower + 1, out string upper, out int afterUpper)) return false;
                 text = MathScript.Attach(MathScript.Attach(sym.Text, lower, false), upper, true);
                 j = afterUpper;
@@ -641,6 +660,27 @@ public static class MathSpeech
             next = k;
             if (k >= items.Count) return false;
             var it = items[k];
+
+            // "the" is part of the maths phrase when the phrase is what we are reading.
+            if (it.Kind == ItemKind.Keyword && it.Key == Kw.The)
+                return TryOperand(k + 1, out text, out next);
+
+            if (it.Kind == ItemKind.Keyword && it.Key == Kw.Root)
+            {
+                int j = k + 1;
+                if (j < items.Count && items[j].Key == Kw.Of) j++;
+                if (!TryOperand(j, out string radicand, out next)) return false;
+                text = RootSign(it.Text) + radicand;
+                _activated = true;
+                return true;
+            }
+            if (it.Kind == ItemKind.Keyword && it.Key == Kw.Abs)
+            {
+                if (!TryOperand(k + 1, out string inner, out next)) return false;
+                text = "|" + inner + "|";
+                _activated = true;
+                return true;
+            }
 
             switch (it.Kind)
             {
@@ -692,9 +732,17 @@ public static class MathSpeech
                     if (sym.Kind == MathKind.Function)
                     {
                         int j = k + 1;
+                        string name = sym.Text;
+                        // "log base 2 of x"
+                        if (j < items.Count && items[j].Key == Kw.Base
+                            && TryOperand(j + 1, out string b, out int afterBase))
+                        {
+                            name = MathScript.Attach(name, b, superscript: false);
+                            j = afterBase;
+                        }
                         if (j < items.Count && items[j].Key == Kw.Of) j++;
                         if (!TryOperand(j, out string arg, out next)) return false;
-                        text = $"{sym.Text}({arg})";
+                        text = $"{name}({arg})";
                         return true;
                     }
                     return false;

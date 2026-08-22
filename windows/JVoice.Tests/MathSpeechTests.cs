@@ -51,6 +51,15 @@ public class MathSpeechTests
         { "the partial derivative of f with respect to x equals 0", "the ∂f/∂x = 0" },
         { "the limit as x approaches 0 of sine of x over x equals 1", "the lim_(x→0) sin(x)/x = 1" },
 
+        // ── powers spoken the short way, logs, combinatorics ──
+        { "e to the x plus 1", "eˣ + 1" },
+        { "2 to the 10 equals 1024", "2¹⁰ = 1024" },
+        { "log base 2 of x equals 5", "log₂(x) = 5" },
+        { "n choose k equals 10", "C(n, k) = 10" },
+        { "x equals the square root of 2", "x = √2" },
+        { "the absolute value of x equals 5", "the |x| = 5" },
+        { "the integral from 0 to the square root of 2 of x dx", "the ∫₀^(√2) x dx" },
+
         // ── grouping & functions ──
         { "open parenthesis x plus 1 close parenthesis squared", "(x + 1)²" },
         { "f of x equals x squared", "f(x) = x²" },
@@ -94,6 +103,14 @@ public class MathSpeechTests
         "a lot of people over the years",
         "one of them said something else",
         "I got 5 of 10 questions right",
+        // "to the" / "base" / "choose" are constructs only with real operands around them
+        "go to the store and buy some milk",
+        "listen to the alpha version tomorrow",
+        "the base of the mountain was covered in snow",
+        "I had to choose between the two options",
+        // a spoken SIGN is a number form, not evidence of mathematics (measured on real dictation)
+        "the highest you can look up is negative 90 degrees in minecraft",
+        "let's say between 60 and negative 50 for now",
         // narrative prose that mentions numbers
         "I woke up at seven and made coffee",
         "there were about a hundred people there",
