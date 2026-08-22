@@ -72,6 +72,15 @@ public class MathSpeechTests
         { "the absolute value of x equals 5", "the |x| = 5" },
         { "the integral from 0 to the square root of 2 of x dx", "the ∫₀^(√2) x dx" },
 
+        // ── textbook shapes (found by sweeping real equations through the engine) ──
+        { "the sum from i equals 1 to n of i equals n times n plus 1 over 2", "the ∑ᵢ₌₁ⁿ i = n × n + 1/2" },
+        { "sine squared theta plus cosine squared theta equals 1", "sin²(θ) + cos²(θ) = 1" },
+        { "e to the power of i pi plus 1 equals 0", "e^(iπ) + 1 = 0" },
+        { "the derivative of x cubed with respect to x equals 3 x squared", "the d(x³)/dx = 3x²" },
+        { "open parenthesis a plus b close parenthesis squared equals a squared plus 2 a b plus b squared",
+          "(a + b)² = a² + 2ab + b²" },
+        { "x subscript 1 plus x subscript 2 equals 10", "x₁ + x₂ = 10" },
+
         // ── grouping & functions ──
         { "open parenthesis x plus 1 close parenthesis squared", "(x + 1)²" },
         { "f of x equals x squared", "f(x) = x²" },
@@ -180,6 +189,7 @@ public class MathSpeechTests
         Assert.Null(MathScript.Super("q"));     // no Unicode superscript q
         Assert.Equal("x_b", MathScript.Attach("x", "b", superscript: false));
         Assert.Equal("lim_(x→0)", MathScript.Attach("lim", "x→0", superscript: false));
+        Assert.Equal("e^(iπ)", MathScript.Attach("e", "iπ", superscript: true));
     }
 
     [Fact]

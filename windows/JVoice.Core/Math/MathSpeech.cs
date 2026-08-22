@@ -459,7 +459,7 @@ public static class MathSpeech
         /// Two ATOMIC operands side by side are implicit multiplication and are written closed
         /// up: "7 n" → "7n", "2 π" → "2π", "delta x" → "δx". Anything already composite
         /// ("aₙ", "sin(x)", "1/2") keeps its space, where the product is clearer spaced out.
-        private static bool Juxtaposes(string left, string right)
+        public static bool Juxtaposes(string left, string right)
             => IsSingleLetter(right) && (IsSingleLetter(left) || IsPlainNumber(left));
 
         private static bool IsSingleLetter(string s) => s.Length == 1 && char.IsLetter(s[0]);
@@ -537,7 +537,7 @@ public static class MathSpeech
                 case Kw.Power:
                 {
                     if (!expr.LastIsOperand) return false;
-                    if (!TryOperand(i + 1, out string script, out int after)) return false;
+                    if (!TryScriptOperand(i + 1, out string script, out int after)) return false;
                     expr.ReplaceLast(MathScript.Attach(expr.LastText, script, it.Key != Kw.Sub));
                     _activated = true;
                     i = after;
@@ -567,7 +567,7 @@ public static class MathSpeech
                 case Kw.Over:
                 {
                     if (!expr.LastIsOperand) return false;
-                    if (!TryOperand(i + 1, out string denominator, out int after)) return false;
+                    if (!TryScriptOperand(i + 1, out string denominator, out int after)) return false;
                     expr.AttachToLast("/" + denominator);
                     _activated = true;
                     i = after;
@@ -585,11 +585,11 @@ public static class MathSpeech
                 case Kw.Deriv:
                 case Kw.PartialDeriv:
                 {
-                    if (!TryOperand(i + 1, out string of, out int after)) return false;
+                    if (!TryPoweredOperand(i + 1, out string of, out int after)) return false;
                     if (after >= items.Count || items[after].Key != Kw.Wrt) return false;
                     if (!TryOperand(after + 1, out string wrt, out int end)) return false;
                     string d = it.Key == Kw.Deriv ? "d" : "∂";
-                    expr.PushOperand($"{d}{of}/{d}{wrt}");
+                    expr.PushOperand($"{d}{Bracket(of)}/{d}{Bracket(wrt)}");
                     _activated = true;
                     i = end;
                     return true;
@@ -652,10 +652,41 @@ public static class MathSpeech
             return true;
         }
 
+        /// An operand plus anything that multiplies into it implicitly: "i pi" → "iπ", "2 a" → "2a".
+        /// Used where the whole product belongs to one slot — an exponent, a subscript, a denominator.
+        private bool TryScriptOperand(int k, out string text, out int next)
+        {
+            if (!TryOperand(k, out text, out next)) return false;
+            while (TryOperand(next, out string more, out int after) && Expr.Juxtaposes(text, more))
+            {
+                text += more;
+                next = after;
+            }
+            return true;
+        }
+
+        /// As above, plus a trailing "squared"/"cubed" — without it "the derivative of x cubed
+        /// with respect to x" would lose the whole construct at the word "cubed".
+        private bool TryPoweredOperand(int k, out string text, out int next)
+        {
+            if (!TryScriptOperand(k, out text, out next)) return false;
+            while (next < items.Count && items[next].Kind == ItemKind.Keyword
+                   && items[next].Key is Kw.Pow2 or Kw.Pow3)
+            {
+                text = MathScript.Attach(text, items[next].Key == Kw.Pow2 ? "2" : "3", true);
+                next++;
+            }
+            return true;
+        }
+
+        private static string Bracket(string operand) => operand.Length == 1 ? operand : $"({operand})";
+
         /// A summation/integration bound, which may be a small equation: "n equals 1" → "n=1".
         private bool TryBound(int k, out string text, out int next)
         {
-            if (!TryOperand(k, out text, out next)) return false;
+            // allowApply: false — the "of" after a bound opens the operator's BODY
+            // ("sum from i equals 1 to n OF i"), so it must never read as "n(i)".
+            if (!TryOperand(k, out text, out next, allowApply: false)) return false;
             while (next < items.Count
                    && items[next].Kind == ItemKind.Symbol
                    && items[next].Sym!.Kind is MathKind.Relation or MathKind.Operator
@@ -670,7 +701,7 @@ public static class MathSpeech
 
         /// Reads ONE operand: a number (with its coefficient variable), a variable, a symbol
         /// value, a bracketed group, a negated/rooted operand, or a function application.
-        private bool TryOperand(int k, out string text, out int next)
+        private bool TryOperand(int k, out string text, out int next, bool allowApply = true)
         {
             text = "";
             next = k;
@@ -729,7 +760,7 @@ public static class MathSpeech
                     // "f of x" → "f(x)". Only a real (non-weak) variable may be applied like a
                     // function: "5 of 10" and "a of the" must stay words. Never activating on
                     // its own — something else in the run has to be mathematics.
-                    if (!it.Weak && next < items.Count && items[next].Key == Kw.Of
+                    if (allowApply && !it.Weak && next < items.Count && items[next].Key == Kw.Of
                         && TryOperand(next + 1, out string arg, out int afterArg))
                     {
                         text = $"{it.Text}({arg})";
@@ -764,6 +795,21 @@ public static class MathSpeech
                         {
                             name = MathScript.Attach(name, b, superscript: false);
                             j = afterBase;
+                        }
+                        // "sine squared theta" → "sin²θ" — the power belongs to the function name.
+                        if (j < items.Count && items[j].Kind == ItemKind.Keyword)
+                        {
+                            if (items[j].Key is Kw.Pow2 or Kw.Pow3)
+                            {
+                                name = MathScript.Attach(name, items[j].Key == Kw.Pow2 ? "2" : "3", true);
+                                j++;
+                            }
+                            else if (items[j].Key == Kw.Power
+                                     && TryScriptOperand(j + 1, out string power, out int afterPower))
+                            {
+                                name = MathScript.Attach(name, power, true);
+                                j = afterPower;
+                            }
                         }
                         if (j < items.Count && items[j].Key == Kw.Of) j++;
                         if (!TryOperand(j, out string arg, out next)) return false;

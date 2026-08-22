@@ -22,17 +22,20 @@ public static class MathScript
     public static string? Sub(string plain) => Map(plain, SubFrom, SubTo);
 
     /// <paramref name="baseText"/> with <paramref name="operand"/> attached as a script.
-    /// Falls back to "^"/"_" (parenthesizing anything that is not a bare word/number) when the
-    /// operand cannot be rendered in Unicode.
+    /// Falls back to "^"/"_" (bracketing anything longer than one character) when the operand
+    /// cannot be rendered in Unicode.
     public static string Attach(string baseText, string operand, bool superscript)
     {
         string? pretty = superscript ? Super(operand) : Sub(operand);
         if (pretty is not null) return baseText + pretty;
 
+        // A single character needs no brackets ("a_b"); anything longer only reaches this
+        // fallback because it contains something unscriptable, and reads far better closed
+        // ("e^(iπ)", "lim_(x→0)", "∫₀^(√2)") than run together.
         char marker = superscript ? '^' : '_';
-        bool simple = operand.Length == 1
-            || operand.All(c => char.IsLetterOrDigit(c) || c == '.');
-        return simple ? $"{baseText}{marker}{operand}" : $"{baseText}{marker}({operand})";
+        return operand.Length == 1
+            ? $"{baseText}{marker}{operand}"
+            : $"{baseText}{marker}({operand})";
     }
 
     private static string? Map(string plain, string from, string to)
