@@ -456,9 +456,16 @@ public static class MathSpeech
             return sb.ToString();
         }
 
+        /// Two ATOMIC operands side by side are implicit multiplication and are written closed
+        /// up: "7 n" → "7n", "2 π" → "2π", "delta x" → "δx". Anything already composite
+        /// ("aₙ", "sin(x)", "1/2") keeps its space, where the product is clearer spaced out.
         private static bool Juxtaposes(string left, string right)
-            => left.Length > 0 && right.Length > 0
-               && char.IsAsciiDigit(left[^1]) && char.IsLetter(right[0]);
+            => IsSingleLetter(right) && (IsSingleLetter(left) || IsPlainNumber(left));
+
+        private static bool IsSingleLetter(string s) => s.Length == 1 && char.IsLetter(s[0]);
+
+        private static bool IsPlainNumber(string s)
+            => s.Length > 0 && s.All(c => char.IsAsciiDigit(c) || c == '.');
     }
 
     // ─────────────────────────────── parsing ───────────────────────────────

@@ -45,6 +45,11 @@ public class MathSpeechTests
         { "x equals two thirds", "x = 2/3" },
         { "two million five hundred thousand divided by 2", "2500000 ÷ 2" },
 
+        // ── implicit multiplication: atomic operands close up ──
+        { "delta x equals 5", "δx = 5" },
+        { "x y equals 12", "xy = 12" },
+        { "f of x equals a x squared plus b x plus c", "f(x) = ax² + bx + c" },
+
         // ── greek, constants, sets ──
         { "alpha plus beta equals gamma", "α + β = γ" },
         { "theta equals 30 degrees", "θ = 30°" },
