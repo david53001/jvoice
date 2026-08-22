@@ -111,6 +111,14 @@ public class MathSpeechTests
         // a spoken SIGN is a number form, not evidence of mathematics (measured on real dictation)
         "the highest you can look up is negative 90 degrees in minecraft",
         "let's say between 60 and negative 50 for now",
+        // bounds words ("from"/"to") and relations outside a real equation
+        "the ratio of boys to girls is 3 to 2",
+        "I'll be there from 5 to 7 tomorrow",
+        "the temperature dropped to minus 5 degrees",
+        "we went over budget by a lot this quarter",
+        "that is less than ideal for us",
+        "x, y, and z are the variables",
+        "f(x) = 3 is already written out",
         // narrative prose that mentions numbers
         "I woke up at seven and made coffee",
         "there were about a hundred people there",
@@ -133,6 +141,17 @@ public class MathSpeechTests
     {
         Assert.Same("", MathSpeech.Convert(""));
         Assert.Same("   ", MathSpeech.Convert("   "));
+    }
+
+    [Theory]
+    [MemberData(nameof(Converts))]
+    public void ConversionIsIdempotent(string spoken, string expected)
+    {
+        // Converting already-converted text must be a no-op — otherwise re-processing a
+        // transcript (or a symbol that lexes back into a construct) could compound.
+        _ = expected;
+        string once = MathSpeech.Convert(spoken);
+        Assert.Equal(once, MathSpeech.Convert(once));
     }
 
     [Fact]
