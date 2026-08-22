@@ -321,7 +321,12 @@ public static class MathSpeech
             // 5) single-letter variables ("I" is the pronoun, never a variable)
             if (core.Length == 1 && char.IsAsciiLetter(core[0]) && core != "I")
             {
-                items.Add(new Item(ItemKind.Variable, core, i, 1, Weak: core is "a" or "A"));
+                // "a"/"A" and lower-case "i" are WEAK: they are ordinary words at least as often
+                // as they are variables ("two times a day", "…genesis one because i feel like…" —
+                // his transcripts write the pronoun in lower case). Weak only matters at the very
+                // end of a run that an ordinary word cut short, so "a plus b", "x subscript i plus
+                // 1" and "sum from i equals 1 to n" are all unaffected.
+                items.Add(new Item(ItemKind.Variable, core, i, 1, Weak: core is "a" or "A" or "i"));
                 i++;
                 continue;
             }

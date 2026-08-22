@@ -81,6 +81,10 @@ public class MathSpeechTests
           "(a + b)² = a² + 2ab + b²" },
         { "x subscript 1 plus x subscript 2 equals 10", "x₁ + x₂ = 10" },
 
+        // ── lower-case "i" is a WEAK variable, and still indexes a sum perfectly ──
+        { "the sum from i equals 1 to n of i squared converges", "the ∑ᵢ₌₁ⁿ i² converges" },
+        { "i equals the square root of negative 1", "i = √-1" },
+
         // ── grouping & functions ──
         { "open parenthesis x plus 1 close parenthesis squared", "(x + 1)²" },
         { "f of x equals x squared", "f(x) = x²" },
@@ -143,6 +147,11 @@ public class MathSpeechTests
         // numbers and fractions in ordinary speech (weak — they never open a run)
         "three quarters of the class passed the test",
         "I ate half of the pizza and a hundred wings",
+        // lower-case "i" is the pronoun far more often than it is a variable, and the spelled-out
+        // inference connectives are ordinary speech (both measured on his real dictation)
+        "he said 50 plus i think it was more",
+        "it was 3 because i wanted it",
+        "so genesis one because i feel like it matters",
         // narrative prose that mentions numbers
         "I woke up at seven and made coffee",
         "there were about a hundred people there",

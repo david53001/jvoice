@@ -184,9 +184,6 @@ public class MathSymbolsTests
         { "modulo", "mod", MathKind.Operator },
         { "is mapped to", "↦", MathKind.Operator },
         { "if and only if", "⇔", MathKind.Operator },
-        { "therefore", "∴", MathKind.Operator },
-        { "because", "∵", MathKind.Operator },
-        { "choose", "C", MathKind.Operator },
 
         // prefixes
         { "negative", "-", MathKind.Prefix },
@@ -306,7 +303,11 @@ public class MathSymbolsTests
     [InlineData("for any")]        // "grateful for any 5 minutes"
     [InlineData("for each")]       // "for each one of us" would become "∀1 of us"
     [InlineData("union over")]     // "the union over 200 workers voted"
-    [InlineData("since")]          // "since 1990" — "because" already covers ∵
+    [InlineData("since")]          // "since 1990"
+    [InlineData("because")]        // measured firing on real dictation: "genesis one because i feel"
+    [InlineData("therefore")]      // sentence connectives, not operators
+    [InlineData("thus")]
+    [InlineData("hence")]
     [InlineData("about")]          // "about 30 people"
     [InlineData("approximately")]  // "approximately 100 people came" — the long forms are in
     [InlineData("less")]           // only "less than"
@@ -411,7 +412,7 @@ public class MathSymbolsTests
         { "capital gamma equals capital lambda", "Γ = Λ" },
         { "v dot w equals 0", "v · w = 0" },
         { "h bar times omega", "ℏ × ω" },
-        { "3 choose 2 equals 3", "3 C 2 = 3" },
+        { "3 choose 2 equals 3", "C(3, 2) = 3" },
         { "p hat plus or minus 2", "p̂ ± 2" },
         { "30 degrees celsius plus 5", "30°C + 5" },
 

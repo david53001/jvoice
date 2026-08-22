@@ -235,14 +235,17 @@ public static class MathSymbols
         Add("⇔", MathKind.Operator, "if and only if", "iff", "is logically equivalent to",
             "double arrow", "⇔", "<=>");
 
-        // inference. NEVER a Prefix: "∴" would then rewrite "therefore 3 of us left". As an
-        // Operator it needs an operand on BOTH sides, which sentence-initial "Therefore, …"
-        // (the Biblical usage) never has. Residual: "psalm 3 therefore 4 makes sense".
-        Add("∴", MathKind.Operator, "therefore", "thus", "hence", "∴");
-        Add("∵", MathKind.Operator, "because", "∵");
+        // inference — the SPELLED-OUT connectives are deliberately absent. "because" as an
+        // Operator was measured firing on real dictation ("…contradict genesis one because i
+        // feel like…" → "genesis 1 ∵ i feel like"): a chapter number on the left and a bare
+        // pronoun on the right satisfy an infix operator perfectly well, and "therefore /
+        // thus / hence / because" are among the most common words in ordinary speech. Only
+        // the glyphs stay, for a transcript that already contains them.
+        Add("∴", MathKind.Operator, "∴");
+        Add("∵", MathKind.Operator, "∵");
 
-        // combinatorics — "n choose k" → "n C k"
-        Add("C", MathKind.Operator, "choose");
+        // NOTE: "choose" is NOT here — MathSpeech parses it structurally so that
+        // "n choose k" renders as the real binomial "C(n, k)".
 
         // ════════════════════════════ prefixes ════════════════════════════
         // ACTIVATING on a SINGLE operand after them — the easiest kind to trigger by accident,
