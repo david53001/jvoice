@@ -677,26 +677,35 @@ public static class MathSpeech
             if (k >= items.Count) return false;
             var it = items[k];
 
-            // "the" is part of the maths phrase when the phrase is what we are reading.
-            if (it.Kind == ItemKind.Keyword && it.Key == Kw.The)
-                return TryOperand(k + 1, out text, out next);
+            // The three constructs that build a whole operand by themselves.
+            if (it.Kind == ItemKind.Keyword)
+                switch (it.Key)
+                {
+                    // "the" belongs to the maths phrase when the phrase is what we're reading.
+                    case Kw.The:
+                        return TryOperand(k + 1, out text, out next);
 
-            if (it.Kind == ItemKind.Keyword && it.Key == Kw.Root)
-            {
-                int j = k + 1;
-                if (j < items.Count && items[j].Key == Kw.Of) j++;
-                if (!TryOperand(j, out string radicand, out next)) return false;
-                text = RootSign(it.Text) + radicand;
-                _activated = true;
-                return true;
-            }
-            if (it.Kind == ItemKind.Keyword && it.Key == Kw.Abs)
-            {
-                if (!TryOperand(k + 1, out string inner, out next)) return false;
-                text = "|" + inner + "|";
-                _activated = true;
-                return true;
-            }
+                    case Kw.Root:
+                    {
+                        int j = k + 1;
+                        if (j < items.Count && items[j].Key == Kw.Of) j++;
+                        if (!TryOperand(j, out string radicand, out next)) return false;
+                        text = RootSign(it.Text) + radicand;
+                        _activated = true;
+                        return true;
+                    }
+
+                    case Kw.Abs:
+                    {
+                        if (!TryOperand(k + 1, out string inner, out next)) return false;
+                        text = "|" + inner + "|";
+                        _activated = true;
+                        return true;
+                    }
+
+                    default:
+                        return false;
+                }
 
             switch (it.Kind)
             {
