@@ -283,6 +283,15 @@ public static class MathSpeech
                 i++;
                 continue;
             }
+            // "one half" / "three quarters" is ONE operand ("1/2", "3/4"). Weak like any number,
+            // so "three quarters of the class" never activates and stays words.
+            var frac = SpokenNumbers.TryReadFraction(cores, i);
+            if (frac is { } f)
+            {
+                items.Add(new Item(ItemKind.Number, f.Digits, i, f.Consumed));
+                i += f.Consumed;
+                continue;
+            }
             var num = SpokenNumbers.TryRead(cores, i);
             if (num is { } n)
             {

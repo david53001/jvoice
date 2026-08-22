@@ -38,6 +38,13 @@ public class MathSpeechTests
         { "3 over 4 plus 1 over 4 equals 1", "3/4 + 1/4 = 1" },
         { "n factorial equals 120", "n! = 120" },
 
+        // ── spoken numbers (SpokenNumbers feeds the lexer; a fraction is ONE operand) ──
+        { "x equals twenty five", "x = 25" },
+        { "three point one four times r squared", "3.14 × r²" },
+        { "one half plus one quarter equals three quarters", "1/2 + 1/4 = 3/4" },
+        { "x equals two thirds", "x = 2/3" },
+        { "two million five hundred thousand divided by 2", "2500000 ÷ 2" },
+
         // ── greek, constants, sets ──
         { "alpha plus beta equals gamma", "α + β = γ" },
         { "theta equals 30 degrees", "θ = 30°" },
@@ -119,6 +126,9 @@ public class MathSpeechTests
         "that is less than ideal for us",
         "x, y, and z are the variables",
         "f(x) = 3 is already written out",
+        // numbers and fractions in ordinary speech (weak — they never open a run)
+        "three quarters of the class passed the test",
+        "I ate half of the pizza and a hundred wings",
         // narrative prose that mentions numbers
         "I woke up at seven and made coffee",
         "there were about a hundred people there",
