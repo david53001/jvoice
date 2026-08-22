@@ -34,6 +34,9 @@ public partial class App : Application
         if (BenchRunner.ShouldRun(args))
             return BenchRunner.RunAndExit(args);
 
+        if (MathProbeRunner.ShouldRun(args))
+            return MathProbeRunner.RunAndExit(args);
+
         if (GameProbeRunner.ShouldRun(args))
             return GameProbeRunner.RunAndExit(args);
 

@@ -202,6 +202,10 @@ internal static class BenchRunner
             var extraDict = BiblicalTerms.Augment(userDict);
             string processed = TextProcessor.Process(
                 raw, ToneStyle.Casual, extraDict, removeFillerWords: false, vocabulary: vocabulary);
+            // Spoken maths runs LAST in the real pipeline (after tone/filler/corrections, which are
+            // all word-based and would otherwise mangle the symbols); it is a default-ON setting, so
+            // mirror it here the way BiblicalTerms is mirrored. `--math-probe` isolates it.
+            processed = MathSpeech.Convert(processed);
             Console.WriteLine($"processed: \"{processed}\"");
             return 0;
         }
