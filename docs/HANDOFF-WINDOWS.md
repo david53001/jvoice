@@ -19,7 +19,7 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **713 / 713 passing** (grew from 122 during
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **1457 / 1457 passing** (grew from 122 during
   the bug-hunt and the subsequent feature work tracked in §7; a shared, moving total).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
@@ -1813,10 +1813,130 @@ Autostart'`. **NOT pushed; installers / release assets do not have this fix.**
 **✅ LIVE-VERIFIED by David the same session** ("yeah it works") — the Yeti was indeed the right mic and
 dictation works again on the deployed build. Nothing left open on this item.
 
+#### #47 — Math Notation: spoken mathematics → real notation (2026-08-22, branch `feat/math-notation`)
+
+David-requested: *"if I would say a subscript n equals 1 plus 7n, it would pop out with the actual
+mathematical sequence … I want the library of the math related things to be massive … and it is very
+important that it doesn't overflow with the actual me talking."*
+
+**What it does.** A new **Windows-only, opt-out** toggle (Settings → Processing → **Math Notation**;
+`SettingsState.MathNotation`, schema **v5→v6**, default **ON**) rewrites dictated mathematics into
+Unicode notation and leaves everything else alone:
+
+| spoken | pasted |
+|---|---|
+| a subscript n equals 1 plus 7n | `aₙ = 1 + 7n` |
+| x squared plus y squared equals z squared | `x² + y² = z²` |
+| the sum from n equals 1 to infinity of 1 over n squared | `the ∑ₙ₌₁^∞ 1/n²` |
+| the integral from 0 to 1 of x squared dx | `the ∫₀¹ x² dx` |
+| the limit as x approaches 0 of sine of x over x equals 1 | `the lim_(x→0) sin(x)/x = 1` |
+| log base 2 of x equals 5 · n choose k · e to the x | `log₂(x) = 5` · `C(n, k)` · `eˣ` |
+
+**The anti-overflow design (the part that mattered).** Conversion is **structural, not a classifier** —
+there is no confidence score to tune:
+
+> A word only becomes a symbol inside a **RUN**, and a run only converts when an **ACTIVATING**
+> construct in it found its **OPERANDS**.
+
+- A *run* is consecutive words that all lexed as maths; any ordinary word or punctuation ends it. So a
+  sentence converts only its equation: *"the formula is a subscript n equals 2n, which is neat"* →
+  *"the formula is aₙ = 2n, which is neat"*.
+- *Activating*: an infix relation/operator with an operand on **both** sides, a prefix with one after it,
+  or a structural construct (script / power / root / fraction / bounds / derivative / limit / absolute
+  value / `choose`).
+- *Weak* (renders only inside an already-activated run, never opens one): π, α, %, °, `sin`, brackets,
+  number words, and **signs**.
+- Three targeted rules close what operands alone leave open: `"a"`/`"A"` are **weak operands**, refused
+  right before an ordinary word (this is what makes *"two times a day"* safe while *"a subscript n
+  equals 1 plus 7n"* and *"a plus b"* work); `"I"` is never a variable; `"sum"`/`"product"` are only ∑/∏
+  **with bounds** (*"the sum of my fears"*, *"we need to sum up the results"*).
+- When nothing activates, `Convert` returns **the same string instance** — the byte-identity guarantee.
+- `"the"` is transparent in **operand position only** (*"x equals the square root of 2"* → `x = √2`) and
+  belongs to the sentence everywhere else (*"the ∑ₙ₌₁^∞ …"* keeps its article). Keyword/vocabulary
+  lexing takes the **longer** match, so the vocabulary name *"the reals"* (ℝ) still beats bare `"the"`.
+
+**Escape hatch.** *"start equation … end equation"* forces every run between the markers to convert (and
+drops the markers), for symbols too ordinary to auto-activate: *"start equation capital sigma end
+equation"* → `Σ`.
+
+**Where it runs.** `VoiceCoordinator.ProcessAndPaste`, **last** — after `TextProcessor.Process` and
+`RemoveWhisperHallucinations`. Deliberate: tone formatting, filler removal and the correction
+dictionaries are all word-based, so running them first means no symbol can be mangled by them (the
+cosmetic consequence is that Formal tone capitalises a sentence-initial variable: `"X² = 4."`).
+Mirrored in `BenchRunner`.
+
+**Files** (new pure area `JVoice.Core/Math/`, with its own `CLAUDE.md`):
+`MathSpeech.cs` (tokenizer → runs → parser → renderer; `Convert(string)` is the whole API),
+`MathSymbols.cs` (the vocabulary + `ReservedPhrases`, the forms the engine parses structurally and which
+must never be vocabulary keys — test-locked), `MathSymbol.cs` (`MathKind` + what `Activates`),
+`MathScript.cs` (Unicode super/subscript, all-or-nothing, `^`/`_` fallback so `a_b`/`lim_(x→0)` never
+render half-pretty), `SpokenNumbers.cs` (number words → digits).
+Plumbing: `SettingsState`/`SettingsStateJson` (v6, key `mathNotation`), `VoiceCoordinator`
+(`MathNotationEnabled`), `SettingsView.xaml` (row in the Processing card), `BenchRunner`,
+and the new `JVoice.App/Whisper/MathProbeRunner.cs`.
+
+**New tool — `JVoice.exe --math-probe`.** `--math-probe "<text>"`, or piped stdin for a whole file.
+One greppable line per input: `CHANGED | <before> | <after>` / `same | <text>`. Console **and**
+`%TEMP%\jvoice-mathprobe.log` (JVoice is a WinExe — same reason `GameProbeRunner` logs to a file).
+
+**Calibrated on REAL dictation, not invented examples.** Every `raw="…"` transcript in
+`%APPDATA%\JVoice\diagnostic.log` — **1,174 unique real dictations, 338 KB** — was run through
+`Convert`. That corpus found the one genuine false positive: a spoken **sign** was enough to declare
+maths (*"the highest you can look up is negative 90 degrees"*, *"between 60 and negative 50"* in a
+Minecraft design note), so `"-"` is now in `MathSymbols.WeakPrefixes` and no longer activates a run —
+it still renders inside one (`"x = -5"`). Final rate: **4 changed of 1,174 (0.34%)**, and all four are
+correct — his own maths request (×2), *"60 times 6 … 360 divided by 12"* → `60 × 6 … 360 ÷ 12`, and
+*"1600 times 1080 resolution"* → `1600 × 1080`. `Convert` is also **idempotent** on all 1,174.
+**The corpus is personal data — it lives in a scratchpad and is NOT committed. Re-run it (via
+`--math-probe`) after any vocabulary change.**
+
+**Vocabulary.** 676 spoken forms → 245 distinct (symbol, kind) pairs: relations and inequalities, all
+24 Greek letters in both cases, ℕ ℤ ℚ ℝ ℂ ℏ ℵ, set theory, logic and quantifiers, big operators,
+calculus, the full trig family (arc/hyperbolic), logs, linear algebra (ᵀ ⁻¹ ⊗ ⊕ det tr rank ker span),
+geometry (° ∠ ⊥ ∥ △ ≅), statistics (E Var Cov P x̄ p̂ ∼ choose), number theory (≡ mod, ∣, gcd/lcm,
+⌊⌋ ⌈⌉), arrows, brackets. The exclusion audit is the interesting half and is test-locked
+(`Vocabulary_ExcludesEverydayEnglishWords`): bare `and`/`or`/`not` (only "logical …"), `is`/`are`/`by`/
+`than`, **`cross`** ("the cross of Christ" — only "cross product"), the bare trig abbreviations
+**`sin`** ("my sin") / `cos` / `tan` / `sec` / `cot`, **`sign`** ("a sign from God" — only "signum"),
+`cup`/`cap`, `power`/`square`, **`change in`** (a Δ prefix would rewrite "a change in 5 minutes"),
+**`for some`/`for any`** ("for some 20 years he served"), and the spelled-out inference connectives
+**`because`/`therefore`/`thus`/`hence`** (see below). `for all`/`there exists` are **Operand**, not
+Prefix — as a Prefix, "for all three of us" produced "∀3 of us".
+
+**Two rounds of real-corpus calibration, not one.** The vocabulary merge introduced a NEW false
+positive that only the real corpus could have found — a Bible-study note, *"…contradict genesis one
+because i feel like…"* → *"genesis 1 ∵ i feel like"*. A chapter number on the left and a bare pronoun
+on the right satisfy an infix operator perfectly. Two independent causes, both fixed: the spelled-out
+connectives left the vocabulary, and **lower-case "i" joined "a"/"A" as a WEAK variable** (his
+transcripts write the pronoun in lower case, so *"50 plus i think it was more"* was one operator from
+converting). Weak only bites at the very end of a run an ordinary word cut short, so "x subscript i
+plus 1", "i = √-1" and "the ∑ᵢ₌₁ⁿ i² converges" are unaffected.
+
+**A textbook sweep found four engine bugs** that no hand-written example did: summation bounds read the
+operator's own "of" as a function application ("sum from i equals 1 to **n** of i" → upper bound
+"n(i)=n"); "sine squared theta" lost the whole construct (a power keyword is not an operand); exponents
+and denominators did not absorb what multiplies into them ("e to the power of i pi"); and "the
+derivative of x **cubed** with respect to x" died at "cubed". All fixed and test-locked.
+
+**Known limits (by design).** Multi-line shapes — matrices, systems, piecewise — are out of scope for a
+paste-one-string dictation app. Precedence follows what was SAID: "1 over 1 plus x" is "1/1 + x"; say
+"open parenthesis" to group. An exponent/subscript takes ONE operand (plus what juxtaposes into it), so
+"x to the power of k plus 1" is "xᵏ + 1". In **Formal** tone a sentence-initial variable is capitalised
+("X² = 4.") because the tone formatter runs first — cosmetic, and the price of the ordering that keeps
+symbols safe. The vocabulary is English-only; Romanian dictation simply never activates (and with
+"Translate to English" on it works normally).
+
+**Verification.** `dotnet test` **1457/1457** (+540: `MathSpeechTests` — the spec, conversions plus
+~60 prose lines that must come back byte-identical — `MathSymbolsTests`, `SpokenNumbersTests`, and the
+v6 settings locks). `dotnet build JVoice.sln -c Release -p:Platform=x64` = 0 errors. Settings rendered
+via `--settings-render` and inspected. `--math-probe` verified from the built exe in both argument and
+stdin modes. Built by four parallel agents in isolated git worktrees (engine + calibration here,
+vocabulary / numbers / plumbing dispatched), each merged and re-verified against the real corpus.
+
 ### Persistence paths (overview §4.9)
-`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 5** — v2 added `gameMode`
+`%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
-(§7 #32); v4 added `checkForUpdates` (§7 #36); v5 added `inputDeviceId`/`inputDeviceName` (§7 #46)),
+(§7 #32); v4 added `checkForUpdates` (§7 #36); v5 added `inputDeviceId`/`inputDeviceName` (§7 #46); v6 added `mathNotation` (§7 #47)),
 `stats.json`, `last-transcript.txt`, `transcript-history.json` (Recent Transcripts, §7 #26);
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
 (value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
