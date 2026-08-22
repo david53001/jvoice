@@ -92,6 +92,25 @@ machine after `dotnet build windows/JVoice.sln -c Release` succeeds. Tick each i
 - [ ] **Single instance:** launching a second `JVoice.exe` is a no-op (the first keeps owning the hotkey).
 - [ ] **`--bench` still bypasses the UI:** `JVoice.exe --bench <wav>` transcribes and exits with no tray/window.
 
+## Math Notation (HANDOFF-WINDOWS §7 #47)
+Settings → Processing → **Math Notation** (default ON). The half that matters is the second list:
+ordinary talking must come out exactly as it always did.
+- [ ] Dictate **"a subscript n equals 1 plus 7n"** → pastes `aₙ = 1 + 7n`.
+- [ ] **"x squared plus y squared equals z squared"** → `x² + y² = z²`.
+- [ ] **"the sum from n equals 1 to infinity of 1 over n squared"** → `the ∑ₙ₌₁^∞ 1/n²`.
+- [ ] **"the integral from 0 to 1 of x squared dx"** → `the ∫₀¹ x² dx`.
+- [ ] Something long and mixed: **"so basically the formula is a subscript n equals 2n, which is neat"**
+      → only the equation changes; the sentence around it is untouched.
+- [ ] **"start equation capital sigma end equation"** → `Σ` (the escape hatch for a symbol whose spoken
+      name is too ordinary to convert on its own).
+- [ ] **No overflow** — dictate each of these and confirm the paste is byte-identical to normal:
+      "this is a subscript of the value" · "two times a day keeps the doctor away" ·
+      "I'm 100 percent sure about this" · "it's 30 degrees outside" · "the sum of my fears" ·
+      "an integral part of the plan" · "the alpha version ships tomorrow".
+- [ ] Turn the toggle **OFF**, dictate the first line again → pastes the plain words.
+- [ ] Anything that converts when it shouldn't: paste it into
+      `JVoice.exe --math-probe "<the exact words>"` and put the line in the HANDOFF.
+
 ## Privacy spot-checks
 - [ ] After several dictations, `%TEMP%\jvoice-*.wav` has no leftover files (deleted after each + swept on launch).
 - [ ] No network traffic at runtime except the first-run model download from huggingface.co.
