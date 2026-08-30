@@ -2033,8 +2033,11 @@ elevated instance bounced UAC-free via `Stop`/`Start-ScheduledTask 'JVoice Eleva
 `/MIR` to delete). 21 files copied, 0 failed; tray relaunched clean (`HUD Idle`, update check
 `available=False`), and `--math-probe` **from the installed exe** returns `5 · 6 = 30`, `½ + ⅓`,
 `x ÷ y = 2`, `log₂(8)`, `uₙ = 1 + 7n`, `5000 (1 + 1.03 ÷ 100) = 5050.5`, and leaves *"two times a day
-keeps the doctor away"* alone. **Installers and release assets are NOT rebuilt** (they still serve
-`aff3d81`), and nothing is pushed.
+keeps the doctor away"* alone. **PUSHED** the same day (David: "just push everything"): `feat/math-notation`
+plus **`main` and `windows-port` fast-forwarded to it** (`fd6364c → d9cd649`, clean FF on all three,
+local and origin in sync). **Installers and release assets are NOT rebuilt** — `windows-v1.0.0` still
+serves the `aff3d81` build, so a fresh download or an update check does not get §7 #48 yet; rebuilding
+them is the IExpress flow in `docs/launch/windows-distribution.md`, sandbox smoke test mandatory.
 
 **Not done, deliberately.** Whisper writes a spoken "times" as the letter **x** (`"5000 + 189 x 5"`);
 making a bare `x` an infix operator is impossible — `x` is the most common variable, and the lexer
