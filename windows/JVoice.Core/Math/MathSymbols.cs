@@ -199,15 +199,19 @@ public static class MathSymbols
         // arithmetic
         Add("+", MathKind.Operator, "plus", "added to", "+");
         Add("-", MathKind.Operator, "minus", "take away");
-        Add("×", MathKind.Operator, "times", "multiplied by", "cross product",
-            "cartesian product", "×");
+        // Multiplication prints the MIDDLE DOT, not "×" (David, 2026-08-30): "3 · 4" is how a
+        // multiplication is written once the operands are symbols, and "×" stays what it is
+        // uniquely — the cross product. A resolution ("1600 times 1080") therefore also comes
+        // out with a dot; consistency beats a special case here.
+        Add("·", MathKind.Operator, "times", "multiplied by", "dot product", "dot",
+            "inner product", "scalar product", "·");
+        Add("×", MathKind.Operator, "cross product", "cartesian product", "×");
         Add("÷", MathKind.Operator, "divided by", "÷");
         Add("/", MathKind.Operator, "per");                 // "m per s" → "m / s"
         Add("±", MathKind.Operator, "plus or minus", "plus minus", "±");
         Add("∓", MathKind.Operator, "minus or plus");
 
         // products of vectors & spaces
-        Add("·", MathKind.Operator, "dot product", "dot", "inner product", "scalar product", "·");
         Add("⊗", MathKind.Operator, "tensor product", "kronecker product", "outer product",
             "circle times", "⊗");
         Add("⊕", MathKind.Operator, "direct sum", "circle plus", "exclusive or", "xor", "⊕");
@@ -416,11 +420,14 @@ public static class MathSymbols
         Add("arctanh", MathKind.Function, "inverse hyperbolic tangent", "artanh");
 
         // logs & exponentials
+        // "log base <n>" is NOT spelled out here: the engine parses "base" structurally, so a
+        // vocabulary key like "log base 2" would win the longest-match and quietly bypass the
+        // construct — printing the same "log₂" but never ACTIVATING the run, which is why
+        // "log base 2 of 8" used to stay words. Only the named logarithms live here.
         Add("log", MathKind.Function, "log", "logarithm", "logarithm of", "log of");
-        Add("log₁₀", MathKind.Function, "log base ten", "log base 10", "common logarithm");
-        Add("log₂", MathKind.Function, "log base two", "log base 2", "binary logarithm");
-        Add("ln", MathKind.Function, "natural log", "natural log of", "natural logarithm",
-            "log base e", "ln");
+        Add("log₁₀", MathKind.Function, "common logarithm");
+        Add("log₂", MathKind.Function, "binary logarithm");
+        Add("ln", MathKind.Function, "natural log", "natural log of", "natural logarithm", "ln");
         Add("exp", MathKind.Function, "exponential of", "the exponential of");
         Add("sgn", MathKind.Function, "signum", "signum of", "the signum of");
 
@@ -474,16 +481,25 @@ public static class MathSymbols
         Add("P(", MathKind.Open, "probability that", "the probability that",
             "conditional probability of", "the conditional probability of");
 
+        // Both word orders: David dictates "parentheses open" as readily as "open parentheses"
+        // (measured — "5000 parentheses open, 1 plus 1.03 over 100" came out with the words
+        // still in it because only one order was listed).
         Add("(", MathKind.Open, "open parenthesis", "open parentheses", "open paren",
-            "open bracket", "left parenthesis", "left paren", "left bracket", "open round bracket");
+            "open bracket", "left parenthesis", "left paren", "left bracket", "open round bracket",
+            "parenthesis open", "parentheses open", "paren open", "bracket open");
         Add(")", MathKind.Close, "close parenthesis", "close parentheses", "close paren",
             "close bracket", "right parenthesis", "right paren", "right bracket",
-            "close round bracket");
-        Add("[", MathKind.Open, "open square bracket", "left square bracket", "open square");
-        Add("]", MathKind.Close, "close square bracket", "right square bracket", "close square");
-        Add("{", MathKind.Open, "open brace", "open curly brace", "left brace", "left curly brace");
+            "close round bracket",
+            "parenthesis close", "parentheses close", "paren close", "bracket close",
+            "parenthesis closed", "parentheses closed", "bracket closed");
+        Add("[", MathKind.Open, "open square bracket", "left square bracket", "open square",
+            "square bracket open");
+        Add("]", MathKind.Close, "close square bracket", "right square bracket", "close square",
+            "square bracket close", "square bracket closed");
+        Add("{", MathKind.Open, "open brace", "open curly brace", "left brace", "left curly brace",
+            "brace open", "curly brace open");
         Add("}", MathKind.Close, "close brace", "close curly brace", "right brace",
-            "right curly brace");
+            "right curly brace", "brace close", "curly brace close", "brace closed");
         Add("⟨", MathKind.Open, "open angle bracket", "left angle bracket", "open angle");
         Add("⟩", MathKind.Close, "close angle bracket", "right angle bracket", "close angle");
         Add("⌊", MathKind.Open, "left floor", "open floor bracket", "floor bracket");

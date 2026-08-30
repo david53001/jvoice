@@ -171,7 +171,7 @@ public class MathSymbolsTests
         { "does not divide", "∤", MathKind.Relation },
 
         // operators
-        { "multiplied by", "×", MathKind.Operator },
+        { "multiplied by", "·", MathKind.Operator },
         { "cross product", "×", MathKind.Operator },
         { "per", "/", MathKind.Operator },
         { "plus or minus", "±", MathKind.Operator },
@@ -238,7 +238,7 @@ public class MathSymbolsTests
         { "cosecant", "csc", MathKind.Function },
         { "arc tangent", "arctan", MathKind.Function },
         { "hyperbolic sine", "sinh", MathKind.Function },
-        { "log base two", "log₂", MathKind.Function },
+        { "binary logarithm", "log₂", MathKind.Function },   // "log base two" is the ENGINE's
         { "natural logarithm", "ln", MathKind.Function },
         { "the determinant of", "det", MathKind.Function },
         { "the trace of", "tr", MathKind.Function },
@@ -411,14 +411,14 @@ public class MathSymbolsTests
         // operators & greek
         { "capital gamma equals capital lambda", "Γ = Λ" },
         { "v dot w equals 0", "v · w = 0" },
-        { "h bar times omega", "ℏ × ω" },
+        { "h bar times omega", "ℏ · ω" },
         { "3 choose 2 equals 3", "C(3, 2) = 3" },
         { "p hat plus or minus 2", "p̂ ± 2" },
         { "30 degrees celsius plus 5", "30°C + 5" },
 
         // postfixes
-        { "v transpose times w", "vᵀ × w" },
-        { "A inverse times A equals 1", "A⁻¹ × A = 1" },
+        { "v transpose times w", "vᵀ · w" },
+        { "A inverse times A equals 1", "A⁻¹ · A = 1" },
 
         // functions
         { "the determinant of A equals 0", "det(A) = 0" },

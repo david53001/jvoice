@@ -172,12 +172,11 @@ public static class SpokenNumbers
         ["hundredth"] = 100, ["hundredths"] = 100, ["thousandth"] = 1_000, ["thousandths"] = 1_000,
     };
 
-    /// Reads a spoken fraction ("three quarters" → "3/4", "two-thirds" → "2/3").
+    /// Reads a spoken fraction ("three quarters" → "¾", "two-thirds" → "⅔").
     ///
-    /// NOT called by <see cref="MathSpeech"/> yet: a fraction is a whole operand, so the
-    /// engine has to decide where it may appear before it can be wired in — "one half of
-    /// the team" must stay English. Kept here because the vocabulary belongs with the rest
-    /// of the number words.
+    /// The result is ONE operand, and a weak one: <see cref="MathSpeech"/> lexes it as a
+    /// number, so "one half of the team" stays English and only a run that something else
+    /// activated ever shows "½".
     public static (string Digits, int Consumed)? TryReadFraction(IReadOnlyList<string> words, int index)
     {
         if (index < 0 || index >= words.Count) return null;
@@ -433,7 +432,10 @@ public static class SpokenNumbers
         int k = index + numerator.Consumed;
         if (k >= words.Count || !Denominators.TryGetValue(words[k], out int denominator)) return null;
 
-        return ($"{numerator.Digits}/{denominator}", numerator.Consumed + 1);
+        // Stacked, like any other dictated fraction ("three quarters" → "¾", "five sevenths"
+        // → "⁵⁄₇"). Both sides are plain integers here, so MathScript always has a form.
+        return (MathScript.Fraction(numerator.Digits, denominator.ToString())
+                ?? $"{numerator.Digits}/{denominator}", numerator.Consumed + 1);
     }
 
     /// The two halves of a hyphenated token ("twenty-first"), or null when there is no

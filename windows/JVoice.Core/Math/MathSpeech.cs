@@ -72,7 +72,12 @@ public static class MathSpeech
 
             buf.Add(it);
 
-            if (toks[it.Start + it.Count - 1].Trail.Length > 0)
+            // Punctuation normally ends a run, because a converted run only keeps the
+            // punctuation at its two ends and an interior comma would be swallowed. The one
+            // exception is the comma dictation leaves right after an opening bracket
+            // ("5000 parentheses open, 1 plus 1.03 over 100"): there the pause is INSIDE the
+            // equation, and dropping that comma is exactly what should happen.
+            if (toks[it.Start + it.Count - 1].Trail.Length > 0 && !Opens(it))
                 emitter.Flush(buf, brokenByWord: false);
         }
         emitter.Flush(buf, brokenByWord: false);
@@ -148,6 +153,9 @@ public static class MathSpeech
         consumed = 0;
         return false;
     }
+
+    private static bool Opens(Item it)
+        => it.Kind == ItemKind.Symbol && it.Sym!.Kind == MathKind.Open;
 
     /// True when a multi-word item straddles punctuation ("x, subscript n") — such an item is
     /// demoted to an ordinary word so no comma is ever swallowed by a rewrite.
@@ -421,6 +429,14 @@ public static class MathSpeech
 
         public void PushOperand(string text)
         {
+            // "u n" is a sequence term, not a product (David, 2026-08-30).
+            if (_parts.Count > 0 && _parts[^1].Operand && Indexes(_parts[^1].Text, text))
+            {
+                ReplaceLast(MathScript.Attach(_parts[^1].Text, text, superscript: false));
+                _tightNext = false;
+                return;
+            }
+
             bool tight = _tightNext
                 || (_parts.Count > 0 && _parts[^1].Operand && Juxtaposes(_parts[^1].Text, text));
             _parts.Add((text, true, tight));
@@ -467,7 +483,30 @@ public static class MathSpeech
         public static bool Juxtaposes(string left, string right)
             => IsSingleLetter(right) && (IsSingleLetter(left) || IsPlainNumber(left));
 
+        /// A variable followed by a classic INDEX is a sequence term — "u n" → "uₙ",
+        /// "u 1" → "u₁", "2 u n" → "2uₙ" — which is how David dictates a sequence without
+        /// saying "subscript" every time.
+        ///
+        /// Deliberately narrow in both directions: only the traditional index letters count,
+        /// so "x y" stays the product "xy"; and only a lone variable (with an optional numeric
+        /// coefficient) can carry one, so "sin(x) n" and "aₙ k" are left alone. It is also WEAK
+        /// — it renders inside a run that something else already turned into mathematics and
+        /// never activates one itself, so "i think u n is fine" is still a sentence.
+        private const string IndexLetters = "nkijm";
+
+        private static bool Indexes(string left, string right)
+            => CanCarryIndex(left) && IsIndex(right);
+
+        private static bool CanCarryIndex(string s)
+            => s.Length > 0 && char.IsLetter(s[^1]) && IsInteger(s[..^1]);
+
+        private static bool IsIndex(string s)
+            => (s.Length > 0 && IsInteger(s))
+               || (IsSingleLetter(s) && IndexLetters.Contains(char.ToLowerInvariant(s[0])));
+
         private static bool IsSingleLetter(string s) => s.Length == 1 && char.IsLetter(s[0]);
+
+        private static bool IsInteger(string s) => s.All(char.IsAsciiDigit);
 
         private static bool IsPlainNumber(string s)
             => s.Length > 0 && s.All(c => char.IsAsciiDigit(c) || c == '.');
@@ -571,9 +610,22 @@ public static class MathSpeech
                 }
                 case Kw.Over:
                 {
+                    // A division is written the way it is written on paper (David, 2026-08-30):
+                    // stacked when the two sides are small enough to stack ("1 over 2" → "½",
+                    // "22 over 7" → "²²⁄₇"), and with the division SIGN when they are not
+                    // ("1 over n squared" → "1 ÷ n²"). Never a bare slash.
+                    //
+                    // The denominator takes a trailing power with it, which is also the correct
+                    // reading: "one over n squared" is 1/(n²), not (1/n)².
                     if (!expr.LastIsOperand) return false;
-                    if (!TryScriptOperand(i + 1, out string denominator, out int after)) return false;
-                    expr.AttachToLast("/" + denominator);
+                    if (!TryPoweredOperand(i + 1, out string denominator, out int after)) return false;
+                    if (MathScript.Fraction(expr.LastText, denominator) is { } stacked)
+                        expr.ReplaceLast(stacked);
+                    else
+                    {
+                        expr.PushInfix("÷");
+                        expr.PushOperand(denominator);
+                    }
                     _activated = true;
                     i = after;
                     return true;
@@ -794,12 +846,18 @@ public static class MathSpeech
                     {
                         int j = k + 1;
                         string name = sym.Text;
-                        // "log base 2 of x"
-                        if (j < items.Count && items[j].Key == Kw.Base
-                            && TryOperand(j + 1, out string b, out int afterBase))
+                        // "log base 2 of x" — and "log sub 2 of x", which is the same thing said
+                        // differently. A named base ACTIVATES: a function with an explicit base is
+                        // unambiguously mathematics, so it converts on its own ("log base 2 of 8"),
+                        // where a bare application stays weak ("the log of the tree").
+                        // allowApply: false — the "of" after the base opens the ARGUMENT
+                        // ("log base n OF x"), so the base must never read as "n(x)".
+                        if (j < items.Count && items[j].Key is Kw.Base or Kw.Sub
+                            && TryOperand(j + 1, out string b, out int afterBase, allowApply: false))
                         {
                             name = MathScript.Attach(name, b, superscript: false);
                             j = afterBase;
+                            _activated = true;
                         }
                         // "sine squared theta" → "sin²θ" — the power belongs to the function name.
                         if (j < items.Count && items[j].Kind == ItemKind.Keyword)

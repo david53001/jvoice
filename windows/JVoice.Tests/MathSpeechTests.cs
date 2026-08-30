@@ -35,14 +35,14 @@ public class MathSpeechTests
         { "n is greater than 100", "n > 100" },
         { "x is greater than or equal to 5", "x ≥ 5" },
         { "twenty five divided by five equals five", "25 ÷ 5 = 5" },
-        { "3 over 4 plus 1 over 4 equals 1", "3/4 + 1/4 = 1" },
+        { "3 over 4 plus 1 over 4 equals 1", "¾ + ¼ = 1" },
         { "n factorial equals 120", "n! = 120" },
 
         // ── spoken numbers (SpokenNumbers feeds the lexer; a fraction is ONE operand) ──
         { "x equals twenty five", "x = 25" },
-        { "three point one four times r squared", "3.14 × r²" },
-        { "one half plus one quarter equals three quarters", "1/2 + 1/4 = 3/4" },
-        { "x equals two thirds", "x = 2/3" },
+        { "three point one four times r squared", "3.14 · r²" },
+        { "one half plus one quarter equals three quarters", "½ + ¼ = ¾" },
+        { "x equals two thirds", "x = ⅔" },
         { "two million five hundred thousand divided by 2", "2500000 ÷ 2" },
 
         // ── implicit multiplication: atomic operands close up ──
@@ -53,15 +53,15 @@ public class MathSpeechTests
         // ── greek, constants, sets ──
         { "alpha plus beta equals gamma", "α + β = γ" },
         { "theta equals 30 degrees", "θ = 30°" },
-        { "pi times r squared", "π × r²" },
+        { "pi times r squared", "π · r²" },
         { "x is an element of the reals", "x ∈ ℝ" },
 
         // ── big operators, calculus ──
-        { "the sum from n equals 1 to infinity of 1 over n squared", "the ∑ₙ₌₁^∞ 1/n²" },
+        { "the sum from n equals 1 to infinity of 1 over n squared", "the ∑ₙ₌₁^∞ 1 ÷ n²" },
         { "the integral from 0 to 1 of x squared dx", "the ∫₀¹ x² dx" },
         { "the derivative of y with respect to x", "the dy/dx" },
         { "the partial derivative of f with respect to x equals 0", "the ∂f/∂x = 0" },
-        { "the limit as x approaches 0 of sine of x over x equals 1", "the lim_(x→0) sin(x)/x = 1" },
+        { "the limit as x approaches 0 of sine of x over x equals 1", "the lim_(x→0) sin(x) ÷ x = 1" },
 
         // ── powers spoken the short way, logs, combinatorics ──
         { "e to the x plus 1", "eˣ + 1" },
@@ -73,7 +73,7 @@ public class MathSpeechTests
         { "the integral from 0 to the square root of 2 of x dx", "the ∫₀^(√2) x dx" },
 
         // ── textbook shapes (found by sweeping real equations through the engine) ──
-        { "the sum from i equals 1 to n of i equals n times n plus 1 over 2", "the ∑ᵢ₌₁ⁿ i = n × n + 1/2" },
+        { "the sum from i equals 1 to n of i equals n times n plus 1 over 2", "the ∑ᵢ₌₁ⁿ i = n · n + ½" },
         { "sine squared theta plus cosine squared theta equals 1", "sin²(θ) + cos²(θ) = 1" },
         { "e to the power of i pi plus 1 equals 0", "e^(iπ) + 1 = 0" },
         { "the derivative of x cubed with respect to x equals 3 x squared", "the d(x³)/dx = 3x²" },
@@ -94,6 +94,38 @@ public class MathSpeechTests
         { "so basically x equals 5 and that's it", "so basically x = 5 and that's it" },
         { "the formula is a subscript n equals 2n, which is neat", "the formula is aₙ = 2n, which is neat" },
         { "x equals 5.", "x = 5." },
+
+        // ── the 2026-08-30 batch: multiplication, division, logs, sequences ──
+        // multiplication is the middle dot; "×" is left to the cross product alone
+        { "3 times 4 equals 12", "3 · 4 = 12" },
+        { "x equals 2 times y", "x = 2 · y" },
+        { "a cross product b equals c", "a × b = c" },
+        // division stacks when it can and uses the division sign when it cannot
+        { "1 over 2 plus 1 over 3", "½ + ⅓" },
+        { "22 over 7 is approximately pi", "²²⁄₇ ≈ π" },
+        { "x over n equals 2", "ˣ⁄ₙ = 2" },
+        { "x over y equals 2", "x ÷ y = 2" },
+        { "10 divided by 2 equals 5", "10 ÷ 2 = 5" },
+        { "1 over n squared", "1 ÷ n²" },              // the power belongs to the denominator
+        // an explicit base makes a logarithm mathematics on its own
+        { "log base 2 of 8", "log₂(8)" },
+        { "log base 10 of 1000 equals 3", "log₁₀(1000) = 3" },
+        { "log sub 2 of x", "log₂(x)" },
+        { "so we take log base 2 of x and then move on", "so we take log₂(x) and then move on" },
+        { "log base n of x equals 5", "logₙ(x) = 5" },
+        // sequences: an index needs no "subscript" once the run is mathematics
+        { "u n equals 1 plus 7n", "uₙ = 1 + 7n" },
+        { "u 1 equals 70000", "u₁ = 70000" },
+        { "u n plus 1 equals 2 u n", "uₙ + 1 = 2uₙ" },
+        { "a n equals a 1 times r to the power of n", "aₙ = a₁ · rⁿ" },
+        { "x y equals 12", "xy = 12" },                // NOT an index: "x y" is a product
+
+        // brackets are dictated in both word orders, and the comma after an opening one is a
+        // pause inside the equation, not the end of it (measured on a real dictation)
+        { "5000 parentheses open, 1 plus 1.03 over 100 parentheses close",
+          "5000 (1 + 1.03 ÷ 100)" },
+        { "x equals open paren a plus b close paren times c",
+          "x = (a + b) · c" },
 
         // ── explicit escape hatch ──
         { "start equation capital sigma end equation", "Σ" },
@@ -157,6 +189,13 @@ public class MathSpeechTests
         "there were about a hundred people there",
         "give me a minute or two and I'll be ready",
         "he read chapter three verse sixteen out loud",
+        // the 2026-08-30 batch is weak where it has to be: an index never opens a run, and
+        // a bare logarithm is a log of wood
+        "i think u n is fine the way it is",
+        "we counted u 1 and u 2 by hand",
+        "the log of the tree was rotten through",
+        "we need to log in with the email first",
+        "she went over to plan b 2 instead",
     };
 
     [Theory]
@@ -197,7 +236,7 @@ public class MathSpeechTests
             "or x equals 3, and honestly that took me way longer than it should have";
         const string expected =
             "okay so I was working through the homework and the first problem says find x where " +
-            "x² - 5x + 6 = 0, which factors into (x - 2) × (x - 3), so x = 2 " +
+            "x² - 5x + 6 = 0, which factors into (x - 2) · (x - 3), so x = 2 " +
             "or x = 3, and honestly that took me way longer than it should have";
 
         Assert.Equal(expected, MathSpeech.Convert(spoken));

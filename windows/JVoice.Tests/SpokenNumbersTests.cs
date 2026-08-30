@@ -233,12 +233,12 @@ public class SpokenNumbersTests
     // ===== fractions (not wired into MathSpeech yet) =====
 
     [Theory]
-    [InlineData("one half", "1/2", 2)]
-    [InlineData("three quarters", "3/4", 2)]
-    [InlineData("two thirds", "2/3", 2)]
-    [InlineData("two-thirds", "2/3", 1)]
-    [InlineData("five eighths", "5/8", 2)]
-    [InlineData("twenty five hundredths", "25/100", 3)]
+    [InlineData("one half", "½", 2)]
+    [InlineData("three quarters", "¾", 2)]
+    [InlineData("two thirds", "⅔", 2)]
+    [InlineData("two-thirds", "⅔", 1)]
+    [InlineData("five eighths", "⅝", 2)]
+    [InlineData("twenty five hundredths", "²⁵⁄₁₀₀", 3)]
     public void ReadsFractions(string spoken, string fraction, int consumed)
         => Assert.Equal((fraction, consumed), SpokenNumbers.TryReadFraction(Words(spoken), 0));
 
@@ -260,7 +260,7 @@ public class SpokenNumbersTests
     [InlineData("two point five plus one point five equals four", "2.5 + 1.5 = 4")]
     [InlineData("n is greater than a thousand", "n > 1000")]
     [InlineData("x equals two point five million", "x = 2500000")]
-    [InlineData("three point one four times r squared", "3.14 × r²")]
+    [InlineData("three point one four times r squared", "3.14 · r²")]
     [InlineData("x subscript twenty", "x₂₀")]
     [InlineData("the fifth root of 32", "the ⁵√32")]
     [InlineData("the twenty first root of x", "the ²¹√x")]
