@@ -97,13 +97,21 @@ Settings → Processing → **Math Notation** (default ON). The half that matter
 ordinary talking must come out exactly as it always did.
 - [ ] Dictate **"a subscript n equals 1 plus 7n"** → pastes `aₙ = 1 + 7n`.
 - [ ] **"x squared plus y squared equals z squared"** → `x² + y² = z²`.
-- [ ] **"the sum from n equals 1 to infinity of 1 over n squared"** → `the ∑ₙ₌₁^∞ 1/n²`.
+- [ ] **"the sum from n equals 1 to infinity of 1 over n squared"** → `the ∑ₙ₌₁^∞ 1 ÷ n²`.
+- [ ] §7 #48 — **"5 times 6 equals 30"** → `5 · 6 = 30` (the dot, not `×`).
+- [ ] §7 #48 — **"1 over 2 plus 1 over 3"** → `½ + ⅓`; **"x over y equals 2"** → `x ÷ y = 2`.
+- [ ] §7 #48 — **"log base 2 of 8"** → `log₂(8)` (converts with no equals sign in the sentence).
+- [ ] §7 #48 — **"u n equals 1 plus 7n"** → `uₙ = 1 + 7n` (a sequence needs no "subscript").
+- [ ] §7 #48 — **"5000 parentheses open, 1 plus 1.03 over 100 parentheses close"** →
+      `5000 (1 + 1.03 ÷ 100)` (noun-first brackets; the comma after "open" is a pause, not a break).
 - [ ] **"the integral from 0 to 1 of x squared dx"** → `the ∫₀¹ x² dx`.
 - [ ] Something long and mixed: **"so basically the formula is a subscript n equals 2n, which is neat"**
       → only the equation changes; the sentence around it is untouched.
 - [ ] **"start equation capital sigma end equation"** → `Σ` (the escape hatch for a symbol whose spoken
       name is too ordinary to convert on its own).
-- [ ] **No overflow** — dictate each of these and confirm the paste is byte-identical to normal:
+- [ ] **No overflow** — dictate each of these and confirm the paste is byte-identical to normal
+      (§7 #48 adds: *"i think u n is fine"*, *"the log of the tree was rotten"*, *"we need to log in
+      with the email first"*):
       "this is a subscript of the value" · "two times a day keeps the doctor away" ·
       "I'm 100 percent sure about this" · "it's 30 degrees outside" · "the sum of my fears" ·
       "an integral part of the plan" · "the alpha version ships tomorrow".

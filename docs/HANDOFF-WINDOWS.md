@@ -19,7 +19,7 @@ transcription → tone-styled, custom-word-accurate text pasted into the focused
 **All five phases are implemented.** Current verified state:
 
 - `dotnet build windows/JVoice.sln -c Release` → **0 errors** (5 projects).
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **1457 / 1457 passing** (grew from 122 during
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` → **1502 / 1502 passing** (grew from 122 during
   the bug-hunt and the subsequent feature work tracked in §7; a shared, moving total).
 - `windows/tools/whisper-smoke` and `JVoice.exe --bench` → **real on-device transcription works**
   (Vulkan GPU on the RTX 3060 Ti; CPU fallback verified too). Accuracy invariants proven.
@@ -1827,9 +1827,9 @@ Unicode notation and leaves everything else alone:
 |---|---|
 | a subscript n equals 1 plus 7n | `aₙ = 1 + 7n` |
 | x squared plus y squared equals z squared | `x² + y² = z²` |
-| the sum from n equals 1 to infinity of 1 over n squared | `the ∑ₙ₌₁^∞ 1/n²` |
+| the sum from n equals 1 to infinity of 1 over n squared | `the ∑ₙ₌₁^∞ 1 ÷ n²` (§7 #48) |
 | the integral from 0 to 1 of x squared dx | `the ∫₀¹ x² dx` |
-| the limit as x approaches 0 of sine of x over x equals 1 | `the lim_(x→0) sin(x)/x = 1` |
+| the limit as x approaches 0 of sine of x over x equals 1 | `the lim_(x→0) sin(x) ÷ x = 1` (§7 #48) |
 | log base 2 of x equals 5 · n choose k · e to the x | `log₂(x) = 5` · `C(n, k)` · `eˣ` |
 
 **The anti-overflow design (the part that mattered).** Conversion is **structural, not a classifier** —
@@ -1952,7 +1952,8 @@ and repo all moved to the same build:
   `1.0.0+aff3d81`, and `--math-probe` from the freshly-installed copy returned `aₙ = 1 + 7n`.
 - **⚠ That smoke test earned its keep.** The FIRST rebuild produced installers that failed on **every**
   install — *"JVoice install failed: Exception calling ExtractToFile … The directory name is invalid"*.
-  `Compress-Archive` writes a directory entry with a **backslash** separator (`JVoiceuntimes\`) and
+  `Compress-Archive` writes a directory entry with a **backslash** separator (`JVoice
+untimes\`) and
   `install.ps1` detected directories with `FullName.EndsWith('/')`, so it handed a directory path to
   `ExtractToFile`. Fixed to test `[string]::IsNullOrEmpty($entry.Name)` (empty for every directory
   entry, whatever the separator) and to normalise `/` → `\` before joining. `windows/artifacts/` is
@@ -1963,6 +1964,73 @@ and repo all moved to the same build:
   local-only. The `windows-v1.0.0` release assets were **clobbered** with the rebuilt installers, so a
   fresh download gets this build. Version stays `1.0.0` against tag `windows-v1.0.0`, so
   `--update-check` is still `available=False` — nobody is auto-updated, only new downloads change.
+
+## §7 #48 — Math notation, second pass: the dot, the fraction, the logarithm, the sequence (2026-08-30)
+
+**The ask (dictated, two presses).** *"there are some things that I want you to fix with the
+mathematical wording … to the power is good but then when it's a subscript like when I say u n it
+should be like u subscript … if it's multiplication, if she used that small dot that is used for
+multiplication, and for division, if she used either the division symbol or should have the terms
+placed over each other, like in a division scenario. and then when I say log, it should use
+logarithms and other sequences and stuff like that."* Mid-session he added a real failing paste:
+`5000 parentheses open, 1 + 1.03/100, 5050, .5` — *"this is also an issue"*.
+
+**What changed** (brain-only — no schema, no settings, no UI, no wiring change; `MathSpeech.Convert`
+still has the same signature and the same call site):
+
+| spoken | before | now |
+|---|---|---|
+| 5 times 6 equals 30 | `5 × 6 = 30` | `5 · 6 = 30` |
+| 1 over 2 plus 1 over 3 | `1/2 + 1/3` | `½ + ⅓` |
+| 22 over 7 | `22/7` | `²²⁄₇` |
+| x over y equals 2 | `x/y = 2` | `x ÷ y = 2` |
+| 1 over n squared | `1/n²` | `1 ÷ n²` |
+| log base 2 of 8 | *(unchanged words)* | `log₂(8)` |
+| u n equals 1 plus 7n | `un = 1 + 7n` | `uₙ = 1 + 7n` |
+| 5000 parentheses open, 1 plus 1.03 over 100 | *(unchanged words)* | `5000 (1 + 1.03 ÷ 100)` |
+
+1. **Multiplication is the middle dot.** `"times"` / `"multiplied by"` → `·` (they printed `×`);
+   `×` is now left to `"cross product"` / `"cartesian product"` alone. Consequence he should know
+   about: a resolution dictated as *"1600 times 1080"* also comes out `1600 · 1080` — telling a
+   dimension from a product would need exactly the classifier this feature refuses to have.
+2. **Division is written the way it is written on paper.** New `MathScript.Fraction` builds a real
+   stacked fraction when both sides are atomic enough to stack — a precomposed glyph when Unicode has
+   one (`½ ⅓ ⅔ ¼ ¾ ⅕…⅘ ⅙ ⅚ ⅛…⅞`), else superscript + U+2044 + subscript (`²²⁄₇`, `ˣ⁄ₙ`) — and returns
+   null otherwise, where the engine writes the **division sign** (`x ÷ y`, `1 ÷ n²`). A bare `/` is
+   gone from spoken division; `dy/dx` and `"per"` (`m/s`) keep theirs, they are named notations.
+   The all-or-nothing rule is what keeps `"sine of x over x"` from becoming the technically-renderable
+   `ˢⁱⁿ⁽ˣ⁾⁄ₓ`. `"one half"` / `"three quarters"` (SpokenNumbers) render the same way. The denominator
+   now also takes a trailing power with it, which is the correct reading: *"one over n squared"* is
+   1/(n²), not (1/n)².
+3. **A logarithm with a base converts on its own.** `"log base 2 of 8"` used to stay words for a
+   subtle reason worth remembering: `"log base 2"` was a **vocabulary key**, and the longest-match
+   lookup handed back a ready-made `log₂` Function — which is *weak*, so nothing activated the run
+   and the structural `base` construct it shadowed never ran. Those keys are deleted (`"common
+   logarithm"` / `"binary logarithm"` remain); the engine parses `base` for every function and any
+   base (`logₙ(x)`), `"log sub 2 of x"` is accepted as the same thing, and a named base ACTIVATES.
+   A bare application stays weak on purpose — *"the log of the tree"*.
+4. **Sequences need no "subscript".** A variable followed by a classic index is a sequence term:
+   `"u n"` → `uₙ`, `"u 1"` → `u₁`, `"2 u n"` → `2uₙ`. Narrow in both directions — only `n k i j m`
+   and integers index, so `"x y"` stays the product `xy`; and only a lone variable with an optional
+   numeric coefficient can carry one. **Weak**: it renders inside a run something else activated and
+   never activates one, so *"i think u n is fine"* is still a sentence.
+5. **Brackets are dictated in both word orders**, and the comma after an opening one is a pause
+   inside the equation, not the end of it. `"parentheses open"` / `"bracket close"` / `"brace open"`
+   (and `"closed"`) are now vocabulary, and a trailing comma on an Open bracket no longer flushes the
+   run — the only case where the engine drops a comma, and only inside a converted equation.
+
+**Verification.** `dotnet test` **1502/1502** (+45). The regression corpus is the point: all
+**1,330** unique `raw="…"` dictations in his `diagnostic.log` swept through `--math-probe` before and
+after — still exactly **16 converted, 0 newly converted**, i.e. no new bleed; the 9 differing outputs
+are all the intended `×`→`·` and `/`→`÷`/stacked. Ordinary-speech guards added to the spec:
+*"i think u n is fine the way it is"*, *"the log of the tree was rotten through"*, *"we need to log in
+with the email first"*, *"she went over to plan b 2 instead"*.
+
+**Not done, deliberately.** Whisper writes a spoken "times" as the letter **x** (`"5000 + 189 x 5"`);
+making a bare `x` an infix operator is impossible — `x` is the most common variable, and the lexer
+gives a token ONE kind, so `"x equals 5"` would break. A number-`x`-number rule would rewrite
+*"a 2 x 4 from the store"*. Left alone; say "times".
+
 
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
