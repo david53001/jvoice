@@ -2026,6 +2026,16 @@ are all the intended `×`→`·` and `/`→`÷`/stacked. Ordinary-speech guards 
 *"i think u n is fine the way it is"*, *"the log of the tree was rotten through"*, *"we need to log in
 with the email first"*, *"she went over to plan b 2 instead"*.
 
+**DEPLOYED to the install (2026-08-30, David: "yes, refresh it now").** Fresh `JVoiceFlavor=gpu`
+publish → `robocopy /MIR /XF LICENSE.txt uninstall.ps1` into `%LOCALAPPDATA%\Programs\JVoice`, with the
+elevated instance bounced UAC-free via `Stop`/`Start-ScheduledTask 'JVoice Elevated Autostart'`
+(checked first that the publish is a SUPERSET of the install — 292 files either way, nothing for
+`/MIR` to delete). 21 files copied, 0 failed; tray relaunched clean (`HUD Idle`, update check
+`available=False`), and `--math-probe` **from the installed exe** returns `5 · 6 = 30`, `½ + ⅓`,
+`x ÷ y = 2`, `log₂(8)`, `uₙ = 1 + 7n`, `5000 (1 + 1.03 ÷ 100) = 5050.5`, and leaves *"two times a day
+keeps the doctor away"* alone. **Installers and release assets are NOT rebuilt** (they still serve
+`aff3d81`), and nothing is pushed.
+
 **Not done, deliberately.** Whisper writes a spoken "times" as the letter **x** (`"5000 + 189 x 5"`);
 making a bare `x` an infix operator is impossible — `x` is the most common variable, and the lexer
 gives a token ONE kind, so `"x equals 5"` would break. A number-`x`-number rule would rewrite
