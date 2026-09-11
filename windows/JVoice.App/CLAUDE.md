@@ -6,9 +6,15 @@ capture, paste, persistence, and the Whisper engine. `win-x64`, .NET 9, WinExe.
 ## Orchestrator
 `VoiceCoordinator.cs` (kept at the project root) is the central flow:
 hotkey → record → transcribe → process → paste, driving `HudState`. Mirrors macOS
-`VoiceCoordinator.swift`.
+`VoiceCoordinator.swift`. **Latency invariant (§7 #49):** the start branch shows the HUD
+synchronously on the press BEFORE any microphone/COM work; `TryStart`/`Stop` run on a pool thread;
+the paste activation sleeps run only when the target is not already foreground. Don't put anything
+slow back in front of `UpdateHud(HudState.Recording)`.
 
 ## Areas (each has its own brief)
+- `Diagnostics/` — `LatencyProbe.cs`, the hidden `--latency-probe` CLI (HANDOFF §7 #49): times the
+  hotkey→HUD→mic→stop→paste stages and decode-time UI stalls, headless (off-screen HUD, seconds-short
+  mic use, clipboard read-only). Run it BEFORE changing anything for a latency report.
 - `Whisper/` — the real Whisper.net engine + model store (the ONE network call).
 - `UI/` — WPF HUD, Settings, tray (the monochrome black-&-white redesign).
 - `Platform/` — OS integration, split into `Capture/`, `Persistence/`, `System/`.
@@ -26,5 +32,5 @@ the tray app, or build to a throwaway dir:
 
 ## Verify
 `dotnet build windows/JVoice.App/JVoice.App.csproj -c Release` (0 errors) ·
-`dotnet test windows/JVoice.Tests` (883 green) ·
+`dotnet test windows/JVoice.Tests` (1516 green) · `JVoice.exe --latency-probe` for timing ·
 `JVoice.exe --hud-preview <state>` / `--settings-render <png>` / `--hud-render <png>` for visuals.

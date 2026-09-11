@@ -2045,6 +2045,111 @@ gives a token ONE kind, so `"x equals 5"` would break. A number-`x`-number rule 
 *"a 2 x 4 from the store"*. Left alone; say "times".
 
 
+## §7 #49 — Zero-latency HUD, faster paste, and a streaming tail that no longer re-decodes everything (2026-09-11)
+
+**Ask (David, 2026-09-11):** *"When I press the keybind for JVoice it takes a second for the UI to pop up,
+sometimes when a lot is running it lags a lot, and when transcribing as well. Get the latency as close to
+0 ms as possible, then increase the transcription speed — while the person talks it should transcribe so
+once the keybind is pressed it's done."* Branch `perf/zero-latency-hud`, commit `a22440f` (+ docs).
+
+**How it was measured (do this first next time).** The diagnostic log's first line per dictation
+(`HUD Recording`) is written only AFTER the microphone is already running, so the whole start path was
+invisible to log mining. Two instruments were built:
+
+- `JVoice.exe --latency-probe [--wav <clip>] [--threads 6,4,2] [--load N] [--ui-priority AboveNormal]
+  [--prewarm-hud] [--out <log>]` (`JVoice.App/Diagnostics/LatencyProbe.cs`, bypasses the single-instance
+  lock like the previews): times every stage on THIS machine — HUD first-show / re-show / hide, the
+  animation's render ticks + process CPU, the Send-priority dispatcher hop, `RequestPermissionAsync`,
+  `PreferredCaptureDeviceId`, `TryStart`/`Stop`, the DiagnosticLog append, the clipboard snapshot
+  (read-only), and a whisper decode's wall time + CPU + UI-hop stall per thread count. Headless-safe:
+  the HUD is parked at (−20000, −20000) via `HudWindow.Offscreen`, the mic opens for ~0.3 s ×3, the
+  clipboard is never written, no hotkey is registered. `--load N` spins N Normal-priority threads to
+  reproduce "a lot is running". Report: `%TEMP%\jvoice-latency-probe.log` (and stdout when piped).
+- Log mining of the 1,194 dictations in `diagnostic.log` (stop → `Transcribed` → `HUD Idle`).
+
+**What the numbers said (idle / under a 12-thread CPU load):**
+
+| stage | idle | loaded |
+| --- | --- | --- |
+| `RequestPermissionAsync` (per press; opens+starts+stops a whole extra capture client) | 13–116 ms | 214 ms |
+| `AudioInputRouter.PreferredCaptureDeviceId` (enumeration + property reads) | 4–14 ms | 32 ms |
+| `NAudioRecorder.TryStart` (WASAPI init = cross-process call into the audio engine) | 20–29 ms | 326 ms |
+| HUD **first** show → first rendered frame (window + surface creation) | 37–43 ms | 62 ms |
+| HUD re-show of a realized window | 3–4 ms | 4 ms |
+| HUD show after the new off-screen prewarm | **5 ms** | **5 ms** |
+| paste phase (`Transcribed` → `HUD Idle`, log median / p90) | 220 / 400 ms | — |
+| whisper decode, 18 s clip, threads 6 / 4 / 2 / 1 (Vulkan, large-v3-turbo) | 0.38 / 0.37 / 0.40 / 0.44 s | — |
+| CPU burned by that decode (any thread count) | ≈ 0.8–1.0 core | — |
+| `WhisperProcessor` `Build()` per decode | 0.1 ms | — |
+
+So: **the pill waited ~50–170 ms idle and ~570 ms under load for microphone work it did not need to wait
+for**, all of it on the UI thread (so the first frames of the animation froze too). Decode threads,
+per-decode processor construction and the 240 Hz bar animation (~3 % of a core) were **not** the lag —
+§7 #31's thread tuning stands untouched.
+
+**Fixes (all measured or test-locked):**
+
+1. **HUD first.** `ToggleRecording`'s start branch calls `UpdateHud(HudState.Recording)` synchronously on
+   the press, BEFORE any microphone work; the hotkey→dispatcher hop runs at `DispatcherPriority.Send`.
+   A mic failure replaces the pill with the error exactly as before.
+2. **Prewarmed HUD window.** `HudWindow.Prewarm()` (called from `VoiceCoordinator.Start`) shows the
+   layered window ONCE at startup parked off-screen, hides it on its first rendered frame — so the first
+   press costs 5 ms instead of 40–110 ms. (Creating only the HWND via `EnsureHandle` was tried and
+   measured SLOWER, 95 ms — WPF still builds the render surface on the first real show.) A press that
+   lands before that first frame takes the window over (`CancelPrewarmFrame`) instead of being hidden.
+3. **No per-press permission probe.** `RequestPermissionAsync` is off the hot path; `TryStart`'s own
+   `E_ACCESSDENIED` / `UnauthorizedAccessException` is surfaced as `IAudioRecorder.LastStartWasPermissionDenied`
+   and still opens the Settings deep link. `TryStart` and `Stop` now run on a pool thread
+   (`StartRecordingFlowAsync` / `FinishTranscriptionAsync`), so WASAPI's 25–330 ms never blocks the UI
+   thread again. New log lines: `MicStarted +Nms after press`, `Recorder stopped … +Nms after press`.
+4. **UI thread at `ThreadPriority.AboveNormal`** (thread-level only — the process class stays Normal so a
+   decode never outranks the user's other apps) and the bar animation paced to ~60 fps by the pure
+   `Core/Policy/FramePacer` (Rendering ticks at the display's 240 Hz; render passes measured 215/s → 93/s).
+5. **Paste fast path.** The coordinator's `ActivateWindow` + 80 ms `PasteActivationDelay` and `Paster`'s
+   own 80 ms settle now run ONLY when the target is not already the foreground window
+   (`Paster.IsForeground` / `FocusTarget(out switched)`). In every logged dictation it was already
+   foreground, so this is ~160 ms off every paste. The HUD hides BEFORE the three bookkeeping file writes.
+   New log line: `Timing  stop->transcript=…ms  stop->pasted=…ms  stop->idle=…ms  recSecs=…`.
+6. **Streaming: a silent final tail keeps the streamed pieces.** Fallback census since 2026-07-15: 85 of
+   246 fallbacks were `silent final tail` (22 of them < 1 s), each throwing away every already-decoded
+   chunk and re-decoding the whole dictation (1.4 s for 96 s, up to 11 s). `StreamingTranscriptionSession`
+   now DECODES the silent-classified tail under the #41 policy (divergence #1 refined): empty ⇒ the model
+   confirmed silence, the pieces are returned; non-empty ⇒ null ⇒ whole-file fallback exactly as before
+   (partial-decode risk); a decode error ⇒ null. Verified on-device with `--bench --stream`:
+   `capture-20260907-091128-947.wav` (96 s, 0.25 s tail) now `model confirmed empty -> skipped … 6 pieces`,
+   while the July clips whose "silent" tails held quiet speech still log `decoded 183 chars -> whole-file
+   fallback`. Poll cadence `AppTimings.StreamingPollMs` 1000 → 250 ms (the recorder flushes every 250 ms).
+7. **Chunk path hardening** (`WhisperNetTranscriptionEngine.TranscribeChunkSamplesAsync`): the §7 #39
+   tail-coverage guard now also covers the streaming final tail (the one chunk that ends at the stop
+   press, not at a silence cut), and `TextProcessor.RemoveWhisperHallucinations` runs on chunk text so a
+   padded sub-second tail hallucination reads as confirmed silence. New fingerprint in that filter: the
+   bare lowercase token `you` (whisper's answer to < 1 s of hum — pasted three times in the log from
+   0.7–0.9 s accidental presses); matched case-sensitively and unpunctuated so a real "You." survives.
+
+**Tests:** `dotnet test` **1516/1516** (+14: `FramePacerTests`, three final-tail `StreamingSessionTests`
+— the existing `SubFloorQuietTail_ForcesWholeFileFallback` still passes, the old
+`SilentTail_ForcesWholeFileFallback_NotDropped` became `SilentTail_DecodesNonEmpty_…` — and the `you`
+fingerprint in `TextProcessorTests`).
+
+**What is NOT changed, deliberately:** `ChunkPlanner` constants (15–25 s chunks — the accuracy brain;
+smaller chunks would not help anyway, the ~0.3 s encoder pass per decode is the floor on this GPU),
+`EngineTuning` threads, `audio_ctx`, the clipboard snapshot/restore semantics, and the #41 doctrine.
+
+**Observed while benching (open, separate from latency):** streaming can drop a few words at a chunk
+cut — `capture-20260906-180632-101.wav` streams *"the fixed So, making it…"* where whole-file gives
+*"the fixes applied to the yvl sign so making it…"* (the live paste on 2026-09-06 had the same loss).
+The cut landed mid-phrase (the quietest window in 15–25 s wasn't a real pause). Worth its own hunt.
+
+**DEPLOYED to the install (2026-09-11 21:09).** Fresh `JVoiceFlavor=gpu` publish → `robocopy /MIR /XF
+LICENSE.txt uninstall.ps1` into `%LOCALAPPDATA%\Programs\JVoice` (261-file sets identical, 6 files
+copied, 0 failed); the elevated instance bounced UAC-free via `Stop`/`Start-ScheduledTask 'JVoice
+Elevated Autostart'` — relaunched clean (`HUD Idle`, update check `available=False`). NOT pushed;
+installers/release assets NOT rebuilt (`windows-v1.0.0` still serves `aff3d81`).
+
+**Still to confirm live (David at the desk):** the press→pill feel, and the new `MicStarted` / `Timing`
+lines in `diagnostic.log` after a few dictations (expected: `MicStarted +20–40ms`, `stop->pasted`
+≈ 400–500 ms for a streamed dictation).
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
@@ -2104,6 +2209,11 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    packs (Web/Python/DevOps…), and porting `JVoice.Core/Text/DeveloperTerms.cs` 1:1 to the macOS app. Curating the
    word list further (add/remove terms; the one name-collision risk is `jason`→`JSON`) is by-eye taste.
 7. **Do NOT publish/push** without David's explicit go-ahead.
+8. **Latency (§7 #49, 2026-09-11):** the press→HUD path is now HUD-first with a prewarmed window and no
+   per-press mic probe; David should feel it at the desk and glance at the new `MicStarted +Nms` /
+   `Timing stop->…` lines in `diagnostic.log`. `JVoice.exe --latency-probe` is the instrument for any
+   future "it lags" report — run it (idle and `--load 12`) BEFORE touching code. Open, separate:
+   streaming can drop a few words at a mid-phrase chunk cut (`capture-20260906-180632-101.wav`).
 
 ---
 

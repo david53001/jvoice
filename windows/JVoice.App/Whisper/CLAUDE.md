@@ -9,7 +9,9 @@ replacement.
   the duration-gated options, hands results to the brain (`Core/Text`). Guards each decode with
   the witness/tail/loop/sparse policies (§7 #38/#39/#42/#43): a mid-transcript phrase loop or a
   conspicuously sparse decode triggers an unprompted re-decode (whole-file) or fails the chunk
-  into the whole-file fallback (streaming).
+  into the whole-file fallback (streaming). Since §7 #49 the chunk path also runs the tail-coverage
+  guard (for the streaming FINAL tail, which ends at the stop press) and reduces stock-phrase
+  hallucinations to "" so a silent-classified tail can read as confirmed silence.
 - `WhisperRuntime.cs` — picks/loads the native runtime (GPU vs CPU fallback).
 - `WhisperModelStore.cs` — locates/downloads the GGML model. ⚠ **This is the ONLY runtime network
   call in the entire app** (the one-time model download). Privacy invariant: zero network at

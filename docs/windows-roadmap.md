@@ -32,6 +32,17 @@
 2. **~~Elevated-run first-recording freeze~~ — FIXED 2026-07-02** (HANDOFF §7 #37). Root cause
    was a capture-teardown deadlock in `NAudioRecorder`, not elevation; elevation was a
    coincidental first-observation. Kept here so nobody re-opens the stale §8 warning.
+2b. **~~Hotkey→HUD latency / paste latency / silent-tail whole-file re-decode~~ — MEASURED + FIXED
+   2026-09-11** (HANDOFF §7 #49, branch `perf/zero-latency-hud`). The pill waited for the mic probe +
+   WASAPI start on the UI thread (~570 ms under load); now HUD-first (5 ms), off-screen prewarm, no
+   per-press probe, mic on a pool thread, paste sleeps only on a real focus switch, silent final tail
+   decoded instead of re-decoding the whole dictation. `JVoice.exe --latency-probe` measures it all.
+2c. **Streaming chunk-boundary word loss** — seen while benching #49: `capture-20260906-180632-101.wav`
+   streams *"the fixed So, making it"* where whole-file gives *"the fixes applied to the yvl sign so
+   making it"*; the cut landed mid-phrase (quietest window in 15–25 s wasn't a real pause). Needs its
+   own hunt: e.g. overlap the cut by ~0.5 s and dedupe by containment (TailCoverageGuard.Merge-style),
+   or bias `ChunkPlanner` toward windows below an absolute pause floor. Brain change — calibrate on the
+   kept captures first.
 3. **David's interactive dogfood** (`docs/launch/windows-dogfood-checklist.md`) — the live-mic
    loop, BT routing, game suppression with real games, elevated-window dictation, and everything
    added since §7 #32 (translate, undo hotkey, Code mode, updater) which is render-verified but
