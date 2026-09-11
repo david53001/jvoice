@@ -2146,7 +2146,18 @@ copied, 0 failed); the elevated instance bounced UAC-free via `Stop`/`Start-Sche
 Elevated Autostart'` — relaunched clean (`HUD Idle`, update check `available=False`). NOT pushed;
 installers/release assets NOT rebuilt (`windows-v1.0.0` still serves `aff3d81`).
 
-**Still to confirm live (David at the desk):** the press→pill feel, and the new `MicStarted` / `Timing`
+**Confirmed live by David the same evening ("That is so much better").** His first dictations on the
+deployed build logged `MicStarted +30–32 ms after press` (68 ms on the very first, cold) and
+`Timing stop->transcript=313–384 ms  stop->pasted=327–403 ms  stop->idle=329–408 ms` for 2–11 s
+dictations — i.e. the app's own overhead is now ~5 ms (HUD) + ~15 ms (paste); what remains after the
+stop press is one whisper encoder+decoder pass on the GPU (~300 ms, nearly length-independent: 2.0 s
+→ 340 ms, 10.7 s → 384 ms). **"Is that the maximum?"** — the app side is at the floor; the rest is
+model-bound. Untested levers, in value order: CUDA instead of Vulkan (research-estimated 20–30 %,
+needs the ~3 GB CUDA toolkit installed locally — a David-machine-only win, not shippable), keeping the
+GPU clocked up during recording (0–50 ms, unmeasured), everything else (smaller chunks ≈ 40 ms max,
+smaller model, reduced audio_ctx) trades accuracy. David: *"thats alright, its good now"* — none pursued.
+
+**Still to watch:** the press→pill feel, and the new `MicStarted` / `Timing`
 lines in `diagnostic.log` after a few dictations (expected: `MicStarted +20–40ms`, `stop->pasted`
 ≈ 400–500 ms for a streamed dictation).
 
