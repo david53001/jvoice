@@ -10,6 +10,13 @@ namespace JVoice.Core.Audio;
 /// classification cannot be trusted to mean "no speech" here):
 ///  #1 (2026-06-23, bug #2): a FINAL tail judged silent returns null → lossless
 ///     whole-file fallback instead of being dropped.
+///  #1 REFINED (2026-09-11, §7 #49): the silent-classified FINAL tail is now DECODED (with
+///     the same #2 policy as a mid-stream silent chunk) instead of returning null unheard:
+///     an empty decode is the model CONFIRMING silence → the streamed pieces are returned as-is;
+///     a non-empty decode → null → whole-file fallback exactly as before. Measured on the
+///     diagnostic log: the silent final tail was the #1 cause of falling back (85 of 246
+///     fallbacks), each re-decoding the WHOLE dictation (1.4 s for 96 s of audio, up to 11 s)
+///     to learn what one ~0.3 s tail decode answers — the user paused, then pressed stop.
 ///  #2 (2026-07-03, §7 #39; REFINED 2026-07-13): a MID-STREAM chunk cut as "silent" is
 ///     DECODED like any other chunk instead of being dropped unheard. An empty decode
 ///     confirms silence (skip losslessly — NOT a failure; that policy stays reserved for
@@ -97,21 +104,20 @@ public sealed class StreamingTranscriptionSession
         if (tail.Length > 0)
         {
             // The FINAL tail is the user's last words. WINDOWS DIVERGENCE from Swift
-            // (2026-06-23, bug #2): do NOT drop it on the strength of the absolute
-            // SilenceRmsFloor. On David's low-level mic his quiet trailing clause reads as
-            // "silent" here (rawRMS ≈ 0.004 ≈ his room hum), so dropping it cut off the end
-            // of his sentences. A tail judged silent now returns null → the caller re-covers
-            // the WHOLE recording losslessly via whole-file, where whisper authoritatively
-            // yields empty on true silence and full text on quiet speech. A non-silent tail
-            // decodes as before, so normal-level users (loud tail) are unaffected and keep
-            // the streaming benefit. The never-silently-drop invariant is preserved: an
-            // empty decode also returns null → whole-file fallback.
-            if (ChunkPlanner.IsSilent(tail, _config))
-            {
-                _log?.Invoke($"Stream finish -> null (silent final tail, {tail.Length} samples -> whole-file)");
-                return null;
-            }
-            if (!await AppendPiece(WavTail.FloatSamples(tail), silentClassified: false))
+            // (2026-06-23, bug #2): never drop it on the strength of the absolute
+            // SilenceRmsFloor — on David's low-level mic his quiet trailing clause reads as
+            // "silent" here (rawRMS ≈ 0.004 ≈ his room hum). Since 2026-09-11 (§7 #49) a
+            // silent-classified tail is DECODED under the #2 policy instead of returning null
+            // unheard: the model confirming it empty (the user paused, then pressed stop — by
+            // far the common case) keeps the streamed pieces and costs one short decode;
+            // a non-empty decode is a classifier/model disagreement whose isolated decode may
+            // be partial → null → the caller re-covers the WHOLE recording losslessly via
+            // whole-file, exactly as before. A non-silent tail decodes as always. The
+            // never-silently-drop invariant is preserved on every branch.
+            bool silentTail = ChunkPlanner.IsSilent(tail, _config);
+            if (silentTail)
+                _log?.Invoke($"Stream final tail silent-classified ({tail.Length} samples) -> decoding to confirm");
+            if (!await AppendPiece(WavTail.FloatSamples(tail), silentClassified: silentTail))
                 return null;
         }
 

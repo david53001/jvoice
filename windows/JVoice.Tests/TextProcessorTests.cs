@@ -317,4 +317,22 @@ public class TextProcessorTests
             Assert.Equal(once, TextProcessor.StripDecoderArtifacts(once));
         }
     }
+
+    // §7 #49 — whisper's sub-second near-silence fingerprint: a padded <1 s recording of hum
+    // decodes to exactly the bare lowercase "you" (pasted three times in the diagnostic log).
+    // Matched case-sensitively and unpunctuated so a real one-word reply survives.
+    [Theory]
+    [InlineData("you")]
+    [InlineData("  you ")]
+    public void RemoveWhisperHallucinations_BareLowercaseYou_IsRemoved(string text)
+        => Assert.Equal("", TextProcessor.RemoveWhisperHallucinations(text));
+
+    [Theory]
+    [InlineData("You.")]
+    [InlineData("You")]
+    [InlineData("you.")]
+    [InlineData("you too")]
+    [InlineData("thank you so much")]
+    public void RemoveWhisperHallucinations_RealYou_IsKept(string text)
+        => Assert.Equal(text, TextProcessor.RemoveWhisperHallucinations(text));
 }

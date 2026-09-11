@@ -31,6 +31,7 @@ public partial class HudView : UserControl
     private const double MinBarHeight = 3;     // == BarWidth → resting bar is a round dot
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
+    private double _lastAppliedFrame = -1; // FramePacer: last frame we actually wrote the bars for
     private bool _animating;
     private BarMode _mode = BarMode.Hidden;
 
@@ -170,6 +171,7 @@ public partial class HudView : UserControl
     {
         if (_animating) return;
         _animating = true;
+        _lastAppliedFrame = -1; // first frame of a new state always applies (no stale-pose flash)
         CompositionTarget.Rendering += OnRendering;
     }
 
@@ -189,6 +191,11 @@ public partial class HudView : UserControl
     private void OnRendering(object? sender, EventArgs e)
     {
         double t = _clock.Elapsed.TotalSeconds;
+        // Rendering ticks at the display refresh rate (240 Hz here); the pill only needs ~60 fps.
+        // Skipping the extra ticks leaves the layered window clean (nothing dirtied → no
+        // re-composite), which is what actually saves the UI thread the work (FramePacer).
+        if (!JVoice.Core.FramePacer.ShouldApply(t, _lastAppliedFrame)) return;
+        _lastAppliedFrame = t;
 
         for (int i = 0; i < _bars.Length; i++)
         {

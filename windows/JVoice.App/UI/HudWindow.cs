@@ -17,6 +17,11 @@ public sealed class HudWindow : Window
     /// and a stop affordance could be re-added without re-threading the callback.
     public Action? OnStop { get; set; }
 
+    /// Dev/probe seam: when true the pill is positioned far off-screen instead of bottom-center,
+    /// so a headless measurement (`--latency-probe`) can realize and animate the real layered
+    /// window without anything appearing on the user's desktop. Never set by the app itself.
+    internal bool Offscreen { get; init; }
+
     /// Live mic level (0..1) for the voice-activity bars. Wired by App to the coordinator.
     public Func<float>? InputLevelProvider
     {
@@ -45,6 +50,47 @@ public sealed class HudWindow : Window
         SizeChanged += (_, _) => PositionBottomCenter();
     }
 
+    private bool _prewarmed;
+    private bool _parkedOffscreen;
+    private EventHandler? _prewarmFrame;
+
+    /// Realize the layered window ONCE while the app is idle so the first hotkey press doesn't
+    /// pay window/surface creation on the critical path: the pill is shown for a single frame
+    /// parked far off-screen (never visible), then hidden again. Measured: a first show costs
+    /// ~40-110 ms to the first rendered frame; a re-show of a realized window ~3 ms. (Creating
+    /// only the HWND via EnsureHandle does NOT help — WPF still builds the render surface on
+    /// the first real show, and that path measured slower, 95 ms.)
+    public void Prewarm()
+    {
+        if (_prewarmed || IsVisible) return;
+        _prewarmed = true;
+        _parkedOffscreen = true;
+        _view.Apply(HudState.Recording);
+        UpdateLayout();
+        PositionBottomCenter(); // parks off-screen while _parkedOffscreen
+        ShowNoActivate();
+        _prewarmFrame = (_, _) =>
+        {
+            CancelPrewarmFrame();
+            Hide();
+            _view.Apply(HudState.Idle);
+        };
+        System.Windows.Media.CompositionTarget.Rendering += _prewarmFrame;
+    }
+
+    /// Detach the pending prewarm hide (if any) and un-park the window. Called by Update() so a
+    /// hotkey press that lands BEFORE the prewarm's first frame simply takes the realized window
+    /// over instead of being hidden by it a frame later.
+    private void CancelPrewarmFrame()
+    {
+        if (_prewarmFrame is not null)
+        {
+            System.Windows.Media.CompositionTarget.Rendering -= _prewarmFrame;
+            _prewarmFrame = null;
+        }
+        _parkedOffscreen = false;
+    }
+
     private void OnSourceInitialized(object? sender, EventArgs e)
     {
         _hwnd = new WindowInteropHelper(this).Handle;
@@ -58,6 +104,7 @@ public sealed class HudWindow : Window
     /// Update to a new state (UI thread). Mirrors HUDWindow.update(state:).
     public void Update(HudState state)
     {
+        CancelPrewarmFrame();
         _view.Apply(state);
 
         // Always click-through now: the bars-only HUD has no interactive affordances, so it
@@ -91,6 +138,8 @@ public sealed class HudWindow : Window
         // would center against a 0-size box (pill shoved right of center and hanging below the
         // work area). Skip until we have a real size; SizeChanged re-invokes us once we do.
         if (ActualWidth <= 0 || ActualHeight <= 0) return;
+
+        if (Offscreen || _parkedOffscreen) { Left = -20000; Top = -20000; return; }
 
         var wa = SystemParameters.WorkArea; // DIPs, primary screen
         Left = wa.Left + (wa.Width - ActualWidth) / 2;

@@ -59,6 +59,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private StreamingTranscriptionSession? _streamingSession;
     private CancellationTokenSource? _transcriptionCts;
     private DispatcherTimer? _hudResetTimer;
+    // §7 #49 latency instrumentation: restarted on each press (start AND stop) so the log can
+    // report press→mic-started and stop→transcript/pasted/idle in ms.
+    private System.Diagnostics.Stopwatch? _pressStopwatch;
     private string[] _pendingRevertWords = [];
     private string _preFixTranscript = "";
     // The text JVoice most recently PASTED (not clipboard-only) + the window it went into, captured
@@ -455,7 +458,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         SystemActions.ErrorHandler = msg => _dispatcher.InvokeAsync(() => ShowError(msg));
         _settingsStore.Changed += _ => _dispatcher.InvokeAsync(() => { /* UI binds live props */ });
         _recorder.Failed += msg => _dispatcher.InvokeAsync(() => ShowError(msg));
-        _hotkey.Triggered += () => _dispatcher.InvokeAsync(ToggleRecording);
+        // §7 #49: the hotkey hop runs at Send priority (ahead of any queued binding/render
+        // work on the UI thread) — it's the first link of the press → HUD chain.
+        _hotkey.Triggered += () => _dispatcher.InvokeAsync(ToggleRecording, DispatcherPriority.Send);
         // Suppress (pass the chord through to the game) ONLY when a game is foreground AND
         // we're NOT already recording. While recording, let the stop-chord reach ToggleRecording
         // (and be swallowed, not leaked into game chat) so a recording started before alt-tabbing
@@ -470,6 +475,14 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         if (_undoHotkey is { } uh) _undoHotkeyReg.Register(uh);
 
         UpdateHud(HudState.Idle);
+
+        // §7 #49 zero-latency HUD: (1) the UI thread outranks other Normal-priority threads on
+        // the box (a busy game/build can no longer starve the pill or the hotkey hop — this is
+        // a thread-level boost, the process class stays Normal so a decode never hogs the CPU
+        // over the user's other apps); (2) the layered HUD window is realized once now, off-screen,
+        // so the first press pays ~5 ms instead of ~40–110 ms of window/surface creation.
+        try { Thread.CurrentThread.Priority = ThreadPriority.AboveNormal; } catch { /* best effort */ }
+        Hud?.Prewarm();
 
         _ = _engine.PrewarmAsync();
 
@@ -899,6 +912,14 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             _isStartingRecording = true;
             _transcriptionCts?.Cancel();
             _transcriptionCts = null;
+            // §7 #49: show the HUD NOW, synchronously on the press, BEFORE any microphone work.
+            // The pill used to appear only after the permission probe + device enumeration +
+            // WASAPI start had all completed (≈50–170 ms idle; ≈570 ms measured under a
+            // 12-thread CPU load — the "takes a second when a lot is running"). The mic start
+            // now runs off the UI thread; a failure replaces the pill with the error.
+            _pressStopwatch = System.Diagnostics.Stopwatch.StartNew();
+            _hudResetTimer?.Stop();
+            UpdateHud(HudState.Recording);
             _ = StartRecordingFlowAsync().ContinueWith(
                 _ => _dispatcher.InvokeAsync(() => _isStartingRecording = false),
                 TaskScheduler.Default);
@@ -908,27 +929,32 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     private async Task StartRecordingFlowAsync()
     {
-        _hudResetTimer?.Stop();
-
-        bool granted = await _recorder.RequestPermissionAsync();
-        if (!granted)
-        {
-            await _dispatcher.InvokeAsync(() => PermissionError.Microphone().SurfaceAndOpenSettings());
-            return;
-        }
+        // §7 #49: the microphone is opened on a pool thread — WASAPI initialization is a
+        // cross-process call into the audio engine (25 ms idle, 120–330 ms under CPU load) and
+        // used to block the UI thread, freezing the pill's first frames. The separate
+        // RequestPermissionAsync probe (a whole extra open/start/stop of a capture client on
+        // EVERY press, 13–214 ms) is gone: TryStart's own E_ACCESSDENIED is the same signal
+        // (IAudioRecorder.LastStartWasPermissionDenied), so a denied mic still opens Settings.
+        bool started = false;
+        string? error = null;
+        await Task.Run(() => started = _recorder.TryStart(out error));
 
         await _dispatcher.InvokeAsync(() =>
         {
-            if (!_recorder.TryStart(out var error))
+            if (!started)
             {
-                ShowError(error ?? "Unable to start recording.");
+                if (_recorder.LastStartWasPermissionDenied)
+                    PermissionError.Microphone().SurfaceAndOpenSettings();
+                else
+                    ShowError(error ?? "Unable to start recording.");
                 return;
             }
 
             IsRecording = true;
             _recordingGeneration++;
             _recordingStartUtc = DateTime.UtcNow;
-            UpdateHud(HudState.Recording);
+            if (HudState.Kind != HudStateKind.Recording) UpdateHud(HudState.Recording);
+            DiagnosticLog.Write($"MicStarted  +{_pressStopwatch?.ElapsedMilliseconds ?? -1}ms after press");
 
             var path = _recorder.CurrentPath;
             if (path is not null)
@@ -961,15 +987,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         IsRecording = false;
         _lastRecordingSeconds = _recordingStartUtc is { } t ? (DateTime.UtcNow - t).TotalSeconds : 0;
         _recordingStartUtc = null;
+        _pressStopwatch = System.Diagnostics.Stopwatch.StartNew();
 
-        string? audioPath = _recorder.Stop();
         var session = _streamingSession;
         _streamingSession = null;
 
-        DiagnosticLog.Write($"StopRecording  audioPath={(audioPath ?? "<null>")}  " +
-            $"exists={(audioPath is not null && File.Exists(audioPath))}  " +
-            $"bytes={(audioPath is not null && File.Exists(audioPath) ? new FileInfo(audioPath).Length : -1)}  " +
-            $"recSecs={_lastRecordingSeconds:0.00}  hasStreamingSession={session is not null}");
+        DiagnosticLog.Write($"StopRecording  recSecs={_lastRecordingSeconds:0.00}  hasStreamingSession={session is not null}");
 
         // The paste target is the live foreground window — unless it is one of OUR own
         // windows (HUD/Settings), decided by process ownership, not a stale HWND snapshot.
@@ -986,8 +1009,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         {
             ShowError("No target app — focus an app that accepts text before recording.");
             ScheduleHudReset(AppTimings.HudErrorResetDelay);
-            if (audioPath is not null) TryDelete(audioPath);
             if (session is not null) _ = session.Cancel();
+            _ = Task.Run(() => { var abandoned = _recorder.Stop(); if (abandoned is not null) TryDelete(abandoned); });
             Tray?.RebuildMenu();
             return;
         }
@@ -998,12 +1021,20 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _transcriptionCts = new CancellationTokenSource();
         var ct = _transcriptionCts.Token;
         _isTranscribing = true; // cleared by FinishTranscriptionAsync's finally (§7 #44)
-        _ = FinishTranscriptionAsync(audioPath, target, session, ct);
+        _ = FinishTranscriptionAsync(target, session, ct);
         Tray?.RebuildMenu();
     }
 
-    private async Task FinishTranscriptionAsync(string? audioPath, IntPtr target, StreamingTranscriptionSession? session, CancellationToken ct)
+    private async Task FinishTranscriptionAsync(IntPtr target, StreamingTranscriptionSession? session, CancellationToken ct)
     {
+        // §7 #49: the recorder is stopped off the UI thread (WASAPI teardown joins the capture
+        // thread, 8–38 ms) AFTER the pill has already switched to "transcribing"; the session's
+        // Finish() below reads the WAV tail only once this has flushed and closed the file.
+        string? audioPath = await Task.Run(() => _recorder.Stop());
+        DiagnosticLog.Write($"Recorder stopped  audioPath={(audioPath ?? "<null>")}  " +
+            $"bytes={(audioPath is not null && File.Exists(audioPath) ? new FileInfo(audioPath).Length : -1)}  " +
+            $"+{_pressStopwatch?.ElapsedMilliseconds ?? -1}ms after press");
+
         if (audioPath is null)
         {
             if (session is not null) await session.Cancel();
@@ -1041,6 +1072,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             if (streamed is not null) transcript = streamed;
             else transcript = await _engine.TranscribeAsync(audioPath, ct);
 
+            long transcribedMs = _pressStopwatch?.ElapsedMilliseconds ?? -1;
             DiagnosticLog.Write($"Transcribed  source={(streamed is not null ? "stream" : "wholefile")}  " +
                 $"raw=\"{transcript}\"");
 
@@ -1093,8 +1125,15 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             }
             else
             {
-                await _dispatcher.InvokeAsync(() => ActivateWindow(target));
-                await Task.Delay(AppTimings.PasteActivationDelay, ct);
+                // §7 #49: only re-activate (and wait for the activation to settle) when the target
+                // is NOT already the foreground window. It nearly always is — the user dictates
+                // into the app they're in — and this pair (plus Paster's own settle) was ~160 ms
+                // of fixed sleep on every paste. When the user did switch away, the old path runs.
+                if (!Paster.IsForeground(target))
+                {
+                    await _dispatcher.InvokeAsync(() => ActivateWindow(target));
+                    await Task.Delay(AppTimings.PasteActivationDelay, ct);
+                }
                 PasteOutcome outcome = _paster.Paste(processed, target);
 
                 switch (outcome)
@@ -1118,8 +1157,16 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             }
 
             int wordCount = processed.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length;
+            long pastedMs = _pressStopwatch?.ElapsedMilliseconds ?? -1;
             await _dispatcher.InvokeAsync(() =>
             {
+                // Silent success: the text is already in the user's app, so the HUD just
+                // disappears — no "Pasted" confirmation pill (per the bars-only redesign).
+                // §7 #49: hide it FIRST; the bookkeeping below (three file writes + history)
+                // used to run before the pill vanished.
+                UpdateHud(HudState.Idle);
+                DiagnosticLog.Write($"Timing  stop->transcript={transcribedMs}ms  stop->pasted={pastedMs}ms  " +
+                    $"stop->idle={_pressStopwatch?.ElapsedMilliseconds ?? -1}ms  recSecs={_lastRecordingSeconds:0.00}");
                 _lastTranscriptStore.Transcript = processed;
                 LastTranscript = processed;
                 EditedTranscript = processed;
@@ -1128,9 +1175,6 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 TotalWordsSpoken = _statsStore.TotalWords;
                 AverageWpm = _statsStore.AverageWpm;
                 TimeSavedMinutes = StatsMath.EstimatedMinutesSaved(_statsStore.TotalWords, _statsStore.TotalSeconds);
-                // Silent success: the text is already in the user's app, so the HUD just
-                // disappears — no "Pasted" confirmation pill (per the bars-only redesign).
-                UpdateHud(HudState.Idle);
             });
         }
         catch (TranscriptionException tex)

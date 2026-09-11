@@ -53,7 +53,8 @@ public partial class App : Application
               || string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--settings-preview", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase)
-              || string.Equals(a, "--update-preview", StringComparison.OrdinalIgnoreCase));
+              || string.Equals(a, "--update-preview", StringComparison.OrdinalIgnoreCase)
+              || Diagnostics.LatencyProbe.ShouldRun(args));
 
         // A logon launch (the Run-key entry carries --autostart) steps aside when the elevated
         // auto-start task is configured: that task launches an ELEVATED copy — the one that can
@@ -128,6 +129,13 @@ public partial class App : Application
         if (Array.Exists(e.Args, a => string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase)))
         {
             RenderHudToFile(e.Args);
+            return;
+        }
+        if (Diagnostics.LatencyProbe.ShouldRun(e.Args))
+        {
+            // Measures the hotkey→HUD→mic→stop path + decode-time UI stalls on this machine
+            // (off-screen HUD, seconds-short mic use, clipboard read-only). See LatencyProbe.
+            Diagnostics.LatencyProbe.Run(this, e.Args);
             return;
         }
 

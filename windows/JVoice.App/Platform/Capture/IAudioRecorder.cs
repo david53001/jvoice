@@ -6,6 +6,13 @@ namespace JVoice.App.Platform;
 public interface IAudioRecorder
 {
     bool TryStart(out string? error);
+
+    /// True when the most recent TryStart failed because the OS denied microphone access
+    /// (privacy gate), as opposed to a device/driver error. Lets the coordinator surface the
+    /// Settings deep link WITHOUT a separate probe on every press: RequestPermissionAsync opened,
+    /// started and stopped a whole extra capture client before each recording (13 ms idle,
+    /// 100-200 ms under CPU load) and told us nothing TryStart's own failure doesn't.
+    bool LastStartWasPermissionDenied { get; }
     string? Stop();
     string? CurrentPath { get; }
     bool IsRecording { get; }

@@ -41,16 +41,19 @@ public sealed class Paster : IDisposable
             return PasteOutcome.ClipboardLocked;
 
         // 3. Focus the target window so Ctrl+V lands there.
-        bool focused = FocusTarget(targetHwnd);
+        bool focused = FocusTarget(targetHwnd, out bool switched);
         if (!focused)
         {
             ScheduleRestore(saved, AppTimings.PasteRestoreDelayFailureMs);
             return PasteOutcome.TargetRejected;
         }
 
-        // Brief settle so the target is truly foreground before we type
-        // (Swift pasteActivationDelay = 80 ms). Synchronous, short.
-        Thread.Sleep((int)AppTimings.PasteActivationDelay.TotalMilliseconds);
+        // Brief settle so the target is truly foreground before we type (Swift
+        // pasteActivationDelay = 80 ms) — but ONLY when we actually switched focus. In the
+        // common case the user never left their app, so the target is already foreground
+        // and this sleep was 80 ms of pure paste latency on every dictation (§7 #49).
+        if (switched)
+            Thread.Sleep((int)AppTimings.PasteActivationDelay.TotalMilliseconds);
 
         // 4. Synthesize Ctrl+V.
         bool sent = SendCtrlV();
@@ -150,14 +153,20 @@ public sealed class Paster : IDisposable
 
     // focus + SendInput
 
-    private static bool FocusTarget(IntPtr hwnd)
+    /// True when `hwnd` is the live foreground window right now — the paste target needs
+    /// no activation (and no settle delay). Cheap; used by the coordinator to skip both.
+    public static bool IsForeground(IntPtr hwnd) => hwnd != IntPtr.Zero && GetForegroundWindow() == hwnd;
+
+    private static bool FocusTarget(IntPtr hwnd, out bool switched)
     {
+        switched = false;
         if (hwnd == IntPtr.Zero) return false;
 
         // Common case: the user never left their app, so the paste target is already
         // the foreground window — no focus change is needed and SetForegroundWindow
         // (which is unreliable / can return false here) must NOT be allowed to fail us.
         if (GetForegroundWindow() == hwnd) return true;
+        switched = true;
 
         // Otherwise force the target to the foreground. SetForegroundWindow is gated by
         // Windows' foreground-lock rules; the robust, battle-tested workaround is to (a)

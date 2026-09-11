@@ -187,6 +187,13 @@ public static class TextProcessor
         foreach (var p in blanklike)
             if (string.Equals(trimmed, p, StringComparison.OrdinalIgnoreCase))
                 return "";
+        // Whisper's sub-second near-silence fingerprint (§7 #49): a recording under ~1 s of hum
+        // (whisper pads it to 1 s) decodes to exactly the bare lowercase token "you" — observed
+        // pasted three times from 0.7–0.9 s accidental presses (rawRms ≤ 0.005). Matched
+        // case-SENSITIVELY and without punctuation, so a real one-word reply ("You." / "You!")
+        // — which whisper capitalizes and punctuates — is untouched.
+        if (string.Equals(trimmed, "you", StringComparison.Ordinal))
+            return "";
         return text;
     }
 

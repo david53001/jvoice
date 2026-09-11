@@ -211,23 +211,90 @@ public class StreamingSessionTests
     // A genuinely silent TAIL must not be silently dropped on the strength of an absolute
     // RMS floor — at a low-level mic (David's, rawRMS≈0.004) the user's quiet trailing
     // words read here too, and dropping them cuts off the end of the sentence (bug #2,
-    // 2026-06-23). The session now returns null so the caller re-covers the WHOLE recording
-    // losslessly via whole-file (where whisper authoritatively yields empty on true silence
-    // and full text on quiet speech). WINDOWS DIVERGENCE from Swift (mac mic is normal-level
-    // so its silent-tail drop never misfires); see docs HANDOFF-WINDOWS §7 and the
-    // 2026-06-23 no-speech/tail plan. (Mid-recording silent-classified chunks have their
-    // own policy since §7 #39 — see the 2026-07-03/07-13 section below.)
+    // 2026-06-23). WINDOWS DIVERGENCE from Swift (mac mic is normal-level so its silent-tail
+    // drop never misfires). REFINED 2026-09-11 (§7 #49): the silent-classified tail is now
+    // DECODED under the same policy as a mid-stream silent chunk (§7 #39/#41) instead of
+    // returning null unheard — a NON-EMPTY decode (this test: the mock "hears" speech in the
+    // tail) is a classifier/model disagreement whose isolated decode may be partial → null →
+    // the caller re-covers the WHOLE recording losslessly via whole-file, exactly as before.
+    //
+    // Audio shape for the three final-tail tests (FastCfg: 0.5 s min / 1.0 s max chunks, 0.3 s
+    // windows): 0.5 s loud + 1.0 s digital silence. The first cut lands at 0.75 s (the first
+    // all-silence window is the quietest eligible one), leaving a 0.75 s all-silence remainder
+    // that no further cut can take — so it reaches Finish() as the FINAL TAIL, silent-classified.
+    private static short[] LoudThenSilentTail() => Concat(LoudN(8000), SilenceN(16000));
+    private const int LoudThenSilentTailSamples = 24000;
+
     [Fact]
-    public async Task SilentTail_ForcesWholeFileFallback_NotDropped()
+    public async Task SilentTail_DecodesNonEmpty_ForcesWholeFileFallback_NotDropped()
     {
-        string path = WriteTemp(Concat(LoudN(19200), SilenceN(19200))); // 1.2 s speech + 1.2 s silence
+        string path = WriteTemp(LoudThenSilentTail());
         try
         {
-            var session = new StreamingTranscriptionSession(_ => Task.FromResult("speech"), FastCfg, FastPollMs);
+            var counter = new Counter(); // "hears" text in everything, the silent tail included
+            var session = new StreamingTranscriptionSession(counter.Next, FastCfg, FastPollMs);
             session.Start(path);
             await Task.Delay(300);
             var result = await session.Finish();
-            Assert.Null(result); // tail judged silent → defer to lossless whole-file fallback
+            Assert.Null(result); // tail judged silent but decoded non-empty → whole-file fallback
+            Assert.Equal(LoudThenSilentTailSamples, counter.Calls.Sum()); // …and the tail WAS decoded, not dropped unheard
+        }
+        finally { File.Delete(path); }
+    }
+
+    // §7 #49: the common case — the user paused, then pressed stop. The silent-classified tail
+    // decodes EMPTY (the model confirms silence) → the streamed pieces are returned as-is; no
+    // whole-file re-decode of the entire dictation just to learn the tail held nothing. This
+    // was the #1 cause of falling back (85 of 246 in the diagnostic log), costing 1.4–11 s.
+    [Fact]
+    public async Task SilentTail_DecodesEmpty_KeepsStreamedPieces()
+    {
+        string path = WriteTemp(LoudThenSilentTail());
+        try
+        {
+            var sizes = new List<int>();
+            var gate = new object();
+            Func<float[], Task<string>> mock = samples =>
+            {
+                lock (gate)
+                {
+                    sizes.Add(samples.Length);
+                    return Task.FromResult(samples.All(s => s == 0f) ? "" : $"piece{sizes.Count}");
+                }
+            };
+            var session = new StreamingTranscriptionSession(mock, FastCfg, FastPollMs);
+            session.Start(path);
+            await Task.Delay(300);
+            var result = await session.Finish();
+
+            Assert.Equal("piece1", result);                       // the streamed text, NOT a fallback
+            Assert.Equal(LoudThenSilentTailSamples, sizes.Sum()); // every sample went through a decode (tail included)
+            Assert.Equal(2, sizes.Count);                         // one streamed chunk + the decoded final tail
+        }
+        finally { File.Delete(path); }
+    }
+
+    // §7 #49: a decode error on the silent-classified final tail is still a failure → null
+    // (whole-file fallback) — the same lossless error policy as every other decode site.
+    [Fact]
+    public async Task SilentTail_DecodeThrows_FailsToNull()
+    {
+        string path = WriteTemp(LoudThenSilentTail());
+        try
+        {
+            var gate = new object();
+            Func<float[], Task<string>> mock = samples =>
+            {
+                lock (gate)
+                {
+                    if (samples.All(s => s == 0f)) return Task.FromException<string>(new InvalidOperationException("boom"));
+                    return Task.FromResult("speech");
+                }
+            };
+            var session = new StreamingTranscriptionSession(mock, FastCfg, FastPollMs);
+            session.Start(path);
+            await Task.Delay(300);
+            Assert.Null(await session.Finish());
         }
         finally { File.Delete(path); }
     }

@@ -451,12 +451,22 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         // Reduce a whisper no-speech annotation chunk to "" — the streaming session treats
         // an empty chunk decode as "fall back to whole-file" (lossless), never a silent drop
         // (and, since §7 #39, as "confirmed silence — skip" for a silent-classified chunk).
-        string text = NonSpeechAnnotation.Reduce(await RegurgitationRecovery.Decode(
-            _useVocabularyPrompt,
-            vocabulary,
-            async usePrompt =>
-                (await DecodeSamplesAsync(samples, factory, usePrompt, ct).ConfigureAwait(false)).Text)
-            .ConfigureAwait(false));
+        // §7 #49: the stock-phrase hallucinations ("Thank you.", "you", punctuation-only) are
+        // reduced to "" here too, so a silent-classified FINAL tail that whisper pads and
+        // hallucinates on reads as confirmed silence rather than forcing a whole-file re-decode.
+        // A real chunk is never exactly one of those strings; if one ever were, the session
+        // fails to the lossless whole-file path — never a drop.
+        DecodeOutcome chunkOutcome = default;
+        string text = TextProcessor.RemoveWhisperHallucinations(NonSpeechAnnotation.Reduce(
+            await RegurgitationRecovery.Decode(
+                _useVocabularyPrompt,
+                vocabulary,
+                async usePrompt =>
+                {
+                    var outcome = await DecodeSamplesAsync(samples, factory, usePrompt, ct).ConfigureAwait(false);
+                    chunkOutcome = outcome;
+                    return outcome.Text;
+                }).ConfigureAwait(false)));
 
         // §7 #42: a chunk decode that degenerated into a phrase loop must never be pasted —
         // and collapsing it here would hide the speech the loop overwrote. Throwing fails
@@ -484,6 +494,28 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
                 "chunk decode failed (whole-file fallback)");
             throw TranscriptionException.DegenerateDecode(
                 $"sparse streaming chunk, {text.Length} chars over {chunkSeconds:0.0}s");
+        }
+
+        // §7 #49: the same §7 #39 tail-coverage recovery the whole-file path has, for the
+        // streaming FINAL tail (the only chunk that ends at the stop press rather than at a
+        // silence cut, so an early-EOT truncation can leave real trailing words undecoded).
+        // Mid-stream chunks end in a cut silence window, so their uncovered tail decodes to
+        // empty and merges to nothing — no behavior change there beyond a rare extra decode.
+        if (text.Length > 0 && TailCoverageGuard.ShouldRecover(chunkSeconds, chunkOutcome.LastSegmentEndSeconds))
+        {
+            int startSample = Math.Clamp((int)(chunkOutcome.LastSegmentEndSeconds * 16_000), 0, samples.Length);
+            string tailText = "";
+            if (samples.Length - startSample >= 16_000)
+            {
+                var tailOutcome = await DecodeSamplesAsync(
+                    samples[startSample..], factory, usePrompt: false, ct).ConfigureAwait(false);
+                tailText = TextProcessor.RemoveWhisperHallucinations(NonSpeechAnnotation.Reduce(tailOutcome.Text));
+            }
+            string merged = TailCoverageGuard.Merge(text, tailText);
+            DiagnosticLog.Write(
+                $"Engine chunk tailGuard lastEnd={chunkOutcome.LastSegmentEndSeconds:0.00}s audio={chunkSeconds:0.00}s " +
+                $"tail=\"{tailText}\" -> {(merged.Length > text.Length ? "RECOVERED" : "unchanged")}");
+            text = merged;
         }
         return text;
     }

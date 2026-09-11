@@ -42,6 +42,7 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
         int.TryParse(Environment.GetEnvironmentVariable("JVOICE_TEST_SLOW_CAPTURE_MS"), out var v) && v > 0 ? v : 0;
 
     public string? CurrentPath { get; private set; }
+    public bool LastStartWasPermissionDenied { get; private set; }
     public bool IsRecording { get; private set; }
     public DateTime? StartedAt { get; private set; }
 
@@ -64,6 +65,7 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
         {
             if (IsRecording) { error = null; return false; }
             error = null;
+            LastStartWasPermissionDenied = false;
             try
             {
                 _device = ResolveCaptureDevice(PreferredDeviceId);
@@ -111,6 +113,9 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
             }
             catch (Exception ex)
             {
+                // The privacy gate ("Let desktop apps access your microphone" off) surfaces here as
+                // E_ACCESSDENIED from the audio client — the same signal RequestPermissionAsync probes for.
+                LastStartWasPermissionDenied = IsAccessDenied(ex);
                 error = $"Could not start the microphone: {ex.Message}";
                 failed = TearDownLocked(deleteFile: true);
                 return false;
@@ -154,9 +159,18 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
         }
     }
 
+    private static bool IsAccessDenied(Exception ex) => ex switch
+    {
+        UnauthorizedAccessException => true,
+        System.Runtime.InteropServices.COMException com => com.HResult == unchecked((int)0x80070005),
+        _ => false,
+    };
+
     /// Probe microphone access. There's no synchronous Windows API; the reliable
     /// probe is to briefly open a capture client and see whether it initializes.
     /// A denied mic (privacy gate off) throws on Init/Start with E_ACCESSDENIED.
+    /// No longer on the per-press path (see IAudioRecorder.LastStartWasPermissionDenied);
+    /// kept for tools/diagnostics.
     public Task<bool> RequestPermissionAsync()
     {
         return Task.Run(() =>
