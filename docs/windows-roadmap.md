@@ -43,6 +43,14 @@
    own hunt: e.g. overlap the cut by ~0.5 s and dedupe by containment (TailCoverageGuard.Merge-style),
    or bias `ChunkPlanner` toward windows below an absolute pause floor. Brain change — calibrate on the
    kept captures first.
+2d. **HUD vanishes mid-dictation (David, 2026-09-11)** — the log shows zero HUD state changes inside a
+   recording, so it's window visibility/z-order (another topmost window or a fullscreen surface).
+   Candidate: re-assert `HWND_TOPMOST` every ~2 s while visible + log the window that covered it.
+   Needs a repro (what was on screen). HANDOFF §7 #49, note 1.
+2e. **Annotation-only decode reported as no-speech on a long, loud dictation** (109.7 s lost,
+   2026-08-24) — run the unprompted witness before `EmptyTranscript` when `NonSpeechAnnotation.Reduce`
+   empties a non-empty decode on audio ≥ ~3 s. ~10 lines in `WhisperNetTranscriptionEngine`;
+   calibrate on kept captures. HANDOFF §7 #49, note 2.
 3. **David's interactive dogfood** (`docs/launch/windows-dogfood-checklist.md`) — the live-mic
    loop, BT routing, game suppression with real games, elevated-window dictation, and everything
    added since §7 #32 (translate, undo hotkey, Code mode, updater) which is render-verified but

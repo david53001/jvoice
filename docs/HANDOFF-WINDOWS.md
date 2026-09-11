@@ -2143,8 +2143,42 @@ The cut landed mid-phrase (the quietest window in 15–25 s wasn't a real pause)
 **DEPLOYED to the install (2026-09-11 21:09).** Fresh `JVoiceFlavor=gpu` publish → `robocopy /MIR /XF
 LICENSE.txt uninstall.ps1` into `%LOCALAPPDATA%\Programs\JVoice` (261-file sets identical, 6 files
 copied, 0 failed); the elevated instance bounced UAC-free via `Stop`/`Start-ScheduledTask 'JVoice
-Elevated Autostart'` — relaunched clean (`HUD Idle`, update check `available=False`). NOT pushed;
-installers/release assets NOT rebuilt (`windows-v1.0.0` still serves `aff3d81`).
+Elevated Autostart'` — relaunched clean (`HUD Idle`, update check `available=False`).
+
+**SHIPPED 2026-09-11 (David: "document, push to github and then get the installer updated").**
+`perf/zero-latency-hud` pushed and **`main` + `windows-port` fast-forwarded to it** (`fa181d0 → b30020c`
++ the ship-record commit after it). Both installers rebuilt through the IExpress `.sed` flow (GPU from
+the same publish that was deployed; CPU `-p:JVoiceFlavor=cpu -p:PublishSingleFile=false`), sandbox
+smoke-tested with `JVOICE_NO_STOP=1` + the dir/ARP overrides (CPU 274 files, GPU 294; flavor split
+correct — GPU carries `ggml-cuda`/`ggml-vulkan`, CPU only CPU natives; 2 shortcuts each; version
+`1.0.0+<sha>`; `--math-probe` from the fresh copy → `a² + b² = c²`; the running elevated instance
+untouched), then `gh release upload windows-v1.0.0 --clobber` — **the release now serves this build**
+(`--update-check` from the installed app is still `available=False` since the tag/version didn't change,
+as intended: existing users get it on a fresh download, not via the updater). Sandbox + its two
+`JVoice-smoke-*` ARP keys removed afterwards.
+
+**Two follow-up reports from David the same evening (noted, NOT fixed — he said it's good now):**
+1. *"Sometimes when I'm dictating for a long time the UI disappears, like it's already transcribed,
+   when I press the key again."* The log rules out a state change: since 2026-07-15 there are **zero**
+   HUD transitions between a `HUD Recording` and its `StopRecording` (no reset timer, no error, no
+   idle), and the recording keeps running (his next press stops and transcribes normally). So the
+   pill is losing **visibility / z-order** — a topmost layered window can be pushed under another
+   topmost window (game/Discord overlays, fullscreen switches, a new topmost app) or hidden by a
+   fullscreen-exclusive surface. Cheap candidate fix: while a state is visible, re-assert
+   `SetWindowPos(HWND_TOPMOST, SWP_NOACTIVATE|SWP_NOMOVE|SWP_NOSIZE|SWP_SHOWWINDOW)` every ~2 s from
+   `HudWindow`, and log `IsWindowVisible` + `GetWindow(GW_HWNDPREV)` when it changes so the culprit
+   window class gets named. Needs a reproduction (which app was foreground) — ask him next time it
+   happens what was on screen.
+2. *"Sometimes it just says no speech detected, very rare."* Since 2026-08-01: **15** no-speech
+   verdicts, 7 on recordings ≥ 3 s — mostly the Aug-11 dead virtual mic (`rawRms=0.0000`, fixed by
+   §7 #46) and sub-second presses. **One is a real loss worth a fix:** 2026-08-24 18:14, a **109.7 s**
+   dictation at a healthy `rawRms=0.0477` decoded (prompted) to only **65 chars in 6 segments**, all of
+   them non-speech annotations, so `NonSpeechAnnotation.Reduce` emptied it and it was reported as
+   no-speech. `RegurgitationRecovery` never tried the unprompted witness because the raw decode was
+   non-empty, and the sparse/loop/tail guards all gate on `guarded.Length > 0`. Fix sketch (engine,
+   ~10 lines): when `Reduce` turns a non-empty decode into "" on audio ≥ ~3 s, run the unprompted
+   witness decode before throwing `EmptyTranscript` (the same remedy every other prompted-decode
+   failure mode uses). Calibrate on kept captures first (`JVOICE_KEEP_WAV` is still armed).
 
 **Confirmed live by David the same evening ("That is so much better").** His first dictations on the
 deployed build logged `MicStarted +30–32 ms after press` (68 ms on the very first, cold) and
@@ -2224,7 +2258,9 @@ launch); models `%LOCALAPPDATA%\JVoice\models\`.
    per-press mic probe; David should feel it at the desk and glance at the new `MicStarted +Nms` /
    `Timing stop->…` lines in `diagnostic.log`. `JVoice.exe --latency-probe` is the instrument for any
    future "it lags" report — run it (idle and `--load 12`) BEFORE touching code. Open, separate:
-   streaming can drop a few words at a mid-phrase chunk cut (`capture-20260906-180632-101.wav`).
+   streaming can drop a few words at a mid-phrase chunk cut (`capture-20260906-180632-101.wav`);
+   the HUD sometimes vanishes mid-dictation (visibility/z-order, not state — see §7 #49); a loud
+   109.7 s dictation once decoded to annotations-only and was reported as no-speech (§7 #49 note 2).
 
 ---
 
