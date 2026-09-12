@@ -12,10 +12,17 @@ pinned to version 1.0.0). To work in this area, read the files below.
 - `StreamingTranscriptionSession.swift` — decodes completed audio chunks *while* recording is
   still in progress. Data-loss guarantee: any decode failure, or an empty result on a non-silent
   chunk, falls back to a whole-file decode — it never silently drops speech. Polled every
-  `AppTimings.streamingPoll` (250 ms since 2026-09-12; was 1 s) so a finished chunk's decode starts
+  `AppTimings.streamingPoll` (100 ms since 2026-09-12; was 1 s) so a finished chunk's decode starts
   sooner and less backlog remains at the stop press. A silent-classified FINAL tail is dropped
   without a decode and the streamed pieces are kept (deliberately faster than the Windows port,
-  which decodes that tail to confirm it is empty).
+  which decodes that tail to confirm it is empty). **Latency layer (2026-09-12):** a chunk decode
+  in flight at the stop press is an unstructured task that `finish()` awaits — never cancel it
+  (WhisperKit throws on cancellation → session failed → whole-file re-decode, 6.6 s live); and the
+  **speculative tail decode**: pending audio ending in ≥ `AppTimings.speculativeTailPause` of
+  silence (`ChunkPlanner.trailingSilenceSamples`) is decoded immediately, so `finish()` returns it
+  with no post-stop decode when the user then presses stop (`speculative tail HIT`), drops it if
+  speech resumes, and a chunk cut inside the same pause reuses it. Verified by
+  `scripts/verify-streaming.sh` scenarios 9–12 and `--bench --stream --realtime`.
 - `ChunkPlanner.swift` — pure (no I/O) policy deciding where to cut the growing recording into
   chunks at silence boundaries.
 - `WavTail.swift` — safely parses a WAV file that is still being written (the "tail" that has
@@ -50,7 +57,10 @@ pinned to version 1.0.0). To work in this area, read the files below.
   guarantees using mock decoders (no WhisperKit or microphone needed).
 - `./scripts/run-logic-tests.sh` — runs the pure-logic checks (TextProcessor, PhoneticMatcher,
   RepetitionGuard including a loop fuzz, VocabularyPrompt, WavTail, ChunkPlanner).
-- `.build/release/JVoice --bench <wav> [--model tiny|base|small|large] [--vocab "A,B"] [--stream]`
-  — end-to-end speed + accuracy on a real clip.
+- `.build/release/JVoice --bench <wav> [--model tiny|base|small|large] [--vocab "A,B"] [--stream [--realtime]]`
+  — end-to-end speed + accuracy on a real clip. `--stream` replays at 10× (stress: decodes fall
+  behind, exercises the in-flight-at-stop path); `--stream --realtime` replays at 1× with the app's
+  poll cadence + speculation and prints the session's events (make the clip end in a pause with
+  `say … "[[slnc 1500]]"` to see a `speculative tail HIT`).
 - `python3 scripts/verify-transcription.py --model tiny|base|small|large [--quick]` — full
   word-retention / spurious-vocab harness (requires the model downloaded).

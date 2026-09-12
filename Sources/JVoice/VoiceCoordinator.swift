@@ -268,6 +268,7 @@ final class VoiceCoordinator: ObservableObject {
         // device enumeration) off the main thread.
         hudWindow.prewarm()
         RecordingManager.prewarmAudioStack()
+        recordingManager.prepareSpareRecorder()
 
         // Warm the selected Whisper model in the background so the first
         // dictation after launch isn't a cold-start model load.
@@ -382,6 +383,7 @@ final class VoiceCoordinator: ObservableObject {
     /// applicationWillTerminate).
     func cleanUpForTermination() {
         hudDismissTask?.cancel()
+        recordingManager.discardSpareRecorder()
 
         if isRecording {
             if let session = streamingSession {

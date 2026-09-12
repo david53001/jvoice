@@ -1,6 +1,37 @@
-# HANDOFF — state as of 2026-09-12 (zero-latency HUD + faster paste ported from the Windows port; `feat/dictation-parity` merged with `main`, pushed, installed)
+# HANDOFF — state as of 2026-09-12 (zero-latency HUD + faster paste ported from the Windows port, then a second pass from live numbers: speculative tail decode, in-flight-decode fix, spare recorder; `feat/dictation-parity` = `main`, pushed, installed)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
+
+## 2026-09-12 session, second pass — Latency from the first live numbers: speculative tail decode, in-flight-decode fix, spare recorder (autonomous; pushed + installed)
+
+**Ask (David):** *"use the data from tracking… it's much better but in the last run it took a while… figure out ways to reduce the latency to as close to 0 ms as possible using all strategies from the Windows version and developing new on-device strategies."*
+
+**The live data (4 dictations, `/usr/bin/log show --info --predicate 'subsystem == "com.jvoice.app"'` — NOTE the `--info` flag: `Logger.info` lines are not shown without it):**
+
+| dictation | MicStarted after press | stop→transcript | stop→pasted | why |
+| --- | --- | --- | --- | --- |
+| 52 s | +163 ms (first press after launch) | 1182 ms | 1199 ms | tail decode of 13.3 s |
+| 109 s | +104 ms | 982 ms | 989 ms | tail decode of 14.6 s |
+| **96 s** | +89 ms | **6609 ms** | 6619 ms | **whole-file fallback**: 4 VAD windows (26.5/20.3/27.9/21.0 s) + 3 temperature fallbacks |
+| 7 s | +111 ms | 956 ms | 958 ms | tail decode of 7.5 s |
+
+Paste itself is ~10 ms; everything after the stop press is the Whisper decode of the pending tail.
+
+**Root cause of the 6.6 s run (confirmed in code, reproduced by the bench):** `StreamingTranscriptionSession.finish()` cancelled the poll task; WhisperKit checks `Task.checkCancellation()` inside `FeatureExtractor`/`AudioEncoder`/`TextDecoder`/`TranscribeTask`, so the chunk decode in flight at the stop press threw `CancellationError`, `pollOnce` caught it as a failure, `finish()` returned nil, and the whole 96 s recording was re-decoded. The 10× `--bench --stream` always hit the same race (the "fallbacks are by design" note in the memory/journal was this bug). **Fix:** chunk decodes run in an unstructured `Task` (`inFlight`) that `finish()` awaits and consumes; only `cancel()` cancels it. Bench now streams at 10× ("post-stop (finish): 1.15 s" instead of a fallback).
+
+**Decode floor on this Mac (Apple M3, large-v3-turbo; new `Decode …` log lines):** log-mel 10–20 ms, **encoder ≈ 350–390 ms fixed per window (Neural Engine)**, decoder loop scales with speech (3.6 s → 570 ms total, 7.5 s → 790 ms, 15 s → 1.0 s, 17 s whole-file window → 1.9 s). So a post-stop tail decode can never be under ~0.55 s — the only way to ~0 is to not decode after the press.
+
+**New on-device strategy — pause-triggered speculative tail decode** (`StreamingTranscriptionSession.updateSpeculation`, pure helper `ChunkPlanner.trailingSilenceSamples`): when the pending audio ends in ≥ `AppTimings.speculativeTailPause` (0.4 s) of silence, decode it now; `finish()` uses the result if nothing but silence followed (`speculative tail HIT`), drops it if speech resumed, and a chunk cut inside the same pause reuses it. Real-time bench (`--bench --stream --realtime`, new) on a 37 s clip ending in a 1.5 s pause: **post-stop 0.00 s**, two wasted speculations at mid-sentence pauses (0.6 s and 0.4 s) — the expected cost (one cancelled-early decode per mid-sentence pause). Poll 250 → 100 ms with a file-size check so unchanged files are skipped (AVAudioRecorder flushes every ~320 ms in ~10 KB steps — measured).
+
+**MicStarted (89–163 ms live) decomposed with a probe:** `setDefaultInputDevice` 0.3–1.4 ms (NOT the cost), `AVAudioRecorder` create+prepare 20–55 ms, `record()` 58–105 ms, `stop()` 3–14 ms. `prepareToRecord()` engages no device and binds none (verified with `kAudioDevicePropertyDeviceIsRunningSomewhere`: prepared under the Bluetooth default, recorded on the built-in mic after the redirect) → **spare recorder** prepared at launch and after every stop (`RecordingManager.prepareSpareRecorder`), so a press pays only `record()`. Expect `MicStarted` ≈ 60–110 ms; the rest is the Core Audio HAL start, not removable without keeping the mic open (rejected: orange indicator, privacy).
+
+**Verification (all green):** `swift build` (debug + release), `swift build --build-tests`, `./scripts/run-logic-tests.sh` (+6 `trailingSilenceSamples` cases), `./scripts/verify-streaming.sh` (+4 scenarios: in-flight decode survives finish; speculative HIT is immediate and decodes nothing more; MISS re-decodes the whole tail; chunk cut reuses the speculation), `--bench --stream` 10× on a 35 s `say` clip (streams, text matches whole-file), `--bench --stream --realtime` on the pause-ending clip (HIT, 0.00 s). CI mirrors added in `StreamingTranscriptionSessionTests.swift` and `ChunkPlannerTests.swift`. **Not measured live** — David should dictate, pause ~half a second, press stop, and read `Stream speculative tail HIT` + `Timing stop->pasted=…` in the log (expect tens of ms on a hit; ~600 ms–1 s on a miss).
+
+**Remaining levers, in value order (none applied):**
+1. **In-memory audio instead of the growing WAV** (AVAudioEngine tap, 20–50 ms buffers, device bound directly via the input unit): removes the ~320 ms recorder flush + poll latency from pause detection (today a pause is noticed 100–420 ms late, which eats into the speculation's head start) and drops the default-input switch. A rewrite of `RecordingManager` — needs mic dogfooding.
+2. **Temperature fallbacks on tail/chunk decodes** (`temperatureFallbackCount = 2`; each fallback re-runs the decoder, ~1.4 s each in the 6.6 s run): disabling them for chunk decodes and relying on RepetitionGuard/RegurgitationRecovery would need an accuracy A/B with `scripts/verify-transcription.py`.
+3. Smaller tails (lower `minChunkSeconds`) trade accuracy at cut points — rejected before (see `docs/perf-loop-journal.md`), still rejected.
+4. Speculation tuning: `speculativeTailPause` 0.4 s is a guess; a live log census of pause lengths before stop presses would set it.
 
 ## 2026-09-12 session — Zero-latency HUD + faster paste (macOS port of the Windows §7 #49 work; autonomous, pushed + installed on David's explicit ask)
 

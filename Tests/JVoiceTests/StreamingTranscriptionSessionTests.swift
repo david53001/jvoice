@@ -218,6 +218,142 @@ private actor TranscribeCounter {
     }
 }
 
+// MARK: - Latency layer (2026-09-12): in-flight decodes survive finish(); speculative tail decode.
+
+private final class EventLogBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [String] = []
+    func add(_ e: String) { lock.lock(); events.append(e); lock.unlock() }
+    func contains(_ needle: String) -> Bool { lock.lock(); defer { lock.unlock() }; return events.contains { $0.contains(needle) } }
+}
+
+private actor SampleSum {
+    private(set) var total = 0
+    private(set) var lastCount = 0
+    func next(_ n: Int) -> String { total += n; lastCount = n; return "p" }
+}
+
+private func speculationConfig() -> ChunkPlanner.Config {
+    var cfg = ChunkPlanner.Config()
+    cfg.minChunkSeconds = 5
+    cfg.maxChunkSeconds = 10
+    return cfg
+}
+
+private func append(_ data: Data, to url: URL) throws {
+    let handle = try FileHandle(forWritingTo: url)
+    try handle.seekToEnd()
+    try handle.write(contentsOf: data.dropFirst(44)) // strip the 44-byte WAV header
+    try handle.close()
+}
+
+/// A chunk decode in flight at finish() is awaited and kept, never cancelled
+/// into a failure (which forced a whole-file re-decode of the whole dictation).
+@Test func inFlightChunkDecodeSurvivesFinish() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWav(seconds: 2.6, amplitude: 0.5).write(to: url)
+
+    let sum = SampleSum()
+    let session = StreamingTranscriptionSession(
+        transcribe: { samples in
+            try await Task.sleep(nanoseconds: 250_000_000) // a cancelled task would throw here
+            return await sum.next(samples.count)
+        },
+        config: fastConfig(),
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 120_000_000) // first chunk decode is mid-flight
+    let result = await session.finish()
+    #expect(result != nil)
+    #expect(await sum.total == Int(2.6 * 16_000)) // every sample exactly once
+}
+
+/// Pending audio that ends in a pause is decoded during the pause; finish()
+/// returns that result without decoding anything more.
+@Test func speculativeTailHitMakesFinishImmediate() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWavSegments([(1.2, 0.5), (0.8, 0.0)]).write(to: url)
+
+    let sum = SampleSum()
+    let events = EventLogBox()
+    let session = StreamingTranscriptionSession(
+        transcribe: { samples in await sum.next(samples.count) },
+        config: speculationConfig(),
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0.4,
+        log: { events.add($0) }
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 150_000_000)
+    let decodedDuringPause = await sum.total
+    #expect(decodedDuringPause == Int(2.0 * 16_000))
+    let result = await session.finish()
+    #expect(result == "p")
+    #expect(await sum.total == decodedDuringPause) // nothing decoded at finish
+    #expect(events.contains("HIT"))
+}
+
+/// Speech resuming after the pause drops the speculation; the real tail
+/// (all of the pending speech) is what gets decoded.
+@Test func speculativeTailMissRedecodesWholeTail() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWavSegments([(1.2, 0.5), (0.6, 0.0)]).write(to: url)
+
+    let sum = SampleSum()
+    let events = EventLogBox()
+    let session = StreamingTranscriptionSession(
+        transcribe: { samples in await sum.next(samples.count) },
+        config: speculationConfig(),
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0.4,
+        log: { events.add($0) }
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 120_000_000)
+    #expect(events.contains("started"))
+    try append(makeWavSegments([(1.0, 0.5), (0.5, 0.0)]), to: url) // the user keeps talking
+    try await Task.sleep(nanoseconds: 120_000_000)
+    let result = await session.finish()
+    #expect(result != nil)
+    #expect(await sum.lastCount == Int(3.3 * 16_000)) // final decode covered the whole pending audio
+    #expect(events.contains("resumed"))
+}
+
+/// A chunk cut that lands inside the speculated pause reuses the speculative
+/// decode instead of decoding the same speech twice.
+@Test func chunkCutReusesSpeculativeDecode() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWavSegments([(1.0, 0.5), (0.5, 0.0)]).write(to: url)
+
+    var cfg = ChunkPlanner.Config()
+    cfg.minChunkSeconds = 1.5
+    cfg.maxChunkSeconds = 3.0
+    let sum = SampleSum()
+    let events = EventLogBox()
+    let session = StreamingTranscriptionSession(
+        transcribe: { samples in await sum.next(samples.count) },
+        config: cfg,
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0.4,
+        log: { events.add($0) }
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 120_000_000)
+    #expect(events.contains("started"))
+    try append(makeWavSegments([(0.5, 0.0)]), to: url) // more silence → a cut candidate appears
+    try await Task.sleep(nanoseconds: 120_000_000)
+    #expect(events.contains("reuses"))
+    let result = await session.finish()
+    #expect(result == "p")
+    #expect(await sum.total == Int(1.5 * 16_000)) // exactly one decode
+}
+
 private actor IndexedEmptyMock {
     private let emptyAtCall: Int
     private var call = 0

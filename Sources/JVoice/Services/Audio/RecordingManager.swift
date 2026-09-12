@@ -108,6 +108,51 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
     /// the stop (or a quit) arrived discards its recorder instead of leaking it.
     private var startGeneration = 0
 
+    /// A recorder created and `prepareToRecord()`'d AHEAD of the press. Measured
+    /// on this machine: create + prepare is 20–55 ms, and it engages NO device —
+    /// the microphone (and which one) is bound only at `record()`, verified via
+    /// `kAudioDevicePropertyDeviceIsRunningSomewhere` on both the Bluetooth and
+    /// built-in inputs. So a spare is safe to hold while idle: no orange mic
+    /// indicator, no Bluetooth profile switch, and the redirect at press time
+    /// still decides the device. Leaves only `record()` (~60 ms) on the press.
+    private var spare: (recorder: AVAudioRecorder, url: URL)?
+    private var isPreparingSpare = false
+
+    /// Prepare the next press's recorder off the main actor. Call after launch
+    /// (once the orphan sweep ran) and after every stop; a no-op while one exists.
+    public func prepareSpareRecorder() {
+        guard spare == nil, !isPreparingSpare, !isRecording else { return }
+        isPreparingSpare = true
+        let url = Self.makeTemporaryRecordingURL()
+        Task { [weak self] in
+            let prepared = await Task.detached(priority: .utility) { Self.prepareRecorder(at: url) }.value
+            guard let self else { try? FileManager.default.removeItem(at: url); return }
+            self.installSpare(prepared, url: url)
+        }
+    }
+
+    private func installSpare(_ prepared: AVAudioRecorder?, url: URL) {
+        isPreparingSpare = false
+        if let prepared, spare == nil, !isRecording {
+            spare = (prepared, url)
+        } else {
+            try? FileManager.default.removeItem(at: url) // prepare failed, or no longer wanted
+        }
+    }
+
+    /// Drop the spare and its (empty) file — on quit, so nothing is orphaned.
+    public func discardSpareRecorder() {
+        guard let spare else { return }
+        self.spare = nil
+        try? FileManager.default.removeItem(at: spare.url)
+    }
+
+    private nonisolated static func prepareRecorder(at url: URL) -> AVAudioRecorder? {
+        guard let recorder = try? AVAudioRecorder(url: url, settings: recordingSettings) else { return nil }
+        recorder.isMeteringEnabled = true
+        return recorder.prepareToRecord() ? recorder : nil
+    }
+
     /// Opens the microphone and starts capturing. The `AVAudioRecorder`
     /// create + prepare + `record()` (measured 20–90 ms on this machine; a
     /// cross-process call into coreaudiod that can spike under load) runs OFF
@@ -124,9 +169,18 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         redirectInputAwayFromBluetooth()
 
         let generation = startGeneration
-        let url = Self.makeTemporaryRecordingURL()
+        // Prefer the spare prepared while idle: only `record()` remains.
+        let spare = self.spare
+        self.spare = nil
+        let url = spare?.url ?? Self.makeTemporaryRecordingURL()
         let opened = await Task.detached(priority: .userInitiated) {
-            Self.openRecorder(at: url)
+            if let spare {
+                if spare.recorder.record() { return Result<AVAudioRecorder, RecordingError>.success(spare.recorder) }
+                // A stale spare (device change, sleep/wake) — fall back to a fresh open.
+                try? FileManager.default.removeItem(at: spare.url)
+                return Self.openRecorder(at: url)
+            }
+            return Self.openRecorder(at: url)
         }.value
 
         switch opened {
@@ -205,6 +259,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
 
         let url = recordedURL
         recordedURL = nil
+        prepareSpareRecorder()
         return url
     }
 

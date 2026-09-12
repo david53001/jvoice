@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import os
 
 public protocol TranscriptionEngine {
     func transcribe(audioURL: URL) async throws -> String
@@ -212,6 +213,7 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         decodeOptions.withoutTimestamps = withoutTimestamps
         applyVocabularyBiasing(to: &decodeOptions, kit: kit, usePrompt: usePrompt)
         let results = try await kit.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
+        Self.logTimings(results, label: "file")
         let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         return Self.cleanRawDecode(text)
     }
@@ -235,6 +237,7 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         decodeOptions.withoutTimestamps = true
         applyVocabularyBiasing(to: &decodeOptions, kit: kit, usePrompt: usePrompt)
         let results = try await kit.transcribe(audioArray: samples, decodeOptions: decodeOptions)
+        Self.logTimings(results, label: "chunk")
         let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         return Self.cleanRawDecode(text)
     }
@@ -243,10 +246,24 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         makeStreamingSession(pollNanoseconds: UInt64(AppTimings.streamingPoll * 1_000_000_000))
     }
 
+    private static let latencyLog = Logger(subsystem: "com.jvoice.app", category: "latency")
+
+    /// One line per decoded window in the unified log (category `latency`):
+    /// where a decode's time goes — log-mel, encoder (a fixed cost per window
+    /// on the Neural Engine), decoder loop (scales with spoken length), and
+    /// temperature fallbacks (each one re-runs the decoder).
+    private static func logTimings(_ results: [TranscriptionResult], label: String) {
+        for result in results {
+            let t = result.timings
+            latencyLog.info("Decode \(label, privacy: .public) audio=\(t.inputAudioSeconds, format: .fixed(precision: 1), privacy: .public)s logmels=\(Int(t.logmels * 1000), privacy: .public)ms encode=\(Int(t.encoding * 1000), privacy: .public)ms decodeLoop=\(Int(t.decodingLoop * 1000), privacy: .public)ms fallbacks=\(Int(t.totalDecodingFallbacks), privacy: .public) total=\(Int(t.fullPipeline * 1000), privacy: .public)ms")
+        }
+    }
+
     /// Parameterized variant so the bench harness can poll faster than the
     /// app's cadence (`AppTimings.streamingPoll`) when it grows the file at
     /// 10× real time.
-    public func makeStreamingSession(pollNanoseconds: UInt64) -> StreamingTranscriptionSession? {
+    public func makeStreamingSession(pollNanoseconds: UInt64,
+                                     log: @escaping StreamingTranscriptionSession.EventLog = StreamingTranscriptionSession.defaultLog) -> StreamingTranscriptionSession? {
         // Never trigger a model load from the polling path — no loaded model,
         // no streaming (the whole-file fallback covers it).
         guard whisperKit != nil else { return nil }
@@ -255,7 +272,9 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
                 guard let self else { throw CancellationError() }
                 return try await self.transcribeChunkSamples(samples)
             },
-            pollNanoseconds: pollNanoseconds
+            pollNanoseconds: pollNanoseconds,
+            speculateAfterSeconds: AppTimings.speculativeTailPause,
+            log: log
         )
     }
 

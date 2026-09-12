@@ -2,7 +2,7 @@ import Foundation
 
 /// Hidden CLI bench mode:
 ///
-///     JVoice --bench <audio.wav> [--model tiny|base|small|large] [--vocab "Word1,Word2"] [--stream]
+///     JVoice --bench <audio.wav> [--model tiny|base|small|large] [--vocab "Word1,Word2"] [--stream [--realtime]]
 ///
 /// Transcribes one file with timing and prints both the raw transcript and the
 /// TextProcessor-processed output. Dev-only: this machine cannot execute
@@ -27,7 +27,7 @@ enum BenchRunner {
     private static func run(arguments: [String]) async -> Int32 {
         guard let benchIndex = arguments.firstIndex(of: "--bench"),
               arguments.count > benchIndex + 1 else {
-            FileHandle.standardError.write(Data("usage: JVoice --bench <audio.wav> [--model tiny|base|small|large] [--lang en|ro] [--vocab \"Word1,Word2\"] [--stream]\n".utf8))
+            FileHandle.standardError.write(Data("usage: JVoice --bench <audio.wav> [--model tiny|base|small|large] [--lang en|ro] [--vocab \"Word1,Word2\"] [--stream [--realtime]]\n".utf8))
             return 64
         }
         let audioURL = URL(fileURLWithPath: arguments[benchIndex + 1])
@@ -79,7 +79,7 @@ enum BenchRunner {
         print(String(format: "load+prewarm: %.2fs", Date().timeIntervalSince(loadStart)))
 
         if arguments.contains("--stream") {
-            return await runStream(audioURL: audioURL, engine: engine)
+            return await runStream(audioURL: audioURL, engine: engine, realtime: arguments.contains("--realtime"))
         }
 
         do {
@@ -104,15 +104,20 @@ enum BenchRunner {
 
     #if canImport(WhisperKit)
     /// Streaming E2E without a microphone: replays `audioURL` into a growing
-    /// temp WAV at ~10× real time while a real StreamingTranscriptionSession
-    /// consumes it, then compares against the whole-file transcript.
-    private static func runStream(audioURL: URL, engine: WhisperKitTranscriptionEngine) async -> Int32 {
+    /// temp WAV at ~10× real time (or 1× with `--realtime`, which also uses the
+    /// app's own poll cadence + speculative tail decode so a clip that ends in
+    /// a pause shows the "speculative tail HIT" path) while a real
+    /// StreamingTranscriptionSession consumes it, then compares against the
+    /// whole-file transcript.
+    private static func runStream(audioURL: URL, engine: WhisperKitTranscriptionEngine, realtime: Bool) async -> Int32 {
         guard let sourceBytes = try? Data(contentsOf: audioURL),
               let info = WavTail.parseHeader([UInt8](sourceBytes.prefix(WavTail.headerProbeBytes))) else {
             FileHandle.standardError.write(Data("not a 16 kHz mono 16-bit PCM wav: \(audioURL.path)\n".utf8))
             return 65
         }
-        guard let session = await engine.makeStreamingSession(pollNanoseconds: 100_000_000) else {
+        let pollNanoseconds: UInt64 = realtime ? UInt64(AppTimings.streamingPoll * 1_000_000_000) : 100_000_000
+        guard let session = await engine.makeStreamingSession(pollNanoseconds: pollNanoseconds,
+                                                              log: { print("  [stream] \($0)") }) else {
             FileHandle.standardError.write(Data("engine has no loaded model\n".utf8))
             return 70
         }
@@ -133,7 +138,8 @@ enum BenchRunner {
                 let end = min(offset + sliceBytes, payload.endIndex)
                 try? handle.write(contentsOf: payload[offset..<end])
                 offset = end
-                try? await Task.sleep(nanoseconds: 50_000_000) // …every 50 ms ⇒ 10× real time
+                // …every 50 ms ⇒ 10× real time; every 500 ms ⇒ real time
+                try? await Task.sleep(nanoseconds: realtime ? 500_000_000 : 50_000_000)
             }
         }
 

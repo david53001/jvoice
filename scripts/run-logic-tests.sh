@@ -358,6 +358,12 @@ func tone(seconds: Double, amplitude: Double) -> [Int16] {
     return (0..<n).map { Int16(amplitude * 32_000 * sin(Double($0) * 2 * .pi * 220 / 16_000)) }
 }
 let cfg = ChunkPlanner.Config()
+expectEqual(ChunkPlanner.trailingSilenceSamples(tone(seconds: 1, amplitude: 0.5) + tone(seconds: 0.5, amplitude: 0), config: cfg), Int(0.5 * 16_000), "trailingSilence: 0.5 s silence after speech → 0.5 s")
+expectEqual(ChunkPlanner.trailingSilenceSamples(tone(seconds: 1, amplitude: 0.5), config: cfg), 0, "trailingSilence: speech to the end → 0")
+expectEqual(ChunkPlanner.trailingSilenceSamples(tone(seconds: 0.7, amplitude: 0), config: cfg), Int(0.7 * 16_000), "trailingSilence: all silence → everything")
+expectEqual(ChunkPlanner.trailingSilenceSamples(tone(seconds: 1, amplitude: 0.5) + tone(seconds: 0.4, amplitude: 0.002), config: cfg), Int(0.4 * 16_000), "trailingSilence: below the absolute floor counts as silence")
+expectEqual(ChunkPlanner.trailingSilenceSamples(tone(seconds: 1, amplitude: 0.5) + tone(seconds: 0.4, amplitude: 0.02), config: cfg), 0, "trailingSilence: quiet-but-audible tail is NOT silence")
+expectEqual(ChunkPlanner.trailingSilenceSamples([], config: cfg), 0, "trailingSilence: empty → 0")
 expectEqual(ChunkPlanner.plan(unconsumed: tone(seconds: 10, amplitude: 0.5), config: cfg), .wait, "10s: below min → wait")
 expectEqual(ChunkPlanner.plan(unconsumed: tone(seconds: 16, amplitude: 0.5), config: cfg), .wait, "16s continuous speech: no pause → wait")
 let speechWithPause = tone(seconds: 17, amplitude: 0.5) + tone(seconds: 1, amplitude: 0.0) + tone(seconds: 2, amplitude: 0.5)

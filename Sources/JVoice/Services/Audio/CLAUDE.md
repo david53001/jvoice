@@ -13,6 +13,11 @@ Captures microphone audio to a WAV file for the transcription pipeline.
   `prewarmAudioStack()` (called at launch) pays the cold first TCC lookup (TCC = macOS's
   Transparency, Consent, and Control privacy-permission database; ~35 ms) and first
   Core Audio device enumeration (~55 ms) off the main thread instead of on the first press.
+  **Spare recorder:** `prepareSpareRecorder()` (at launch and after every stop) creates and
+  `prepareToRecord()`s the next `AVAudioRecorder` while idle — measured 20–55 ms, and it engages
+  NO device (verified via `kAudioDevicePropertyDeviceIsRunningSomewhere`; the mic is bound only
+  at `record()`, so the Bluetooth redirect at press time still decides it) — leaving only
+  `record()` (~60–105 ms, the Core Audio HAL start) on the press. `discardSpareRecorder()` on quit.
 - `AudioInputRouter.swift` — keeps Bluetooth headphones on their high-quality A2DP output profile
   by recording from the built-in microphone, instead of letting macOS switch the headphones into
   the low-quality two-way headset profile (HFP) that recording would otherwise force.
