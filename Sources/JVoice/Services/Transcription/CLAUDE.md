@@ -11,7 +11,11 @@ pinned to version 1.0.0). To work in this area, read the files below.
   timestamps, or WhisperKit 1.0.0 truncates the output.
 - `StreamingTranscriptionSession.swift` — decodes completed audio chunks *while* recording is
   still in progress. Data-loss guarantee: any decode failure, or an empty result on a non-silent
-  chunk, falls back to a whole-file decode — it never silently drops speech.
+  chunk, falls back to a whole-file decode — it never silently drops speech. Polled every
+  `AppTimings.streamingPoll` (250 ms since 2026-09-12; was 1 s) so a finished chunk's decode starts
+  sooner and less backlog remains at the stop press. A silent-classified FINAL tail is dropped
+  without a decode and the streamed pieces are kept (deliberately faster than the Windows port,
+  which decodes that tail to confirm it is empty).
 - `ChunkPlanner.swift` — pure (no I/O) policy deciding where to cut the growing recording into
   chunks at silence boundaries.
 - `WavTail.swift` — safely parses a WAV file that is still being written (the "tail" that has
@@ -25,7 +29,11 @@ pinned to version 1.0.0). To work in this area, read the files below.
   a decode regurgitated or returned empty. This keeps prompt accuracy in the common case while
   making the failure mode (loops, scattered insertions, dropped speech) unreachable.
 - `TextProcessor.swift` — post-processing: tone styling, filler-word removal, exact custom-word
-  corrections, and `stripDecoderArtifacts` (drops `[BLANK_AUDIO]`-style hallucination sentinels).
+  corrections, `stripDecoderArtifacts` (drops `[BLANK_AUDIO]`-style hallucination sentinels) and
+  `removeWhisperHallucinations` (whole-text stock phrases like "Thank you.", all-symbol output, and
+  the bare lowercase `you` that Whisper emits for < 1 s of hum). Both engine decode paths run these
+  two on the RAW decode (`WhisperKitTranscriptionEngine.cleanRawDecode`), so near-silent audio reads
+  as an empty decode — the trigger for `RegurgitationRecovery` / the whole-file fallback.
 - `PhoneticMatcher.swift` — fuzzy sound-alike correction (e.g. "jay voice" → "JVoice").
 - `BenchRunner.swift` — the hidden `--bench` command-line harness that measures transcription
   speed and verifies vocabulary biasing / streaming on this machine. Not part of the running app's

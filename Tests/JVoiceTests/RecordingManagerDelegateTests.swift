@@ -55,7 +55,7 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     // lastError must be cleared first. If it then fails, lastError gets
     // a new value — either nil OR a different value is acceptable.
     // The key assertion: the seeded encodeFailure must NOT be preserved.
-    _ = manager.startRecording()
+    _ = await manager.startRecording()
 
     if let newError = manager.lastError {
         if case .encodeFailure(let msg) = newError {

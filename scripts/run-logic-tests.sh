@@ -252,6 +252,16 @@ expectEqual(TextProcessor.removeWhisperHallucinations("Thanks for watching!"), "
 expectEqual(TextProcessor.removeWhisperHallucinations("- send the report by Friday"), "- send the report by Friday", "leading dash on real content preserved")
 expectEqual(TextProcessor.removeWhisperHallucinations("Thanks for the help, send the file"), "Thanks for the help, send the file", "longer real sentence untouched")
 
+print("TextProcessor.removeWhisperHallucinations — sub-second 'you' fingerprint (zero-latency port)")
+// Whisper answers < 1 s of hum with exactly the bare lowercase token "you";
+// a real one-word reply is capitalized + punctuated by Whisper, so it must survive.
+expectEqual(TextProcessor.removeWhisperHallucinations("you"), "", "bare lowercase 'you' stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("  you \n"), "", "whitespace-wrapped bare 'you' stripped")
+expectEqual(TextProcessor.removeWhisperHallucinations("You."), "You.", "capitalized + punctuated one-word reply preserved")
+expectEqual(TextProcessor.removeWhisperHallucinations("You"), "You", "capitalized 'You' preserved (case-sensitive match)")
+expectEqual(TextProcessor.removeWhisperHallucinations("you."), "you.", "punctuated lowercase preserved (unpunctuated match only)")
+expectEqual(TextProcessor.removeWhisperHallucinations("you know what I mean"), "you know what I mean", "'you' inside a real sentence preserved")
+
 print("RepetitionGuard.strip")
 let regurgVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
 let regurgInput = "so basically what tariffs are is when governments put taxes on imported goods and who pays them is the people buying the item from a country that is sub agents, claude, li-fraumeni, sub agents, claude, vs code, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, li-fraumeni, sub agents, la-fa, li-fraumeni, sub agents, li-fraumeni"

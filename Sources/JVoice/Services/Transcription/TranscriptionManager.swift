@@ -213,8 +213,17 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         applyVocabularyBiasing(to: &decodeOptions, kit: kit, usePrompt: usePrompt)
         let results = try await kit.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
         let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        // Remove "[BLANK_AUDIO]"-style decoder sentinels that leak in on silence.
-        return TextProcessor.stripDecoderArtifacts(text)
+        return Self.cleanRawDecode(text)
+    }
+
+    /// Shared raw-decode cleanup for both decode paths: drop "[BLANK_AUDIO]"-style
+    /// decoder sentinels that leak in on silence, then whole-text stock-phrase
+    /// hallucinations ("Thank you.", the bare sub-second "you", …) so near-silent
+    /// audio reads as confirmed silence here — an empty result is what triggers
+    /// `RegurgitationRecovery`'s unprompted re-decode (and, on a streaming
+    /// chunk, the lossless whole-file fallback) instead of a pasted artifact.
+    static func cleanRawDecode(_ text: String) -> String {
+        TextProcessor.removeWhisperHallucinations(TextProcessor.stripDecoderArtifacts(text))
     }
 
     private func decodeSamples(_ samples: [Float], kit: WhisperKit, usePrompt: Bool) async throws -> String {
@@ -227,15 +236,16 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         applyVocabularyBiasing(to: &decodeOptions, kit: kit, usePrompt: usePrompt)
         let results = try await kit.transcribe(audioArray: samples, decodeOptions: decodeOptions)
         let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return TextProcessor.stripDecoderArtifacts(text)
+        return Self.cleanRawDecode(text)
     }
 
     public func makeStreamingSession() -> StreamingTranscriptionSession? {
-        makeStreamingSession(pollNanoseconds: 1_000_000_000)
+        makeStreamingSession(pollNanoseconds: UInt64(AppTimings.streamingPoll * 1_000_000_000))
     }
 
     /// Parameterized variant so the bench harness can poll faster than the
-    /// app's 1 s cadence when it grows the file at 10× real time.
+    /// app's cadence (`AppTimings.streamingPoll`) when it grows the file at
+    /// 10× real time.
     public func makeStreamingSession(pollNanoseconds: UInt64) -> StreamingTranscriptionSession? {
         // Never trigger a model load from the polling path — no loaded model,
         // no streaming (the whole-file fallback covers it).

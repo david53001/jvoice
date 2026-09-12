@@ -14,7 +14,13 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   waveform bars · stop button) with a small bottom label — recording bars are mic-reactive (driven by
   `AudioLevelMeter`), transcribing is a gentle low shimmer. **Preparing-model / done / error** keep a
   status icon + text. `HUDLayout.glowPadding` keeps the soft pill glow from clipping square at the
-  window edge. `HUDWindow.update(state:theme:meter:)` is the entry point.
+  window edge. `HUDWindow.update(state:theme:meter:)` is the entry point. **Latency contract
+  (2026-09-12):** `VoiceCoordinator.toggleRecording` shows `.recording` synchronously on the hotkey
+  press, BEFORE any microphone work — the pill must never wait on the recorder. `HUDWindow.prewarm()`
+  (called once from `VoiceCoordinator.start()`) realizes the panel at launch (ordered front fully
+  transparent with the recording view, hidden 250 ms later) so the first press pays a re-show rather
+  than window-server surface creation + the hosting view's first layout; `update()` cancels a
+  pending prewarm hide, so an early press takes the realized panel over.
 - `SettingsView.swift` / `SettingsWindow.swift` — the Settings window: a 700-wide, 2-column grouped
   monochrome layout (controls on the left — Whisper Model, Processing, Voice Style, Language, Keyboard
   Shortcut; your data on the right — Recent Transcripts, Custom Words), with Stats full-width on top, a

@@ -71,17 +71,51 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         recordedURL != nil
     }
 
+    /// Fast path on every press: an already-decided authorization is a
+    /// synchronous TCC lookup, so only the very first run (status
+    /// `.notDetermined`) pays the `requestAccess` round trip — the prompt is
+    /// the one thing that must stay explicit. A denied/restricted status is
+    /// reported without a round trip either.
     public func requestPermission() async -> Bool {
-        await withCheckedContinuation { continuation in
-            AVCaptureDevice.requestAccess(for: .audio) { granted in
-                continuation.resume(returning: granted)
+        switch AVCaptureDevice.authorizationStatus(for: .audio) {
+        case .authorized:
+            return true
+        case .denied, .restricted:
+            return false
+        case .notDetermined:
+            fallthrough
+        @unknown default:
+            return await withCheckedContinuation { continuation in
+                AVCaptureDevice.requestAccess(for: .audio) { granted in
+                    continuation.resume(returning: granted)
+                }
             }
         }
     }
 
+    /// Touch the audio stack once at launch, off the main thread: the first
+    /// in-process TCC lookup (~35 ms) and the first Core Audio device
+    /// enumeration (~55 ms) are cold-start costs that would otherwise land on
+    /// the first hotkey press. Warm, both are sub-millisecond.
+    public nonisolated static func prewarmAudioStack() {
+        Task.detached(priority: .utility) {
+            _ = AVCaptureDevice.authorizationStatus(for: .audio)
+            _ = AudioInputRouter.hasInputDevice()
+        }
+    }
+
+    /// Bumped by every stop so a start that was still opening the device when
+    /// the stop (or a quit) arrived discards its recorder instead of leaking it.
+    private var startGeneration = 0
+
+    /// Opens the microphone and starts capturing. The `AVAudioRecorder`
+    /// create + prepare + `record()` (measured 20–90 ms on this machine; a
+    /// cross-process call into coreaudiod that can spike under load) runs OFF
+    /// the main actor so the recording pill — shown by the coordinator before
+    /// this is called — never has its first frames blocked by it.
     @discardableResult
-    public func startRecording() -> Bool {
-        guard !isRecording else { return false }
+    public func startRecording() async -> Bool {
+        guard !isRecording, recorder == nil else { return false }
         self.lastError = nil
 
         // Redirect capture off a Bluetooth default input first so the recorder,
@@ -89,33 +123,51 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         // and forces it out of A2DP. No-op for non-Bluetooth inputs.
         redirectInputAwayFromBluetooth()
 
-        do {
-            let url = Self.makeTemporaryRecordingURL()
-            let recorder = try AVAudioRecorder(url: url, settings: Self.recordingSettings)
+        let generation = startGeneration
+        let url = Self.makeTemporaryRecordingURL()
+        let opened = await Task.detached(priority: .userInitiated) {
+            Self.openRecorder(at: url)
+        }.value
+
+        switch opened {
+        case .failure(let error):
+            self.lastError = error
+            restoreDefaultInput()
+            return false
+        case .success(let recorder):
+            // A stop/quit raced the open: the recording was abandoned before it
+            // began. Release the device and the (empty) file rather than leaking.
+            guard generation == startGeneration else {
+                recorder.stop()
+                try? FileManager.default.removeItem(at: url)
+                restoreDefaultInput()
+                return false
+            }
             recorder.delegate = self
-            recorder.isMeteringEnabled = true
-            guard recorder.prepareToRecord() else {
-                self.lastError = .engineSetupFailed(message: "audio engine couldn't prepare")
-                restoreDefaultInput()
-                return false
-            }
-
-            guard recorder.record() else {
-                self.lastError = .engineSetupFailed(message: "audio device is unavailable")
-                restoreDefaultInput()
-                return false
-            }
-
             self.recorder = recorder
             self.recordedURL = url
             self.startedAt = Date()
             self.isRecording = true
             levelMeter.start(recorder: recorder)
             return true
+        }
+    }
+
+    /// The blocking part of a start, isolated from the main actor. Returns a
+    /// recorder that is already capturing to `url`.
+    private nonisolated static func openRecorder(at url: URL) -> Result<AVAudioRecorder, RecordingError> {
+        do {
+            let recorder = try AVAudioRecorder(url: url, settings: recordingSettings)
+            recorder.isMeteringEnabled = true
+            guard recorder.prepareToRecord() else {
+                return .failure(.engineSetupFailed(message: "audio engine couldn't prepare"))
+            }
+            guard recorder.record() else {
+                return .failure(.engineSetupFailed(message: "audio device is unavailable"))
+            }
+            return .success(recorder)
         } catch {
-            self.lastError = .engineSetupFailed(message: error.localizedDescription)
-            restoreDefaultInput()
-            return false
+            return .failure(.engineSetupFailed(message: error.localizedDescription))
         }
     }
 
@@ -139,6 +191,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
 
     @discardableResult
     public func stopRecording() -> URL? {
+        startGeneration += 1 // abandon a start still opening the device
         guard isRecording else {
             return recordedURL
         }
@@ -156,8 +209,8 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
     }
 
     @discardableResult
-    public func start() -> Bool {
-        startRecording()
+    public func start() async -> Bool {
+        await startRecording()
     }
 
     @discardableResult
@@ -165,16 +218,16 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         stopRecording()
     }
 
-    public func toggleRecording() {
+    public func toggleRecording() async {
         if isRecording {
             _ = stopRecording()
         } else {
-            _ = startRecording()
+            _ = await startRecording()
         }
     }
 
-    public func toggle() {
-        toggleRecording()
+    public func toggle() async {
+        await toggleRecording()
     }
 
     private static func makeTemporaryRecordingURL() -> URL {
@@ -182,7 +235,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         return FileManager.default.temporaryDirectory.appendingPathComponent(filename)
     }
 
-    private static var recordingSettings: [String: Any] {
+    private nonisolated static var recordingSettings: [String: Any] {
         [
             AVFormatIDKey: Int(kAudioFormatLinearPCM),
             AVSampleRateKey: 16_000,
@@ -228,6 +281,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
     /// clears `recordedURL` so the coordinator's next stop reports "no
     /// recording was captured" instead of transcribing a broken file.
     private func tearDownFailedRecording() {
+        startGeneration += 1
         isRecording = false
         recorder?.stop()
         recorder = nil

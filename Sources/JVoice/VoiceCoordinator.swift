@@ -2,6 +2,7 @@ import AppKit
 import ApplicationServices
 import Combine
 import Foundation
+import os
 
 enum ToneMode: String, CaseIterable, Identifiable {
     case casual
@@ -153,11 +154,23 @@ final class VoiceCoordinator: ObservableObject {
     private let statsStore = StatsStore()
     private lazy var hotKeyManager: HotKeyManager = {
         HotKeyManager(shortcutName: .toggleRecording) { [weak self] in
-            Task { @MainActor in
-                await self?.handleHotKeyToggle()
+            // KeyboardShortcuts delivers on the main queue: take the press
+            // synchronously — no extra actor hop between the key and the pill.
+            if Thread.isMainThread {
+                MainActor.assumeIsolated { self?.toggleRecording() }
+            } else {
+                Task { @MainActor in self?.toggleRecording() }
             }
         }
     }()
+    /// Latency instrumentation (read with `/usr/bin/log show --predicate
+    /// 'subsystem == "com.jvoice.app"'`): restarted on each press — start AND
+    /// stop — so the log reports press→mic-started and stop→transcript/pasted/done.
+    private static let latencyLog = Logger(subsystem: "com.jvoice.app", category: "latency")
+    private var pressedAt: DispatchTime = .now()
+    private var millisecondsSincePress: Int {
+        Int((DispatchTime.now().uptimeNanoseconds &- pressedAt.uptimeNanoseconds) / 1_000_000)
+    }
     /// Second global hook for the opt-in "undo last paste" chord (unset by default
     /// → disabled until the user assigns one via the Settings recorder).
     private lazy var undoHotKeyManager: HotKeyManager = {
@@ -248,6 +261,14 @@ final class VoiceCoordinator: ObservableObject {
         menuBarController.installStatusItem()
         updateHUD(.idle)
 
+        // Zero-latency HUD: realize the pill's window once now (transparent,
+        // never seen) so the first press pays a re-show, not window-server
+        // surface creation + the hosting view's first layout; and warm the
+        // audio stack's cold-start costs (first TCC lookup, first Core Audio
+        // device enumeration) off the main thread.
+        hudWindow.prewarm()
+        RecordingManager.prewarmAudioStack()
+
         // Warm the selected Whisper model in the background so the first
         // dictation after launch isn't a cold-start model load.
         transcriptionManager.prewarm()
@@ -321,6 +342,15 @@ final class VoiceCoordinator: ObservableObject {
             // P1.7: abandon any transcription still running for an earlier recording.
             currentTranscriptionTask?.cancel()
             currentTranscriptionTask = nil
+            // Zero-latency HUD: show the pill NOW, synchronously on the press,
+            // BEFORE any microphone work. It used to appear only after the
+            // permission round trip + device enumeration + AVAudioRecorder
+            // start had all completed (tens to hundreds of ms, worse under
+            // load). The mic open now runs off the main actor; a failure
+            // replaces the pill with the error.
+            pressedAt = .now()
+            hudDismissTask?.cancel()
+            updateHUD(.recording)
             Task { [weak self] in
                 defer { Task { @MainActor [weak self] in self?.isStartingRecording = false } }
                 await self?.startRecordingFlow()
@@ -490,13 +520,11 @@ final class VoiceCoordinator: ObservableObject {
         settingsStore.clearCorruptBackup()
     }
 
-    private func handleHotKeyToggle() async {
-        toggleRecording()
-    }
-
+    /// Everything after the pill is already on screen (see `toggleRecording`):
+    /// the permission fast path, the device check and the off-main-actor mic
+    /// open. Any failure replaces the recording pill with the error, exactly
+    /// as it used to appear instead of it.
     private func startRecordingFlow() async {
-        hudDismissTask?.cancel()
-
         let granted = await recordingManager.requestPermission()
         guard granted else {
             PermissionError.microphoneDenied.surfaceAndOpenSettings()
@@ -508,7 +536,7 @@ final class VoiceCoordinator: ObservableObject {
             return
         }
 
-        guard recordingManager.startRecording() else {
+        guard await recordingManager.startRecording() else {
             if let err = recordingManager.lastError {
                 switch err {
                 case .permissionDenied:
@@ -530,7 +558,10 @@ final class VoiceCoordinator: ObservableObject {
         isRecording = true
         recordingGeneration += 1
         recordingStartDate = Date()
-        updateHUD(.recording)
+        // The pill went up on the press; only re-assert it if something
+        // (a surfaced error) replaced it meanwhile.
+        if hudState != .recording { updateHUD(.recording) }
+        Self.latencyLog.info("MicStarted +\(self.millisecondsSincePress, privacy: .public)ms after press")
 
         // Best-effort streaming overlay: transcribe completed chunks while the
         // user is still talking so only the tail remains on hotkey release.
@@ -564,8 +595,8 @@ final class VoiceCoordinator: ObservableObject {
         isRecording = false
         lastRecordingDuration = recordingStartDate.map { Date().timeIntervalSince($0) } ?? 0
         recordingStartDate = nil
+        pressedAt = .now()
 
-        let audioURL = recordingManager.stopRecording()
         let session = streamingSession
         streamingSession = nil
         let ownPID = ProcessInfo.processInfo.processIdentifier
@@ -575,15 +606,20 @@ final class VoiceCoordinator: ObservableObject {
                                                        lastNonSelfPID: lastNonSelfFrontmostPID)
         guard let targetPID = resolvedTargetPID else {
             show(.noTextFieldFocused)
-            if let audioURL {
-                try? FileManager.default.removeItem(at: audioURL)
+            if let abandoned = recordingManager.stopRecording() {
+                try? FileManager.default.removeItem(at: abandoned)
             }
             if let session {
                 Task { await session.cancel() }
             }
             return
         }
+        // The pill switches to "transcribing" BEFORE the recorder is stopped
+        // (the stop finalizes the WAV — ~10 ms of coreaudiod teardown that no
+        // longer delays the state change the user is waiting to see).
         updateHUD(.transcribing)
+        let audioURL = recordingManager.stopRecording()
+        Self.latencyLog.info("RecorderStopped +\(self.millisecondsSincePress, privacy: .public)ms after press  recSecs=\(self.lastRecordingDuration, format: .fixed(precision: 2), privacy: .public)  streaming=\(session != nil, privacy: .public)")
 
         // Capture the paste target's bundle id now (for app-aware modes) — the
         // frontmost app may change while WhisperKit runs.
@@ -647,6 +683,7 @@ final class VoiceCoordinator: ObservableObject {
                 // The user moved on; don't paste into whatever app is now frontmost.
                 return
             }
+            let transcribedMs = millisecondsSincePress
             // App-aware modes: dictate under the target app's tone (a user rule,
             // or a built-in code app → Code) instead of the global one; gated on
             // the master toggle so the bundle-id probe is skipped when off.
@@ -671,9 +708,13 @@ final class VoiceCoordinator: ObservableObject {
                 // record stays unset.
                 pasteManager.copyOnly(processed)
             } else {
-                // Bring the target app back to focus before synthesizing Cmd+V.
-                // WhisperKit can take several seconds; the window may have lost key status.
+                // Bring the target app back to focus before synthesizing Cmd+V —
+                // but ONLY if it lost it. It nearly always is still frontmost (the
+                // user dictates into the app they're in), and this activate + settle
+                // pair was a fixed 80 ms on every paste. When the user did switch
+                // away during a long decode, the old path runs unchanged.
                 if let pid = targetPID,
+                   NSWorkspace.shared.frontmostApplication?.processIdentifier != pid,
                    let targetApp = NSRunningApplication(processIdentifier: pid) {
                     targetApp.activate()
                     try? await Task.sleep(nanoseconds: UInt64(AppTimings.pasteActivationDelay * 1_000_000_000))
@@ -707,6 +748,13 @@ final class VoiceCoordinator: ObservableObject {
                 }
             }
 
+            // The text is in the user's app: flip the pill FIRST, then do the
+            // bookkeeping (three UserDefaults writes + history) behind it.
+            let pastedMs = millisecondsSincePress
+            updateHUD(.done(processed))
+            scheduleHUDReset()
+            Self.latencyLog.info("Timing stop->transcript=\(transcribedMs, privacy: .public)ms stop->pasted=\(pastedMs, privacy: .public)ms stop->done=\(self.millisecondsSincePress, privacy: .public)ms recSecs=\(self.lastRecordingDuration, format: .fixed(precision: 2), privacy: .public)")
+
             let wordCount = processed.split(separator: " ").count
             lastTranscriptStore.transcript = processed
             lastTranscript = processed
@@ -715,9 +763,6 @@ final class VoiceCoordinator: ObservableObject {
             totalWordsSpoken = statsStore.totalWords
             averageWPM = statsStore.averageWPM
             minutesSaved = statsStore.estimatedMinutesSaved
-
-            updateHUD(.done(processed))
-            scheduleHUDReset()
         } catch {
             show(dictationError(for: error))
         }

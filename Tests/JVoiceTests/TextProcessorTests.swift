@@ -471,6 +471,21 @@ final class TextProcessorTests: XCTestCase {
             corrected: "i use WhisperKit daily")
         XCTAssertEqual(result, ["WhisperKit"])
     }
+
+    // Whisper's sub-second near-silence fingerprint: < 1 s of hum decodes to
+    // exactly the bare lowercase "you". Matched case-sensitively and
+    // unpunctuated so a real one-word reply ("You." / "You") survives.
+    func testHallucinationFilterStripsBareLowercaseYou() {
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("you"), "")
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("  you \n"), "")
+    }
+
+    func testHallucinationFilterKeepsRealOneWordYou() {
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("You."), "You.")
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("You"), "You")
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("you."), "you.")
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("you know what I mean"), "you know what I mean")
+    }
 }
 
 #else

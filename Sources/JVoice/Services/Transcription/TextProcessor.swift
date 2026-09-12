@@ -222,6 +222,14 @@ public struct TextProcessor: Sendable {
                 return ""
             }
         }
+        // Whisper's sub-second near-silence fingerprint: a recording under ~1 s
+        // of hum (Whisper pads it to a full window) decodes to exactly the bare
+        // lowercase token "you" — seen pasted from 0.7–0.9 s accidental presses.
+        // Matched case-SENSITIVELY and unpunctuated, so a real one-word reply
+        // ("You." / "You!"), which Whisper capitalizes and punctuates, survives.
+        if trimmed == "you" {
+            return ""
+        }
         return text
     }
 

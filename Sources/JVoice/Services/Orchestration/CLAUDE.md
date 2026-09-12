@@ -28,7 +28,18 @@ mirrors it), and updates stats.
 - `LaunchAtLoginManager.swift` — the launch-at-login toggle.
 - `SystemActions.swift` — small system-action helpers.
 - `PermissionError.swift` — permission-failure types surfaced to the UI.
-- `AppTimings.swift` — named timing constants.
+- `AppTimings.swift` — named timing constants: `pasteRestoreDelay`, `pasteActivationDelay` (only
+  paid when the paste target is NOT already frontmost — the coordinator checks first), and
+  `streamingPoll` (250 ms cadence of the streaming session's WAV re-read).
+
+## Latency contract (2026-09-12, ported from the Windows port)
+The recording pill is shown on the hotkey press BEFORE any microphone work; the mic opens off the
+main actor; the paste skips the activate + 80 ms settle when the target is already frontmost; the
+HUD switches state before the recorder stop and before the post-paste bookkeeping. The coordinator
+logs `MicStarted +Nms after press`, `RecorderStopped +Nms …` and `Timing stop->transcript=…
+stop->pasted=… stop->done=…` to the unified log (subsystem `com.jvoice.app`, category `latency`):
+`/usr/bin/log show --last 10m --predicate 'subsystem == "com.jvoice.app"'` (full path — zsh
+shadows `log`). Don't reintroduce work between the press and `updateHUD(.recording)`.
 
 ## How to verify changes here
 - `swift build` must pass. Relevant tests run in CI (e.g. `PasteManagerTests`,

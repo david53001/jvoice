@@ -46,7 +46,39 @@ final class HUDWindow: NSPanel {
         contentViewController = hostingController
     }
 
+    private var isPrewarmed = false
+    private var prewarmHidePending = false
+
+    /// Realize the panel ONCE while the app is idle so the first hotkey press
+    /// doesn't pay window-server surface creation + the SwiftUI hosting view's
+    /// first layout on the critical press → pill path. The recording pill is
+    /// ordered front fully transparent (never visible), given a moment to render,
+    /// then ordered out again. A press that lands before that happens simply
+    /// takes the realized window over (`update` cancels the pending hide).
+    func prewarm() {
+        guard !isPrewarmed, !isVisible else { return }
+        isPrewarmed = true
+        prewarmHidePending = true
+        currentState = .recording
+        hostingController.rootView = HUDView(state: .recording, theme: .dark, meter: nil, onStop: nil)
+        alphaValue = 0
+        sizeToFit()
+        positionAtBottomCenter()
+        orderFrontRegardless()
+        displayIfNeeded()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in
+            guard let self, self.prewarmHidePending else { return }
+            self.prewarmHidePending = false
+            self.orderOut(nil)
+            self.alphaValue = 1
+            self.currentState = .idle
+        }
+    }
+
     func update(state: HUDState, theme: AppTheme = .dark, meter: AudioLevelMeter? = nil) {
+        // A real state change always wins over a still-pending prewarm hide.
+        prewarmHidePending = false
+        alphaValue = 1
         currentState = state
         hostingController.rootView = HUDView(
             state: state,

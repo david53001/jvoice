@@ -4,6 +4,29 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
+## [Unreleased] — 2026-09-12
+
+### Changed
+
+- **Zero-latency HUD: the recording pill appears on the key press, before any microphone work.** Ported from the Windows port's zero-latency work (its `docs/HANDOFF-WINDOWS.md` §7 #49, commit `a22440f`). Previously `VoiceCoordinator.startRecordingFlow` (`Sources/JVoice/VoiceCoordinator.swift`) showed the HUD (heads-up display — the floating status pill) only after the microphone-permission round trip, the Core Audio input-device enumeration and the `AVAudioRecorder` start had all completed on the main thread — measured on this machine at roughly 35 ms (first permission lookup) + 55 ms (first device enumeration) + 20–90 ms (`AVAudioRecorder.record()`, a cross-process call into the audio daemon that spikes under load). Now `toggleRecording` shows the pill synchronously on the press and the microphone work runs afterwards; a microphone failure replaces the pill with the error, exactly as before. Four supporting changes:
+  1. **Prewarmed HUD window** (`HUDWindow.prewarm()`, `Sources/JVoice/UI/HUDWindow.swift`): at launch the pill's `NSPanel` is ordered front once fully transparent (never visible), given 250 ms to render, then ordered out — so the first press pays a re-show, not window-server surface creation plus the SwiftUI hosting view's first layout. A press that lands inside that window simply takes the realized panel over.
+  2. **Microphone open off the main actor** (`RecordingManager.startRecording()` is now `async`, `Sources/JVoice/Services/Audio/RecordingManager.swift`): the `AVAudioRecorder` create + prepare + `record()` runs in a detached task so the pill's first animation frames are never blocked by it. A stop or quit that races the open discards the recorder and its empty file instead of leaking either (a start-generation counter).
+  3. **Permission fast path** (`RecordingManager.requestPermission()`): an already-granted (or denied) microphone authorization is a synchronous status lookup; only the first-ever run (`.notDetermined`) still pays the `AVCaptureDevice.requestAccess` round trip — the prompt stays explicit.
+  4. **Audio-stack warm-up at launch** (`RecordingManager.prewarmAudioStack()`): the first in-process permission lookup and first Core Audio device enumeration are cold-start costs, paid once in the background at launch instead of on the first press. The hotkey callback also now calls `toggleRecording` directly on the main thread (no extra actor hop).
+- **Faster paste.** `finishTranscription` only re-activates the target app and waits the 80 ms `AppTimings.pasteActivationDelay` settle when that app is **not** already frontmost. It nearly always is (the user dictates into the app they're in), so this removes a fixed 80 ms from every paste; when the user did switch away during a long decode, the old activate-then-paste path runs unchanged. The "transcribing" pill now switches **before** the recorder is stopped (~10 ms of audio-daemon teardown), and the "done" pill is shown **before** the stats/history/last-transcript bookkeeping writes rather than after.
+- **Streaming poll cadence 1 s → 250 ms** (`AppTimings.streamingPoll`, used by `TranscriptionManager.makeStreamingSession()`): a completed speech chunk is noticed — and its decode started — up to 750 ms sooner while the user is still talking, shrinking the backlog `StreamingTranscriptionSession.finish()` must drain when the hotkey is released. The poll is a WAV-tail read plus RMS (root-mean-square loudness) windows over at most 25 s of audio (about 1 ms), negligible at 4 Hz.
+- **Latency instrumentation.** `VoiceCoordinator` logs three lines per dictation to the unified log (subsystem `com.jvoice.app`, category `latency`): `MicStarted +Nms after press`, `RecorderStopped +Nms after press`, and `Timing stop->transcript=…ms stop->pasted=…ms stop->done=…ms recSecs=…`. Read them with `/usr/bin/log show --last 10m --predicate 'subsystem == "com.jvoice.app"'` (use the full path — zsh shadows `log`).
+
+### Fixed
+
+- **Sub-second accidental presses no longer paste "You".** Whisper answers under ~1 s of hum with exactly the bare lowercase token `you`. `TextProcessor.removeWhisperHallucinations` (`Sources/JVoice/Services/Transcription/TextProcessor.swift`) now strips it — matched case-sensitively and unpunctuated, so a real one-word reply ("You." / "You"), which Whisper capitalizes and punctuates, survives. The whole-text hallucination filter (stock sign-off phrases, all-symbol output, and this fingerprint) now also runs on the **raw** decoder output in both engine paths (`WhisperKitTranscriptionEngine.cleanRawDecode`, `Sources/JVoice/Services/Transcription/TranscriptionManager.swift`), so near-silent audio reads as an empty decode there — which is what triggers `RegurgitationRecovery`'s unprompted re-decode and, on a streaming chunk, the lossless whole-file fallback — instead of an artifact reaching the paste. Tests: `scripts/run-logic-tests.sh` (executes locally) and `Tests/JVoiceTests/TextProcessorTests.swift` (CI).
+
+### Not ported (deliberate)
+
+- The Windows port's UI-thread priority boost and 60 fps frame pacer (`FramePacer`) have no macOS equivalent — SwiftUI animations are already display-link paced.
+- The Windows "decode the silent final tail to confirm it is empty" streaming change: the macOS `StreamingTranscriptionSession.finish()` already keeps the streamed pieces on a silent tail without any extra decode (it was the Windows side that used to force a whole-file re-decode there), so the macOS behaviour is the faster one and is unchanged.
+- The Windows chunk-path "tail-coverage guard" (its §7 #39) has no macOS counterpart to extend.
+
 ## [Unreleased] — 2026-07-02
 
 ### Added
