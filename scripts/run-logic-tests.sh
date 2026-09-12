@@ -78,6 +78,7 @@ expectEqual(TextProcessor.process("Hello World From Me", mode: .veryCasual), "he
 expectEqual(TextProcessor.process("hello world", mode: .formal), "Hello world.", "formal unchanged")
 expectEqual(TextProcessor.process("Um, hello world", mode: .casual, removeFillerWords: true), "hello world", "filler removal unchanged")
 expectEqual(TextProcessor.process("please use j voice with whisper kit", mode: .casual), "please use JVoice with WhisperKit", "built-in dictionary unchanged")
+expectEqual(TextProcessor.process("J-Voice handles the dictation", mode: .casual), "JVoice handles the dictation", "hyphenated 'J-Voice' (what Whisper emits under a cased prompt) → JVoice")
 
 print("TextProcessor .code tone (verbatim — trims whitespace only, no caps/punctuation changes)")
 expectEqual(TextProcessor.format("  const x = 5;  ", mode: .code), "const x = 5;", "code: trims surrounding whitespace only")

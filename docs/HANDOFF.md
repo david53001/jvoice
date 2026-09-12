@@ -2,6 +2,15 @@
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+## 2026-09-12 session, fourth pass — Custom-word list trimmed (David: "remove the ones that cost the most time and matter least")
+
+**Measured on a `say` clip that speaks all 11 words (`--bench --vocab …` with the new `prompt tokens:` line; tokens per word: computer 1, code 1, sub agents 2, claude 2, vs code 2, aisb 2, jvoice 2, vercel 2, git hub 2, ollama 2, li-fraumeni 5):**
+- Without any prompt Whisper already spells "VS Code", "Claude", "GitHub", "computer", "code" and "AISB" correctly; "J Voice" is fixed by the built-in dictionary; it mishears "Vercel" → "Versil", "Ollama" → "Alima" and "Li-Fraumeni" → "Leif Ramey".
+- **The all-lowercase list was actively hurting quality:** Whisper mirrors the prompt's style, and with " computer, sub agents, claude, vs code, …" the raw decode came back all-lowercase and unpunctuated in both bench runs; and because user words outrank the developer-terms pack, "git hub"/"claude"/"vercel" were pasted lowercase (and "GitHub" as "git hub"). With a properly cased list the raw decode kept its casing and punctuation.
+- **New list (written into David's settings, app relaunched):** `sub agents, AISB, Li-Fraumeni, Vercel, Ollama` — 20 prompt tokens instead of 33. Warm decode of the 4.5 s clip: 0.81 s → 0.69 s (0.50 s with no prompt at all). Removed: computer, code, claude, vs code, git hub, jvoice (all correct without the prompt; the developer-terms pack now supplies "Claude"/"VS Code"/"GitHub" casing). Kept: Li-Fraumeni (the prompt is the only fix), AISB (2 tokens, cheap insurance for an acronym), sub agents (keeps the un-hyphenated form), Vercel (prompt fixes "Versil"), Ollama (2 tokens; still "Alima" on the synthetic voice — see below).
+- **Side fix:** under a cased prompt Whisper emits "J-Voice", which the corrections did not catch → `"j-voice": "JVoice"` added to `TextProcessor.correctionDictionary` (logic test + CI mirror). Open: "Alima"/"Olama" heard-forms of Ollama are not in `DeveloperTerms`; add once a real-voice sample shows which form Whisper produces.
+- Reverting is a Settings → Custom Words edit; the previous list is recorded above.
+
 ## 2026-09-12 session, third pass — "Is ~1 s after the stop press supposed to be that?" (investigation; no app change)
 
 **Ask (David):** the Mac takes ~0.5–1 s from the stop press to the paste while the Windows PC feels like tens of milliseconds — investigate, or is 1 s expected?

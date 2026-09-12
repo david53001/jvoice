@@ -475,6 +475,10 @@ final class TextProcessorTests: XCTestCase {
     // Whisper's sub-second near-silence fingerprint: < 1 s of hum decodes to
     // exactly the bare lowercase "you". Matched case-sensitively and
     // unpunctuated so a real one-word reply ("You." / "You") survives.
+    func testHyphenatedJVoiceIsCorrected() {
+        XCTAssertEqual(TextProcessor.process("J-Voice handles the dictation", mode: .casual), "JVoice handles the dictation")
+    }
+
     func testHallucinationFilterStripsBareLowercaseYou() {
         XCTAssertEqual(TextProcessor.removeWhisperHallucinations("you"), "")
         XCTAssertEqual(TextProcessor.removeWhisperHallucinations("  you \n"), "")

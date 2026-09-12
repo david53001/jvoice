@@ -7,6 +7,7 @@ public struct TextProcessor: Sendable {
         "app kit": "AppKit",
         "appkit": "AppKit",
         "j voice": "JVoice",
+        "j-voice": "JVoice",
         "jvoice": "JVoice",
         "keyboard shortcuts": "KeyboardShortcuts",
         "keyboardshortcuts": "KeyboardShortcuts",

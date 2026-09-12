@@ -330,6 +330,14 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         ]
     }
 
+    /// Dev/bench: how many decoder passes the current vocabulary prompt costs
+    /// (WhisperKit 1.0.0 runs one forward pass per prompt token, ~9 ms each on
+    /// this machine). 0 when the prompt is off or the vocabulary is empty.
+    public func promptTokenCount() async -> Int {
+        guard useVocabularyPrompt, let kit = try? await loadWhisperKit() else { return 0 }
+        return promptTokens(using: kit)?.count ?? 0
+    }
+
     /// Encode (and cache) the vocabulary prompt with the loaded tokenizer.
     /// WhisperKit filters special tokens and trims length internally; the
     /// local cap just bounds the decode-cost increase.

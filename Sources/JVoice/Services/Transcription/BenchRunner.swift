@@ -77,6 +77,8 @@ enum BenchRunner {
         let loadStart = Date()
         await engine.prewarm()
         print(String(format: "load+prewarm: %.2fs", Date().timeIntervalSince(loadStart)))
+        let promptTokenCount = await engine.promptTokenCount()
+        if promptTokenCount > 0 { print("prompt tokens: \(promptTokenCount)  (≈ one decoder pass each, ~9 ms on this M3)") }
 
         if arguments.contains("--stream") {
             return await runStream(audioURL: audioURL, engine: engine, realtime: arguments.contains("--realtime"))
@@ -105,7 +107,9 @@ enum BenchRunner {
             let elapsed = Date().timeIntervalSince(transcribeStart)
             print(String(format: "transcribe:   %.2fs", elapsed))
             print("raw:       \"\(raw)\"")
-            let userDict = TextProcessor.buildUserDictionary(from: vocabulary)
+            // Same post-processing stack as the app's default settings: the
+            // developer-terms pack laid under the user's words (theirs win).
+            let userDict = DeveloperTerms.augment(TextProcessor.buildUserDictionary(from: vocabulary))
             let processed = TextProcessor.process(raw, mode: .casual, extraDictionary: userDict, vocabulary: vocabulary)
             print("processed: \"\(processed)\"")
             return 0
