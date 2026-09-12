@@ -2,7 +2,7 @@ import Foundation
 
 /// Hidden CLI bench mode:
 ///
-///     JVoice --bench <audio.wav> [--model tiny|base|small|large] [--vocab "Word1,Word2"] [--stream [--realtime]]
+///     JVoice --bench <audio.wav> [--model tiny|base|small|large] [--vocab "Word1,Word2"] [--stream [--realtime]] [--repeat N [--idle S]]
 ///
 /// Transcribes one file with timing and prints both the raw transcript and the
 /// TextProcessor-processed output. Dev-only: this machine cannot execute
@@ -27,7 +27,7 @@ enum BenchRunner {
     private static func run(arguments: [String]) async -> Int32 {
         guard let benchIndex = arguments.firstIndex(of: "--bench"),
               arguments.count > benchIndex + 1 else {
-            FileHandle.standardError.write(Data("usage: JVoice --bench <audio.wav> [--model tiny|base|small|large] [--lang en|ro] [--vocab \"Word1,Word2\"] [--stream [--realtime]]\n".utf8))
+            FileHandle.standardError.write(Data("usage: JVoice --bench <audio.wav> [--model tiny|base|small|large] [--lang en|ro] [--vocab \"Word1,Word2\"] [--stream [--realtime]] [--repeat N [--idle S]]\n".utf8))
             return 64
         }
         let audioURL = URL(fileURLWithPath: arguments[benchIndex + 1])
@@ -83,6 +83,23 @@ enum BenchRunner {
         }
 
         do {
+            // --repeat N [--idle S]: decode the same clip N times in ONE process,
+            // sleeping S seconds between runs — separates cold (first decode after
+            // idle: Neural Engine/CPU power state) from warm per-decode cost.
+            if let repeatIndex = arguments.firstIndex(of: "--repeat"), arguments.count > repeatIndex + 1,
+               let repeats = Int(arguments[repeatIndex + 1]), repeats > 1 {
+                var idle: Double = 0
+                if let idleIndex = arguments.firstIndex(of: "--idle"), arguments.count > idleIndex + 1 {
+                    idle = Double(arguments[idleIndex + 1]) ?? 0
+                }
+                for i in 1...repeats {
+                    if i > 1, idle > 0 { try? await Task.sleep(nanoseconds: UInt64(idle * 1_000_000_000)) }
+                    let t0 = Date()
+                    _ = try? await engine.transcribe(audioURL: audioURL)
+                    print(String(format: "run %d%@: %.2fs", i, idle > 0 && i > 1 ? " (after \(Int(idle)) s idle)" : "", Date().timeIntervalSince(t0)))
+                }
+                return 0
+            }
             let transcribeStart = Date()
             let raw = try await engine.transcribe(audioURL: audioURL)
             let elapsed = Date().timeIntervalSince(transcribeStart)

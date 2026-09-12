@@ -2,6 +2,34 @@
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+## 2026-09-12 session, third pass — "Is ~1 s after the stop press supposed to be that?" (investigation; no app change)
+
+**Ask (David):** the Mac takes ~0.5–1 s from the stop press to the paste while the Windows PC feels like tens of milliseconds — investigate, or is 1 s expected?
+
+**Live data after the second-pass build (3 dictations, all streamed):** stop→pasted 998 / 1033 / 1033 ms for 1.9 s, 10.8 s and 27 s dictations; `MicStarted` 80–106 ms. The speculative tail decode never hit: David presses stop within ~0.3 s of his last word, before a 0.4 s pause can register (every `speculative tail decode started` line was followed by `dropped — speech resumed`). The new `Decode …` lines showed the decoder loop at ~900 ms even for 1.9 s of audio and 1300 ms for 18 s — a large FIXED cost per decode.
+
+**Where the ~1 s goes (measured with the new `--bench … --repeat N [--idle S]`, same 4.5 s clip, Large model, one process):**
+
+| condition | per decode |
+| --- | --- |
+| no custom-word prompt, warm (back-to-back) | 0.49–0.52 s |
+| David's 11-word prompt, warm | 0.80–0.84 s |
+| David's 11-word prompt, after 8 s idle | 0.85–0.92 s |
+| in the app (same prompt, first decode after seconds of idle) | 0.95–1.0 s |
+
+So: **≈ 0.5 s is the WhisperKit floor** for any decode on this M3 — a fixed ~350–400 ms Neural Engine encoder pass over Whisper's 30 s window plus a short decoder loop; **≈ 0.32 s is the custom-word prompt** — WhisperKit 1.0.0 runs ONE decoder forward pass per prompt token (`TextDecoder.decodeText` iterates every initial-prompt token through the model; no batched prefill exists in this version), and " computer, sub agents, claude, vs code, aisb, jvoice, code, vercel, git hub, li-fraumeni, ollama" is ~35 tokens × ~9 ms; ≈ 0.05–0.1 s is the cold power state after idle; paste is ~10 ms. **This is not an app bug.** (Earlier "0.51 s with vocab" bench runs were an unquoted-argument slip that passed a 2-word list; a Neural Engine cache / App Nap / bundle-signing theory was chased and ruled out — both the app bundle and the plain build binary have equivalent compiled-model caches and load the same two models on the Neural Engine.)
+
+**Why Windows is ~0.35 s:** the RTX 3060 Ti runs the encoder in ~100–150 ms and whisper.cpp processes the prompt tokens in one batched pass (~10 ms), versus 350–400 ms and ~320 ms here. The Windows `stop->pasted` numbers in `docs/HANDOFF-WINDOWS.md` §7 #49 are 327–403 ms, not tens of ms — the perceived difference is real but ~0.6 s, not ~1 s.
+
+**Levers, with numbers (none applied — each is a product/accuracy decision or a larger build):**
+1. **Fewer custom words** — the only zero-code lever: each word costs ~25–30 ms per decode (its tokens + a comma). Dropping words Whisper already spells right ("computer", "code", "claude", "vercel", "ollama", "git hub"?) would take ~0.15–0.2 s off every dictation. The hard ones ("li-fraumeni", "aisb", "jvoice", "sub agents") are what the prompt is for. David's call; the pack of built-in corrections (`DeveloperTerms`, `PhoneticMatcher`) still applies either way.
+2. **Logit-bias vocabulary instead of the prompt** — a `LogitsFiltering` filter (WhisperKit's per-step hook, already used for `SuppressBlankFilter`) that boosts the custom words' token sequences trie-style (boost a continuation only when the decoded prefix matches) would remove the ~320 ms prompt tax while keeping the bias. An accuracy-engineering project: must be validated with `scripts/verify-transcription.py` (spurious-vocab score) before replacing the prompt.
+3. **A different engine** — whisper.cpp with Metal (what the Windows port's architecture is on) batches the prompt and runs the turbo encoder in ~200–300 ms on Apple GPUs; or Apple's `SpeechAnalyzer`/`DictationTranscriber` (macOS 26, which this machine runs) — true incremental results while speaking and ~100–300 ms finalization, with contextual-strings vocabulary support. Either is a new engine behind `TranscriptionEngine` — a David decision (accuracy A/B, model download story).
+4. **Speculative tail decode hits** — it hides the whole ~1 s but needs the user to pause ≥ 0.4 s before pressing stop (+ up to ~0.4 s of recorder-flush/poll detection latency). In-memory capture (AVAudioEngine tap, 50 ms buffers) would cut the detection latency to ~50 ms and allow a 0.25 s trigger — still no help for a press ~0.3 s after the last word.
+5. Not levers: `temperatureFallbackCount` (0 fallbacks in every logged decode), decode threads/compute units (measured dead 2026-06-09), the paste path (~10 ms).
+
+**Bench addition:** `--bench <wav> --model large [--vocab …|--no-prompt] --repeat N [--idle S]` decodes the same clip N times in one process (optionally sleeping S s between runs) and prints each run's time — the way to separate cold vs warm and prompt vs no-prompt cost.
+
 ## 2026-09-12 session, second pass — Latency from the first live numbers: speculative tail decode, in-flight-decode fix, spare recorder (autonomous; pushed + installed)
 
 **Ask (David):** *"use the data from tracking… it's much better but in the last run it took a while… figure out ways to reduce the latency to as close to 0 ms as possible using all strategies from the Windows version and developing new on-device strategies."*
