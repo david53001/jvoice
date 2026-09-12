@@ -2,6 +2,14 @@
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+## 2026-09-12 session, fifth pass — Terminal one-liner install + in-place update (David: "like BetterScreenshot")
+
+Modelled on `../BetterScreenshot/scripts/install.sh` + its README "Update" section. **Layout:** `scripts/install.sh` is now the PUBLIC one-liner (`curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.sh | bash`); the developer build-sign-install script moved to `scripts/dev-install.sh` (all refs updated: root `CLAUDE.md`, README build-from-source, `setup-signing.sh`); new `scripts/package-release.sh` builds the signed `dist/JVoice.app.zip` + `dist/JVoice-<version>.dmg` (`dist/` git-ignored). **Version bumped to 1.1.0** (`Resources/Info.plist`, `CFBundleVersion` 2); `CHANGELOG.md` "[Unreleased]" blocks retitled `[1.1.0]`.
+
+**Why permissions survive an update (the part that matters):** macOS TCC keys Microphone/Accessibility on the app's designated requirement — `identifier "com.jvoice.app" and certificate leaf = H"1164938a…"` — and the v1.0.0 DMG, David's installed copy and every future release are all signed with the same local "JVoice Self-Signed" cert (verified with `codesign -d -r-` on the mounted v1.0.0 DMG and `/Applications/JVoice.app`: identical leaf hash). `package-release.sh` therefore REFUSES to ad-hoc sign. Settings/stats/transcripts live in `~/Library/Preferences/com.jvoice.app.plist` and the model in `~/Documents/huggingface/`, neither touched by a reinstall. The installer quits the running app via AppleScript first so `flushSettings` runs.
+
+**One-liner robustness:** the repo's GitHub "latest" release is the WINDOWS one (`windows-v1.0.0`), so `releases/latest/download/…` would 404 — the script queries the releases API and takes the newest release that carries `JVoice.app.zip` (grep/sed only; stock macOS may lack jq/python3). It also `codesign --verify`s the download before touching `/Applications`.
+
 ## 2026-09-12 session, fourth pass — Custom-word list trimmed (David: "remove the ones that cost the most time and matter least")
 
 **Measured on a `say` clip that speaks all 11 words (`--bench --vocab …` with the new `prompt tokens:` line; tokens per word: computer 1, code 1, sub agents 2, claude 2, vs code 2, aisb 2, jvoice 2, vercel 2, git hub 2, ollama 2, li-fraumeni 5):**

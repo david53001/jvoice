@@ -1,86 +1,62 @@
-#!/usr/bin/env bash
+#!/bin/bash
+# One-line installer AND updater for JVoice (macOS 14+, Apple Silicon):
+#
+#   curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.sh | bash
+#
+# Downloads the newest macOS release from GitHub, puts JVoice.app in
+# /Applications (replacing an older copy), removes the quarantine flag (the app
+# is self-signed, not notarized — this project has no paid Apple Developer
+# account, so Gatekeeper would otherwise refuse to open it), and launches it.
+#
+# Running it again later UPDATES the app. Nothing else is touched, so settings,
+# custom words, stats and recent transcripts (all in
+# ~/Library/Preferences/com.jvoice.app.plist), the downloaded Whisper model
+# (~/Documents/huggingface/), launch-at-login, and the Microphone +
+# Accessibility permissions all carry over — macOS ties those permissions to
+# the app's bundle id plus signing certificate, and every release is signed
+# with the same certificate, so the app does not ask again.
 set -euo pipefail
 
-# Build, install, and codesign JVoice. Uses a stable self-signed identity
-# from the login keychain when available (see scripts/setup-signing.sh)
-# so macOS TCC permissions persist across rebuilds. Falls back to ad-hoc
-# with a warning if no identity is set up.
-#
-# Usage:  scripts/install.sh
+REPO="david53001/jvoice"
+ASSET="JVoice.app.zip"
+DEST="/Applications/JVoice.app"
 
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-APP_PATH="/Applications/JVoice.app"
-BINARY="$REPO_ROOT/.build/release/JVoice"
-INFO_PLIST_SRC="$REPO_ROOT/Resources/Info.plist"
-ICON_SRC="$REPO_ROOT/Resources/AppIcon.icns"
+if [ "$(uname -s)" != "Darwin" ]; then echo "JVoice is a macOS app (there is a separate Windows installer on the releases page)." >&2; exit 1; fi
+MAJOR="$(sw_vers -productVersion | cut -d. -f1)"
+if [ "$MAJOR" -lt 14 ]; then echo "JVoice needs macOS 14 (Sonoma) or newer; you have $(sw_vers -productVersion)." >&2; exit 1; fi
 
-cd "$REPO_ROOT"
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
 
-echo "==> Building release..."
-swift build -c release
+# The repo also publishes Windows releases, so "latest" may not be a macOS
+# release: pick the newest release that carries the macOS asset. The API lists
+# releases newest-first; no jq/python needed (stock macOS may lack both).
+echo "==> Finding the newest macOS release..."
+URL="$(curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=30" \
+    | grep -o "\"browser_download_url\": *\"[^\"]*/$ASSET\"" | head -1 | sed 's/.*"\(https[^"]*\)"/\1/')"
+[ -n "$URL" ] || { echo "error: no release with $ASSET found for $REPO" >&2; exit 1; }
+echo "    $URL"
 
-echo "==> Stopping running JVoice..."
-pkill -x JVoice 2>/dev/null || true
-sleep 0.5
+echo "==> Downloading..."
+curl -fsSL -o "$TMP/$ASSET" "$URL"
+ditto -x -k "$TMP/$ASSET" "$TMP"
+[ -d "$TMP/JVoice.app" ] || { echo "error: archive did not contain JVoice.app" >&2; exit 1; }
+codesign --verify --deep --strict "$TMP/JVoice.app" 2>/dev/null || { echo "error: downloaded app failed signature verification" >&2; exit 1; }
 
-echo "==> Ensuring bundle structure..."
-mkdir -p "$APP_PATH/Contents/MacOS"
-mkdir -p "$APP_PATH/Contents/Resources"
-
-echo "==> Syncing Info.plist..."
-cp "$INFO_PLIST_SRC" "$APP_PATH/Contents/Info.plist"
-
-echo "==> Writing PkgInfo..."
-printf 'APPL????' > "$APP_PATH/Contents/PkgInfo"
-
-echo "==> Installing binary..."
-cp "$BINARY" "$APP_PATH/Contents/MacOS/JVoice"
-
-# SPM emits a `<Package>_<Target>.bundle` next to the binary for any target with
-# resources (KeyboardShortcuts 1.10+ ships .lproj localizations). Bundle.module
-# fatalErrors at runtime if these aren't in Contents/Resources/, which is what
-# crashed the Settings window when the KeyboardShortcuts.Recorder loaded.
-echo "==> Installing SPM resource bundles..."
-BUILD_DIR="$(dirname "$BINARY")"
-rm -rf "$APP_PATH/Contents/Resources"/*.bundle
-shopt -s nullglob
-for bundle in "$BUILD_DIR"/*.bundle; do
-    cp -R "$bundle" "$APP_PATH/Contents/Resources/"
-done
-shopt -u nullglob
-
-echo "==> Installing app icon..."
-if [ -f "$ICON_SRC" ]; then
-    cp "$ICON_SRC" "$APP_PATH/Contents/Resources/AppIcon.icns"
-else
-    echo "    WARNING: $ICON_SRC not found."
+if pgrep -xq JVoice; then
+    echo "==> Quitting the running copy (it saves its settings on quit)..."
+    osascript -e 'tell application id "com.jvoice.app" to quit' >/dev/null 2>&1 || pkill -x JVoice || true
+    for _ in 1 2 3 4 5 6 7 8 9 10; do pgrep -xq JVoice || break; sleep 0.5; done
+    pkill -x JVoice 2>/dev/null || true
 fi
 
-echo "==> Determining signing identity..."
-# Look up by name, address codesign by SHA-1 hash so it works even when the
-# self-signed cert hasn't been user-trusted via the keychain GUI (which would
-# otherwise require an interactive password prompt during setup).
-IDENTITY_LINE=$(security find-identity -p codesigning login.keychain 2>/dev/null \
-    | grep "JVoice Self-Signed" | head -1 || true)
-if [ -n "$IDENTITY_LINE" ]; then
-    SIGN_IDENTITY=$(echo "$IDENTITY_LINE" | awk '{print $2}')
-    echo "    Using stable identity: JVoice Self-Signed ($SIGN_IDENTITY) — TCC permissions persist"
-else
-    SIGN_IDENTITY="-"
-    echo "    WARNING: Using ad-hoc signing. TCC permissions reset every build."
-    echo "    Run scripts/setup-signing.sh once to fix this."
-fi
-
-echo "==> Re-signing..."
-codesign --force --deep --sign "$SIGN_IDENTITY" --identifier com.jvoice.app "$APP_PATH"
-
-echo "==> Verifying signature..."
-codesign -dv "$APP_PATH" 2>&1 | grep -E "Identifier|Format|Signature"
-
-echo "==> Registering bundle with Launch Services..."
-/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f "$APP_PATH"
+echo "==> Installing to ${DEST}..."
+rm -rf "$DEST"
+ditto "$TMP/JVoice.app" "$DEST"
+xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
 
 echo "==> Launching..."
-open "$APP_PATH"
-
-echo "==> Done."
+open -a "$DEST"
+VERSION="$(defaults read "$DEST/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "?")"
+echo "Done — JVoice $VERSION is installed. Look for the J in your menu bar; press ⌥Space to dictate."
+echo "First install only: macOS asks for Microphone and Accessibility access, then the Whisper model downloads."

@@ -15,6 +15,9 @@ xcuserdata/
 # macOS
 .DS_Store
 
+# Release packaging output (scripts/package-release.sh)
+dist/
+
 # Local logs and temp files
 *.log
 *.swp

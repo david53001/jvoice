@@ -33,7 +33,15 @@ Dictation tools like Wispr Flow and superwhisper charge $8–15/month for someth
 
 ### macOS
 
-**[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/download/v1.0.0/JVoice-1.0.0.dmg)** — macOS 14+ (Apple Silicon recommended)
+**Fastest — paste this into Terminal:**
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.sh | bash
+```
+
+That downloads the newest release, puts `JVoice.app` in `/Applications`, clears the quarantine flag, and launches it — no "unverified developer" dance. (Read it first if you like: [`scripts/install.sh`](scripts/install.sh).)
+
+**Manually:** **[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/download/v1.1.0/JVoice-1.1.0.dmg)** — macOS 14+ (Apple Silicon recommended)
 
 1. Open the DMG and drag **JVoice** into **Applications**.
 2. First launch: macOS says it *"can't verify the developer."* Click **Done** (not "Move to Trash").
@@ -45,6 +53,23 @@ Dictation tools like Wispr Flow and superwhisper charge $8–15/month for someth
 On first run JVoice asks for **Microphone** (to hear you) and **Accessibility** (to type text into the frontmost app) permissions, then downloads your chosen Whisper model.
 
 **Default hotkey:** <kbd>⌥ Option</kbd>+<kbd>Space</kbd> — rebind it to whatever you like in Settings.
+
+#### Update
+
+JVoice never touches the network while you use it, so there is no built-in updater. To move to the newest release, run the same one-liner again:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.sh | bash
+```
+
+It quits the running copy, replaces `/Applications/JVoice.app` with the newest release, and relaunches it. Nothing else is touched, so everything carries over:
+
+- **Settings, custom words, stats and recent transcripts** — stored in `~/Library/Preferences/com.jvoice.app.plist`
+- **Your downloaded Whisper model** — in `~/Documents/huggingface/`
+- **Launch at login** — registered to the same app
+- **Microphone and Accessibility permissions** — macOS ties them to the app's bundle id and signing certificate, and every release is signed with the same one, so they stay granted and JVoice does not ask again
+
+If you installed from the DMG, dragging the new `JVoice.app` over the old one preserves the same things. To see what changed, read the [release notes](../../releases) or [`CHANGELOG.md`](CHANGELOG.md).
 
 ### Windows
 
@@ -85,7 +110,7 @@ Don't trust an unsigned binary? Good instinct — build it yourself.
 ```bash
 git clone https://github.com/david53001/jvoice && cd jvoice
 swift build -c release
-./scripts/install.sh   # builds, signs locally, installs to /Applications
+./scripts/dev-install.sh   # builds, signs locally, installs to /Applications
 ```
 
 **Windows** — Windows 10/11 x64, [.NET 9 SDK](https://dotnet.microsoft.com/download):

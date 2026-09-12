@@ -4,7 +4,13 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
-## [Unreleased] — 2026-09-12
+## [1.1.0] — 2026-09-12
+
+Everything from here down to [1.0.0] ships in 1.1.0 (the 2026-07-02 block below was committed earlier but never released).
+
+### Added
+
+- **One-line install and update from the terminal** (`scripts/install.sh`, run via `curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.sh | bash`). Downloads the newest macOS release, replaces `/Applications/JVoice.app`, clears the quarantine flag and relaunches. Running it again updates in place: settings, custom words, stats, recent transcripts, the downloaded model, launch-at-login and the Microphone/Accessibility permissions all carry over, because every release is signed with the same stable certificate (macOS ties permissions to bundle id + certificate). New `scripts/package-release.sh` builds the signed `dist/JVoice.app.zip` + `dist/JVoice-<version>.dmg` the release carries (it refuses to ad-hoc sign for exactly that reason). The developer build-and-install script is now `scripts/dev-install.sh`.
 
 ### Changed
 
@@ -33,7 +39,7 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 - The Windows "decode the silent final tail to confirm it is empty" streaming change: the macOS `StreamingTranscriptionSession.finish()` already keeps the streamed pieces on a silent tail without any extra decode (it was the Windows side that used to force a whole-file re-decode there), so the macOS behaviour is the faster one and is unchanged.
 - The Windows chunk-path "tail-coverage guard" (its §7 #39) has no macOS counterpart to extend.
 
-## [Unreleased] — 2026-07-02
+## [1.1.0] (continued) — 2026-07-02
 
 ### Added
 
