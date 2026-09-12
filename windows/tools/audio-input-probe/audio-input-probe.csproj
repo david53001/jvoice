@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net9.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>JVoice.Tools.AudioInputProbe</RootNamespace>
+    <AssemblyName>audio-input-probe</AssemblyName>
+    <Platforms>x64</Platforms>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+  </PropertyGroup>
+
+  <!-- Compile the REAL routing + recorder sources (not copies) so the probe reports
+       exactly what the shipping app would open (capture-stop-probe precedent). -->
+  <ItemGroup>
+    <Compile Include="..\..\JVoice.App\Platform\Capture\NAudioRecorder.cs" />
+    <Compile Include="..\..\JVoice.App\Platform\Capture\IAudioRecorder.cs" />
+    <Compile Include="..\..\JVoice.App\Platform\Capture\AudioInputRouter.cs" />
+    <Compile Include="..\..\JVoice.App\Platform\Capture\CaptureSignal.cs" />
+    <Compile Include="..\..\JVoice.App\Platform\Persistence\PlatformPaths.cs" />
+    <Compile Include="..\..\JVoice.App\Platform\System\SystemActions.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio" Version="2.3.0" />
+    <ProjectReference Include="..\..\JVoice.Core\JVoice.Core.csproj" />
+  </ItemGroup>
+
+</Project>

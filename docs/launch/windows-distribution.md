@@ -1,0 +1,139 @@
+# JVoice for Windows — unsigned distribution & SmartScreen
+
+The Windows analog of the macOS Gatekeeper "Open Anyway" findings
+(`unsigned-distribution-findings.md`). $0 budget → **no paid code-signing certificate** →
+JVoice ships as an **unsigned** download. This documents what users see and how to ship.
+
+## What ships — two installers (CPU default, GPU optional)
+
+The user-facing download is a **one-click installer**: an IExpress self-extractor that wraps a
+**self-contained folder build**, unpacks it to `%LOCALAPPDATA%\Programs\JVoice`, creates Start-Menu
++ Desktop shortcuts and an Add/Remove-Programs entry, and launches. No admin needed. Two flavors:
+
+| Download | Flavor | Size | For |
+| --- | --- | --- | --- |
+| **`JVoice-Setup.exe`** | `JVoiceFlavor=cpu` (folder) | ~66 MB | **Everyone — the default.** CPU-only; runs on any Windows 10/11 x64 PC. |
+| `JVoice-Setup-GPU.exe` | `JVoiceFlavor=gpu` (folder) | ~365 MB | **Optional, NVIDIA owners.** Bundles CUDA + Vulkan + CPU runtimes for GPU-accelerated transcription. |
+
+**Which one?** → **Most people: `JVoice-Setup.exe`.** Only grab the GPU build if you have an
+**NVIDIA GPU** and want the speed-up — it's ~5× larger and falls back to CPU on machines without a
+supported GPU, so there's no benefit to it otherwise. Both transcribe identically; the GPU build is
+just faster on capable hardware.
+
+- A plain `JVoice-<gpu|cpu>-win-x64.zip` of the same folder is the no-installer alternative.
+- **Not** a single-file exe: WPF can't be trimmed and Whisper.net 1.9.1 can't load its native
+  runtime from a bundled single-file (`Assembly.Location` is empty there). The folder build is
+  verified working; the single-file is not shipped.
+- Self-contained: the .NET 9 runtime is bundled — users need nothing pre-installed.
+- Ship `LICENSE.txt` alongside the binary (GPL-3.0 obligation) — add it to the folder before
+  zipping/packaging.
+- The speech model (`ggml-*.bin`, 74–547 MB) is **not** bundled; it downloads on first use
+  from Hugging Face to `%LOCALAPPDATA%\JVoice\models\` (the one allowed runtime network call).
+
+The installers are built with IExpress from `windows/artifacts/` (gitignored): publish each flavor
+to a folder, zip the folder as `app.zip` (top-level `JVoice\`), then `iexpress /N /Q JVoice-<flavor>.sed`
+packages `app.zip` + `install.ps1` + `launch.vbs` + `uninstall.ps1` into the setup `.exe`. See the
+`.sed` files and `install.ps1` in `windows/artifacts/pkg-<gpu|cpu>/sources/`.
+
+```powershell
+# stage the publish under a folder literally named JVoice, so the zip has the top-level JVoicedotnet publish windows/JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=gpu `
+  -p:SelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=true `
+  -o windows/artifacts/publish-gpu/JVoice
+Copy-Item LICENSE windows/artifacts/publish-gpu/JVoice/LICENSE.txt
+Compress-Archive -Path windows/artifacts/publish-gpu/JVoice `
+  -DestinationPath windows/artifacts/pkg-gpu/sources/app.zip -Force
+iexpress.exe /N /Q windows/artifacts/JVoice-gpu.sed        # writes ~/Downloads/JVoice-Setup-GPU.exe
+```
+
+> **ALWAYS smoke-test a rebuilt installer before shipping it, and never by just running it** — a
+> real run kills David's tray app and overwrites his install. Redirect every side effect instead:
+> `JVOICE_INSTALL_DIR` / `JVOICE_DESKTOP_DIR` / `JVOICE_STARTMENU_DIR` / `JVOICE_ARP_NAME` into a temp
+> sandbox plus **`JVOICE_NO_STOP=1`** (leaves the running instance alone), `JVOICE_SKIP_LAUNCH=1`,
+> `JVOICE_NO_UI=1`; then assert `JVoice.exe` landed and runs. This is not optional: on 2026-08-22 it
+> caught a packaging break that would have made **every** one-click install fail with *"JVoice install
+> failed: Exception calling ExtractToFile … The directory name is invalid"* (see below).
+
+**Zip directory entries (2026-08-22 bug, fixed):** `Compress-Archive` writes a directory entry using a
+**backslash** separator (`JVoiceuntimes\`). `install.ps1` used to detect directories with
+`FullName.EndsWith('/')`, so it treated that entry as a file, and `ExtractToFile` failed with *"The
+directory name is invalid"* — nothing extracted and the installer aborted. It now tests
+`[string]::IsNullOrEmpty($entry.Name)`, which is empty for **every** directory entry regardless of
+separator, and normalises `/` → `\` before joining. Don't reintroduce a separator-based test.
+
+**No console, branded splash (2026-07-13):** IExpress launches `wscript.exe launch.vbs` (a GUI host,
+so no console window ever appears — David saw the old `powershell -WindowStyle Hidden` console during
+the first live in-app update and flagged it as scary), which runs `install.ps1` fully hidden with
+`Run …, 0, True` (the wait matters: IExpress deletes its extracted temp files when AppLaunched
+returns). The script shows a black borderless **"Updating JVoice" / "Installing JVoice"** splash
+(matches the app's monochrome look) with a real progress bar driven by per-entry zip extraction;
+the install-dir swap is an instant same-volume `Move-Item` after extracting to temp, so a failed
+extraction never breaks the existing install.
+
+## What the user sees (SmartScreen)
+
+Because the build is unsigned and has no reputation, **Microsoft Defender SmartScreen** shows a
+blue dialog on first launch:
+
+> **Windows protected your PC** — Microsoft Defender SmartScreen prevented an unrecognized app
+> from starting. Running this app might put your PC at risk.
+
+The "Run anyway" button is hidden behind **"More info"**:
+
+1. Click **More info**.
+2. Confirm the publisher line reads **Unknown publisher** and the app is **JVoice.exe**.
+3. Click **Run anyway**.
+
+This is the exact analog of macOS Gatekeeper's "Open Anyway". It is a one-time prompt per
+download; once the user runs it, subsequent launches are silent. Document this prominently on
+the download page and in the README so users aren't scared off.
+
+### Reducing the prompt (future, optional)
+- **Reputation:** SmartScreen relaxes as a binary accrues downloads over time (slow, free).
+- **Signing:** an OV/EV code-signing cert removes the prompt but costs money (out of scope at $0).
+  An EV cert grants instant reputation; an OV cert still warms up over time.
+- **winget / Microsoft Store:** out of scope for the unsigned $0 model (the Store requires
+  packaging + an account).
+
+## In-app updates (built; branch `feat/in-app-updates`)
+
+JVoice has a built-in updater (full detail: `windows-in-app-updates.md`; HANDOFF §7 #36). It checks
+**GitHub Releases** (not raw `main` commits) and, when a newer version exists, shows an "Update
+available" prompt + one-click **Update Now** in **Settings → Updates** (and a tray item). "Update
+Now" downloads the matching `JVoice-Setup(-GPU).exe`, launches it, and quits so it can overwrite +
+relaunch.
+
+- **Pipeline to wire at publish:** *commit/tag on `main` → CI builds both installers → publishes a
+  GitHub Release* — the app polls `releases/latest`. A release-cutting GitHub Actions workflow is a
+  follow-up (not built yet).
+- **Dormant until public:** the check is an anonymous GitHub API GET; while the repo/releases are
+  private it 404s → "no update", so shipping this changes nothing until David publishes. Point
+  `UpdateConfig.RepoSlug` at the release repo at publish time (one edit).
+- **Privacy:** this is the only runtime network call besides the one-time model download and sends
+  **no user data**; it's opt-out in Settings ("Automatic Updates", default on). Note it on the
+  download page alongside the SmartScreen step.
+- **Installer wait-for-exit: DONE (2026-07-13).** `install.ps1` now kills any running JVoice and
+  polls `Get-Process JVoice` (up to ~10 s) before touching the install dir, so the updater's
+  quit-then-install handoff can't race a still-locked file. The full loop (detect → download →
+  installer overwrites → relaunch) was **live-verified** on David's machine updating 1.0.0 → 1.0.1.
+
+## Zipping the build (PowerShell, in-box)
+
+```powershell
+dotnet publish windows/JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=gpu `
+  -p:SelfContained=true -p:PublishTrimmed=false -p:PublishReadyToRun=true -o out/gpu
+Copy-Item LICENSE out/gpu/LICENSE.txt
+Compress-Archive -Path out/gpu/* -DestinationPath JVoice-gpu-win-x64.zip -Force
+```
+
+(Repeat with `-p:JVoiceFlavor=cpu -p:PublishSingleFile=false` for the CPU "lite" zip.)
+
+## ARM64
+
+CUDA is x64-only. An ARM64 build (`-r win-arm64 -p:JVoiceFlavor=cpu`) is CPU-runtime-only.
+`Whisper.net.Runtime` ships ARM64 CPU binaries; `Whisper.net.Runtime.Cuda` does not. Build on
+demand by swapping the RID; verify `Whisper.net.Runtime` has a `win-arm64` native asset first.
+
+## Do NOT publish without David's go-ahead
+
+Same rule as the macOS side: no `gh release`, no pushing, no posting. This doc is the playbook
+for *when* David decides to publish — it is not an instruction to publish now.
