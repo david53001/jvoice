@@ -4,7 +4,7 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
-## [Unreleased]
+## [1.1.1] — 2026-09-21
 
 ### Fixed
 
