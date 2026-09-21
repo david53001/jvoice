@@ -1,6 +1,51 @@
-# HANDOFF — state as of 2026-09-12 (zero-latency HUD + faster paste ported from the Windows port, then a second pass from live numbers: speculative tail decode, in-flight-decode fix, spare recorder; `feat/dictation-parity` = `main`, pushed, installed)
+# HANDOFF — state as of 2026-09-21 (Settings-crash fix + Math Notation ported from the Windows port; branch `feat/dictation-parity`, committed locally, NOT pushed, NOT installed)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
+
+## 2026-09-21 session — Two bugs David reported: Settings crashed on open, and dictated mathematics stayed words
+
+**Ask (David, dictated):** a physics dictation ("…we're just going to use S equals U plus V divided by 2 times T… 12 over 2T equals 400…") pasted as plain words — *"the mathematics module I guess is not working"* — and *"every time I'm dictating and I try to open JVoice settings, it automatically crashes."*
+
+### 1. The Settings crash — root-caused from the crash reports, fixed, red/green verified
+
+**It had nothing to do with dictating, and it was not intermittent: Settings crashed on EVERY open, in every packaged build since 2026-06-06 — including the v1.1.0 DMG on GitHub.**
+
+Two crash reports (`~/Library/Logs/DiagnosticReports/JVoice-2026-09-21-1944{18,19}.ips`) show `EXC_BREAKPOINT` / `SIGTRAP` on the main thread with this stack: `_assertionFailure` ← `closure #1 in variable initialization expression of static NSBundle.module` ← `KeyboardShortcuts.RecorderCocoa.init(for:onChange:)` ← `NSHostingView.viewDidMoveToWindow` ← `-[NSWindow setContentView:]` ← `SettingsWindow.init(coordinator:)`.
+
+**Mechanism.** SwiftPM generates a `Bundle.module` accessor for any dependency target that ships resources; KeyboardShortcuts 1.10.0 ships `.lproj` localizations, and `RecorderCocoa` (the control behind `KeyboardShortcuts.Recorder`) is the package's ONLY user of them — five English strings via `String.localized` in `Utilities.swift`. The generated accessor (read it at `.build/arm64-apple-macosx/release/KeyboardShortcuts.build/DerivedSources/resource_bundle_accessor.swift`) looks in exactly two places and then calls `Swift.fatalError`:
+1. `Bundle.main.bundleURL + "/KeyboardShortcuts_KeyboardShortcuts.bundle"` — for an app that is `/Applications/JVoice.app/KeyboardShortcuts_KeyboardShortcuts.bundle`, i.e. the app bundle's ROOT, not `Contents/Resources/`.
+2. A hardcoded absolute build path, here `/Users/davidghermansteinberg/Desktop/Home/Code/JVoice/.build/.../KeyboardShortcuts_KeyboardShortcuts.bundle` — the repo's OLD location (it now lives at `Desktop/Home/Projects/Code/JVoice`). It has been dead since the move, which is what turned a latent packaging bug into a crash for David as well as for every other user.
+
+`scripts/dev-install.sh` and `scripts/package-release.sh` both copy the bundle into `Contents/Resources/`, and a comment there claimed that fixed the trap. **It never could** — nothing reads that path. Both comments are now corrected.
+
+**Why the obvious fix is impossible (measured, not assumed):** placing the bundle (or a symlink to it) at the app bundle root makes the app work, but `codesign` then refuses to seal it — *"unsealed contents present in the bundle root"* — and the resulting signature fails `codesign --verify --deep --strict` with *"code has no resources but signature indicates they must be present"*. A broken signature would fail `scripts/install.sh`'s verification gate and put the TCC (Transparency, Consent and Control — the macOS permission database) Microphone/Accessibility grants at risk, since those are keyed on the designated requirement. Tested both a copy and a symlink in the scratchpad against the real "JVoice Self-Signed" identity; both fail identically.
+
+**The fix David chose (of three options offered): JVoice draws the recorder itself.** New `Sources/JVoice/UI/ShortcutRecorder.swift` (~180 lines) replaces the two `KeyboardShortcuts.Recorder` rows in `SettingsView.shortcutSection`, built only on the package's PUBLIC API (`Shortcut(event:)`, `Shortcut.description`, `setShortcut(_:for:)`, `getShortcut(for:)`, `disable(_:)`, `enable(_:)`). The dependency, `Package.swift` and `Package.resolved` are untouched and still provide `Name`, the defaults, storage and the global Carbon registration. Upstream behaviour kept: click to listen, Esc/Tab cancel, Delete/Backspace clears, Shift alone is refused with a beep, F-keys need no modifier. Both hotkeys are disabled while listening (a registered global chord is swallowed system-wide before a local event monitor sees it) and re-enabled on `NSWindow.didResignKeyNotification`, so closing Settings mid-capture can never leave them off. **Not carried over:** upstream's two "already used by the system / by a menu item" alerts — they need package-internal API (`Shortcut.isTakenBySystem`, `takenByMainMenu`). The pure decision table is `Sources/JVoice/UI/ShortcutCapturePolicy.swift`, unit-locked in `scripts/run-logic-tests.sh` + `Tests/JVoiceTests/ShortcutCapturePolicyTests.swift`.
+
+**Red/green proof.** New hidden dev mode `JVoice --settings-smoke` (`Sources/JVoice/UI/SettingsSmokeRunner.swift`) builds the real `SettingsWindow`, orders it on screen at `alphaValue = 0` (SwiftUI only reaches `makeNSView` during a genuine display pass — a first attempt that only called `layoutSubtreeIfNeeded()` did NOT reproduce the crash and would have been a useless test), spins the run loop 0.75 s and exits 0. Run from an assembled `.app` with the build-directory fallback moved aside (a faithful "someone else's Mac"):
+- OLD code → `Fatal error: could not load resource bundle: from …/SmokeJVoice.app/KeyboardShortcuts_KeyboardShortcuts.bundle or …/.build/…` — David's exact crash.
+- NEW code → `settings-smoke: OK — Settings built, laid out and drawn (700×592)`, exit 0.
+
+It deliberately does not call `VoiceCoordinator.start()`, so it is safe to run while the installed app is in use. **Note for whoever rebuilds:** a fresh `swift build` regenerates that accessor with the CURRENT build path, which DOES exist on this machine — so a locally built app stops crashing by accident while every shipped copy still crashes. Never verify this bug from a local build with `.build` intact.
+
+### 2. Math Notation — ported 1:1 from the Windows port
+
+The mathematics engine was Windows-only (`windows/JVoice.Core/Math/`, Windows handoff §7 #47/#48). The macOS app had no Math sources and no setting: David's dictation was handled correctly by an app that simply had no maths module. Now ported to `Sources/JVoice/Services/Transcription/Math/` (`MathSymbol`, `MathScript`, `MathSymbols`, `SpokenNumbers`, `MathSpeech`, plus `MathProbe` for the CLI), every constant verbatim.
+
+- **Wiring:** `VoiceCoordinator.finishTranscription` applies `MathSpeech.convert` LAST, after `TextProcessor.process` — deliberately, because tone/filler/corrections are word-based and cannot then mangle a symbol. Gated on `SettingsState.mathNotation`, schema **v3 → v4**, default ON (older blobs decode with it on). New "Math Notation" toggle in Settings → Processing. `BenchRunner` applies it too, so `--bench` prints what would actually paste.
+- **The no-bleed rule is structural**, not a classifier: a word only becomes a symbol inside a RUN, and a run only converts when an ACTIVATING construct found its OPERANDS. Weak things (π, %, °, `sin`, brackets, number words, spoken signs) render inside an already-activated run and stay words otherwise. Nothing activates ⇒ the input is returned unchanged.
+- **Verification:** the whole Windows spec was translated and passes — 80 conversion cases + 50 ordinary-speech cases (`Tests/JVoiceTests/MathSpeechTests.swift`), plus the vocabulary contract, the exclusion audit and 33 more end-to-end conversions (`Tests/JVoiceTests/MathSymbolsTests.swift`); a subset runs locally in `scripts/run-logic-tests.sh` (now 323 executing assertions). Corpus sweeps with the new `--math-probe`: **David's 30 most recent real dictations → 3 converted, all three genuinely his physics homework**; 8,443 lines of this repo's own prose → 31 converted, every one a line that literally quotes spoken mathematics.
+- **His dictation now converts** (test-locked as `davidsSuvatDictationConvertsOnlyItsEquations`): "…we're just going to use S = U + V ÷ 2 · T. Basically, since the initial and final velocities are both 6, it would be 12 ÷ 2T = 400. So 400 ÷ 6 = 66.66 recurring seconds…", with the thinking-out-loud around it untouched.
+- **Known limitation to tell David about:** spoken precedence is taken literally, so "S equals U plus V over 2 times T" reads as `U + (V/2)`, not `(U+V)/2` — the SUVAT equation needs "open paren U plus V close paren over 2". Same on Windows; it is the price of not guessing at what was meant.
+
+### Verification run this session (all green)
+`swift build` (debug + release) · `swift build --build-tests` · `./scripts/run-logic-tests.sh` (323 assertions, 0 failures) · `./scripts/verify-streaming.sh` · `--settings-smoke` red on the old code, green on the new · `--math-probe` corpus sweeps above.
+
+### Pick up here
+1. **Install it** — David has not seen either fix in the running app: `./scripts/dev-install.sh` (or `scripts/package-release.sh` + a release if it should go out to users; the published v1.1.0 DMG still contains the Settings crash).
+2. **Eyeball Settings** after installing: the two shortcut rows are now JVoice-drawn (click one and record a chord; check Esc cancels and the ✕ clears), and there is a new "Math Notation" toggle in Processing. There is no headless screenshot — `ImageRenderer` and `CALayer.render(in:)` were both tried and come back blank.
+3. **Dictate some mathematics** and some ordinary speech; `--math-probe` any surprise.
+4. Nothing is pushed. `main` is still at `084852b`.
 
 ## 2026-09-12 session, fifth pass — Terminal one-liner install + in-place update (David: "like BetterScreenshot")
 
