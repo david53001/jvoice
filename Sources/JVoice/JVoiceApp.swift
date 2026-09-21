@@ -11,6 +11,18 @@ enum JVoiceMain {
         if BenchRunner.shouldRun(arguments: CommandLine.arguments) {
             BenchRunner.runAndExit(arguments: CommandLine.arguments)
         }
+        // Hidden dev mode: `JVoice --math-probe "<text>"` (or piped stdin) reports what
+        // the spoken-mathematics engine would do to each line — the tool the "never bleeds
+        // into ordinary speech" guarantee is measured with.
+        if MathProbe.shouldRun(arguments: CommandLine.arguments) {
+            MathProbe.runAndExit(arguments: CommandLine.arguments)
+        }
+        // Hidden dev mode: `JVoice --settings-smoke` builds the Settings
+        // window and exits — the only way to catch an AppKit/SwiftUI crash in
+        // Settings on a machine that cannot execute the test suite.
+        if SettingsSmokeRunner.shouldRun(arguments: CommandLine.arguments) {
+            MainActor.assumeIsolated { SettingsSmokeRunner.runAndExit() }
+        }
         JVoiceApp.main()
     }
 }

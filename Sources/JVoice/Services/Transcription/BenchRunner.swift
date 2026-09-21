@@ -110,7 +110,9 @@ enum BenchRunner {
             // Same post-processing stack as the app's default settings: the
             // developer-terms pack laid under the user's words (theirs win).
             let userDict = DeveloperTerms.augment(TextProcessor.buildUserDictionary(from: vocabulary))
-            let processed = TextProcessor.process(raw, mode: .casual, extraDictionary: userDict, vocabulary: vocabulary)
+            let styled = TextProcessor.process(raw, mode: .casual, extraDictionary: userDict, vocabulary: vocabulary)
+            // Math notation runs last here too, so the bench shows what actually pastes.
+            let processed = MathSpeech.convert(styled)
             print("processed: \"\(processed)\"")
             return 0
         } catch {

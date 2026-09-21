@@ -42,6 +42,27 @@ pinned to version 1.0.0). To work in this area, read the files below.
   two on the RAW decode (`WhisperKitTranscriptionEngine.cleanRawDecode`), so near-silent audio reads
   as an empty decode — the trigger for `RegurgitationRecovery` / the whole-file fallback.
 - `PhoneticMatcher.swift` — fuzzy sound-alike correction (e.g. "jay voice" → "JVoice").
+- `Math/` — **spoken mathematics → real notation** (ported 1:1 from the Windows port's
+  `windows/JVoice.Core/Math/`, 2026-09-21). "x squared plus y squared equals z squared" becomes
+  "x² + y² = z²"; "the limit as x approaches 0 of sine of x over x equals 1" becomes
+  "the lim_(x→0) sin(x) ÷ x = 1". Applied LAST in `VoiceCoordinator.finishTranscription`, after
+  `TextProcessor.process`, and gated on the opt-out `SettingsState.mathNotation` (default ON).
+  - `MathSymbols.swift` — the ~700-form vocabulary ("how it is said" → "what to print"), data only.
+  - `MathSpeech.swift` — the grammar, the activation rules and the emitter. **The no-bleed
+    guarantee is STRUCTURAL, not a classifier**: a word only becomes a symbol inside a RUN
+    (consecutive maths-lexing words, ended by any ordinary word or punctuation), and a run only
+    converts when an ACTIVATING construct found its OPERANDS (an infix relation/operator with an
+    operand on both sides, a prefix with one after it, or a structural construct — script, power,
+    root, fraction, bounds, derivative, limit, absolute value, choose). π, α, %, °, `sin`,
+    brackets, number words and signs are WEAK: they render inside an already-activated run and
+    stay plain words otherwise. When nothing activates, `convert` returns the input unchanged.
+  - `SpokenNumbers.swift` — "twenty five" → "25", "three point one four" → "3.14", "three
+    quarters" → "¾". Greedy on purpose (it only ever runs inside a recognised run) but it never
+    over-consumes: "and", "point" and "a" are each settled by lookahead.
+  - `MathScript.swift` — Unicode super/subscripts and stacked fractions, all-or-nothing with a
+    `^`/`_` fallback (there is no subscript "b", so "a subscript b" prints `a_b`).
+  - `MathSymbol.swift` — `MathKind` + the one record type; `activates` is the whole rule.
+  - `MathProbe.swift` — the hidden `--math-probe` command-line mode; see the verification section.
 - `BenchRunner.swift` — the hidden `--bench` command-line harness that measures transcription
   speed and verifies vocabulary biasing / streaming on this machine. Not part of the running app's
   user flow; it is a dev tool, co-located here because it exercises this pipeline.
@@ -51,6 +72,11 @@ pinned to version 1.0.0). To work in this area, read the files below.
 2. Keep the vocabulary prompt ON; rely on RepetitionGuard + RegurgitationRecovery for the
    regurgitation failure mode rather than disabling the prompt.
 3. Long clips keep timestamps (the WhisperKit 1.0.0 truncation trap above).
+4. Mathematics must never bleed into ordinary talking. Before changing anything under `Math/`,
+   re-run the no-bleed half of the suite (`./scripts/run-logic-tests.sh`) AND sweep a real corpus
+   through `--math-probe`; a new vocabulary entry of an ACTIVATING kind (Relation / Operator /
+   Prefix) is the only thing that can turn a sentence into an equation, so everyday English words
+   may only ever be added as weak kinds.
 
 ## How to verify changes here
 - `./scripts/verify-streaming.sh` — compiles and EXECUTES the streaming data-loss + recovery
@@ -62,5 +88,10 @@ pinned to version 1.0.0). To work in this area, read the files below.
   behind, exercises the in-flight-at-stop path); `--stream --realtime` replays at 1× with the app's
   poll cadence + speculation and prints the session's events (make the clip end in a pause with
   `say … "[[slnc 1500]]"` to see a `speculative tail HIT`).
+- `.build/release/JVoice --math-probe "<text>"` (or piped stdin, one dictation per line) prints
+  `CHANGED|before|after` for a line the mathematics engine rewrote and `same|text` for one it left
+  alone. This is how the no-bleed guarantee is MEASURED: sweep a real corpus (e.g. the recent
+  transcripts in `~/Library/Preferences/com.jvoice.app.plist`, key `jvoice.app.transcriptHistory`)
+  and read every CHANGED line.
 - `python3 scripts/verify-transcription.py --model tiny|base|small|large [--quick]` — full
   word-retention / spurious-vocab harness (requires the model downloaded).

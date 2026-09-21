@@ -96,6 +96,30 @@ import Foundation
     #expect(decoded.appModeRules.isEmpty)
 }
 
+// MARK: - Schema v3 → v4 (math notation)
+
+@Test func decodesV3BlobWithoutV4FieldsAtDefaults() throws {
+    // A schema-v3 blob predates `mathNotation`; it must decode and default it ON, so
+    // upgrading gains the feature without a settings edit.
+    let v3JSON = """
+    {"schemaVersion":3,"mode":"casual","model":"tiny","language":"english",
+     "customWords":[],"removeFillerWords":true,"theme":"dark","developerTerms":true,
+     "translateToEnglish":false,"copyToClipboardOnly":false,"appAwareModes":false,
+     "appModeRules":[]}
+    """.data(using: .utf8)!
+    let decoded = try JSONDecoder().decode(SettingsState.self, from: v3JSON)
+    #expect(decoded.schemaVersion == SettingsState.currentSchemaVersion)
+    #expect(decoded.mathNotation == true)
+}
+
+@Test func mathNotationRoundTripsThroughSettingsState() throws {
+    var s = SettingsState()
+    #expect(s.mathNotation == true)          // opt-out, like developerTerms
+    s.mathNotation = false
+    let back = try JSONDecoder().decode(SettingsState.self, from: JSONEncoder().encode(s))
+    #expect(back.mathNotation == false)
+}
+
 @Test func newSettingsStateV3Defaults() {
     let s = SettingsState()
     #expect(s.developerTerms == true)

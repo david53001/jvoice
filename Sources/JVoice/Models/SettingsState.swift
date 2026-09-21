@@ -1,7 +1,7 @@
 import Foundation
 
 public struct SettingsState: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion: Int = 3
+    public static let currentSchemaVersion: Int = 4
     public var schemaVersion: Int = SettingsState.currentSchemaVersion
     public var mode: AppMode
     public var model: WhisperModelOption
@@ -15,6 +15,9 @@ public struct SettingsState: Codable, Equatable, Sendable {
     public var copyToClipboardOnly: Bool
     public var appAwareModes: Bool
     public var appModeRules: [AppModeRule]
+    /// v4: spoken mathematics → real notation ("x squared equals 4" → "x² = 4").
+    /// Opt-out, like the Windows port's `MathNotation` (schema v6 there).
+    public var mathNotation: Bool
 
     public var whisperModel: WhisperModelOption {
         get { model }
@@ -32,7 +35,8 @@ public struct SettingsState: Codable, Equatable, Sendable {
         translateToEnglish: Bool = false,
         copyToClipboardOnly: Bool = false,
         appAwareModes: Bool = false,
-        appModeRules: [AppModeRule] = []
+        appModeRules: [AppModeRule] = [],
+        mathNotation: Bool = true
     ) {
         self.mode = mode
         self.model = model
@@ -45,6 +49,7 @@ public struct SettingsState: Codable, Equatable, Sendable {
         self.copyToClipboardOnly = copyToClipboardOnly
         self.appAwareModes = appAwareModes
         self.appModeRules = appModeRules
+        self.mathNotation = mathNotation
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -60,6 +65,7 @@ public struct SettingsState: Codable, Equatable, Sendable {
         case copyToClipboardOnly
         case appAwareModes
         case appModeRules
+        case mathNotation
     }
 
     public init(from decoder: Decoder) throws {
@@ -85,6 +91,8 @@ public struct SettingsState: Codable, Equatable, Sendable {
         copyToClipboardOnly = try container.decodeIfPresent(Bool.self, forKey: .copyToClipboardOnly) ?? false
         appAwareModes = try container.decodeIfPresent(Bool.self, forKey: .appAwareModes) ?? false
         appModeRules = try container.decodeIfPresent([AppModeRule].self, forKey: .appModeRules) ?? []
+        // v4 field: absent in v1–v3 blobs → default ON, so an upgrade gains the feature.
+        mathNotation = try container.decodeIfPresent(Bool.self, forKey: .mathNotation) ?? true
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -101,5 +109,6 @@ public struct SettingsState: Codable, Equatable, Sendable {
         try container.encode(copyToClipboardOnly, forKey: .copyToClipboardOnly)
         try container.encode(appAwareModes, forKey: .appAwareModes)
         try container.encode(appModeRules, forKey: .appModeRules)
+        try container.encode(mathNotation, forKey: .mathNotation)
     }
 }

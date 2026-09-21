@@ -454,6 +454,86 @@ expectEqual(ModelDownloadProgress.downloadedBytes(folderName: "openai_whisper-pr
 expectEqual(ModelDownloadProgress.downloadedBytes(folderName: "openai_whisper-absent", documentsDirectory: probeRoot), 0, "a model that was never fetched → 0, not a crash")
 try? FileManager.default.removeItem(at: probeRoot)
 
+print("ShortcutCapturePolicy.decide")
+expectEqual(ShortcutCapturePolicy.decide(key: .escape, hasAnyModifier: false, hasModifierBesidesShift: false, isFunctionKey: false), .cancel, "bare Esc cancels")
+expectEqual(ShortcutCapturePolicy.decide(key: .tab, hasAnyModifier: false, hasModifierBesidesShift: false, isFunctionKey: false), .cancel, "bare Tab cancels")
+expectEqual(ShortcutCapturePolicy.decide(key: .delete, hasAnyModifier: false, hasModifierBesidesShift: false, isFunctionKey: false), .clear, "bare Delete clears")
+expectEqual(ShortcutCapturePolicy.decide(key: .delete, hasAnyModifier: true, hasModifierBesidesShift: true, isFunctionKey: false), .accept, "⌘⌫ is a chord, not a clear")
+expectEqual(ShortcutCapturePolicy.decide(key: .other, hasAnyModifier: true, hasModifierBesidesShift: true, isFunctionKey: false), .accept, "⌥Space is a chord")
+expectEqual(ShortcutCapturePolicy.decide(key: .other, hasAnyModifier: true, hasModifierBesidesShift: false, isFunctionKey: false), .reject, "⇧ alone is not a chord")
+expectEqual(ShortcutCapturePolicy.decide(key: .other, hasAnyModifier: false, hasModifierBesidesShift: false, isFunctionKey: false), .reject, "a bare letter is not a chord")
+expectEqual(ShortcutCapturePolicy.decide(key: .other, hasAnyModifier: false, hasModifierBesidesShift: false, isFunctionKey: true), .accept, "F-keys need no modifier")
+
+print("MathSpeech.convert — spoken mathematics becomes notation")
+expectEqual(MathSpeech.convert("a subscript n equals 1 plus 7n"), "aₙ = 1 + 7n", "the ask: aₙ = 1 + 7n")
+expectEqual(MathSpeech.convert("x squared plus y squared equals z squared"), "x² + y² = z²", "powers")
+expectEqual(MathSpeech.convert("the square root of 16 equals 4"), "the √16 = 4", "square root")
+expectEqual(MathSpeech.convert("twenty five divided by five equals five"), "25 ÷ 5 = 5", "spoken numbers + division")
+expectEqual(MathSpeech.convert("3 over 4 plus 1 over 4 equals 1"), "¾ + ¼ = 1", "stacked fractions")
+expectEqual(MathSpeech.convert("1 over n squared"), "1 ÷ n²", "the power belongs to the denominator")
+expectEqual(MathSpeech.convert("3 times 4 equals 12"), "3 · 4 = 12", "times is the middle dot")
+expectEqual(MathSpeech.convert("log base 2 of 8"), "log₂(8)", "a named base activates")
+expectEqual(MathSpeech.convert("u n equals 1 plus 7n"), "uₙ = 1 + 7n", "a classic index is a sequence term")
+expectEqual(MathSpeech.convert("the limit as x approaches 0 of sine of x over x equals 1"), "the lim_(x→0) sin(x) ÷ x = 1", "limit")
+expectEqual(MathSpeech.convert("the sum from n equals 1 to infinity of 1 over n squared"), "the ∑ₙ₌₁^∞ 1 ÷ n²", "bounded sum")
+expectEqual(MathSpeech.convert("the derivative of y with respect to x"), "the dy/dx", "derivative")
+expectEqual(MathSpeech.convert("n choose k equals 10"), "C(n, k) = 10", "binomial")
+expectEqual(MathSpeech.convert("theta equals 30 degrees"), "θ = 30°", "greek + postfix")
+expectEqual(MathSpeech.convert("so basically x equals 5 and that's it"), "so basically x = 5 and that's it", "only the equation moves")
+expectEqual(MathSpeech.convert("write start equation alpha end equation here"), "write α here", "escape hatch")
+// David's real 2026-09-21 physics dictation — the one that exposed the parity gap.
+expectEqual(
+    MathSpeech.convert("we're just going to use S equals U plus V divided by 2 times T. Basically, since the initial and final velocities are both 6, it would be 12 over 2T equals 400."),
+    "we're just going to use S = U + V ÷ 2 · T. Basically, since the initial and final velocities are both 6, it would be 12 ÷ 2T = 400.",
+    "David's SUVAT dictation")
+
+print("MathSpeech.convert — ordinary speech comes back byte-identical")
+for prose in [
+    "this is a subscript of the value",
+    "two times a day keeps the doctor away",
+    "plus I think we should go now",
+    "I'm 100 percent sure about this",
+    "it's 30 degrees outside today",
+    "the sum of my fears is nothing",
+    "an integral part of the plan",
+    "the square root of all evil",
+    "the alpha version ships tomorrow",
+    "God is the alpha and the omega",
+    "go to the store and buy some milk",
+    "the base of the mountain was covered in snow",
+    "I had to choose between the two options",
+    "let's say between 60 and negative 50 for now",
+    "three quarters of the class passed the test",
+    "I woke up at seven and made coffee",
+    "there were about a hundred people there",
+    "he read chapter three verse sixteen out loud",
+    "i think u n is fine the way it is",
+    "the log of the tree was rotten through",
+    "we drove 60 miles per hour the whole way",
+    "my sin is always before me",
+    "for all three of us it was a long day",
+    "he was given 3 days to think it over",
+    "alright so for the Bible study tonight we are in John chapter 3 verse 16, for God so loved the world that he gave his only begotten son, and a lot of people read that verse a hundred times",
+] {
+    expectEqual(MathSpeech.convert(prose), prose, "untouched: \"\(prose.prefix(46))\"")
+}
+
+print("MathSpeech.convert — idempotent, and blank input is returned unchanged")
+expectEqual(MathSpeech.convert(MathSpeech.convert("x squared plus y squared equals z squared")), "x² + y² = z²", "converting twice changes nothing")
+expectEqual(MathSpeech.convert(""), "", "empty string")
+expectEqual(MathSpeech.convert("   "), "   ", "all-whitespace string")
+
+print("MathSymbols — the vocabulary never shadows a construct the engine parses")
+expect(!MathSymbols.reservedPhrases.isEmpty, "reserved phrases are listed")
+for reserved in MathSymbols.reservedPhrases {
+    expect(MathSymbols.phrases[reserved] == nil, "reserved phrase is not a vocabulary key: \"\(reserved)\"")
+}
+expect(MathSymbols.phrases.count >= 600, "the dictionary is comprehensive (\(MathSymbols.phrases.count) spoken forms)")
+for risky in ["and", "or", "is", "by", "at", "than", "cross", "sin", "cos", "tan", "sign",
+              "power", "square", "because", "therefore", "since", "about", "less", "arc"] {
+    expect(MathSymbols.phrases[risky] == nil, "everyday word excluded: \"\(risky)\"")
+}
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S)")
     exit(1)
@@ -477,6 +557,12 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/WavTail.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/ChunkPlanner.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/ModelDownloadProgress.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/ShortcutCapturePolicy.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/MathSymbol.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/MathScript.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/MathSymbols.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/SpokenNumbers.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/MathSpeech.swift" \
     "$TMP_DIR/main.swift" \
     -o "$TMP_DIR/logic-tests"
 

@@ -37,9 +37,14 @@ echo "==> Installing binary..."
 cp "$BINARY" "$APP_PATH/Contents/MacOS/JVoice"
 
 # SPM emits a `<Package>_<Target>.bundle` next to the binary for any target with
-# resources (KeyboardShortcuts 1.10+ ships .lproj localizations). Bundle.module
-# fatalErrors at runtime if these aren't in Contents/Resources/, which is what
-# crashed the Settings window when the KeyboardShortcuts.Recorder loaded.
+# resources (KeyboardShortcuts 1.10+ ships .lproj localizations). NOTE: copying
+# them here does NOT satisfy `Bundle.module` — SwiftPM's generated accessor only
+# looks at `<App>.app/<bundle>` (the bundle ROOT, where codesign refuses to seal
+# anything) and at an absolute build-dir path baked in on the build machine. That
+# is why Settings crashed for three months, and why JVoice no longer touches
+# `Bundle.module` at all (see Sources/JVoice/UI/ShortcutRecorder.swift). They are
+# still shipped so the localizations are present if a future dependency can load
+# them.
 echo "==> Installing SPM resource bundles..."
 BUILD_DIR="$(dirname "$BINARY")"
 rm -rf "$APP_PATH/Contents/Resources"/*.bundle

@@ -33,7 +33,8 @@ cp "$REPO_ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 cp "$BINARY" "$APP/Contents/MacOS/JVoice"
 cp "$REPO_ROOT/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
-# SPM resource bundles (KeyboardShortcuts localizations) — Bundle.module traps without them.
+# SPM resource bundles (KeyboardShortcuts localizations). These do NOT satisfy
+# `Bundle.module` in a packaged app — see the longer note in dev-install.sh.
 shopt -s nullglob
 for bundle in "$(dirname "$BINARY")"/*.bundle; do cp -R "$bundle" "$APP/Contents/Resources/"; done
 shopt -u nullglob

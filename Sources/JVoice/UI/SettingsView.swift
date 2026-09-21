@@ -228,6 +228,9 @@ struct SettingsView: View {
                 toggleRow("Developer Terms",
                           "Fix coding terms: Node.js, GitHub, TypeScript, JSON, C#…",
                           isOn: $coordinator.developerTerms, theme)
+                toggleRow("Math Notation",
+                          "Spoken equations become symbols: x squared equals 4 → x² = 4",
+                          isOn: $coordinator.mathNotation, theme)
                 toggleRow("Remove Filler Words",
                           "Strip um, uh, er, ah, hmm from output",
                           isOn: $coordinator.removeFillerWords, theme)
@@ -371,8 +374,7 @@ struct SettingsView: View {
         SettingsSection("Keyboard Shortcut", theme: theme) {
             VStack(alignment: .leading, spacing: 8) {
                 #if canImport(KeyboardShortcuts)
-                KeyboardShortcuts.Recorder("Toggle Recording:", name: .toggleRecording)
-                    .foregroundStyle(theme.textSecondary)
+                ShortcutRecorder(label: "Toggle Recording:", name: .toggleRecording, theme: theme)
                 #else
                 Text("Shortcut customization is unavailable in this build.")
                     .font(.footnote)
@@ -384,8 +386,7 @@ struct SettingsView: View {
 
                 #if canImport(KeyboardShortcuts)
                 Rectangle().fill(theme.hairline).frame(height: 0.5).padding(.vertical, 2)
-                KeyboardShortcuts.Recorder("Undo Last Paste:", name: .undoLastPaste)
-                    .foregroundStyle(theme.textSecondary)
+                ShortcutRecorder(label: "Undo Last Paste:", name: .undoLastPaste, theme: theme)
                 Text("Optional — sends the app's Undo (⌘Z) to reverse the last paste")
                     .font(.system(size: 10))
                     .foregroundStyle(theme.textMuted)

@@ -110,6 +110,13 @@ final class VoiceCoordinator: ObservableObject {
         }
     }
 
+    /// Opt-out spoken-mathematics conversion (post-processing only).
+    @Published var mathNotation: Bool {
+        didSet {
+            persistSettings()
+        }
+    }
+
     /// Copy the transcript to the clipboard instead of auto-pasting it.
     @Published var copyToClipboardOnly: Bool {
         didSet {
@@ -225,6 +232,7 @@ final class VoiceCoordinator: ObservableObject {
         self.customWords = settingsStore.state.customWords
         self.removeFillerWords = settingsStore.state.removeFillerWords
         self.developerTerms = settingsStore.state.developerTerms
+        self.mathNotation = settingsStore.state.mathNotation
         self.copyToClipboardOnly = settingsStore.state.copyToClipboardOnly
         self.appAwareModes = settingsStore.state.appAwareModes
         self.appModeRules = settingsStore.state.appModeRules
@@ -510,6 +518,7 @@ final class VoiceCoordinator: ObservableObject {
         customWords = settingsStore.state.customWords
         removeFillerWords = settingsStore.state.removeFillerWords
         developerTerms = settingsStore.state.developerTerms
+        mathNotation = settingsStore.state.mathNotation
         copyToClipboardOnly = settingsStore.state.copyToClipboardOnly
         appAwareModes = settingsStore.state.appAwareModes
         appModeRules = settingsStore.state.appModeRules
@@ -696,7 +705,12 @@ final class VoiceCoordinator: ObservableObject {
             // Lay the curated developer-terms pack UNDER the user's own custom-word
             // variants (their words win); the built-in dictionary still wins over both.
             let extra = developerTerms ? DeveloperTerms.augment(userDict) : userDict
-            let processed = removeBlankTranscriptPlaceholder(from: TextProcessor.process(transcript, mode: effectiveMode, extraDictionary: extra, removeFillerWords: removeFillerWords, vocabulary: customWords))
+            let styled = removeBlankTranscriptPlaceholder(from: TextProcessor.process(transcript, mode: effectiveMode, extraDictionary: extra, removeFillerWords: removeFillerWords, vocabulary: customWords))
+            // Spoken mathematics runs LAST, deliberately: tone, filler removal and the
+            // correction packs are all word-based, so no symbol this produces can be
+            // mangled by them. When nothing in the text is mathematics `convert` hands
+            // back the very same string (see MathSpeech's activation rules).
+            let processed = mathNotation ? MathSpeech.convert(styled) : styled
 
             guard !processed.isEmpty else {
                 show(.noSpeechHeard)
@@ -797,6 +811,7 @@ final class VoiceCoordinator: ObservableObject {
         s.customWords = customWords
         s.removeFillerWords = removeFillerWords
         s.developerTerms = developerTerms
+        s.mathNotation = mathNotation
         s.translateToEnglish = translateToEnglish
         s.copyToClipboardOnly = copyToClipboardOnly
         s.appAwareModes = appAwareModes
