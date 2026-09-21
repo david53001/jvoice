@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/inst
 
 That downloads the newest release, puts `JVoice.app` in `/Applications`, clears the quarantine flag, and launches it — no "unverified developer" dance. (Read it first if you like: [`scripts/install.sh`](scripts/install.sh).)
 
-**Manually:** **[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/download/v1.1.0/JVoice-1.1.0.dmg)** — macOS 14+ (Apple Silicon recommended)
+**Manually:** **[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/download/v1.1.1/JVoice-1.1.1.dmg)** — macOS 14+ (Apple Silicon recommended)
 
 1. Open the DMG and drag **JVoice** into **Applications**.
 2. First launch: macOS says it *"can't verify the developer."* Click **Done** (not "Move to Trash").

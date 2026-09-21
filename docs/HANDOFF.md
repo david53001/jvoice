@@ -1,4 +1,4 @@
-# HANDOFF — state as of 2026-09-21 (Settings-crash fix + Math Notation ported from the Windows port; branch `feat/dictation-parity`, committed locally, NOT pushed, NOT installed)
+# HANDOFF — state as of 2026-09-21 (Settings-crash fix + Math Notation ported from the Windows port; SHIPPED as v1.1.1 — installed, pushed, released)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
@@ -41,11 +41,19 @@ The mathematics engine was Windows-only (`windows/JVoice.Core/Math/`, Windows ha
 ### Verification run this session (all green)
 `swift build` (debug + release) · `swift build --build-tests` · `./scripts/run-logic-tests.sh` (323 assertions, 0 failures) · `./scripts/verify-streaming.sh` · `--settings-smoke` red on the old code, green on the new · `--math-probe` corpus sweeps above.
 
+### SHIPPED 2026-09-21 as v1.1.1 (David asked for it, in this order: install locally → verify → push → release)
+
+- **Version** bumped to 1.1.1 (`Resources/Info.plist`, `CFBundleVersion` 3); `CHANGELOG.md`'s `[Unreleased]` block retitled `[1.1.1] — 2026-09-21`.
+- **Installed** from the release artifact itself (`scripts/package-release.sh` → `dist/`, then a graceful AppleScript quit → `ditto dist/JVoice.app /Applications/JVoice.app` → `xattr -dr com.apple.quarantine` → relaunch; the 1.1.0 bundle is parked in this session's scratchpad). `codesign --verify --deep --strict` passes and the designated requirement is **byte-identical** to 1.1.0 (`identifier "com.jvoice.app" and certificate leaf = H"1164938a…"`), which is why the Microphone/Accessibility grants survived. User data verified intact after the swap: the 5 custom words, 30 recent transcripts, 76,293 total words, the ⌥Space binding, dark theme, Large model.
+- **Verified on the installed app**: `--settings-smoke` → OK (this is the artifact David runs), `--math-probe` converts his SUVAT sentence and leaves ordinary speech alone, app relaunched and running, no new crash report. (The `JVoice-2026-09-21-201233.ips` report is this session's deliberate red-run of the OLD code from `/private/tmp/*/SmokeJVoice.app` — the reproduction, not the installed app.)
+- **Pushed**: `main` fast-forwarded to `feat/dictation-parity` (`9b35e15`), both branches pushed to `github.com/david53001/jvoice`.
+- **Released**: <https://github.com/david53001/jvoice/releases/tag/v1.1.1> with `JVoice.app.zip` + `JVoice-1.1.1.dmg`. Confirmed the public one-liner resolves to it (the releases API query for the newest release carrying `JVoice.app.zip` returns `v1.1.1`), then **downloaded that asset straight from GitHub and re-verified it**: signature valid, designated requirement identical, `--settings-smoke` OK, maths converts.
+
 ### Pick up here
-1. **Install it** — David has not seen either fix in the running app: `./scripts/dev-install.sh` (or `scripts/package-release.sh` + a release if it should go out to users; the published v1.1.0 DMG still contains the Settings crash).
-2. **Eyeball Settings** after installing: the two shortcut rows are now JVoice-drawn (click one and record a chord; check Esc cancels and the ✕ clears), and there is a new "Math Notation" toggle in Processing. There is no headless screenshot — `ImageRenderer` and `CALayer.render(in:)` were both tried and come back blank.
-3. **Dictate some mathematics** and some ordinary speech; `--math-probe` any surprise.
-4. Nothing is pushed. `main` is still at `084852b`.
+1. **David should click Settings himself** — the two shortcut rows are now JVoice-drawn (click one, record a chord, check Esc cancels and the ✕ clears) and there is a new "Math Notation" toggle in Processing. Layout has NOT been eyeballed by anyone: there is no headless screenshot (`ImageRenderer` and `CALayer.render(in:)` were both tried and come back blank — SwiftUI's content is drawn by the render server), so `--settings-smoke` proves it builds and draws, not that it looks right.
+2. **Dictate some mathematics** and some ordinary speech; run any surprise through `--math-probe`.
+3. Two upstream behaviours were dropped with the custom recorder: the "shortcut already used by the system / by a menu item" alerts. If a chord silently fails to work, that is why — re-implementing `isTakenBySystem` (Carbon `CopySymbolicHotKeys`) is the fix.
+4. The README and the site still say 1.1.0 where they pin a version, if anything does.
 
 ## 2026-09-12 session, fifth pass — Terminal one-liner install + in-place update (David: "like BetterScreenshot")
 
