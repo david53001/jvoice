@@ -426,6 +426,53 @@ Task {
         expect(c.count == 5 && c[0] + c[1] + c[2] + n == total, "kept pieces + recovered region cover every sample exactly once (\(c.prefix(3)) + \(n) vs \(total))")
     } catch { expect(false, "scenario 20 threw \(error)") }
 
+    // 21–25. The witness policy's new triggers (RegurgitationRecovery): one
+    //        extra, prompt-free decode, only when a prompt failure shows.
+    let userVocab = ["sub agents", "AISB", "Li-Fraumeni", "Vercel", "Ollama"]
+    do { // 21. A loop in the MIDDLE (trailing guard can't see it) → the witness, collapsed.
+        let loop = "we met at noon and " + String(repeating: "the plan is on track. ", count: 8) + "then we left for the airport"
+        let rec = DecodeRecorder(loop, "we met at noon and the plan is on track. then we reviewed the budget and left for the airport")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab) { await rec.decode($0) }
+        expect(out.contains("reviewed the budget") && !out.contains("track. the plan"), "mid-text loop → witness adopted (\(out.prefix(60))…)")
+        expect(await rec.calls == [true, false], "loop → exactly one witness decode")
+    }
+    do { // 22. Sparse: 30 s of audio, 60 chars prompted, witness ≥ 2× → witness.
+        let rec = DecodeRecorder("Now next, the chapter opens. not forgiven. Amen, that's it.", "a full sentence the prompted decode skipped over, then the part about the budget review, the new hires starting on Monday, and the plan for the office move next spring, plus the reminder to send the slides.")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 30) { await rec.decode($0) }
+        expect(out.hasPrefix("a full sentence"), "sparse decode → richer witness adopted")
+        let terse = DecodeRecorder("Yes, that works for me.", "Yes that works for me")
+        let kept = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 12) { await terse.decode($0) }
+        expect(kept == "Yes, that works for me.", "genuinely terse long clip → prompted text kept (witness only vouches)")
+    }
+    do { // 23. Quiet audio: invented phrase rejected; quiet real speech kept.
+        let hiss = DecodeRecorder("and the other side of the body", "so")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 4, peakRMS: 0.02) { await hiss.decode($0) }
+        expect(out == "", "quiet hiss hallucination → rejected (no speech)")
+        let quiet = DecodeRecorder("We run Ollama and deploy to Vercel", "We run Alima and deploy to Versil.")
+        let keep = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 4, peakRMS: 0.02) { await quiet.decode($0) }
+        expect(keep == "We run Ollama and deploy to Vercel", "quiet real speech → prompted (vocabulary-correct) text kept")
+        let loud = DecodeRecorder("Can you move it to Thursday?", "UNUSED")
+        _ = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 4, peakRMS: 0.15) { await loud.decode($0) }
+        expect(await loud.calls == [true], "normal-level speech → no witness decode")
+    }
+    do { // 24. A short recited vocabulary list (loud hum) → rejected; real custom-word speech kept, with no witness.
+        let hum = DecodeRecorder("BISB, Li-Fraumeni, Vercel, Oluf", "")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 4, peakRMS: 0.08) { await hum.decode($0) }
+        expect(out == "", "recited vocabulary list → rejected (no speech)")
+        let real = DecodeRecorder("Vercel and Ollama", "Versil and Alima")
+        let kept = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 2, peakRMS: 0.15) { await real.decode($0) }
+        expect(kept == "Vercel and Ollama", "dictated custom words → kept")
+        let listed = DecodeRecorder("Vercel, Ollama, and AISB", "Versil, Alima, and AISB.")
+        let keptList = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 3, peakRMS: 0.15) { await listed.decode($0) }
+        expect(keptList == "Vercel, Ollama, and AISB", "a dictated list of custom words → witness agrees → kept")
+    }
+    do { // 25. Dictated maths repetition is not a loop → one decode, text kept.
+        let maths = DecodeRecorder("and then it's 26 x 26 x 26 x 10 x 10 x 10", "UNUSED")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 5, peakRMS: 0.15) { await maths.decode($0) }
+        let calls = await maths.calls
+        expect(out == "and then it's 26 x 26 x 26 x 10 x 10 x 10" && calls == [true], "dictated maths kept with a single decode")
+    }
+
     sem.signal()
 }
 sem.wait()
@@ -441,6 +488,9 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RegurgitationRecovery.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhraseLoopGuard.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/SparseTranscriptGuard.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/SilenceHallucinationGate.swift" \
     "$TMP_DIR/main.swift" \
     -o "$TMP_DIR/verify-streaming"
 

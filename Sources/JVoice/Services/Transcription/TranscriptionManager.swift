@@ -163,7 +163,8 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         // without them (verified empirically on 53 s audio — do not flip
         // this to unconditional `true`).
         let withoutTimestamps = Self.isSingleWindowClip(audioURL)
-        let guarded = try await decodeRecoveringFromRegurgitation { usePrompt in
+        let (audioSeconds, peakRMS) = Self.fileStats(audioURL)
+        let guarded = try await decodeRecoveringFromRegurgitation(audioSeconds: audioSeconds, peakRMS: peakRMS) { usePrompt in
             try await self.decodeFile(audioURL, kit: kit, withoutTimestamps: withoutTimestamps, usePrompt: usePrompt)
         }
         if guarded.isEmpty {
@@ -179,22 +180,42 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     private func transcribeChunkSamples(_ samples: [Float]) async throws -> String {
         let kit = try await loadWhisperKit()
         // An all-loop chunk reduces to "" — the session treats that as a
-        // failure and re-runs the lossless whole-file path (never a silent drop).
-        return try await decodeRecoveringFromRegurgitation { usePrompt in
+        // failure and re-covers the audio in context (never a silent drop).
+        return try await decodeRecoveringFromRegurgitation(audioSeconds: Self.seconds(samples), peakRMS: SilenceHallucinationGate.peakWindowRMS(samples)) { usePrompt in
             try await self.decodeSamples(samples, kit: kit, usePrompt: usePrompt)
         }
     }
 
-    /// Run `decode` with the vocabulary prompt and, if it regurgitated, re-decode
-    /// without the prompt to recover the real speech. The clean re-decode only
-    /// runs on the rare bad decode, so prompt-driven vocabulary accuracy and
-    /// latency are kept in the common (clean) case. See `RegurgitationRecovery`.
-    private func decodeRecoveringFromRegurgitation(_ decode: (_ usePrompt: Bool) async throws -> String) async throws -> String {
+    /// Run `decode` with the vocabulary prompt and, when it shows a prompt failure
+    /// (regurgitation, empty, a loop, a skipped stretch, invented words on quiet
+    /// audio, a recited vocabulary list), re-decode once without the prompt and let
+    /// that witness decide. The clean common case costs one decode, keeping
+    /// prompt-driven vocabulary accuracy and latency. See `RegurgitationRecovery`.
+    private func decodeRecoveringFromRegurgitation(audioSeconds: Double, peakRMS: Float, _ decode: (_ usePrompt: Bool) async throws -> String) async throws -> String {
         try await RegurgitationRecovery.decode(
-            useVocabularyPrompt: useVocabularyPrompt,
+            // An empty vocabulary means no prompt tokens: there is no prompt to fail.
+            useVocabularyPrompt: useVocabularyPrompt && VocabularyPrompt.text(for: vocabulary) != nil,
             vocabulary: vocabulary,
+            audioSeconds: audioSeconds,
+            peakRMS: peakRMS,
+            log: { Self.latencyLog.info("Guard \($0, privacy: .public)") },
             decode: decode
         )
+    }
+
+    private static func seconds(_ samples: [Float]) -> Double {
+        Double(samples.count) / Double(WhisperKit.sampleRate)
+    }
+
+    /// Duration and loudest 0.3 s-window RMS of a finalized 16 kHz recording (the
+    /// quiet trigger's measure). Unreadable → (0, NaN): NaN counts as quiet, the
+    /// safe side (a witness is decoded rather than a hallucination pasted).
+    private static func fileStats(_ url: URL) -> (seconds: Double, peakRMS: Float) {
+        guard let samples = WavTailReader.open(url: url)?.samples(from: 0), !samples.isEmpty else { return (0, .nan) }
+        let config = ChunkPlanner.Config()
+        let window = max(1, Int(config.silenceWindowSeconds * Double(config.sampleRate)))
+        let peak = ChunkPlanner.windowRMS(samples[...], window: window).map(\.rms).max() ?? .nan
+        return (Double(samples.count) / Double(config.sampleRate), peak)
     }
 
     /// Decode an arbitrary stretch of the recording with the WHOLE-FILE decode
@@ -203,8 +224,8 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     /// piece before it, instead of the entire recording.
     private func transcribeRegionSamples(_ samples: [Float]) async throws -> String {
         let kit = try await loadWhisperKit()
-        let withoutTimestamps = Double(samples.count) / Double(WhisperKit.sampleRate) <= Self.singleWindowSeconds
-        return try await decodeRecoveringFromRegurgitation { usePrompt in
+        let withoutTimestamps = Self.seconds(samples) <= Self.singleWindowSeconds
+        return try await decodeRecoveringFromRegurgitation(audioSeconds: Self.seconds(samples), peakRMS: SilenceHallucinationGate.peakWindowRMS(samples)) { usePrompt in
             let decodeOptions = self.wholeFileDecodeOptions(kit: kit, withoutTimestamps: withoutTimestamps, usePrompt: usePrompt)
             let results = try await kit.transcribe(audioArray: samples, decodeOptions: decodeOptions)
             Self.logTimings(results, label: "region")
@@ -242,13 +263,14 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     }
 
     /// Shared raw-decode cleanup for both decode paths: drop "[BLANK_AUDIO]"-style
-    /// decoder sentinels that leak in on silence, then whole-text stock-phrase
-    /// hallucinations ("Thank you.", the bare sub-second "you", …) so near-silent
+    /// decoder sentinels that leak in on silence, a caption-only decode ("[Music]",
+    /// "(wind blowing)", "*coughs*" — `NonSpeechAnnotation`), then whole-text
+    /// stock-phrase hallucinations ("Thank you.", the bare sub-second "you", …) so near-silent
     /// audio reads as confirmed silence here — an empty result is what triggers
     /// `RegurgitationRecovery`'s unprompted re-decode (and, on a streaming
     /// chunk, the lossless whole-file fallback) instead of a pasted artifact.
     static func cleanRawDecode(_ text: String) -> String {
-        TextProcessor.removeWhisperHallucinations(TextProcessor.stripDecoderArtifacts(text))
+        TextProcessor.removeWhisperHallucinations(NonSpeechAnnotation.reduce(TextProcessor.stripDecoderArtifacts(text)))
     }
 
     private func decodeSamples(_ samples: [Float], kit: WhisperKit, usePrompt: Bool) async throws -> String {

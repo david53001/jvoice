@@ -143,6 +143,28 @@ public enum RepetitionGuard {
         return ScrubResult(text: kept.trimmingCharacters(in: trailingSeparators), removedRegurgitation: true)
     }
 
+    /// A SHORT, comma-separated list of the user's vocabulary — "BISB, Li-Fraumeni,
+    /// Vercel, Oluf" from 4 s of loud hum (2026-09-23) — is the prompt recited
+    /// back in the prompt's own list format, too short for the loop test
+    /// (`minLoopTokens`). True when a 2–12-token text is list-shaped (at least
+    /// half of the tokens before the last end in a comma) and holds ≥ 2 vocabulary
+    /// words (exact or sound-alike). Ordinary sentences that merely mention custom
+    /// words ("I use VS Code and Claude every day") are not list-shaped. It only
+    /// TRIGGERS a witness decode: a real dictated list survives because its
+    /// witness shares words with it.
+    public static func isVocabularyList(_ text: String, vocabulary: [String]) -> Bool {
+        let tokens = text.split(whereSeparator: \.isWhitespace).map(String.init)
+        guard (2...12).contains(tokens.count) else { return false }
+        let listCommas = tokens.dropLast().filter { $0.hasSuffix(",") }.count
+        guard 2 * listCommas >= tokens.count - 1 else { return false }
+        let vocabCores = vocabularyCores(vocabulary)
+        guard !vocabCores.isEmpty else { return false }
+        let vocabKeys = Set(vocabCores.map { PhoneticMatcher.phoneticKey(for: $0) }.filter { !$0.isEmpty })
+        let hits = tokens.map { core($0) }.filter { !$0.isEmpty && !stopwords.contains($0) }
+            .filter { vocabCores.contains($0) || vocabKeys.contains(PhoneticMatcher.phoneticKey(for: $0)) }.count
+        return hits >= 2
+    }
+
     // MARK: - Internals
 
     /// A range of `cores` is degenerate when most of its non-empty tokens are

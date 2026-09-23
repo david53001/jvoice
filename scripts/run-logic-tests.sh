@@ -345,6 +345,79 @@ do {
     expect(cleanFails == 0, "fuzz: all \(cases) single-mention controls untouched (fails=\(cleanFails))")
 }
 
+print("PhraseLoopGuard — a loop in the MIDDLE of a transcript (mirrors Tests/JVoiceTests/PhraseLoopGuardTests.swift)")
+do {
+    func occurrences(_ needle: String, _ text: String) -> Int { text.lowercased().components(separatedBy: needle.lowercased()).count - 1 }
+    let sentenceLoop = "After lunch we walked down to the harbor, and the captain told us that "
+        + String(repeating: "The ferry leaves at noon. ", count: 16)
+        + "Then we bought our tickets and waited on the pier for about an hour."
+    let s = PhraseLoopGuard.collapse(sentenceLoop)
+    expect(s.foundLoop && occurrences("ferry leaves at noon", s.text) == 1, "sentence ×16 mid-transcript collapsed to one")
+    expect(s.text.hasPrefix("After lunch we walked") && s.text.hasSuffix("for about an hour."), "speech before and after the loop kept")
+    expect(!RepetitionGuard.scrub(sentenceLoop, vocabulary: []).removedRegurgitation, "(the trailing-only RepetitionGuard misses it)")
+    let clause = "the new library downtown has a huge reading room and i used to go there every weekend but now i work so"
+    let clauseLoop = "okay so about the city " + String(repeating: clause + " ", count: 6) + "anyway that is my update for today and i will call you tomorrow"
+    expectEqual(PhraseLoopGuard.collapse(clauseLoop).text, "okay so about the city " + clause + " anyway that is my update for today and i will call you tomorrow", "22-token clause ×6 collapsed (the Windows §7 #45 shape)")
+    let vocabLoop = "we deployed the new build on friday and then " + String(repeating: "sub agents, AISB, Li-Fraumeni, Vercel, Ollama, ", count: 5) + "after that everyone packed up their laptops and went home early for the long weekend"
+    expect(PhraseLoopGuard.hasLoop(vocabLoop) && !RepetitionGuard.scrub(vocabLoop, vocabulary: ["sub agents", "AISB", "Li-Fraumeni", "Vercel", "Ollama"]).removedRegurgitation, "mid-transcript vocabulary regurgitation: caught here, missed by RepetitionGuard")
+    for maths in ["and then it's 26 x 26 x 26 x 10 x 10 x 10",
+                  "and then it's 26 times 26 times 26 times 10 times 10 times 10",
+                  "So the answer is minus 3 minus 3 minus 3 minus 3",
+                  "1 over 2 plus 1 over 4 plus 1 over 8 plus 1 over 16",
+                  "2 x 2 x 2 x 2 x 2 x 2 x 2 x 2 is 256",
+                  "ten times ten times ten times ten is ten thousand",
+                  "five letters so 26 times 26 times 26 times 26 times 26 times 26",
+                  "so 2 to the tenth is 2 x 2 x 2 x 2 x 2 x 2 x 2 x 2 x 2 x 2 which is 1024",
+                  "1 over 2 plus 1 over 2 plus 1 over 2 plus 1 over 2 plus 1 over 2 equals 5 over 2",
+                  "count it out 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4 and then the chorus starts"] {
+        let embedded = "okay for the homework question " + maths + " and then we move on to the next problem on the sheet"
+        expect(PhraseLoopGuard.collapse(maths).text == maths && PhraseLoopGuard.collapse(embedded).text == embedded, "dictated maths untouched: \"\(maths)\"")
+    }
+    for emphasis in ["No, no, no, no, that is not what I asked for at all, please read it again.",
+                     "Come on, come on, come on, come on, we are going to be late for the train again.",
+                     "Ha ha ha ha ha ha ha ha, that was the funniest thing I have heard all week long.",
+                     "I love you, I love you, I love you, I love you, said the little card on the table."] {
+        expect(!PhraseLoopGuard.hasLoop(emphasis), "emphasis untouched: \"\(emphasis.prefix(30))…\"")
+    }
+    expect(PhraseLoopGuard.hasLoop("we said " + String(repeating: "we need more chairs ", count: 4) + "for the party tonight"), "4 tokens ×4 = 16 → loop")
+    expect(!PhraseLoopGuard.hasLoop("we said " + String(repeating: "more chairs please ", count: 5) + "for the party tonight"), "3 tokens ×5 = 15 → not")
+    expect(!PhraseLoopGuard.hasLoop("the total is " + String(repeating: "minus 3 ", count: 11) + "and that is the whole bill"), "maths phrase ×11 → not")
+    expectEqual(PhraseLoopGuard.collapse("the total is " + String(repeating: "minus 3 ", count: 12) + "and that is the whole bill").text, "the total is minus 3 and that is the whole bill", "maths phrase ×12 → collapsed")
+    expectEqual(PhraseLoopGuard.collapse("Hold on a second. hold on a second, HOLD ON A SECOND hold on a second!").text, "Hold on a second.", "case/punctuation-insensitive, first kept verbatim")
+    expectEqual(PhraseLoopGuard.collapse(String(repeating: "wait for me ", count: 6) + "wait for").text, "wait for me wait for", "trailing partial repeat stays")
+    let words33 = (1...33).map { "w\($0)" }.joined(separator: " ")
+    expect(!PhraseLoopGuard.hasLoop(Array(repeating: words33, count: 4).joined(separator: " ")), "33-token period above the cap → not detected")
+    expectEqual(PhraseLoopGuard.resolve(looped: sentenceLoop, witness: "the ferry leaves at noon"), "the ferry leaves at noon", "resolve prefers the unprompted witness")
+    expect(occurrences("ferry leaves at noon", PhraseLoopGuard.resolve(looped: sentenceLoop, witness: "  ")) == 1, "resolve with an empty witness collapses the primary")
+
+    // Fuzz: prefix + phrase ×R + suffix. R ≥ 4 with ≥ 16 tokens must collapse to
+    // exactly prefix + phrase + suffix; R = 3 must come back untouched.
+    let prefixes = ["so yesterday i went over to the old market near the river",
+                    "the quarterly report is mostly finished but the charts still need work",
+                    "when we arrived at the cabin the lights were off and nobody answered"]
+    let suffixes = ["and after that we all went back home to rest before dinner",
+                    "which honestly surprised everyone who had been waiting there since morning"]
+    let pool = "remember the blue kettle sitting beside our kitchen window whenever grandmother visited during winter holidays we laughed about stories nobody believed except little cousins wearing bright yellow raincoats outside every single summer".split(separator: " ").map(String.init)
+    var caught = 0, loops = 0, controlsKept = 0, controls = 0
+    for p in prefixes { for s in suffixes { for len in [4, 5, 6, 8, 12, 21, 32] { for r in [3, 4, 6, 10, 16] {
+        let phrase = pool[0..<len].joined(separator: " ")
+        let input = p + " " + Array(repeating: phrase, count: r).joined(separator: " ") + " " + s
+        let result = PhraseLoopGuard.collapse(input)
+        if r >= 4 { loops += 1; if result.text == p + " " + phrase + " " + s { caught += 1 } }
+        else { controls += 1; if !result.foundLoop && result.text == input { controlsKept += 1 } }
+    } } } }
+    expect(caught == loops, "fuzz: \(caught)/\(loops) mid-transcript loops collapsed exactly")
+    expect(controlsKept == controls, "fuzz: \(controlsKept)/\(controls) 3-repeat controls untouched")
+    // Maths repeats under the maths threshold, embedded in prose, never move.
+    var mathsKept = 0, mathsCases = 0
+    for unit in ["x times", "minus 3", "2 x", "plus 1", "26 times", "1 over 2 plus", "a squared plus"] { for k in 2...11 {
+        let input = prefixes[0] + " " + Array(repeating: unit, count: k).joined(separator: " ") + " 5 " + suffixes[0]
+        mathsCases += 1
+        if PhraseLoopGuard.collapse(input).text == input { mathsKept += 1 }
+    } }
+    expect(mathsKept == mathsCases, "fuzz: \(mathsKept)/\(mathsCases) embedded maths repeats (×2–×11) untouched")
+}
+
 print("WavTail.parseHeader")
 func wavHeader(format: UInt16 = 1, channels: UInt16 = 1, rate: UInt32 = 16_000, bits: UInt16 = 16, fllrBytes: Int = 0, dataSize: UInt32 = 0) -> [UInt8] {
     func le16(_ v: UInt16) -> [UInt8] { [UInt8(v & 0xff), UInt8(v >> 8)] }
@@ -416,6 +489,76 @@ if case let .cut(at, silent) = ChunkPlanner.plan(unconsumed: twoPause, config: c
 } else {
     expect(false, "two-pause input past min → cut")
 }
+
+print("NonSpeechAnnotation — caption-only decodes are no-speech")
+for raw in ["[BLANK_AUDIO]", "[Music]", "[Sigh]", "[Applause]", "[MUSIC]", "(wind blowing)", "(door closes)",
+            "(speaking foreign language)", "  [BLANK_AUDIO]  ", "[Music] (applause)", "[Sigh].", "(...)",
+            "*coughs*", "*music*", "*soft music*.", "* sighs *", "*music* *applause*", "[BLANK_AUDIO] *music*"] {
+    expect(NonSpeechAnnotation.isAnnotationOnly(raw), "caption only: \(raw)")
+    expectEqual(NonSpeechAnnotation.reduce(raw), "", "reduced to empty: \(raw)")
+}
+
+print("NonSpeechAnnotation — real speech containing (), [] or * pairs is kept")
+for raw in ["you", "Please check the build again.", "Thanks.", "music", "the (optional) flag",
+            "Set the (optional) flag before you run it.", "I said (quietly) no.", "The index is [3] here.",
+            "(side note) call the bank", "*emphasis* here", "I *really* like this idea.",
+            "multiply 2 * 3 * 4", "press the * key"] {
+    expect(!NonSpeechAnnotation.isAnnotationOnly(raw), "not a caption: \(raw)")
+    expectEqual(NonSpeechAnnotation.reduce(raw), raw, "kept verbatim: \(raw)")
+}
+expect(!NonSpeechAnnotation.isAnnotationOnly(""), "empty string is not an annotation")
+expectEqual(NonSpeechAnnotation.reduce(""), "", "empty string reduces to itself")
+expectEqual(NonSpeechAnnotation.reduce(TextProcessor.stripDecoderArtifacts("[BLANK_AUDIO] [Sigh]")), "", "composes with stripDecoderArtifacts")
+expectEqual(NonSpeechAnnotation.reduce(TextProcessor.stripDecoderArtifacts("ship it [BLANK_AUDIO] (maybe)")), "ship it (maybe)", "mid-sentence group survives the composition")
+
+print("SilenceHallucinationGate.shouldVerify — quiet audio with text gets a witness")
+let quietCases: [(Float, String)] = [
+    (0.0000, "see you soon."), (0.0001, "you"), (0.0003, "and that is all for today, and that is all for today."),
+    (0.0196, "and then the Vercel,"), (0.0217, "and the rest of the road"), (0.0409, "The"),
+    (0.0300, "can you move the meeting to Friday"),
+]
+for (rms, text) in quietCases {
+    expect(SilenceHallucinationGate.shouldVerify(peakRMS: rms, prompted: text), "verify at \(rms): \(text)")
+}
+let loudCases: [(Float, String)] = [
+    (0.1049, "four digits then two letters"), (0.2522, "the first answer is eight choose three"),
+    (0.0500, "exactly at the trigger is not quiet"),
+]
+for (rms, text) in loudCases {
+    expect(!SilenceHallucinationGate.shouldVerify(peakRMS: rms, prompted: text), "no witness at \(rms): \(text)")
+}
+expect(!SilenceHallucinationGate.shouldVerify(peakRMS: 0, prompted: ""), "empty transcript → no witness")
+expect(!SilenceHallucinationGate.shouldVerify(peakRMS: 0, prompted: "   "), "blank transcript → no witness")
+expect(SilenceHallucinationGate.shouldVerify(peakRMS: .nan, prompted: "see you soon."), "NaN level counts as quiet")
+
+print("SilenceHallucinationGate.resolve — the witness decides")
+let gateVocab = ["Vercel", "Ollama", "sub agents"]
+for (prompted, witness) in [("see you soon.", ""), ("you", ""), ("Vercel", "   "), ("The", "...")] {
+    expectEqual(SilenceHallucinationGate.resolve(prompted: prompted, witness: witness, vocabulary: gateVocab), "", "empty witness rejects \"\(prompted)\"")
+}
+for (prompted, witness) in [("and the rest of the road", "so"), ("The", "A"), ("Vercel, Olla, Vercel", "and so on")] {
+    expectEqual(SilenceHallucinationGate.resolve(prompted: prompted, witness: witness, vocabulary: gateVocab), "", "no shared word rejects \"\(prompted)\" vs \"\(witness)\"")
+}
+for (prompted, witness) in [("Hey, what's new?", "Hey, what's new?"),
+                            ("Move the meeting to Friday", "move the meeting to friday"),
+                            ("We need 3 more chairs", "We need three more chairs"),
+                            ("We pushed the preview build to Vercel.", "We pushed the preview build to Versil."),
+                            ("The main agent starts two sub agents.", "The main agent starts two sub-agents.")] {
+    expectEqual(SilenceHallucinationGate.resolve(prompted: prompted, witness: witness, vocabulary: gateVocab), prompted, "agreeing witness keeps \"\(prompted)\"")
+}
+expectEqual(SilenceHallucinationGate.resolve(prompted: "Vercel.", witness: "Versil.", vocabulary: gateVocab), "Vercel.", "one-word custom word kept via its sound-alike")
+expectEqual(SilenceHallucinationGate.resolve(prompted: "Ollama", witness: "Olima", vocabulary: gateVocab), "Ollama", "Olima → Ollama agrees")
+expectEqual(SilenceHallucinationGate.resolve(prompted: "Vercel.", witness: "Versil.", vocabulary: []), "", "without the vocabulary the sound-alike would not agree")
+
+print("SilenceHallucinationGate.peakWindowRMS — the rejector's measure")
+let gateQuiet = [Int16](repeating: 150, count: 16_000)
+let gateAudible = [Int16](repeating: 170, count: 16_000)
+expect(ChunkPlanner.isSilent(gateQuiet) && !ChunkPlanner.isSilent(gateAudible), "fixtures straddle the 0.005 floor")
+expect(SilenceHallucinationGate.peakWindowRMS(WavTail.floatSamples(gateQuiet[...])) < ChunkPlanner.Config().silenceRMSFloor, "below the floor on the same scale")
+expect(SilenceHallucinationGate.peakWindowRMS(WavTail.floatSamples(gateAudible[...])) >= ChunkPlanner.Config().silenceRMSFloor, "above the floor on the same scale")
+expectEqual(SilenceHallucinationGate.peakWindowRMS([]), 0, "empty → 0")
+let gateBurst = [Float](repeating: 0, count: 14_400) + [Float](repeating: 0.5, count: 4_800)
+expect(abs(SilenceHallucinationGate.peakWindowRMS(gateBurst) - 0.5) < 0.0001, "peak is the loudest window, not the average")
 
 print("AppTheme")
 expectEqual(AppTheme.dark.toggled, .light, "dark toggles to light")
@@ -549,6 +692,37 @@ for risky in ["and", "or", "is", "by", "at", "than", "cross", "sin", "cos", "tan
     expect(MathSymbols.phrases[risky] == nil, "everyday word excluded: \"\(risky)\"")
 }
 
+print("SparseTranscriptGuard (ported from windows/JVoice.Core/Policy, HANDOFF-WINDOWS §7 #43)")
+do {
+    let prompted = "Okay, first we plan the garden beds. water them nightly. Done" // 61 chars, head + tail shape
+    let x = { (n: Int) in String(repeating: "x", count: n) }
+    let w = { (n: Int) in String(repeating: "w", count: n) }
+    expectEqual(prompted.count, 61, "stand-in has the failure's length")
+    expectEqual(SparseTranscriptGuard.minAudioSeconds, 10.0, "minAudioSeconds locked")
+    expectEqual(SparseTranscriptGuard.sparseCharsPerSecond, 4.0, "sparseCharsPerSecond locked")
+    expectEqual(SparseTranscriptGuard.witnessAdoptFactor, 2, "witnessAdoptFactor locked")
+    expect(SparseTranscriptGuard.shouldVerify(audioSeconds: 32.11, promptedTranscript: prompted), "61 chars over 32.11 s (1.9 chars/s) triggers")
+    for (s, c) in [(62.58, 555), (12.49, 148), (97.10, 1255), (32.62, 438)] {
+        expect(!SparseTranscriptGuard.shouldVerify(audioSeconds: s, promptedTranscript: x(c)), "normal density quiet: \(c) chars / \(s) s")
+    }
+    for (s, c) in [(8.12, 10), (3.97, 11), (9.99, 5)] {
+        expect(!SparseTranscriptGuard.shouldVerify(audioSeconds: s, promptedTranscript: x(c)), "short clip never triggers: \(c) chars / \(s) s")
+    }
+    expect(!SparseTranscriptGuard.shouldVerify(audioSeconds: 30, promptedTranscript: ""), "blank transcript → empty path, not this guard")
+    expect(!SparseTranscriptGuard.shouldVerify(audioSeconds: 30, promptedTranscript: "   "), "whitespace transcript → empty path")
+    expect(SparseTranscriptGuard.shouldVerify(audioSeconds: 10.0, promptedTranscript: x(39)), "boundary: 39 chars / 10 s triggers")
+    expect(!SparseTranscriptGuard.shouldVerify(audioSeconds: 10.0, promptedTranscript: x(40)), "boundary: 40 chars / 10 s does not (strict <)")
+    expect(!SparseTranscriptGuard.shouldVerify(audioSeconds: 0, promptedTranscript: "hi"), "zero seconds never triggers")
+    expect(!SparseTranscriptGuard.shouldVerify(audioSeconds: .nan, promptedTranscript: "hi"), "NaN seconds never triggers")
+    expectEqual(SparseTranscriptGuard.resolve(promptedTranscript: prompted, unpromptedWitness: w(566)), w(566), "9.3× witness adopted")
+    for n in [61, 66, 121] {
+        expectEqual(SparseTranscriptGuard.resolve(promptedTranscript: prompted, unpromptedWitness: w(n)), prompted, "comparable witness (\(n) chars) keeps prompted")
+    }
+    expectEqual(SparseTranscriptGuard.resolve(promptedTranscript: prompted, unpromptedWitness: w(122)), w(122), "exactly 2× witness adopted")
+    expectEqual(SparseTranscriptGuard.resolve(promptedTranscript: prompted, unpromptedWitness: ""), prompted, "empty witness never adopted")
+    expectEqual(SparseTranscriptGuard.resolve(promptedTranscript: prompted, unpromptedWitness: "   "), prompted, "blank witness never adopted")
+}
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S)")
     exit(1)
@@ -568,9 +742,13 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/DeveloperTerms.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhraseLoopGuard.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/SparseTranscriptGuard.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/VocabularyPrompt.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/WavTail.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/ChunkPlanner.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/NonSpeechAnnotation.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/SilenceHallucinationGate.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/ModelDownloadProgress.swift" \
     "$REPO_ROOT/Sources/JVoice/UI/ShortcutCapturePolicy.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/MathSymbol.swift" \
