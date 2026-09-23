@@ -920,3 +920,145 @@ xcrun swiftc -O \
 
 "$TMP_DIR/orchestration-tests"
 # ---- END orchestration/audio decisions ----
+
+# ---- BEGIN: Settings UI entry policies (added 2026-09-23 with the Settings/HUD UI fixes) ----
+# A second, self-contained compile + run. The shortcut recorder's NSEvent /
+# Carbon / main-menu adapters and the Settings text-field policies need
+# AppKit, so they stay out of the dependency-free harness above. Covers:
+# bare arrow/nav/keypad keys refused, ⌦ clears, a chord can't be shared by
+# both actions, system- and menu-owned chords are refused, a rejected custom
+# word says why, and App Modes turns an app NAME into the bundle ID rules match.
+# Canonical suite: Tests/JVoiceTests/{ShortcutCapturePolicy,SettingsEntryPolicy}Tests.swift.
+mkdir -p "$TMP_DIR/ui"
+cat > "$TMP_DIR/ui/main.swift" <<'EOF'
+import AppKit
+import Carbon.HIToolbox
+
+var failures = 0
+func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+    if condition() { print("  ✓ \(message)") } else { print("  ✗ FAIL: \(message)"); failures += 1 }
+}
+func expectEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String) {
+    if actual == expected { print("  ✓ \(message)") } else { print("  ✗ FAIL: \(message) — got \(actual), expected \(expected)"); failures += 1 }
+}
+
+/// A real key-down NSEvent, as the recorder's local monitor receives it.
+/// macOS itself adds .numericPad/.function to arrows, nav keys and the keypad.
+func keyDown(_ keyCode: Int, _ flags: CGEventFlags = []) -> NSEvent {
+    let cg = CGEvent(keyboardEventSource: nil, virtualKey: CGKeyCode(keyCode), keyDown: true)!
+    cg.flags = cg.flags.union(flags)
+    return NSEvent(cgEvent: cg)!
+}
+typealias P = ShortcutCapturePolicy
+let cmd = P.carbonCommand, shift = P.carbonShift, opt = P.carbonOption, ctrl = P.carbonControl
+
+MainActor.assumeIsolated {
+print("ShortcutCapturePolicy.decide(event:) — only ⌘⌥⌃⇧ count as held")
+for (name, code) in [("→", kVK_RightArrow), ("↑", kVK_UpArrow), ("Home", kVK_Home), ("PgDn", kVK_PageDown),
+                     ("keypad 5", kVK_ANSI_Keypad5), ("keypad Enter", kVK_ANSI_KeypadEnter)] {
+    expectEqual(P.decide(event: keyDown(code)), .reject, "bare \(name) is refused, not saved as a global hotkey")
+}
+expect(P.chordModifiers(keyDown(kVK_RightArrow).modifierFlags).isEmpty, "an arrow's own .numericPad/.function flags are not modifiers")
+expectEqual(P.decide(event: keyDown(kVK_ForwardDelete)), .clear, "bare ⌦ clears, like ⌫")
+expectEqual(P.decide(event: keyDown(kVK_Delete)), .clear, "bare ⌫ clears")
+expectEqual(P.decide(event: keyDown(kVK_Escape)), .cancel, "bare Esc cancels")
+expectEqual(P.decide(event: keyDown(kVK_F5)), .accept, "bare F5 still records")
+expectEqual(P.decide(event: keyDown(kVK_Space, .maskAlternate)), .accept, "⌥Space records")
+expectEqual(P.decide(event: keyDown(kVK_LeftArrow, .maskControl)), .accept, "⌃← is a well-formed chord (the system check refuses it)")
+expectEqual(P.decide(event: keyDown(kVK_RightArrow, .maskShift)), .reject, "⇧→ is shift alone")
+expectEqual(P.decide(event: keyDown(kVK_ANSI_A, .maskAlphaShift)), .reject, "Caps Lock + A is not a chord")
+
+print("ShortcutCapturePolicy — Carbon bits and adapters")
+expectEqual(P.carbonCommand, cmdKey, "carbonCommand == cmdKey")
+expectEqual(P.carbonShift, shiftKey, "carbonShift == shiftKey")
+expectEqual(P.carbonOption, optionKey, "carbonOption == optionKey")
+expectEqual(P.carbonControl, controlKey, "carbonControl == controlKey")
+expectEqual(P.carbonModifiers([.command, .shift, .function, .capsLock]), cmd | shift, "only ⌘⇧⌥⌃ reach Carbon")
+expectEqual(P.Chord(keyCode: kVK_F2, carbonModifiers: 135168), P.Chord(keyCode: kVK_F2, carbonModifiers: controlKey), "system extra bits are masked (⌃F2 stored as 135168)")
+expectEqual(P.character(of: keyDown(kVK_ANSI_C, .maskCommand)), "c", "⌘C's character is c")
+let system = P.systemReservedChords()
+expect(system.allSatisfy { $0.modifiers & ~(cmd | shift | opt | ctrl) == 0 }, "read \(system.count) enabled system shortcuts, modifiers masked")
+
+let editMenu = NSMenu(title: "Edit")
+editMenu.addItem(withTitle: "Undo", action: nil, keyEquivalent: "z")
+editMenu.addItem(withTitle: "Redo", action: nil, keyEquivalent: "Z")
+editMenu.addItem(withTitle: "Copy", action: nil, keyEquivalent: "c")
+let mainMenu = NSMenu(title: "Main")
+mainMenu.addItem(withTitle: "Edit", action: nil, keyEquivalent: "").submenu = editMenu
+let menu = P.menuShortcuts(in: mainMenu)
+expectEqual(menu.map(\.title), ["Undo", "Redo", "Copy"], "submenus walked")
+expectEqual(menu[1], P.MenuShortcut(title: "Redo", keyEquivalent: "z", carbonModifiers: cmd | shift), "\"Z\" + ⌘ reads as ⇧⌘Z")
+
+print("ShortcutCapturePolicy.refusal")
+let optSpace = P.Chord(keyCode: kVK_Space, carbonModifiers: opt)
+let cmdSpace = P.Chord(keyCode: kVK_Space, carbonModifiers: cmd)
+let cmdC = P.Chord(keyCode: kVK_ANSI_C, carbonModifiers: cmd)
+expectEqual(P.refusal(for: optSpace, character: " ", otherActions: [(title: "Toggle Recording", chord: optSpace)], systemChords: [], menuShortcuts: []),
+            .assignedTo("Toggle Recording"), "a chord already set for the other action is refused")
+expectEqual(P.refusal(for: optSpace, character: " ", otherActions: [], systemChords: [cmdSpace], menuShortcuts: menu), nil, "⌥Space (the default) is free")
+expectEqual(P.refusal(for: cmdSpace, character: " ", otherActions: [], systemChords: [cmdSpace], menuShortcuts: []), .reservedBySystem, "⌘Space (Spotlight) is refused")
+expectEqual(P.refusal(for: P.Chord(keyCode: kVK_F12, carbonModifiers: 0), character: nil, otherActions: [], systemChords: [P.Chord(keyCode: kVK_F12, carbonModifiers: 0)], menuShortcuts: []),
+            nil, "bare F12 is exempt, as in the package")
+expectEqual(P.refusal(for: cmdC, character: "c", otherActions: [], systemChords: [], menuShortcuts: menu), .usedByMenu("Copy"), "⌘C (Copy) is refused")
+expectEqual(P.refusal(for: P.Chord(keyCode: kVK_ANSI_Z, carbonModifiers: cmd | shift), character: "z", otherActions: [], systemChords: [], menuShortcuts: menu),
+            .usedByMenu("Redo"), "⇧⌘Z (Redo) is refused")
+expectEqual(P.refusal(for: P.Chord(keyCode: kVK_ANSI_C, carbonModifiers: cmd | opt), character: "c", otherActions: [], systemChords: [], menuShortcuts: menu),
+            nil, "⌥⌘C is not Copy")
+expectEqual(P.refusal(for: cmdC, character: P.character(of: keyDown(kVK_ANSI_C, .maskCommand)), otherActions: [], systemChords: [], menuShortcuts: menu),
+            .usedByMenu("Copy"), "end to end: a real ⌘C event against a real NSMenu")
+expect(P.Refusal.reservedBySystem.message(for: "⌘Space").hasPrefix("⌘Space is a macOS shortcut"), "the system message names the chord")
+expect(P.Refusal.assignedTo("Undo Last Paste").message(for: "⌥Space").contains("Undo Last Paste"), "the conflict message names the other action")
+
+print("SettingsEntryPolicy.customWordRejection — mirrors VoiceCoordinator.addCustomWord")
+expectEqual(SettingsEntryPolicy.customWordRejection("VS Code", existing: []), nil, "a new word is accepted")
+expectEqual(SettingsEntryPolicy.customWordRejection(String(repeating: "a", count: 60), existing: []), nil, "60 characters is fine")
+expect(SettingsEntryPolicy.customWordRejection(String(repeating: "a", count: 61), existing: [])?.hasPrefix("Too long") == true, "61 characters is too long")
+expect(SettingsEntryPolicy.customWordRejection("!!!", existing: [])?.contains("letter or number") == true, "punctuation only is refused")
+expectEqual(SettingsEntryPolicy.customWordRejection("vs code", existing: ["VS Code"]), "“VS Code” is already in your list.", "a case-insensitive duplicate names the existing entry")
+
+print("SettingsEntryPolicy.appRuleTarget — app names become bundle IDs")
+let slack = SettingsEntryPolicy.InstalledApp(name: "Slack", bundleID: "com.tinyspeck.slackmacgap")
+let chrome = SettingsEntryPolicy.InstalledApp(name: "Google Chrome", bundleID: "com.google.Chrome")
+let vscode = SettingsEntryPolicy.InstalledApp(name: "Visual Studio Code", bundleID: "com.microsoft.VSCode")
+let xcode = SettingsEntryPolicy.InstalledApp(name: "Xcode", bundleID: "com.apple.dt.Xcode")
+let memos = SettingsEntryPolicy.InstalledApp(name: "VoiceMemos", bundleID: "com.apple.VoiceMemos")
+let drawio = SettingsEntryPolicy.InstalledApp(name: "draw.io", bundleID: "com.jgraph.drawio.desktop")
+let installed = [slack, chrome, vscode, xcode, memos, drawio, chrome]
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "slack", installed: installed), .app(slack), "a name, any case")
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "Google Chrome", installed: installed), .app(chrome), "a full name")
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "chrome", installed: installed), .app(chrome), "a unique part of a name")
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "voice memos", installed: installed), .app(memos), "spaces don't matter")
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "Slack.app", installed: installed), .app(slack), "a trailing .app is ignored")
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "draw.io", installed: installed), .app(drawio), "an exact app name beats bundle-ID shape")
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "com.jetbrains.", installed: installed), .bundleID("com.jetbrains."), "a bundle ID / vendor prefix is kept verbatim")
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "code", installed: installed), .ambiguous(["Visual Studio Code", "Xcode"]), "several matches are reported, not guessed")
+expectEqual(SettingsEntryPolicy.appRuleTarget(for: "Photoshop", installed: installed), .notFound, "an app that isn't installed is reported")
+expect(SettingsEntryPolicy.appRuleNotice(for: .notFound, typed: "Photoshop")?.contains("“Photoshop”") == true, "the not-found notice names the entry")
+expectEqual(SettingsEntryPolicy.appRuleNotice(for: .app(slack), typed: "slack"), nil, "a resolved app needs no notice")
+expectEqual(AppModeResolver.resolve(bundleId: chrome.bundleID, userRules: [AppModeRule(appMatch: "Google Chrome", mode: .formal)], enabled: true),
+            nil, "(the bug) a rule stored as the typed name never matches")
+expectEqual(AppModeResolver.resolve(bundleId: chrome.bundleID, userRules: [AppModeRule(appMatch: chrome.bundleID, mode: .formal)], enabled: true),
+            .formal, "the resolved bundle ID matches")
+let systemSettings = SettingsEntryPolicy.appRuleTarget(for: "system settings", installed: SettingsEntryPolicy.installedApps())
+expectEqual(systemSettings, .app(.init(name: "System Settings", bundleID: "com.apple.systempreferences")), "a real installed app resolves (System Settings)")
+}
+
+if failures > 0 {
+    print("\n\(failures) FAILURE(S)")
+    exit(1)
+}
+print("\nAll Settings UI entry-policy tests passed.")
+EOF
+
+xcrun swiftc -O \
+    "$REPO_ROOT/Sources/JVoice/Models/AppMode.swift" \
+    "$REPO_ROOT/Sources/JVoice/Models/AppModeRule.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/AppModeResolver.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/ShortcutCapturePolicy.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/ShortcutCapturePolicy+AppKit.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/SettingsEntryPolicy.swift" \
+    "$TMP_DIR/ui/main.swift" \
+    -o "$TMP_DIR/ui-logic-tests"
+
+"$TMP_DIR/ui-logic-tests"
+# ---- END: Settings UI entry policies ----

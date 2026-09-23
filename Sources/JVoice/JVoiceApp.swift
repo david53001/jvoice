@@ -37,6 +37,14 @@ struct JVoiceApp: App {
     var body: some Scene {
         // No scenes. Windows are managed imperatively by AppDelegate / SettingsWindow.
         // SwiftUI requires at least one Scene; an empty Settings scene is acceptable as a placeholder.
+        // Its own "Settings…" (⌘,) menu command would open that placeholder — a blank window —
+        // so the command is replaced with one that opens the real SettingsWindow.
         Settings { EmptyView() }
+            .commands {
+                CommandGroup(replacing: .appSettings) {
+                    Button("Settings…") { appDelegate.coordinator.openSettingsWindow() }
+                        .keyboardShortcut(",", modifiers: .command)
+                }
+            }
     }
 }

@@ -55,6 +55,12 @@ final class HUDWindow: NSPanel {
     /// ordered front fully transparent (never visible), given a moment to render,
     /// then ordered out again. A press that lands before that happens simply
     /// takes the realized window over (`update` cancels the pending hide).
+    ///
+    /// After the hide the content goes back to the empty idle view: the
+    /// recording pill's bars are a `TimelineView` that keeps ticking at 30 Hz
+    /// in an ordered-out window (~6% CPU, measured, until the first
+    /// dictation). The panel and hosting controller stay realized, so the
+    /// first show keeps its speed.
     func prewarm() {
         guard !isPrewarmed, !isVisible else { return }
         isPrewarmed = true
@@ -72,6 +78,7 @@ final class HUDWindow: NSPanel {
             self.orderOut(nil)
             self.alphaValue = 1
             self.currentState = .idle
+            self.hostingController.rootView = HUDView(state: .idle)
         }
     }
 

@@ -2,7 +2,6 @@ import SwiftUI
 
 #if canImport(KeyboardShortcuts)
 import AppKit
-import Carbon.HIToolbox
 import KeyboardShortcuts
 
 /// Settings row that records a global chord for a `KeyboardShortcuts.Name`.
@@ -25,8 +24,34 @@ struct ShortcutRecorder: View {
     @State private var shortcutText = ""
     @State private var isCapturing = false
     @State private var monitor: Any?
+    /// Why the last chord pressed was refused (taken by the other action, by
+    /// macOS, or by a standard menu command). Cleared by the next capture.
+    @State private var refusalMessage: String?
+
+    /// The global actions a chord can drive — a chord may belong to only one.
+    private static let actions: [(name: KeyboardShortcuts.Name, title: String)] = [
+        (.toggleRecording, "Toggle Recording"),
+        (.undoLastPaste, "Undo Last Paste"),
+    ]
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            row
+            if let refusalMessage {
+                InlineNotice(text: refusalMessage, theme: theme)
+            }
+        }
+        .onAppear(perform: refresh)
+        .onDisappear(perform: endCapture)
+        // Closing Settings (or clicking away) while listening must not leave a
+        // live event monitor behind — or, far worse, the app's global hotkeys
+        // switched off.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
+            endCapture()
+        }
+    }
+
+    private var row: some View {
         HStack(spacing: 8) {
             Text(label)
                 .font(.system(size: 11))
@@ -66,14 +91,6 @@ struct ShortcutRecorder: View {
             .opacity(shortcutText.isEmpty ? 0 : 1)
             .disabled(shortcutText.isEmpty)
         }
-        .onAppear(perform: refresh)
-        .onDisappear(perform: endCapture)
-        // Closing Settings (or clicking away) while listening must not leave a
-        // live event monitor behind — or, far worse, the app's global hotkeys
-        // switched off.
-        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
-            endCapture()
-        }
     }
 
     private var fieldText: String {
@@ -94,6 +111,7 @@ struct ShortcutRecorder: View {
     private func beginCapture() {
         guard !isCapturing else { return }
         isCapturing = true
+        refusalMessage = nil
 
         // A registered global chord is swallowed system-wide — by this app
         // too — so the hotkeys stand down while the user types one.
@@ -121,6 +139,7 @@ struct ShortcutRecorder: View {
     private func clear() {
         KeyboardShortcuts.setShortcut(nil, for: name)
         shortcutText = ""
+        refusalMessage = nil
         endCapture()
     }
 
@@ -133,16 +152,7 @@ struct ShortcutRecorder: View {
             return event
         }
 
-        let modifiers = event.modifierFlags
-            .intersection(.deviceIndependentFlagsMask)
-            .subtracting(.capsLock)
-
-        switch ShortcutCapturePolicy.decide(
-            key: Self.key(for: event),
-            hasAnyModifier: !modifiers.isEmpty,
-            hasModifierBesidesShift: !modifiers.subtracting(.shift).isEmpty,
-            isFunctionKey: Self.isFunctionKey(event)
-        ) {
+        switch ShortcutCapturePolicy.decide(event: event) {
         case .cancel:
             endCapture()
         case .clear:
@@ -154,31 +164,42 @@ struct ShortcutRecorder: View {
                 NSSound.beep()
                 break
             }
+            // Refused chords keep the recorder listening, so the user can
+            // simply press another one.
+            if let refusal = refusal(for: shortcut, event: event) {
+                NSSound.beep()
+                refusalMessage = refusal.message(for: "\(shortcut)")
+                break
+            }
             KeyboardShortcuts.setShortcut(shortcut, for: name)
             shortcutText = "\(shortcut)"
+            refusalMessage = nil
             endCapture()
         }
 
         return nil
     }
 
-    private static func key(for event: NSEvent) -> ShortcutCapturePolicy.Key {
-        if event.keyCode == UInt16(kVK_Escape) {
-            return .escape
-        }
-        switch event.specialKey {
-        case .tab:
-            return .tab
-        case .delete, .deleteForward, .backspace:
-            return .delete
-        default:
-            return .other
-        }
+    /// Gathers the live inputs for `ShortcutCapturePolicy.refusal`: the other
+    /// action's chord, the enabled system shortcuts and the app menu's key
+    /// equivalents (Copy, Undo, Quit, Settings…).
+    private func refusal(for shortcut: KeyboardShortcuts.Shortcut, event: NSEvent) -> ShortcutCapturePolicy.Refusal? {
+        let otherActions = Self.actions
+            .filter { $0.name != name }
+            .compactMap { action -> (title: String, chord: ShortcutCapturePolicy.Chord)? in
+                KeyboardShortcuts.getShortcut(for: action.name).map { (action.title, Self.chord(for: $0)) }
+            }
+        return ShortcutCapturePolicy.refusal(
+            for: Self.chord(for: shortcut),
+            character: ShortcutCapturePolicy.character(of: event),
+            otherActions: otherActions,
+            systemChords: ShortcutCapturePolicy.systemReservedChords(),
+            menuShortcuts: ShortcutCapturePolicy.menuShortcuts(in: NSApp.mainMenu)
+        )
     }
 
-    private static func isFunctionKey(_ event: NSEvent) -> Bool {
-        guard let special = event.specialKey else { return false }
-        return (NSEvent.SpecialKey.f1.rawValue...NSEvent.SpecialKey.f35.rawValue).contains(special.rawValue)
+    private static func chord(for shortcut: KeyboardShortcuts.Shortcut) -> ShortcutCapturePolicy.Chord {
+        ShortcutCapturePolicy.Chord(keyCode: shortcut.carbonKeyCode, carbonModifiers: shortcut.carbonModifiers)
     }
 }
 #endif

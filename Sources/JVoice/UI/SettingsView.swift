@@ -112,6 +112,9 @@ struct SettingsView: View {
     @ObservedObject var coordinator: VoiceCoordinator
     @State private var newWord = ""
     @State private var newAppMatch = ""
+    /// Why the last Add was turned away — shown under its field, cleared on edit.
+    @State private var wordNotice: String?
+    @State private var appMatchNotice: String?
     @State private var showResetConfirm = false
 
     var body: some View {
@@ -344,7 +347,7 @@ struct SettingsView: View {
                     }
 
                     HStack(spacing: 6) {
-                        TextField("App bundle ID or name (e.g. slack)", text: $newAppMatch)
+                        TextField("App name or bundle ID (e.g. Slack)", text: $newAppMatch)
                             .textFieldStyle(.plain)
                             .font(.system(size: 11))
                             .foregroundStyle(theme.textSecondary)
@@ -363,6 +366,11 @@ struct SettingsView: View {
                         Button("Add") { submitAppRule() }
                             .buttonStyle(SettingsButtonStyle(theme: theme))
                             .disabled(newAppMatch.trimmingCharacters(in: .whitespaces).isEmpty)
+                    }
+                    .onChange(of: newAppMatch) { appMatchNotice = nil }
+
+                    if let appMatchNotice {
+                        InlineNotice(text: appMatchNotice, theme: theme)
                     }
                 }
             }
@@ -484,6 +492,11 @@ struct SettingsView: View {
                         .buttonStyle(SettingsButtonStyle(theme: theme))
                         .disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+                .onChange(of: newWord) { wordNotice = nil }
+
+                if let wordNotice {
+                    InlineNotice(text: wordNotice, theme: theme)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
@@ -513,14 +526,39 @@ struct SettingsView: View {
     private func submitWord() {
         let trimmed = newWord.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        coordinator.addCustomWord(trimmed)
+        // A rejected word keeps its text in the field, with the reason under it.
+        guard coordinator.addCustomWord(trimmed) != nil else {
+            wordNotice = SettingsEntryPolicy.customWordRejection(trimmed, existing: coordinator.customWords)
+                ?? "Couldn't add that word."
+            return
+        }
         newWord = ""
     }
 
     private func submitAppRule() {
         let trimmed = newAppMatch.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return }
-        coordinator.addAppModeRule(match: trimmed, mode: .code)
+        // Rules match bundle IDs, so a typed app name is resolved to its
+        // bundle ID first; an app that can't be found is reported rather than
+        // stored as a rule that could never match.
+        let target = SettingsEntryPolicy.appRuleTarget(for: trimmed, installed: SettingsEntryPolicy.installedApps())
+        let match: String
+        let shownName: String
+        switch target {
+        case .app(let app):
+            match = app.bundleID
+            shownName = app.name
+        case .bundleID(let bundleID):
+            match = bundleID
+            shownName = bundleID
+        case .ambiguous, .notFound:
+            appMatchNotice = SettingsEntryPolicy.appRuleNotice(for: target, typed: trimmed)
+            return
+        }
+        guard coordinator.addAppModeRule(match: match, mode: .code) else {
+            appMatchNotice = "There's already a rule for \(shownName)."
+            return
+        }
         newAppMatch = ""
     }
 }
