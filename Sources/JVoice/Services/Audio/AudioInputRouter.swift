@@ -13,8 +13,8 @@ import Foundation
 /// AirPods as input), dictating wrecks the user's music.
 ///
 /// The fix: while recording, temporarily point the default input at a
-/// non-Bluetooth mic (preferring the built-in one), then restore it. The
-/// headset's input is never opened, so it stays in A2DP and the music is
+/// physical non-Bluetooth mic (preferring the built-in one), then restore it.
+/// The headset's input is never opened, so it stays in A2DP and the music is
 /// untouched. Non-Bluetooth defaults are left exactly as they were.
 enum AudioInputRouter {
     struct InputDevice: Equatable {
@@ -28,20 +28,33 @@ enum AudioInputRouter {
         kAudioDeviceTransportTypeBluetoothLE,
     ]
 
+    /// Transports of real microphones a redirect may pick. Everything else —
+    /// virtual loopback devices (BlackHole, Loopback, app-less virtual mics that
+    /// deliver pure digital silence), aggregates, AirPlay, Continuity — is never
+    /// a redirect target: switching the user's default input to one of those
+    /// records nothing. Keeping the Bluetooth default beats that.
+    static let physicalTransports: Set<UInt32> = [
+        kAudioDeviceTransportTypeBuiltIn,
+        kAudioDeviceTransportTypeUSB,
+        kAudioDeviceTransportTypeThunderbolt,
+        kAudioDeviceTransportTypeFireWire,
+        kAudioDeviceTransportTypePCI,
+    ]
+
     /// The device capture should be redirected to, or `nil` when no redirect is
     /// needed (the default input isn't Bluetooth) or possible (there is no
-    /// non-Bluetooth input to fall back to). Pure policy — unit-tested without
-    /// audio hardware.
+    /// physical non-Bluetooth input to fall back to). Pure policy — unit-tested
+    /// without audio hardware.
     static func redirectTarget(
         defaultInputTransport: UInt32,
         inputDevices: [InputDevice]
     ) -> AudioDeviceID? {
         guard bluetoothTransports.contains(defaultInputTransport) else { return nil }
-        let nonBluetooth = inputDevices.filter { !bluetoothTransports.contains($0.transport) }
-        if let builtIn = nonBluetooth.first(where: { $0.transport == kAudioDeviceTransportTypeBuiltIn }) {
+        let physical = inputDevices.filter { physicalTransports.contains($0.transport) }
+        if let builtIn = physical.first(where: { $0.transport == kAudioDeviceTransportTypeBuiltIn }) {
             return builtIn.id
         }
-        return nonBluetooth.first?.id
+        return physical.first?.id
     }
 
     // MARK: - Core Audio glue (needs the HAL; not unit-testable)
@@ -66,6 +79,22 @@ enum AudioInputRouter {
         return AudioObjectSetPropertyData(
             AudioObjectID(kAudioObjectSystemObject), &addr, 0, nil, size, &deviceID
         ) == noErr
+    }
+
+    /// The current default input device's display name ("MacBook Air
+    /// Microphone", "BlackHole 16ch"), or `nil` when it can't be read. Used to
+    /// name the device when a recording turns out to be pure digital silence.
+    static func defaultInputDeviceName() -> String? {
+        guard let device = defaultInputDeviceID() else { return nil }
+        var addr = address(kAudioObjectPropertyName)
+        var name: Unmanaged<CFString>?
+        var size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        let status = withUnsafeMutablePointer(to: &name) {
+            AudioObjectGetPropertyData(device, &addr, 0, nil, &size, $0)
+        }
+        guard status == noErr, let cfName = name?.takeRetainedValue() else { return nil }
+        let trimmed = (cfName as String).trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : trimmed
     }
 
     private static func defaultInputDeviceID() -> AudioDeviceID? {

@@ -828,3 +828,95 @@ xcrun swiftc -O \
     -o "$TMP_DIR/logic-tests"
 
 "$TMP_DIR/logic-tests"
+
+# ---- BEGIN orchestration/audio decisions (dictation-flow fixes, 2026-09-23) ----
+# Separate harness (own main, own source list) so it stays one self-contained
+# block: the hotkey press decision (a press during transcription is ignored; a
+# stop while the mic opens is honoured), the dead-input wording
+# (SilentCaptureDetector), and the Bluetooth redirect never picking a virtual input.
+mkdir -p "$TMP_DIR/orchestration"   # top-level code must live in a file named main.swift
+cat > "$TMP_DIR/orchestration/main.swift" <<'EOF'
+import CoreAudio
+import Foundation
+
+var failures = 0
+func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+    if condition() { print("  ✓ \(message)") } else { print("  ✗ FAIL: \(message)"); failures += 1 }
+}
+func expectEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String) {
+    if actual == expected { print("  ✓ \(message)") } else { print("  ✗ FAIL: \(message) — got \(actual), expected \(expected)"); failures += 1 }
+}
+
+print("CoordinatorDecisions.canStartRecording — a pending transcript outranks a new start")
+expect(CoordinatorDecisions.canStartRecording(isStartingRecording: false, isTranscribing: false), "idle → start allowed")
+expect(!CoordinatorDecisions.canStartRecording(isStartingRecording: true, isTranscribing: false), "mic still opening → refused")
+expect(!CoordinatorDecisions.canStartRecording(isStartingRecording: false, isTranscribing: true), "transcription in flight → refused")
+expect(!CoordinatorDecisions.canStartRecording(isStartingRecording: true, isTranscribing: true), "both → refused")
+
+print("CoordinatorDecisions.pressAction — what a hotkey / menu / pill press does")
+func press(_ rec: Bool, _ starting: Bool, _ stopping: Bool, _ transcribing: Bool) -> CoordinatorDecisions.PressAction {
+    CoordinatorDecisions.pressAction(isRecording: rec, isStartingRecording: starting,
+                                     isStoppingRecording: stopping, isTranscribing: transcribing)
+}
+expectEqual(press(false, false, false, false), .start, "idle → start")
+expectEqual(press(true, false, false, false), .stop, "recording → stop")
+expectEqual(press(true, true, false, false), .stop, "mic just opened (both flags) → stop")
+expectEqual(press(true, false, true, false), .ignore, "stop already running → ignore")
+expectEqual(press(false, true, false, false), .stopOnceOpened, "mic still opening → stop once it opens (was dropped)")
+expectEqual(press(false, false, false, true), .ignore, "transcription in flight → ignore (was: cancel it)")
+
+print("SilentCaptureDetector — exact-zero input is named, a quiet real mic is not")
+let deadRate = 16_000
+let deadNoise: (Double) -> [Int16] = { secs in (0..<Int(secs * Double(deadRate))).map { Int16(($0 * 7919) % 9) - 4 } }
+let deadStats = CaptureSignalStats(samples: [Int16](repeating: 0, count: deadRate * 2), sampleRate: deadRate)
+let quietStats = CaptureSignalStats(samples: deadNoise(2), sampleRate: deadRate)
+let measured = CaptureSignalStats(samples: [0, 1, 0, -3, 0, 0, 0, 2], sampleRate: 8)
+expectEqual(measured, CaptureSignalStats(totalSamples: 8, nonZeroSamples: 3, seconds: 1), "counts exact-zero samples only")
+expect(SilentCaptureDetector.isDeadInput(deadStats), "2 s of digital silence → dead input")
+expect(!SilentCaptureDetector.isDeadInput(quietStats), "quiet noise floor (ratio \(String(format: "%.2f", quietStats.nonZeroRatio))) → not dead")
+expect(!SilentCaptureDetector.isDeadInput(CaptureSignalStats(samples: [Int16](repeating: 0, count: 0), sampleRate: deadRate)), "empty → not judged")
+expect(!SilentCaptureDetector.isDeadInput(CaptureSignalStats(samples: [Int16](repeating: 0, count: 3_200), sampleRate: deadRate)), "0.2 s → too short to judge")
+expect(!SilentCaptureDetector.isDeadInput(CaptureSignalStats(samples: [Int16](repeating: 0, count: 4_800) + deadNoise(0.7), sampleRate: deadRate)), "late ramp-up (0.3 s zeros) → not dead")
+let deadCopy = SilentCaptureDetector.deadInputMessage(deviceName: "BlackHole 16ch")
+expectEqual(deadCopy, "\"BlackHole 16ch\" is sending no audio — pick another mic in System Settings > Sound.", "dead-input copy names the device")
+expect(SilentCaptureDetector.deadInputMessage(deviceName: nil).hasPrefix("Your microphone"), "no name → 'Your microphone'")
+let longCopy = SilentCaptureDetector.deadInputMessage(deviceName: String(repeating: "x", count: 80))
+expect(longCopy.contains("…\"") && longCopy.hasSuffix("System Settings > Sound."), "long name shortened, fix still visible")
+expectEqual(SilentCaptureDetector.noSpeechMessage(stats: deadStats, deviceName: "BlackHole 16ch"), deadCopy, "no-speech + digital silence → device copy")
+expectEqual(SilentCaptureDetector.noSpeechMessage(stats: quietStats, deviceName: "MacBook Air Microphone"), DictationError.noSpeechHeard.message, "no-speech + quiet real mic → usual copy")
+expectEqual(SilentCaptureDetector.noSpeechMessage(stats: nil, deviceName: "BlackHole 16ch"), DictationError.noSpeechHeard.message, "unreadable WAV → usual copy")
+
+print("AudioInputRouter.redirectTarget — only ever a physical mic, never a virtual input")
+func dev(_ id: AudioDeviceID, _ transport: UInt32) -> AudioInputRouter.InputDevice { .init(id: id, transport: transport) }
+let bt = kAudioDeviceTransportTypeBluetooth
+expectEqual(AudioInputRouter.redirectTarget(defaultInputTransport: kAudioDeviceTransportTypeBuiltIn,
+                                            inputDevices: [dev(1, kAudioDeviceTransportTypeBuiltIn), dev(2, bt)]), nil, "built-in default → untouched")
+expectEqual(AudioInputRouter.redirectTarget(defaultInputTransport: bt,
+                                            inputDevices: [dev(10, bt), dev(20, kAudioDeviceTransportTypeUSB), dev(30, kAudioDeviceTransportTypeBuiltIn)]), 30, "Bluetooth default → built-in preferred")
+expectEqual(AudioInputRouter.redirectTarget(defaultInputTransport: bt,
+                                            inputDevices: [dev(10, bt), dev(20, kAudioDeviceTransportTypeVirtual)]), nil, "no built-in, only BlackHole (virtual) → leave the default alone (was: BlackHole)")
+expectEqual(AudioInputRouter.redirectTarget(defaultInputTransport: bt,
+                                            inputDevices: [dev(10, bt), dev(20, kAudioDeviceTransportTypeAggregate)]), nil, "aggregate → never a target")
+expectEqual(AudioInputRouter.redirectTarget(defaultInputTransport: bt,
+                                            inputDevices: [dev(10, bt), dev(20, kAudioDeviceTransportTypeVirtual), dev(40, kAudioDeviceTransportTypeUSB)]), 40, "virtual listed first, USB mic still found")
+for transport in [kAudioDeviceTransportTypeThunderbolt, kAudioDeviceTransportTypeFireWire, kAudioDeviceTransportTypePCI] {
+    expectEqual(AudioInputRouter.redirectTarget(defaultInputTransport: bt, inputDevices: [dev(10, bt), dev(50, transport)]), 50, "physical transport \(transport) accepted")
+}
+
+if failures > 0 {
+    print("\n\(failures) FAILURE(S) in orchestration/audio decisions")
+    exit(1)
+}
+print("\nAll orchestration/audio decision tests passed.")
+EOF
+
+xcrun swiftc -O \
+    "$REPO_ROOT/Sources/JVoice/Services/Orchestration/CoordinatorDecisions.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Orchestration/DictationError.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Audio/SilentCaptureDetector.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Audio/AudioInputRouter.swift" \
+    "$TMP_DIR/orchestration/main.swift" \
+    -o "$TMP_DIR/orchestration-tests"
+
+"$TMP_DIR/orchestration-tests"
+# ---- END orchestration/audio decisions ----

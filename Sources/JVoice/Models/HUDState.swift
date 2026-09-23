@@ -11,6 +11,9 @@ public enum HUDState: Equatable, Codable, Sendable {
     case preparingModel
     case transcribing
     case done(String)
+    /// Clipboard-only mode finished: the transcript is on the clipboard, not in
+    /// an app — never say "Pasted".
+    case copied(String)
     case error(String)
 
     public enum AccentRole: String, Codable, Sendable {
@@ -35,6 +38,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         case preparingModel
         case transcribing
         case done
+        case copied
         case error
     }
 
@@ -52,6 +56,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Transcribing…"
         case .done:
             return "Pasted"
+        case .copied:
+            return "Copied"
         case .error(let message):
             return message.isEmpty ? "Something went wrong" : message
         }
@@ -71,6 +77,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Transcribing"
         case .done:
             return "Pasted"
+        case .copied:
+            return "Copied"
         case .error:
             return "Something Went Wrong"
         }
@@ -88,7 +96,7 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "One-time per model. Keep JVoice open."
         case .transcribing:
             return "Processing the latest recording…"
-        case .done:
+        case .done, .copied:
             return nil
         case .error(let message):
             return message.isEmpty ? "Something went wrong" : message
@@ -109,6 +117,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "arrow.triangle.2.circlepath"
         case .done:
             return "checkmark.circle.fill"
+        case .copied:
+            return "doc.on.clipboard"
         case .error:
             return "exclamationmark.triangle.fill"
         }
@@ -126,7 +136,7 @@ public enum HUDState: Equatable, Codable, Sendable {
             return .blue
         case .transcribing:
             return .blue
-        case .done:
+        case .done, .copied:
             return .green
         case .error:
             return .orange
@@ -137,7 +147,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .idle:
             return false
-        case .recording, .downloadingModel, .preparingModel, .transcribing, .done, .error:
+        case .recording, .downloadingModel, .preparingModel, .transcribing, .done, .copied, .error:
             return true
         }
     }
@@ -146,14 +156,14 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .recording, .downloadingModel, .preparingModel, .transcribing:
             return true
-        case .idle, .done, .error:
+        case .idle, .done, .copied, .error:
             return false
         }
     }
 
     public var isTerminal: Bool {
         switch self {
-        case .done, .error:
+        case .done, .copied, .error:
             return true
         case .idle, .recording, .downloadingModel, .preparingModel, .transcribing:
             return false
@@ -162,7 +172,7 @@ public enum HUDState: Equatable, Codable, Sendable {
 
     public var payload: String? {
         switch self {
-        case .done(let text), .error(let text):
+        case .done(let text), .copied(let text), .error(let text):
             return text
         case .idle, .recording, .downloadingModel, .preparingModel, .transcribing:
             return nil
@@ -189,6 +199,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             self = .transcribing
         case .done:
             self = .done(try container.decode(String.self, forKey: .payload))
+        case .copied:
+            self = .copied(try container.decode(String.self, forKey: .payload))
         case .error:
             self = .error(try container.decode(String.self, forKey: .payload))
         }
@@ -212,6 +224,9 @@ public enum HUDState: Equatable, Codable, Sendable {
             try container.encode(Kind.transcribing, forKey: .kind)
         case .done(let text):
             try container.encode(Kind.done, forKey: .kind)
+            try container.encode(text, forKey: .payload)
+        case .copied(let text):
+            try container.encode(Kind.copied, forKey: .kind)
             try container.encode(text, forKey: .payload)
         case .error(let message):
             try container.encode(Kind.error, forKey: .kind)

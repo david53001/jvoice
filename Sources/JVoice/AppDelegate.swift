@@ -13,7 +13,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         coordinator.bootstrapLaunchAtLogin()
 
         // Route service-level failures (e.g. settings encode errors) through
-        // the HUD instead of silently swallowing them.
+        // the HUD instead of silently swallowing them. Installing the handler
+        // also delivers warnings queued while `coordinator` was being built
+        // (SettingsStore's load-time "settings reset" warning) — deliberately
+        // AFTER start(), whose updateHUD(.idle) would otherwise hide them.
         SystemActions.errorHandler = { [weak coordinator] message in
             coordinator?.showError(message)
         }

@@ -191,6 +191,15 @@ final class VoiceCoordinator: ObservableObject {
     private var lastPastedPID: pid_t?
     private var hudDismissTask: Task<Void, Never>?
     private var currentTranscriptionTask: Task<Void, Never>?
+    /// True from the stop press until `finishTranscription` returns — the whole
+    /// post-stop pipeline, not just the whole-file decode. Blocks new starts.
+    private var isTranscriptionInFlight = false
+    /// The finished recording's WAV while it is being transcribed, so a quit
+    /// mid-transcription can delete it (the task's own cleanup never runs then).
+    private var inFlightAudioURL: URL?
+    /// A press arrived while the mic was still opening: end that recording as
+    /// soon as it opens (the pill already said "recording", so it was a stop).
+    private var stopRequestedWhileStarting = false
     private var streamingSession: StreamingTranscriptionSession?
     /// Bumped on every recording start so a session created for recording N
     /// (asynchronously — see startRecordingFlow) is never assigned once
@@ -261,6 +270,9 @@ final class VoiceCoordinator: ObservableObject {
         installFrontmostObserver()
 
         hudWindow.onStop = { [weak self] in self?.toggleRecording() }
+        recordingManager.onRecordingFailed = { [weak self] _ in
+            self?.handleRecordingFailure()
+        }
 
         ensureAccessibilityOnceForLaunch()
 
@@ -334,20 +346,38 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     func toggleRecording() {
-        // Both flags flip synchronously on the main actor, so a re-entry
-        // from a fast hotkey press will short-circuit here rather than
+        // Every flag flips synchronously on the main actor, so a re-entry
+        // from a fast hotkey press short-circuits here rather than
         // double-dispatching a startRecordingFlow / stopRecordingAndTranscribe.
-        if isRecording {
-            guard !isStoppingRecording else { return }
+        // The menu's Start/Stop Dictation item and the pill's stop button come
+        // through here too, so they obey the same rules.
+        //
+        // A pending transcript outranks a new start request:
+        // `transcriptionManager.isTranscribing` alone covers only the whole-file
+        // decode, so a press during the streaming session's finish(), the
+        // model-preparation wait or the paste used to start a new recording and
+        // cancel the finished dictation (Windows §7 #44).
+        let transcribing = isTranscriptionInFlight || transcriptionManager.isTranscribing
+        switch CoordinatorDecisions.pressAction(isRecording: isRecording,
+                                                isStartingRecording: isStartingRecording,
+                                                isStoppingRecording: isStoppingRecording,
+                                                isTranscribing: transcribing) {
+        case .ignore:
+            if !isRecording, transcribing {
+                Self.latencyLog.info("Start press IGNORED — transcription in flight")
+            }
+        case .stopOnceOpened:
+            stopRequestedWhileStarting = true
+            Self.latencyLog.info("Stop press while the mic is opening — the recording ends once it opens")
+        case .stop:
             isStoppingRecording = true
             Task { [weak self] in
                 defer { Task { @MainActor [weak self] in self?.isStoppingRecording = false } }
                 self?.stopRecordingAndTranscribe()
             }
-        } else {
-            guard !isStartingRecording else { return }
-            guard !transcriptionManager.isTranscribing else { return }
+        case .start:
             isStartingRecording = true
+            stopRequestedWhileStarting = false
             // P1.7: abandon any transcription still running for an earlier recording.
             currentTranscriptionTask?.cancel()
             currentTranscriptionTask = nil
@@ -365,6 +395,21 @@ final class VoiceCoordinator: ObservableObject {
                 await self?.startRecordingFlow()
             }
         }
+    }
+
+    /// The recorder tore a live recording down (encoder error, unsuccessful
+    /// finish, input change) and already deleted its partial WAV. End our side
+    /// of the recording and say so — otherwise the pill stays on "recording"
+    /// and the next press reports "Couldn't start recording".
+    private func handleRecordingFailure() {
+        guard isRecording else { return }
+        isRecording = false
+        recordingStartDate = nil
+        if let session = streamingSession {
+            streamingSession = nil
+            Task { await session.cancel() }
+        }
+        show(.recordingInterrupted)
     }
 
     func showSettings() {
@@ -393,6 +438,15 @@ final class VoiceCoordinator: ObservableObject {
         hudDismissTask?.cancel()
         recordingManager.discardSpareRecorder()
 
+        // Privacy: a quit while the previous dictation is still being
+        // transcribed would orphan its WAV — the task's own cleanup never runs
+        // once the process exits.
+        if let pendingAudio = inFlightAudioURL {
+            inFlightAudioURL = nil
+            currentTranscriptionTask?.cancel()
+            try? FileManager.default.removeItem(at: pendingAudio)
+        }
+
         if isRecording {
             if let session = streamingSession {
                 streamingSession = nil
@@ -417,7 +471,7 @@ final class VoiceCoordinator: ObservableObject {
             menuBarController.updateActivity(.recording)
         case .downloadingModel, .preparingModel, .transcribing:
             menuBarController.updateActivity(.transcribing)
-        case .idle, .done, .error:
+        case .idle, .done, .copied, .error:
             menuBarController.updateActivity(.idle)
         }
     }
@@ -536,6 +590,8 @@ final class VoiceCoordinator: ObservableObject {
     /// open. Any failure replaces the recording pill with the error, exactly
     /// as it used to appear instead of it.
     private func startRecordingFlow() async {
+        // A stop press during the open applies to THIS start only.
+        defer { stopRequestedWhileStarting = false }
         let granted = await recordingManager.requestPermission()
         guard granted else {
             PermissionError.microphoneDenied.surfaceAndOpenSettings()
@@ -573,6 +629,12 @@ final class VoiceCoordinator: ObservableObject {
         // (a surfaced error) replaced it meanwhile.
         if hudState != .recording { updateHUD(.recording) }
         Self.latencyLog.info("MicStarted +\(self.millisecondsSincePress, privacy: .public)ms after press")
+
+        // The user pressed stop while the mic was still opening: honour it now.
+        if stopRequestedWhileStarting {
+            stopRecordingAndTranscribe()
+            return
+        }
 
         // Best-effort streaming overlay: transcribe completed chunks while the
         // user is still talking so only the tail remains on hotkey release.
@@ -635,14 +697,21 @@ final class VoiceCoordinator: ObservableObject {
         // Capture the paste target's bundle id now (for app-aware modes) — the
         // frontmost app may change while WhisperKit runs.
         let targetBundleId = NSRunningApplication(processIdentifier: targetPID)?.bundleIdentifier
+        let captureDeviceName = recordingManager.captureDeviceName
 
         currentTranscriptionTask?.cancel()
+        isTranscriptionInFlight = true
+        inFlightAudioURL = audioURL
         currentTranscriptionTask = Task { [weak self] in
-            await self?.finishTranscription(audioURL: audioURL, targetPID: targetPID, targetBundleId: targetBundleId, session: session)
+            await self?.finishTranscription(audioURL: audioURL, targetPID: targetPID, targetBundleId: targetBundleId, session: session, captureDeviceName: captureDeviceName)
+            // Every exit path of finishTranscription (paste, error, no speech,
+            // cancellation) lands here, so the start branch always re-opens.
+            self?.isTranscriptionInFlight = false
+            self?.inFlightAudioURL = nil
         }
     }
 
-    private func finishTranscription(audioURL: URL?, targetPID: pid_t?, targetBundleId: String? = nil, session: StreamingTranscriptionSession? = nil) async {
+    private func finishTranscription(audioURL: URL?, targetPID: pid_t?, targetBundleId: String? = nil, session: StreamingTranscriptionSession? = nil, captureDeviceName: String? = nil) async {
         guard let audioURL else {
             if let session { await session.cancel() }
             show(.recorderFailedToStart)
@@ -662,7 +731,12 @@ final class VoiceCoordinator: ObservableObject {
 
         if RecordingManager.isSilentRecording(at: audioURL) {
             if let session { await session.cancel() }
-            show(.noSpeechHeard)
+            // Already judged silent — this only picks the wording: a capture of
+            // exact-zero samples is a dead INPUT (e.g. BlackHole as the default
+            // mic), so name the device instead of blaming the user's voice.
+            showError(SilentCaptureDetector.noSpeechMessage(
+                stats: RecordingManager.captureSignalStats(at: audioURL),
+                deviceName: captureDeviceName))
             return
         }
 
@@ -672,7 +746,14 @@ final class VoiceCoordinator: ObservableObject {
         // "Transcribing…" hang.
         if await !transcriptionManager.isEngineReady() {
             let progress = startModelPreparationHUD()
-            await transcriptionManager.prewarmAndWait()
+            // The poll is an unstructured task, so cancelling THIS task doesn't
+            // reach it: without the handler it would keep repainting "Preparing
+            // model…" over whatever the HUD shows next until the load ends.
+            await withTaskCancellationHandler {
+                await transcriptionManager.prewarmAndWait()
+            } onCancel: {
+                progress.cancel()
+            }
             progress.cancel()
             if Task.isCancelled { return }
             updateHUD(.transcribing)
@@ -717,12 +798,14 @@ final class VoiceCoordinator: ObservableObject {
                 return
             }
 
+            var completedState: HUDState = .done(processed)
             if copyToClipboardOnly {
                 // Clipboard-only: put the text on the clipboard and stop — the user
                 // pastes it themselves. No Cmd+V is synthesized, so this path needs
                 // NO Accessibility trust. Nothing landed in an app, so the undo
                 // record stays unset.
                 pasteManager.copyOnly(processed)
+                completedState = .copied(processed)
             } else {
                 // Bring the target app back to focus before synthesizing Cmd+V —
                 // but ONLY if it lost it. It nearly always is still frontmost (the
@@ -734,6 +817,8 @@ final class VoiceCoordinator: ObservableObject {
                    let targetApp = NSRunningApplication(processIdentifier: pid) {
                     targetApp.activate()
                     try? await Task.sleep(nanoseconds: UInt64(AppTimings.pasteActivationDelay * 1_000_000_000))
+                    // `try?` swallows a cancellation: re-check before pasting.
+                    if Task.isCancelled { return }
                 }
 
                 let outcome: PasteOutcome
@@ -752,13 +837,19 @@ final class VoiceCoordinator: ObservableObject {
                         lastPastedPID = pid
                     }
                 case .accessibilityDenied:
+                    // Never lose the dictation: the clipboard needs no
+                    // Accessibility, so leave the text there for a manual ⌘V.
+                    keepUnpastedTranscript(processed)
                     PermissionError.accessibilityDenied.surfaceAndOpenSettings()
-                    scheduleHUDReset()
+                    // The usual 3 s like every other error (this was a 1 s reset
+                    // that cut the permission message short).
+                    scheduleHUDReset(after: 3_000_000_000)
                     return
                 case .pasteboardLocked:
                     show(.clipboardBusy)
                     return
                 case .targetRejected:
+                    keepUnpastedTranscript(processed)
                     show(.pasteFailed)
                     return
                 }
@@ -767,21 +858,36 @@ final class VoiceCoordinator: ObservableObject {
             // The text is in the user's app: flip the pill FIRST, then do the
             // bookkeeping (three UserDefaults writes + history) behind it.
             let pastedMs = millisecondsSincePress
-            updateHUD(.done(processed))
+            updateHUD(completedState)
             scheduleHUDReset()
             Self.latencyLog.info("Timing stop->transcript=\(transcribedMs, privacy: .public)ms stop->pasted=\(pastedMs, privacy: .public)ms stop->done=\(self.millisecondsSincePress, privacy: .public)ms recSecs=\(self.lastRecordingDuration, format: .fixed(precision: 2), privacy: .public)")
 
             let wordCount = processed.split(separator: " ").count
-            lastTranscriptStore.transcript = processed
-            lastTranscript = processed
-            recentTranscripts = transcriptHistoryStore.add(processed)
+            rememberTranscript(processed)
             statsStore.record(words: wordCount, durationSeconds: lastRecordingDuration)
             totalWordsSpoken = statsStore.totalWords
             averageWPM = statsStore.averageWPM
             minutesSaved = statsStore.estimatedMinutesSaved
         } catch {
+            // A cancelled decode throws; the user moved on — no error pill.
+            if Task.isCancelled || error is CancellationError { return }
             show(dictationError(for: error))
         }
+    }
+
+    /// Record a finished transcript as the last transcript + history entry.
+    private func rememberTranscript(_ text: String) {
+        lastTranscriptStore.transcript = text
+        lastTranscript = text
+        recentTranscripts = transcriptHistoryStore.add(text)
+    }
+
+    /// A paste that failed must not lose the dictation: put it on the clipboard
+    /// (no Accessibility needed; this also cancels the paste's pending clipboard
+    /// restore) and keep it in the history / last transcript.
+    private func keepUnpastedTranscript(_ text: String) {
+        pasteManager.copyOnly(text)
+        rememberTranscript(text)
     }
 
     private func removeBlankTranscriptPlaceholder(from text: String) -> String {
@@ -963,6 +1069,10 @@ final class VoiceCoordinator: ObservableObject {
     static func shouldPromptAX(trusted: Bool, hasPrompted: Bool) -> Bool {
         return !trusted && !hasPrompted
     }
+
+    #if DEBUG
+    func setTranscriptionInFlightForTesting(_ flag: Bool) { isTranscriptionInFlight = flag }
+    #endif
 
     private static func makeTranscriptionEngine(for model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = [], translate: Bool = false) -> any TranscriptionEngine {
         #if canImport(WhisperKit)

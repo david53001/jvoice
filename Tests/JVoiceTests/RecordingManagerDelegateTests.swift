@@ -39,6 +39,32 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     #expect(manager.lastError != nil)
 }
 
+/// A live recording torn down mid-way must reach the coordinator, which
+/// otherwise leaves the pill on "recording" until the next press.
+@MainActor
+@Test func midRecordingFailureNotifiesTheOwner() async throws {
+    let manager = RecordingManager()
+    var reported: [RecordingManager.RecordingError] = []
+    manager.onRecordingFailed = { reported.append($0) }
+    manager._setRecordingStateForTesting(isRecording: true)
+    manager.audioRecorderEncodeErrorDidOccur(try makeDummyRecorder(), error: nil)
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    #expect(reported.count == 1)
+    #expect(manager.isRecording == false)
+}
+
+/// A late callback from a recorder that is no longer recording (already
+/// stopped) must not report a failure — nothing was interrupted.
+@MainActor
+@Test func failureCallbackWhileIdleNotifiesNobody() async throws {
+    let manager = RecordingManager()
+    var reported: [RecordingManager.RecordingError] = []
+    manager.onRecordingFailed = { reported.append($0) }
+    manager.audioRecorderDidFinishRecording(try makeDummyRecorder(), successfully: false)
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    #expect(reported.isEmpty)
+}
+
 @MainActor
 @Test func startRecordingClearsStaleLastErrorAtEntry() async throws {
     let manager = RecordingManager()

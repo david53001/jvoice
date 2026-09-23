@@ -121,6 +121,9 @@ public final class PasteManager: ObservableObject {
     /// clipboard-history managers (which is what the user wants here). Synthesizes
     /// no Cmd+V, so it needs no Accessibility trust.
     public func copyOnly(_ text: String) {
+        // This text now owns the clipboard: a restore still pending from an
+        // earlier paste (a failed paste falls back to here) must not replace it.
+        restoreTask?.cancel()
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
     }
@@ -152,6 +155,7 @@ public final class PasteManager: ObservableObject {
             saved = captureClipboard()
             stage(text)
         }
+        let stagedChangeCount = pasteboard.changeCount
 
         guard !stagedText.isEmpty else {
             return .targetRejected
@@ -162,7 +166,7 @@ public final class PasteManager: ObservableObject {
         // consume the staged text; on failure, immediately so the user's
         // prior clipboard isn't permanently overwritten.
         if let saved {
-            scheduleClipboardRestore(saved,
+            scheduleClipboardRestore(saved, stagedChangeCount: stagedChangeCount,
                                      delay: result ? AppTimings.pasteRestoreDelay : 0.05)
         }
         return result ? .ok : .targetRejected
@@ -173,39 +177,52 @@ public final class PasteManager: ObservableObject {
         guard accessibilityTrusted() else { return .accessibilityDenied }
         let saved = captureClipboard()
         stage(text)
+        let stagedChangeCount = pasteboard.changeCount
         guard !stagedText.isEmpty else { return .targetRejected }
         let result = performer.performPaste(targetPID: targetPID)
         // Always restore: on success, after the target app has had time to
         // consume the staged text; on failure, immediately so the user's
         // prior clipboard isn't permanently overwritten.
-        scheduleClipboardRestore(saved,
+        scheduleClipboardRestore(saved, stagedChangeCount: stagedChangeCount,
                                  delay: result ? AppTimings.pasteRestoreDelay : 0.05)
         return result ? .ok : .targetRejected
     }
 
-    private typealias ClipboardSnapshot = [(NSPasteboard.PasteboardType, Data)]
+    /// One entry per pasteboard item, each with every type that item carried.
+    /// Kept per item so a multi-item clipboard (e.g. several files copied in
+    /// Finder) is restored as the same items, not merged into a single one.
+    private typealias ClipboardSnapshot = [[(NSPasteboard.PasteboardType, Data)]]
 
     private func captureClipboard() -> ClipboardSnapshot {
         guard let items = pasteboard.pasteboardItems else { return [] }
-        return items.flatMap { item in
+        return items.map { item in
             item.types.compactMap { type in
                 item.data(forType: type).map { (type, $0) }
             }
-        }
+        }.filter { !$0.isEmpty }
     }
 
+    /// `stagedChangeCount` is the pasteboard's change count right after the
+    /// transcript was staged. If it moved by restore time, something else
+    /// (the user copying during the restore window) wrote the clipboard since —
+    /// that newer content wins and the old snapshot is NOT put back over it.
     private func scheduleClipboardRestore(_ snapshot: ClipboardSnapshot,
+                                          stagedChangeCount: Int,
                                           delay: TimeInterval) {
         restoreTask?.cancel()
         restoreTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
             guard !Task.isCancelled, let self, !snapshot.isEmpty else { return }
+            guard self.pasteboard.changeCount == stagedChangeCount else { return }
             self.pasteboard.clearContents()
-            let item = NSPasteboardItem()
-            for (type, data) in snapshot {
-                item.setData(data, forType: type)
+            let items = snapshot.map { entries -> NSPasteboardItem in
+                let item = NSPasteboardItem()
+                for (type, data) in entries {
+                    item.setData(data, forType: type)
+                }
+                return item
             }
-            self.pasteboard.writeObjects([item])
+            self.pasteboard.writeObjects(items)
         }
     }
 

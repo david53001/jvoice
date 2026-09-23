@@ -30,6 +30,18 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
 
     private var recorder: AVAudioRecorder?
 
+    /// Display name of the input device the latest recording captured from
+    /// (read after any Bluetooth redirect, so it is the device actually used).
+    /// Lets a digital-silence recording name the dead device.
+    public private(set) var captureDeviceName: String?
+
+    /// Called on the main actor when a recording that was capturing is torn
+    /// down by a mid-recording failure (encoder error, unsuccessful finish,
+    /// input change). The partial WAV is already deleted by then — the owner
+    /// must end its recording state and tell the user, instead of leaving the
+    /// pill on "recording" until the next press reports a failed start.
+    public var onRecordingFailed: ((RecordingError) -> Void)?
+
     /// Live mic level (0…1) for the recording HUD bars. Driven only while a
     /// recording is active.
     public let levelMeter = AudioLevelMeter()
@@ -181,8 +193,12 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
 
         let generation = startGeneration
         // Prefer the spare prepared while idle: only `record()` remains.
-        let spare = self.spare
+        let prepared = self.spare
         self.spare = nil
+        // A spare idle for days can have lost its (empty) file to macOS's temp
+        // cleaner; recording into the unlinked file would capture nothing
+        // readable. Drop it (never started, so nothing to stop) and open fresh.
+        let spare = prepared.flatMap { FileManager.default.fileExists(atPath: $0.url.path) ? $0 : nil }
         let url = spare?.url ?? Self.makeTemporaryRecordingURL()
         let opened = await Task.detached(priority: .userInitiated) {
             if let spare {
@@ -213,6 +229,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
             self.recordedURL = url
             self.startedAt = Date()
             self.isRecording = true
+            self.captureDeviceName = AudioInputRouter.defaultInputDeviceName()
             levelMeter.start(recorder: recorder)
             return true
         }
@@ -321,20 +338,34 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
 
     public nonisolated func audioRecorderEncodeErrorDidOccur(_ recorder: AVAudioRecorder, error: Error?) {
         let msg = error?.localizedDescription ?? "Unknown encoder error"
+        let failed = ObjectIdentifier(recorder)
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.lastError = .encodeFailure(message: msg)
+            guard self.isCurrentRecorder(failed) else { return }
             self.tearDownFailedRecording()
         }
     }
 
     public nonisolated func audioRecorderDidFinishRecording(_ recorder: AVAudioRecorder, successfully flag: Bool) {
         guard !flag else { return }   // success path is handled by stopRecording()
+        let failed = ObjectIdentifier(recorder)
         Task { @MainActor [weak self] in
             guard let self else { return }
             self.lastError = .finishedUnsuccessfully
+            guard self.isCurrentRecorder(failed) else { return }
             self.tearDownFailedRecording()
         }
+    }
+
+    /// A delegate callback may arrive (hopped to the main actor) after its
+    /// recorder was already stopped and a NEWER recording began; it must not
+    /// tear that one down. `recorder == nil` while recording is only the test
+    /// seam (`_setRecordingStateForTesting`), which drives these callbacks with
+    /// a dummy recorder.
+    private func isCurrentRecorder(_ id: ObjectIdentifier) -> Bool {
+        if let recorder { return ObjectIdentifier(recorder) == id }
+        return isRecording
     }
 
     @objc private func handleEngineConfigurationChange(_ note: Notification) {
@@ -351,6 +382,7 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
     /// clears `recordedURL` so the coordinator's next stop reports "no
     /// recording was captured" instead of transcribing a broken file.
     private func tearDownFailedRecording() {
+        let wasRecording = isRecording
         startGeneration += 1
         isRecording = false
         recorder?.stop()
@@ -360,6 +392,9 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         if let url = recordedURL {
             try? FileManager.default.removeItem(at: url)
             recordedURL = nil
+        }
+        if wasRecording, let lastError {
+            onRecordingFailed?(lastError)
         }
     }
 
@@ -398,6 +433,16 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         }
         let size = (attrs[.size] as? Int) ?? 0
         return size >= minBytes
+    }
+
+    /// Exact-zero sample statistics of a finished recording (for
+    /// `SilentCaptureDetector`), or `nil` when the WAV can't be read.
+    public static func captureSignalStats(at url: URL) -> CaptureSignalStats? {
+        guard let reader = WavTailReader.open(url: url),
+              let samples = reader.samples(from: 0) else {
+            return nil
+        }
+        return CaptureSignalStats(samples: samples, sampleRate: reader.info.sampleRate)
     }
 
     /// True when a finished recording contains no audio above the silence floor

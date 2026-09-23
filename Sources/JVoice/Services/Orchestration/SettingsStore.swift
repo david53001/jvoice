@@ -70,7 +70,7 @@ public final class SettingsStore: ObservableObject {
 
     private func performSave(_ state: SettingsState) {
         guard let data = try? encoder.encode(state) else {
-            SystemActions.errorHandler?("Failed to encode settings — changes may be lost on next launch.")
+            SystemActions.report("Failed to encode settings — changes may be lost on next launch.")
             return
         }
         defaults.set(data, forKey: key)
@@ -86,7 +86,7 @@ public final class SettingsStore: ObservableObject {
             // Preserve the corrupt blob under a backup key BEFORE we replace it
             // so the user can recover their custom words / panel layout manually.
             defaults.set(data, forKey: backupKey)
-            SystemActions.errorHandler?("Settings file was unreadable and reset to defaults. A backup was kept under \(backupKey). Error: \(error.localizedDescription)")
+            SystemActions.report("Settings file was unreadable and reset to defaults. A backup was kept under \(backupKey). Error: \(error.localizedDescription)")
             return nil
         }
     }

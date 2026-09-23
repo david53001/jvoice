@@ -178,6 +178,66 @@ func pasteDeniedWhenAccessibilityUntrusted() {
     #expect(pasteboard.string(forType: .string) == "T1")
 }
 
+/// Several items on the clipboard (e.g. three files copied in Finder) must come
+/// back as the same separate items, not merged into one item.
+@MainActor
+@Test func restoreKeepsEveryClipboardItemSeparate() async {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("jvoice-test-\(UUID().uuidString)"))
+    pasteboard.clearContents()
+    let first = NSPasteboardItem()
+    first.setString("one", forType: .string)
+    let second = NSPasteboardItem()
+    second.setString("two", forType: .string)
+    pasteboard.writeObjects([first, second])
+
+    let manager = PasteManager(performer: MockPasteActionPerformer(result: true), pasteboard: pasteboard,
+                               accessibilityTrusted: { true })
+    #expect(manager.paste("TRANSCRIPT", targetPID: 0) == .ok)
+
+    try? await Task.sleep(nanoseconds: 700_000_000)
+
+    let restored = pasteboard.pasteboardItems ?? []
+    #expect(restored.count == 2)
+    #expect(restored.compactMap { $0.string(forType: .string) } == ["one", "two"])
+}
+
+/// Something the user copies during the restore window is newer than the
+/// snapshot — the restore must not put the old clipboard back over it.
+@MainActor
+@Test func aCopyMadeDuringTheRestoreWindowIsNotOverwritten() async {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("jvoice-test-\(UUID().uuidString)"))
+    pasteboard.clearContents()
+    pasteboard.setString("OLD", forType: .string)
+
+    let manager = PasteManager(performer: MockPasteActionPerformer(result: true), pasteboard: pasteboard,
+                               accessibilityTrusted: { true })
+    #expect(manager.paste("TRANSCRIPT", targetPID: 0) == .ok)
+    pasteboard.clearContents()
+    pasteboard.setString("USER COPY", forType: .string)
+
+    try? await Task.sleep(nanoseconds: 700_000_000)
+
+    #expect(pasteboard.string(forType: .string) == "USER COPY")
+}
+
+/// A failed paste falls back to `copyOnly` so the transcript isn't lost; the
+/// failed paste's quick restore must not wipe it off the clipboard again.
+@MainActor
+@Test func copyOnlyAfterAFailedPasteKeepsTheTranscript() async {
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("jvoice-test-\(UUID().uuidString)"))
+    pasteboard.clearContents()
+    pasteboard.setString("OLD", forType: .string)
+
+    let manager = PasteManager(performer: MockPasteActionPerformer(result: false), pasteboard: pasteboard,
+                               accessibilityTrusted: { true })
+    #expect(manager.paste("TRANSCRIPT", targetPID: 0) == .targetRejected)
+    manager.copyOnly("TRANSCRIPT")
+
+    try? await Task.sleep(nanoseconds: 400_000_000)
+
+    #expect(pasteboard.string(forType: .string) == "TRANSCRIPT")
+}
+
 #elseif canImport(XCTest)
 import XCTest
 @testable import JVoice

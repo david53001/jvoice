@@ -16,7 +16,7 @@ struct HUDView: View {
             PreparingModelPill(theme: theme)
         case .transcribing:
             TranscribingPill(theme: theme)
-        case .done, .error:
+        case .done, .copied, .error:
             StatusPill(state: state, theme: theme)
         case .idle:
             EmptyView()
