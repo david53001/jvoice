@@ -109,12 +109,19 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
     private var startGeneration = 0
 
     /// A recorder created and `prepareToRecord()`'d AHEAD of the press. Measured
-    /// on this machine: create + prepare is 20–55 ms, and it engages NO device —
-    /// the microphone (and which one) is bound only at `record()`, verified via
-    /// `kAudioDevicePropertyDeviceIsRunningSomewhere` on both the Bluetooth and
-    /// built-in inputs. So a spare is safe to hold while idle: no orange mic
-    /// indicator, no Bluetooth profile switch, and the redirect at press time
-    /// still decides the device. Leaves only `record()` (~60 ms) on the press.
+    /// on this machine: create + prepare is 20–55 ms, and it engages NO device
+    /// while idle (verified via `kAudioDevicePropertyDeviceIsRunningSomewhere`):
+    /// no orange mic indicator, no Bluetooth profile switch. Leaves only
+    /// `record()` (~60 ms) on the press. It is NOT used after a Bluetooth
+    /// redirect: a spare prepared while the headset was the default input only
+    /// follows the switch once the default-input change reaches its audio queue,
+    /// and a `record()` 0.2 ms after the switch sometimes wins that race and opens
+    /// the headset's mic (2 of 34 presses, 2026-09-23: HFP/SCO, music jumps).
+    /// A recorder created after the switch spends its 20–55 ms create + prepare
+    /// before `record()` — the 1.1.0 ordering, which never showed the problem
+    /// (bad presses had ~16 ms between switch and `record()`, good ones ≥ 42 ms).
+    /// It is still timing-based; the robust fix is capturing from the built-in
+    /// mic directly (AVAudioEngine/AUHAL) without touching the default input.
     private var spare: (recorder: AVAudioRecorder, url: URL)?
     private var isPreparingSpare = false
 
@@ -165,8 +172,12 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
 
         // Redirect capture off a Bluetooth default input first so the recorder,
         // which follows the system default input, never opens the headset's mic
-        // and forces it out of A2DP. No-op for non-Bluetooth inputs.
-        redirectInputAwayFromBluetooth()
+        // and forces it out of A2DP. No-op for non-Bluetooth inputs. After a
+        // redirect the spare (prepared on the headset) is dropped for a fresh
+        // recorder created after the switch — see `spare`.
+        if redirectInputAwayFromBluetooth() {
+            discardSpareRecorder()
+        }
 
         let generation = startGeneration
         // Prefer the spare prepared while idle: only `record()` remains.
@@ -228,11 +239,12 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
     /// Temporarily move the system default input to a non-Bluetooth mic when the
     /// current default is a Bluetooth device, remembering the original so it can
     /// be restored. See `AudioInputRouter` for why this preserves music quality.
-    private func redirectInputAwayFromBluetooth() {
-        guard let redirect = AudioInputRouter.bluetoothSafeRedirect() else { return }
-        if AudioInputRouter.setDefaultInputDevice(redirect.target) {
-            inputDeviceToRestore = redirect.original
-        }
+    /// Returns true when the default input was actually switched.
+    private func redirectInputAwayFromBluetooth() -> Bool {
+        guard let redirect = AudioInputRouter.bluetoothSafeRedirect() else { return false }
+        guard AudioInputRouter.setDefaultInputDevice(redirect.target) else { return false }
+        inputDeviceToRestore = redirect.original
+        return true
     }
 
     /// Restore the default input device redirected by `redirectInputAwayFromBluetooth()`.
@@ -255,11 +267,14 @@ public final class RecordingManager: NSObject, ObservableObject, AVAudioRecorder
         levelMeter.stop()
         isRecording = false
         startedAt = nil
+        // A press that redirected off Bluetooth never uses a spare (see `spare`),
+        // so don't prepare one for the next press — it would only be discarded.
+        let redirected = inputDeviceToRestore != nil
         restoreDefaultInput()
 
         let url = recordedURL
         recordedURL = nil
-        prepareSpareRecorder()
+        if !redirected { prepareSpareRecorder() }
         return url
     }
 
