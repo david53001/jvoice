@@ -162,9 +162,13 @@ expectEqual(TextProcessor.stripDecoderArtifacts("see [note] here"), "see [note] 
 
 print("TextProcessor.applyCorrections — TRX-01 (no double/triple substitution)")
 expectEqual(
-    TextProcessor.applyCorrections("use dot net daily", extraDictionary: TextProcessor.buildUserDictionary(from: [".NET"])),
-    "use dot .NET daily",
-    "TRX-01: .NET corrected once, no ..NET/...NET")
+    TextProcessor.applyCorrections("We use .NET daily.", extraDictionary: TextProcessor.buildUserDictionary(from: [".NET"])),
+    "We use .NET daily.",
+    "TRX-01: .NET kept once, no ..NET/...NET")
+expectEqual(
+    TextProcessor.applyCorrections("use dot net daily", extraDictionary: DeveloperTerms.augment(TextProcessor.buildUserDictionary(from: [".NET"]))),
+    "use .NET daily",
+    "TRX-01: dot net → .NET inserted once")
 expectEqual(
     TextProcessor.applyCorrections("use whisperkit now"),
     "use WhisperKit now",
@@ -183,6 +187,70 @@ do {
     expect(e2e.contains(".NET") && !e2e.contains("..NET"),
         "TRX-01 end-to-end: process renders exactly one leading dot, got: \(e2e)")
 }
+
+// ---- BEGIN text-processing fixes 2026-09-23 (TextProcessor / PhoneticMatcher / DeveloperTerms) ----
+print("Text-processing fixes 2026-09-23 — the default pipeline (Formal, filler removal on, dev terms on, math on)")
+do {
+    let words = ["sub agents", "AISB", "Li-Fraumeni", "Vercel", "Ollama"]
+    func pipeline(_ t: String, mode: AppMode = .formal, words: [String] = words) -> String {
+        let extra = DeveloperTerms.augment(TextProcessor.buildUserDictionary(from: words))
+        let styled = TextProcessor.removeWhisperHallucinations(
+            TextProcessor.process(t, mode: mode, extraDictionary: extra, removeFillerWords: true, vocabulary: words))
+        return MathSpeech.convert(styled)
+    }
+    // 1. The plain lower-cased custom word is a correction key again.
+    expectEqual(TextProcessor.buildUserDictionary(from: ["VS Code"])["vs code"] ?? "", "VS Code", "user dict keeps 'vs code'")
+    expectEqual(TextProcessor.process("I use claude every day", mode: .casual, extraDictionary: TextProcessor.buildUserDictionary(from: ["Claude"])), "I use Claude every day", "user dict fixes casing drift")
+    // 3. A multi-token window never swallows the word in front.
+    for s in ["I deployed 2 Vercel apps today.", "Spawn six sub agents now.", "The price is $20 Vercel credit.",
+              "The power of Ollama is privacy.", "Is it Claude or Ollama?", "So sub agents do the heavy lifting."] {
+        expectEqual(pipeline(s), s, "neighbour kept: \(s)")
+    }
+    expectEqual(pipeline("run it on olama"), "Run it on Ollama.", "misspelling corrected, 'on' kept")
+    expectEqual(PhoneticMatcher.correct("Hey Jay, voice memos", vocabulary: ["JVoice"]), "Hey Jay, voice memos", "no join across a comma")
+    // 4. Two edits + a different sound key is a different word; singular ≠ plural; short-word runs ≠ acronym.
+    for s in ["Read the next verse aloud.", "We had a verbal agreement.", "She is well versed in Greek.",
+              "The vessel left the harbor.", "Obama gave a speech today.", "Such agents are rare in practice.",
+              "Spawn a sub agent for this task.", "If a is b and b is c then a is c."] {
+        expectEqual(pipeline(s), s, "not a custom word: \(s)")
+    }
+    expectEqual(PhoneticMatcher.correct("open jay voice settings", vocabulary: ["JVoice"]), "open JVoice settings", "jay voice still → JVoice")
+    expectEqual(PhoneticMatcher.correct("built with whisper cat", vocabulary: ["WhisperKit"]), "built with WhisperKit", "whisper cat still → WhisperKit")
+    expectEqual(PhoneticMatcher.correct("deploy to versel", vocabulary: ["Vercel"]), "deploy to Vercel", "one-edit mishearing still corrected")
+    // 5. Possessives survive.
+    for s in ["I like Vercel's new dashboard.", "Ollama's API is local.", "Vercel’s pricing changed."] {
+        expectEqual(pipeline(s), s, "possessive kept: \(s)")
+    }
+    expectEqual(PhoneticMatcher.correct("versel's dashboard", vocabulary: ["Vercel"]), "Vercel's dashboard", "possessive kept through a correction")
+    // 6. Everyday English is not a pack/built-in key.
+    for s in ["Can you check my SQL query before lunch?", "There is no SQL in this module.", "We want a fast API for the mobile team.",
+              "I had a restful weekend at the lake.", "I spoke with Uri about the budget.", "My favorite keyboard shortcuts are simple."] {
+        expectEqual(pipeline(s), s, "everyday English kept: \(s)")
+    }
+    for k in ["my sql", "no sql", "fast api", "restful", "uri"] { expect(DeveloperTerms.map[k] == nil, "dev pack excludes '\(k)'") }
+    expect(TextProcessor.correctionDictionary["keyboard shortcuts"] == nil, "built-in excludes 'keyboard shortcuts'")
+    // 7. Filler removal keeps real words.
+    for s in ["She rushed to the ER last night.", "To err is human.", "Uh-oh, the build broke again.",
+              "Uh-huh, that works for me.", "Mm-hmm, sounds good.", "He works at UM now."] {
+        expectEqual(pipeline(s), s, "real word kept: \(s)")
+    }
+    expectEqual(pipeline("Um, I think so, uh, yes."), "I think so, yes.", "real fillers still removed")
+    expectEqual(pipeline("Errr, maybe later."), "Maybe later.", "drawn-out 'errr' still a filler")
+    // 8. Dot-prefixed custom words never gain dots.
+    expectEqual(pipeline("We use .NET daily.", words: [".NET"]), "We use .NET daily.", ".NET kept")
+    expectEqual(pipeline("We use .NET daily.", mode: .veryCasual, words: [".NET"]), "we use .NET daily.", ".NET kept in Very Casual")
+    expectEqual(pipeline("Copy the .env file first.", words: [".env"]), "Copy the .env file first.", ".env kept")
+    expectEqual(PhoneticMatcher.correct("use .nett daily", vocabulary: [".NET"]), "use .NET daily", "fuzzy .nett → .NET, not ..NET")
+    // 9. Very Casual keeps thousands separators.
+    expectEqual(TextProcessor.process("We raised $1,000,000 last year.", mode: .veryCasual), "we raised $1,000,000 last year.", "$1,000,000 intact")
+    expectEqual(TextProcessor.process("1,,2 and 3 , 4", mode: .veryCasual), "1, 2 and 3, 4.", "clause commas next to digits still tidied")
+    // 10. Formal does not add a period after a closed sentence.
+    for s in ["He said \"hello.\"", "Here are the steps:", "Wait for it…", "It was fine (mostly.)"] {
+        expectEqual(TextProcessor.process(s, mode: .formal), s, "already terminated: \(s)")
+    }
+    expectEqual(TextProcessor.process("She said “yes”", mode: .formal), "She said “yes”.", "unterminated quote still gets a period")
+}
+// ---- END text-processing fixes 2026-09-23 ----
 
 print("TextProcessor.stripDecoderArtifacts — TRX-06 (preserve legitimate bracketed tokens)")
 expectEqual(TextProcessor.stripDecoderArtifacts("see figure [A] here"), "see figure [A] here", "TRX-06: [A] preserved")

@@ -34,6 +34,16 @@ public enum PhoneticMatcher {
             // "jvoiceis") can swallow neighboring words.
             windowSearch: for window in 1...upperWindow {
                 let slice = Array(tokens[i..<(i + window)])
+                if window > 1 {
+                    // A word never continues across clause punctuation or a
+                    // possessive ("Hey Jay, voice memos", "Jay's voice"); every
+                    // larger window contains the same break.
+                    if slice.dropLast().contains(where: \.endsClause) { break windowSearch }
+                    // A run of 1–2-letter tokens is ordinary words ("a is b"),
+                    // not a mis-split word; spelled-out letters ("A I S B") are
+                    // the exact correction pass's job.
+                    if slice.allSatisfy({ $0.coreLetters.count <= 2 }) { continue }
+                }
                 let candidate = slice.map(\.coreLetters).joined()
                 guard candidate.count >= 3 else { continue }
                 for entry in entries where window <= entry.maxWindow {
@@ -51,10 +61,28 @@ public enum PhoneticMatcher {
                         // "..NET" (TRX-01). Nothing to do — stop probing here.
                         break windowSearch
                     }
+                    if window > 1 {
+                        // The first token is not part of the word when the
+                        // rest already matches on its own ("2 Vercel", "six sub
+                        // agents", "of Ollama"): leave it, and let the next
+                        // position take the word.
+                        let tail = slice.dropFirst().map(\.coreLetters).joined()
+                        if tail.count >= 3 && matches(candidate: tail, entry: entry) { break windowSearch }
+                    }
+                    // The entry's own edge punctuation replaces, never doubles,
+                    // the token's (".nett" → ".NET", not "..NET").
+                    var leading = slice.first?.leading ?? ""
+                    if !entry.leadingMarks.isEmpty && leading.hasSuffix(entry.leadingMarks) {
+                        leading.removeLast(entry.leadingMarks.count)
+                    }
+                    var trailing = slice.last?.trailing ?? ""
+                    if !entry.trailingMarks.isEmpty && trailing.hasPrefix(entry.trailingMarks) {
+                        trailing.removeFirst(entry.trailingMarks.count)
+                    }
                     let replacement = Token(
-                        leading: slice.first?.leading ?? "",
+                        leading: leading,
                         core: entry.word,
-                        trailing: slice.last?.trailing ?? ""
+                        trailing: trailing
                     )
                     tokens.replaceSubrange(i..<(i + window), with: [replacement])
                     i += 1
@@ -73,6 +101,10 @@ public enum PhoneticMatcher {
     private static func matches(candidate: String, entry: Entry) -> Bool {
         if candidate == entry.letters { return true }   // spacing/casing drift only
 
+        // Singular vs plural is what was said, not a mishearing: "sub agent"
+        // must not become "sub agents" (nor "Vercels" → "Vercel").
+        if candidate + "s" == entry.letters || candidate == entry.letters + "s" { return false }
+
         // Length sanity: wildly different lengths can't be the same word.
         guard abs(candidate.count - entry.letters.count) <= 2 + entry.letters.count / 3 else {
             return false
@@ -89,8 +121,12 @@ public enum PhoneticMatcher {
             return true
         }
         if entry.letters.count >= 6 {
+            // A different sound key AND two edits is a different word
+            // ("verse"/"vessel"/"verbal" ≠ Vercel, "Obama" ≠ Ollama, "such
+            // agents" ≠ sub agents). Bigger mishearings are the decoder
+            // prompt's job (VocabularyPrompt), not this post-pass.
             let keyDistance = levenshtein(candidateKey, entry.key, limit: 1)
-            if keyDistance <= 1 && letterDistance <= 2 { return true }
+            if keyDistance <= 1 && letterDistance <= 1 { return true }
         }
         return false
     }
@@ -187,11 +223,18 @@ public enum PhoneticMatcher {
         let letters: String
         let key: String
         let maxWindow: Int
+        /// The word's own edge punctuation (".NET" → "."), so a replacement
+        /// never doubles what the transcript token already carries.
+        let leadingMarks: String
+        let trailingMarks: String
 
         init(_ word: String) {
             self.word = word
             self.letters = word.lowercased().filter(\.isLetter)
             self.key = PhoneticMatcher.phoneticKey(for: letters)
+            let edges = Token(word)
+            self.leadingMarks = edges.leading
+            self.trailingMarks = edges.trailing
             // Spoken-word estimate: whitespace splits + camelCase boundaries.
             var spokenWords = 0
             for part in word.split(separator: " ") {
@@ -222,6 +265,13 @@ public enum PhoneticMatcher {
             var end = chars.count
             while start < end && !chars[start].isLetter && !chars[start].isNumber { start += 1 }
             while end > start && !chars[end - 1].isLetter && !chars[end - 1].isNumber { end -= 1 }
+            // A possessive "'s" is trailing punctuation: it survives a
+            // replacement ("Vercel's") and is never letters of the word.
+            if end - start > 2,
+               chars[end - 1] == "s" || chars[end - 1] == "S",
+               chars[end - 2] == "'" || chars[end - 2] == "’" {
+                end -= 2
+            }
             leading = String(chars[0..<start])
             core = String(chars[start..<end])
             trailing = String(chars[end...])
@@ -229,5 +279,13 @@ public enum PhoneticMatcher {
 
         var coreLetters: String { core.lowercased().filter(\.isLetter) }
         var rendered: String { leading + core + trailing }
+
+        /// Punctuation after this token that ends a clause or marks a
+        /// possessive/contraction. A lone letter's "." is an initial
+        /// ("J. Voice"), not an ending.
+        var endsClause: Bool {
+            if trailing.contains(where: { ",;:!?\"'’”)".contains($0) }) { return true }
+            return trailing.contains(".") && coreLetters.count > 1
+        }
     }
 }

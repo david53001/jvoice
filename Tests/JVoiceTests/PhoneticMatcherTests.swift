@@ -110,4 +110,52 @@ import Testing
             == "use dot .NET daily"
     )
 }
+
+// MARK: - 2026-09-23: never swallow a neighbour, tighter fuzz, possessives
+
+@Test func multiTokenWindowNeverSwallowsTheWordBefore() {
+    // The word matched on its own, so the token in front is not part of it.
+    #expect(PhoneticMatcher.correct("I deployed 2 Vercel apps today.", vocabulary: ["Vercel"])
+        == "I deployed 2 Vercel apps today.")
+    #expect(PhoneticMatcher.correct("Spawn six sub agents", vocabulary: ["sub agents"]) == "Spawn six sub agents")
+    #expect(PhoneticMatcher.correct("$20 Vercel", vocabulary: ["Vercel"]) == "$20 Vercel")
+    #expect(PhoneticMatcher.correct("The power of Ollama", vocabulary: ["Ollama"]) == "The power of Ollama")
+    #expect(PhoneticMatcher.correct("We scheduled a AISB meeting", vocabulary: ["AISB"]) == "We scheduled a AISB meeting")
+    // A misspelling after a short word is still corrected — without eating the word.
+    #expect(PhoneticMatcher.correct("run it on olama", vocabulary: ["Ollama"]) == "run it on Ollama")
+}
+
+@Test func windowNeverJoinsAcrossClausePunctuation() {
+    #expect(PhoneticMatcher.correct("Hey Jay, voice memos are great", vocabulary: ["JVoice"])
+        == "Hey Jay, voice memos are great")
+    #expect(PhoneticMatcher.correct("Jay's voice was hoarse", vocabulary: ["JVoice"]) == "Jay's voice was hoarse")
+    // An initial's period is not a clause break.
+    #expect(PhoneticMatcher.correct("I use J. Voice daily", vocabulary: ["JVoice"]) == "I use JVoice daily")
+}
+
+@Test func twoEditsWithADifferentSoundIsADifferentWord() {
+    for word in ["verse", "verbal", "versed", "vessel"] {
+        #expect(PhoneticMatcher.correct("the \(word) here", vocabulary: ["Vercel"]) == "the \(word) here")
+    }
+    #expect(PhoneticMatcher.correct("Obama gave a speech", vocabulary: ["Ollama"]) == "Obama gave a speech")
+    #expect(PhoneticMatcher.correct("Such agents are rare", vocabulary: ["sub agents"]) == "Such agents are rare")
+    // One-edit mishearings still correct.
+    #expect(PhoneticMatcher.correct("deploy to versel", vocabulary: ["Vercel"]) == "deploy to Vercel")
+}
+
+@Test func singularAndShortWordRunsAreNotCustomWords() {
+    #expect(PhoneticMatcher.correct("spawn a sub agent", vocabulary: ["sub agents"]) == "spawn a sub agent")
+    #expect(PhoneticMatcher.correct("if a is b then swap", vocabulary: ["AISB"]) == "if a is b then swap")
+}
+
+@Test func possessiveSurvivesCorrection() {
+    #expect(PhoneticMatcher.correct("I like Vercel's dashboard", vocabulary: ["Vercel"]) == "I like Vercel's dashboard")
+    #expect(PhoneticMatcher.correct("Ollama's API is local", vocabulary: ["Ollama"]) == "Ollama's API is local")
+    #expect(PhoneticMatcher.correct("Vercel’s pricing", vocabulary: ["Vercel"]) == "Vercel’s pricing")
+    #expect(PhoneticMatcher.correct("versel's dashboard", vocabulary: ["Vercel"]) == "Vercel's dashboard")
+}
+
+@Test func replacementDoesNotDoubleTheWordsOwnPunctuation() {
+    #expect(PhoneticMatcher.correct("use .nett daily", vocabulary: [".NET"]) == "use .NET daily")
+}
 #endif

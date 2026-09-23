@@ -20,7 +20,10 @@ import Foundation
 /// and clearly dev-specific homophones. Ambiguous single English words are
 /// intentionally EXCLUDED (casing "go"/"rust"/"swift"/"react"/"java"/"pandas", or
 /// "sequel"→"SQL", or bare "dotnet"→".NET" which would wreck the lowercase `dotnet`
-/// CLI) so the pack never corrupts ordinary dictation. One homophone has a known
+/// CLI) so the pack never corrupts ordinary dictation. The same goes for spaced
+/// forms that are ordinary phrases ("my sql query", "no sql here", "a fast api"),
+/// the word "restful", and the name "uri" — only their joined spellings
+/// ("mysql", "nosql", "fastapi") are keys. One homophone has a known
 /// name collision — "jason"→"JSON" — kept because in coding dictation it's
 /// overwhelmingly JSON.
 ///
@@ -66,7 +69,6 @@ public enum DeveloperTerms {
         "web assembly": "WebAssembly",
         "local host": "localhost",
         "rest api": "REST API",
-        "restful": "RESTful",
 
         // ---- Python ecosystem ----
         "num py": "NumPy",
@@ -77,7 +79,6 @@ public enum DeveloperTerms {
         "pytorch": "PyTorch",
         "tensor flow": "TensorFlow",
         "tensorflow": "TensorFlow",
-        "fast api": "FastAPI",
         "fastapi": "FastAPI",
         "py pi": "PyPI",
         "pypi": "PyPI",
@@ -100,9 +101,7 @@ public enum DeveloperTerms {
         "postgres": "Postgres",
         "postgre sql": "PostgreSQL",
         "postgresql": "PostgreSQL",
-        "my sql": "MySQL",
         "mysql": "MySQL",
-        "no sql": "NoSQL",
         "nosql": "NoSQL",
         "sqlite": "SQLite",
         "mongo db": "MongoDB",
@@ -137,7 +136,6 @@ public enum DeveloperTerms {
         "apis": "APIs",
         "url": "URL",
         "urls": "URLs",
-        "uri": "URI",
         "sdk": "SDK",
         "cli": "CLI",
         "gui": "GUI",

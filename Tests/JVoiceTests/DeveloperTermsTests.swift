@@ -32,6 +32,22 @@ import Testing
     }
 }
 
+@Test func developerTermsExcludesEverydayPhrases() {
+    // Spaced forms that are ordinary English, a common adjective, and a name.
+    for key in ["my sql", "no sql", "fast api", "restful", "uri"] {
+        #expect(DeveloperTerms.map[key] == nil, "\(key) must not be a key")
+    }
+    // The joined spellings stay.
+    #expect(DeveloperTerms.map["mysql"] == "MySQL")
+    #expect(DeveloperTerms.map["nosql"] == "NoSQL")
+    #expect(DeveloperTerms.map["fastapi"] == "FastAPI")
+    let extra = DeveloperTerms.augment([:])
+    for sentence in ["can you check my SQL query", "there is no SQL here", "we want a fast API",
+                     "a restful weekend", "Uri sent the slides"] {
+        #expect(TextProcessor.process(sentence, mode: .casual, extraDictionary: extra) == sentence)
+    }
+}
+
 @Test func developerTermsAugmentLaysPackUnderBase() {
     // Pack-only keys survive; a key present in base keeps the base value.
     #expect(DeveloperTerms.augment([:])["vs code"] == "VS Code")
