@@ -65,6 +65,7 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     }
 }
 
+@MainActor
 @Test func fileSizeBelowMinimumIsRejected() throws {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("tiny-\(UUID().uuidString).wav")
@@ -74,6 +75,7 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     #expect(result == false)
 }
 
+@MainActor
 @Test func fileSizeAboveMinimumIsAccepted() throws {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("ok-\(UUID().uuidString).wav")
@@ -83,6 +85,7 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     #expect(result == true)
 }
 
+@MainActor
 @Test func missingFileIsRejected() {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("nonexistent-\(UUID().uuidString).wav")

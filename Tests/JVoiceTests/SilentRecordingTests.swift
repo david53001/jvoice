@@ -28,18 +28,21 @@ private func tone(seconds: Double, amplitude: Double) -> [Int16] {
     return (0..<n).map { Int16(amplitude * 32_000 * sin(Double($0) * 2 * .pi * 220 / 16_000)) }
 }
 
+@MainActor
 @Test func silentRecordingDetected() throws {
     let url = try writeWav(tone(seconds: 1, amplitude: 0.0))
     defer { try? FileManager.default.removeItem(at: url) }
     #expect(RecordingManager.isSilentRecording(at: url))
 }
 
+@MainActor
 @Test func speechRecordingNotSilent() throws {
     let url = try writeWav(tone(seconds: 1, amplitude: 0.5))
     defer { try? FileManager.default.removeItem(at: url) }
     #expect(!RecordingManager.isSilentRecording(at: url))
 }
 
+@MainActor
 @Test func unreadableRecordingFailsOpen() {
     let bogus = URL(fileURLWithPath: "/nonexistent/jvoice-missing.wav")
     #expect(!RecordingManager.isSilentRecording(at: bogus))
