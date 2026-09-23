@@ -40,6 +40,24 @@ public enum RepetitionGuard {
     /// odd word — "la", "la-fa" — between clean repeats). A run of more than
     /// this many consecutive non-loop words means coherent speech resumed.
     static let nonLoopyTolerance = 1
+    /// Spoken mathematics repeats its operands and operators legitimately —
+    /// "26 x 26 x 26 x 10 x 10 x 10", "minus 3 minus 3 minus 3 minus 3" — the
+    /// way prose repeats stopwords, so a maths token (`isMathToken`) only counts
+    /// as a loop token on repetition alone when it fills a large share of the
+    /// END of the transcript: `mathMinRepeatCount` times within the last
+    /// `mathRepeatWindow` tokens. A decoder stuck on a phrase repeats it until
+    /// the window's token budget runs out, far past that; and counting only the
+    /// recent tokens stops minutes of maths dictation from accumulating "3" /
+    /// "times" / "choose" counts that would make any maths ending look loopy.
+    static let mathRepeatWindow = 24
+    static let mathMinRepeatCount = 8
+    /// The net under that exemption: a transcript that ENDS in one exact phrase
+    /// (≤ `maxLoopPhraseTokens`) repeated ≥ `minPhraseRepeats` times is a loop
+    /// whatever its tokens — the maths count cannot see a cycle of ≥ 4 tokens
+    /// ("page 1 of 10, page 1 of 10, …"). 6 leaves dictated powers like
+    /// "26 times 26 times 26 times 26 times 26 times 26" (5 phrase repeats) alone.
+    static let minPhraseRepeats = 6
+    static let maxLoopPhraseTokens = 12
 
     /// The outcome of `scrub`: the cleaned text plus whether a regurgitation
     /// loop was actually removed (the signal the engine uses to decide a clean
@@ -64,20 +82,26 @@ public enum RepetitionGuard {
         let cores = tokens.map(core)
         var counts: [String: Int] = [:]
         for c in cores where !c.isEmpty { counts[c, default: 0] += 1 }
+        var recentCounts: [String: Int] = [:]
+        for c in cores.suffix(mathRepeatWindow) where !c.isEmpty { recentCounts[c, default: 0] += 1 }
 
         let vocabCores = vocabularyCores(vocabulary)
         let vocabKeys = Set(vocabCores.map { PhoneticMatcher.phoneticKey(for: $0) }.filter { !$0.isEmpty })
+        let phraseLoopCores = trailingPhraseLoop(cores.filter { !$0.isEmpty })
 
         func loopy(_ i: Int) -> Bool {
             let c = cores[i]
             guard !c.isEmpty else { return false }
-            if vocabCores.contains(c) { return true }
+            if vocabCores.contains(c) || phraseLoopCores.contains(c) { return true }
             let key = PhoneticMatcher.phoneticKey(for: c)
             if !key.isEmpty, vocabKeys.contains(key) { return true }
             // A word the user actually repeats ≥3× is a loop too (catches
             // generic, non-vocabulary Whisper loops) — but stopwords repeat
-            // naturally in prose, so they never qualify on count alone.
-            return (counts[c] ?? 0) >= minRepeatCount && !stopwords.contains(c)
+            // naturally in prose, so they never qualify on count alone, and
+            // maths tokens need a sustained run (see `mathMinRepeatCount`).
+            guard !stopwords.contains(c) else { return false }
+            if isMathToken(c) { return (recentCounts[c] ?? 0) >= mathMinRepeatCount }
+            return (counts[c] ?? 0) >= minRepeatCount
         }
 
         // 1. Quick gate: does the END look loopy at all (dense in loop tokens)?
@@ -151,8 +175,13 @@ public enum RepetitionGuard {
             if whole.count >= 2 { result.insert(whole) }
             for part in word.split(whereSeparator: { $0 == " " || $0 == "-" || $0 == "_" || $0 == "/" }) {
                 var current = ""
-                for (idx, ch) in part.enumerated() {
-                    if idx > 0, ch.isUppercase, !current.isEmpty {
+                let chars = Array(part)
+                for (idx, ch) in chars.enumerated() {
+                    // Split at a word boundary only: camelCase ("WhisperKit") or an
+                    // acronym running into a word ("JVoice") — never inside an
+                    // acronym, which would shred "VS" into single letters.
+                    if idx > 0, ch.isUppercase, !current.isEmpty,
+                       chars[idx - 1].isLowercase || (idx + 1 < chars.count && chars[idx + 1].isLowercase) {
                         let c = core(current); if c.count >= 2 { result.insert(c) }
                         current = ""
                     }
@@ -163,6 +192,35 @@ public enum RepetitionGuard {
         }
         return result
     }
+
+    /// The cores of the phrase the transcript ends by repeating, when it repeats
+    /// ≥ `minPhraseRepeats` times (a trailing partial cycle counts — a loop cut
+    /// off by the token budget stops mid-phrase); empty otherwise.
+    static func trailingPhraseLoop(_ cores: [String]) -> Set<String> {
+        let n = cores.count
+        for period in 1...maxLoopPhraseTokens where period * minPhraseRepeats <= n {
+            var i = n - 1
+            while i - period >= 0, cores[i] == cores[i - period] { i -= 1 }
+            // cores[(i + 1 - period)...] is periodic with this period.
+            if n - (i + 1 - period) >= period * minPhraseRepeats { return Set(cores[(n - period)...]) }
+        }
+        return []
+    }
+
+    /// A number ("26", "14950" — `core` drops the separators), a single letter
+    /// (a variable, or the "x" Whisper writes for "times"), a number word, or a
+    /// spoken operator.
+    static func isMathToken(_ core: String) -> Bool {
+        core.count == 1 || core.allSatisfy(\.isNumber) || mathWords.contains(core)
+    }
+
+    static let mathWords: Set<String> = [
+        "plus", "minus", "times", "over", "equals", "equal", "divided", "multiplied", "squared", "cubed",
+        "factorial", "choose", "power", "root", "point", "negative", "mod", "sub",
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+        "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "million",
+    ]
 
     static let trailingSeparators = CharacterSet(charactersIn: " ,;:")
 

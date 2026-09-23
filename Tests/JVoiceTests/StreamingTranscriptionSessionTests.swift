@@ -363,4 +363,232 @@ private actor IndexedEmptyMock {
         return call == emptyAtCall ? "" : "piece\(call)"
     }
 }
+
+// MARK: - Local recovery (2026-09-23): a failed chunk re-decodes a region, not the whole recording
+
+@Test func failedChunkRecoversLocallyFromTheLastGoodPiece() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWav(seconds: 5.2, amplitude: 0.5).write(to: url)
+    // Chunk 5 decodes empty. Before: the whole recording was re-decoded (a 100 s
+    // dictation: 7 s after stop). Now pieces 1–3 are kept and only the audio from
+    // the start of piece 4 onward is decoded again — replacing piece 4 — so every
+    // sample is still covered by a successful decode.
+    let mock = IndexedEmptyMock(emptyAtCall: 5)
+    let recovered = SampleSum()
+    let events = EventLogBox()
+    let session = StreamingTranscriptionSession(
+        transcribe: { _ in await mock.next() },
+        recover: { samples in await recovered.next(samples.count) },
+        config: fastConfig(),
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0,
+        log: { events.add($0) }
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 350_000_000)
+    #expect(await session.finish() == "piece1 piece2 piece3 p")
+    let regionSamples = await recovered.lastCount
+    #expect(regionSamples >= 16_000 && Double(regionSamples) <= StreamingTranscriptionSession.maxRecoveryFraction * 5.2 * 16_000)
+    #expect(events.contains("local recovery"))
+}
+
+@Test func emptyLocalRecoveryFallsBackToWholeFile() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWav(seconds: 5.2, amplitude: 0.5).write(to: url)
+    let mock = IndexedEmptyMock(emptyAtCall: 5)
+    let session = StreamingTranscriptionSession(
+        transcribe: { _ in await mock.next() },
+        recover: { _ in "" },
+        config: fastConfig(),
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 350_000_000)
+    #expect(await session.finish() == nil)
+}
+
+@Test func firstChunkFailureSkipsLocalRecovery() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWav(seconds: 2.6, amplitude: 0.5).write(to: url)
+    // Nothing decoded before the failure: the region would be the whole
+    // recording, so the caller's whole-file path runs directly.
+    let mock = IndexedEmptyMock(emptyAtCall: 1)
+    let recovered = SampleSum()
+    let session = StreamingTranscriptionSession(
+        transcribe: { _ in await mock.next() },
+        recover: { samples in await recovered.next(samples.count) },
+        config: fastConfig(),
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 350_000_000)
+    #expect(await session.finish() == nil)
+    #expect(await recovered.total == 0)
+}
+
+@Test func emptySpeculativeTailIsNotDecodedTwice() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    // Three 1.1 s speech + 0.5 s pause blocks arrive (one cut each), then 0.4 s
+    // speech + 0.6 s pause (the speculation) — the pending tail never reaches a cut.
+    try makeWavSegments([(1.1, 0.5), (0.5, 0.0)]).write(to: url)
+    var cfg = ChunkPlanner.Config()
+    cfg.minChunkSeconds = 1.0
+    cfg.maxChunkSeconds = 3.0
+    let mock = IndexedEmptyMock(emptyAtCall: 4) // pieces 1–3, then the speculative tail decodes ""
+    let recovered = SampleSum()
+    let events = EventLogBox()
+    let session = StreamingTranscriptionSession(
+        transcribe: { _ in await mock.next() },
+        recover: { samples in await recovered.next(samples.count) },
+        config: cfg,
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0.4,
+        log: { events.add($0) }
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 100_000_000)
+    for segments in [[(1.1, 0.5), (0.5, 0.0)], [(1.1, 0.5), (0.5, 0.0)], [(0.4, 0.5), (0.6, 0.0)]] {
+        try append(makeWavSegments(segments), to: url)
+        try await Task.sleep(nanoseconds: 120_000_000)
+    }
+    let result = await session.finish()
+    #expect(events.contains("decoded empty"))
+    // Recovered in context from the last good piece — and the empty tail was NOT
+    // decoded again on its own (a fifth transcribe call would yield "piece5").
+    #expect(result == "piece1 piece2 p")
+    let regionSamples = await recovered.lastCount
+    #expect(regionSamples > 0 && regionSamples < Int(5.8 * 16_000) / 2)
+}
+
+// MARK: - Wasted speculation (2026-09-23): speech-end jitter, and the reuse gap.
+
+/// A 30 ms near-floor sound inside the pause reads as speech on one 0.1 s probe
+/// grid and as silence on the next (the grid is anchored at the growing file's
+/// end), so the measured speech end jumps ~0.4 s with nothing new said. The
+/// speculation already heard all of it: it must stay valid — no restart (each
+/// restart is another encoder pass) — and the stop press is a HIT.
+@Test func speechEndJitterInsideDecodedPauseKeepsSpeculation() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWavSegments([(1.0, 0.5), (0.3, 0.0), (0.03, 0.016), (0.47, 0.0)]).write(to: url)
+
+    let sum = SampleSum()
+    let events = EventLogBox()
+    let session = StreamingTranscriptionSession(
+        transcribe: { samples in await sum.next(samples.count) },
+        config: speculationConfig(),
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0.4,
+        log: { events.add($0) }
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 120_000_000)
+    #expect(events.contains("started"))
+    try append(makeWavSegments([(0.015, 0.0)]), to: url) // shifts the probe grid; the blip now splits
+    try await Task.sleep(nanoseconds: 120_000_000)
+    #expect(!events.contains("dropped"))
+    let result = await session.finish()
+    #expect(result == "p")
+    #expect(events.contains("HIT"))
+    #expect(await sum.total == Int(1.8 * 16_000)) // exactly one decode
+}
+
+/// The cut window is only RELATIVELY quiet (10 % of the chunk's peak), so soft
+/// audio after a speculation's decoded end can form it; the poll that sees the
+/// cut never re-checks the speculation. Reusing it there would skip that audio.
+@Test func chunkCutDoesNotReuseSpeculationOverUnheardAudio() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWavSegments([(1.0, 0.5), (0.5, 0.0)]).write(to: url)
+
+    var cfg = ChunkPlanner.Config()
+    cfg.minChunkSeconds = 1.5
+    cfg.maxChunkSeconds = 3.0
+    let events = EventLogBox()
+    let session = StreamingTranscriptionSession(
+        transcribe: { samples in "p\(samples.count)" },
+        config: cfg,
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0.4,
+        log: { events.add($0) }
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 120_000_000)
+    #expect(events.contains("started")) // over [0, 1.5 s)
+    // Soft audio (RMS ≈ 0.014: above the 0.005 floor, below 10 % of the peak) → cut window [1.5, 1.8).
+    try append(makeWavSegments([(0.3, 0.02)]), to: url)
+    try await Task.sleep(nanoseconds: 120_000_000)
+    #expect(!events.contains("reuses"))
+    let result = await session.finish()
+    #expect(result == "p26400 p2400") // chunk [0, 1.65 s) decoded in full, then the soft tail
+}
+
+private actor SlowIndexedMock {
+    private(set) var counts: [Int] = []
+    private let emptyAtCall: Int
+    init(emptyAtCall: Int) { self.emptyAtCall = emptyAtCall }
+    func next(_ n: Int) async -> String {
+        counts.append(n)
+        let call = counts.count
+        try? await Task.sleep(nanoseconds: 150_000_000)
+        return call == emptyAtCall ? "" : "piece\(call)"
+    }
+}
+
+@Test func speechAfterTheSpeculatedAudioIsNotAHit() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    // The first poll speculates over 1.0 s speech + 0.6 s pause; more speech then
+    // arrives and the stop press comes before any poll sees it. A HIT needs
+    // silence after the speculation's DECODED END — so this must be a MISS that
+    // decodes the whole pending audio, never the speculation alone.
+    try makeWavSegments([(1.0, 0.5), (0.6, 0.0)]).write(to: url)
+    let last = SampleSum()
+    let events = EventLogBox()
+    let session = StreamingTranscriptionSession(
+        transcribe: { samples in await last.next(samples.count) },
+        config: speculationConfig(),
+        pollNanoseconds: 2_000_000_000,
+        speculateAfterSeconds: 0.4,
+        log: { events.add($0) }
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 100_000_000)
+    try append(makeWavSegments([(0.5, 0.5), (0.2, 0.0)]), to: url)
+    _ = await session.finish()
+    #expect(events.contains("MISS"))
+    #expect(await last.lastCount == Int(2.3 * 16_000))
+}
+
+@Test func drainedBacklogThenFailureCoversEverySampleOnce() async throws {
+    let url = tempWavURL()
+    defer { try? FileManager.default.removeItem(at: url) }
+    try makeWav(seconds: 5.2, amplitude: 0.5).write(to: url)
+    // Slow decodes leave a backlog at the stop press; finish() drains it chunk
+    // by chunk and the 5th chunk fails. Local recovery must start at the LAST
+    // kept piece's true start: kept pieces + recovered region = every sample once.
+    let slow = SlowIndexedMock(emptyAtCall: 5)
+    let recovered = SampleSum()
+    let session = StreamingTranscriptionSession(
+        transcribe: { samples in await slow.next(samples.count) },
+        recover: { samples in await recovered.next(samples.count) },
+        config: fastConfig(),
+        pollNanoseconds: 20_000_000,
+        speculateAfterSeconds: 0
+    )
+    await session.start(url: url)
+    try await Task.sleep(nanoseconds: 60_000_000)
+    let result = await session.finish()
+    let counts = await slow.counts
+    let regionSamples = await recovered.lastCount
+    #expect(counts.count == 5)
+    #expect(result == "piece1 piece2 piece3 p")
+    #expect(counts.count == 5 && counts[0] + counts[1] + counts[2] + regionSamples == Int(5.2 * 16_000))
+}
 #endif

@@ -275,6 +275,21 @@ expect(regurgOut.count < regurgInput.count / 2, "regurgitation: bulk stripped")
 expectEqual(RepetitionGuard.strip("claude claude claude claude claude claude claude claude claude claude", vocabulary: ["claude"]), "", "all-loop → empty")
 expectEqual(RepetitionGuard.strip("the meeting is tomorrow afternoon thanks thanks thanks thanks thanks thanks thanks thanks thanks", vocabulary: []), "the meeting is tomorrow afternoon", "generic repetition loop stripped")
 expectEqual(RepetitionGuard.strip("I love using VS Code and Claude for my projects every single day at work", vocabulary: regurgVocab), "I love using VS Code and Claude for my projects every single day at work", "legitimate single vocab mention untouched")
+// Spoken maths repeats operands/operators legitimately — never a "loop" (it was
+// deleted from the paste AND cost a second, unprompted decode).
+for maths in ["and then it's 26 x 26 x 26 x 10 x 10 x 10",
+              "and then it's 26 times 26 times 26 times 10 times 10 times 10",
+              "So the answer is minus 3 minus 3 minus 3 minus 3",
+              "1 over 2 plus 1 over 4 plus 1 over 8 plus 1 over 16",
+              "2 x 2 x 2 x 2 x 2 x 2 x 2 x 2 is 256"] {
+    let r = RepetitionGuard.scrub(maths, vocabulary: regurgVocab)
+    expect(!r.removedRegurgitation && r.text == maths, "maths repetition untouched: \"\(maths)\"")
+}
+expectEqual(RepetitionGuard.strip("and then it's " + String(repeating: "26 x ", count: 20), vocabulary: []), "and then it's", "sustained numeric decoder loop still stripped")
+expectEqual(RepetitionGuard.strip("the total is " + String(repeating: "10, ", count: 20), vocabulary: []), "the total is", "sustained number-only loop still stripped")
+expectEqual(RepetitionGuard.strip("see " + String(repeating: "page 1 of 10, ", count: 40), vocabulary: []), "see", "long-cycle maths loop stripped (trailing exact-phrase net)")
+expectEqual(RepetitionGuard.strip("cut off " + String(repeating: "page 1 of 10, ", count: 7) + "page 1", vocabulary: []), "cut off", "phrase loop cut off mid-cycle stripped")
+expect(!RepetitionGuard.scrub("five letters so 26 times 26 times 26 times 26 times 26 times 26", vocabulary: []).removedRegurgitation, "dictated 26^6 (5 phrase repeats) untouched")
 expectEqual(RepetitionGuard.strip("today I paired Claude with VS Code and my sub agents to ship the feature", vocabulary: regurgVocab), "today I paired Claude with VS Code and my sub agents to ship the feature", "dense non-repetitive vocab untouched")
 expectEqual(RepetitionGuard.strip("the quick brown fox jumps over the lazy dog and then runs back again to sleep", vocabulary: []), "the quick brown fox jumps over the lazy dog and then runs back again to sleep", "ordinary prose untouched")
 expectEqual(RepetitionGuard.strip("sub agents claude", vocabulary: regurgVocab), "sub agents claude", "short text never stripped")

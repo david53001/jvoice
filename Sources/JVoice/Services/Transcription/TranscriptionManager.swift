@@ -197,7 +197,33 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         )
     }
 
+    /// Decode an arbitrary stretch of the recording with the WHOLE-FILE decode
+    /// semantics (VAD windows; timestamps kept past a single window). The
+    /// streaming session uses it to re-decode a failed chunk together with the
+    /// piece before it, instead of the entire recording.
+    private func transcribeRegionSamples(_ samples: [Float]) async throws -> String {
+        let kit = try await loadWhisperKit()
+        let withoutTimestamps = Double(samples.count) / Double(WhisperKit.sampleRate) <= Self.singleWindowSeconds
+        return try await decodeRecoveringFromRegurgitation { usePrompt in
+            let decodeOptions = self.wholeFileDecodeOptions(kit: kit, withoutTimestamps: withoutTimestamps, usePrompt: usePrompt)
+            let results = try await kit.transcribe(audioArray: samples, decodeOptions: decodeOptions)
+            Self.logTimings(results, label: "region")
+            let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            return Self.cleanRawDecode(text)
+        }
+    }
+
     private func decodeFile(_ audioURL: URL, kit: WhisperKit, withoutTimestamps: Bool, usePrompt: Bool) async throws -> String {
+        let decodeOptions = wholeFileDecodeOptions(kit: kit, withoutTimestamps: withoutTimestamps, usePrompt: usePrompt)
+        let results = try await kit.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
+        Self.logTimings(results, label: "file")
+        let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.cleanRawDecode(text)
+    }
+
+    /// The whole-file decode options, shared by `decodeFile` and the streaming
+    /// session's local recovery (`transcribeRegionSamples`).
+    private func wholeFileDecodeOptions(kit: WhisperKit, withoutTimestamps: Bool, usePrompt: Bool) -> DecodingOptions {
         var decodeOptions = DecodingOptions()
         decodeOptions.language = language.whisperCode
         // Dictate-to-translate: Whisper's translate task always targets English;
@@ -212,10 +238,7 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         decodeOptions.chunkingStrategy = .vad
         decodeOptions.withoutTimestamps = withoutTimestamps
         applyVocabularyBiasing(to: &decodeOptions, kit: kit, usePrompt: usePrompt)
-        let results = try await kit.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
-        Self.logTimings(results, label: "file")
-        let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return Self.cleanRawDecode(text)
+        return decodeOptions
     }
 
     /// Shared raw-decode cleanup for both decode paths: drop "[BLANK_AUDIO]"-style
@@ -271,6 +294,10 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
             transcribe: { [weak self] samples in
                 guard let self else { throw CancellationError() }
                 return try await self.transcribeChunkSamples(samples)
+            },
+            recover: { [weak self] samples in
+                guard let self else { throw CancellationError() }
+                return try await self.transcribeRegionSamples(samples)
             },
             pollNanoseconds: pollNanoseconds,
             speculateAfterSeconds: AppTimings.speculativeTailPause,
@@ -355,7 +382,9 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
 
     /// True when the clip provably fits in a single Whisper window (30 s),
     /// with margin. Unknown duration → false (the safe, timestamped path).
-    private static func isSingleWindowClip(_ url: URL, threshold: TimeInterval = 25.0) -> Bool {
+    private static let singleWindowSeconds: TimeInterval = 25.0
+
+    private static func isSingleWindowClip(_ url: URL, threshold: TimeInterval = singleWindowSeconds) -> Bool {
         guard let file = try? AVAudioFile(forReading: url) else { return false }
         let rate = file.processingFormat.sampleRate
         guard rate > 0 else { return false }

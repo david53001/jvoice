@@ -11,7 +11,17 @@ pinned to version 1.0.0). To work in this area, read the files below.
   timestamps, or WhisperKit 1.0.0 truncates the output.
 - `StreamingTranscriptionSession.swift` — decodes completed audio chunks *while* recording is
   still in progress. Data-loss guarantee: any decode failure, or an empty result on a non-silent
-  chunk, falls back to a whole-file decode — it never silently drops speech. Polled every
+  chunk, is re-covered — it never silently drops speech. **Local recovery (2026-09-23):** the
+  pieces decoded before the failed chunk are kept and only the audio from the start of the LAST
+  kept piece (≥ 15 s of preceding audio, so the failed audio is heard in context) to the end is
+  decoded again through the engine's `recover` closure (`transcribeRegionSamples` — the whole-file
+  decode options on a sample array), replacing that piece; only when there is no kept piece, the
+  region would exceed `maxRecoveryFraction` (70 %) of the recording (it would cost what the
+  whole-file decode costs), or that recovery is also empty, does `finish()` return nil for the
+  caller's whole-file decode. Scenarios 13–16 and 19–20 of `scripts/verify-streaming.sh` lock it.
+  Measured: a 52 s dictation whose final chunk decoded empty went from ~9.8 s after stop (tail
+  retries + whole-file re-decode) to 4.5 s from this alone. A speculative tail that decoded EMPTY
+  goes straight to local recovery (re-decoding the same audio alone would say the same). Polled every
   `AppTimings.streamingPoll` (100 ms since 2026-09-12; was 1 s) so a finished chunk's decode starts
   sooner and less backlog remains at the stop press. A silent-classified FINAL tail is dropped
   without a decode and the streamed pieces are kept (deliberately faster than the Windows port,
@@ -21,8 +31,18 @@ pinned to version 1.0.0). To work in this area, read the files below.
   **speculative tail decode**: pending audio ending in ≥ `AppTimings.speculativeTailPause` of
   silence (`ChunkPlanner.trailingSilenceSamples`) is decoded immediately, so `finish()` returns it
   with no post-stop decode when the user then presses stop (`speculative tail HIT`), drops it if
-  speech resumes, and a chunk cut inside the same pause reuses it. Verified by
-  `scripts/verify-streaming.sh` scenarios 9–12 and `--bench --stream --realtime`.
+  speech resumes, and a chunk cut inside the same pause reuses it. **Validity is anchored at the
+  speculation's DECODED END (2026-09-23):** it is dropped only for speech past the audio it
+  decoded — the measured speech end jitters on breaths near the silence floor
+  (`ChunkPlanner.Config.silenceRMSFloor`) because `trailingSilenceSamples` probes in 0.1 s steps
+  anchored at the growing file's end (live: jumps of up to ~1.8 s with nothing new said, which
+  restarted the decode up to 5× in a row) — and a chunk cut reuses it only if everything between
+  its decoded end and the cut is silent (`ChunkPlanner.plan` cuts at a window quiet only RELATIVE
+  to the chunk's peak, so reusing across soft audio there skipped that audio). Roughly 9 in 10 speculations are dropped anyway
+  (~11 s of Neural Engine time per dictation-minute, measured 2026-09-23), but a cancelled decode
+  stops at the next decoder token (only an encoder pass already running, ≤ ~0.4 s, finishes), and
+  decodes never overlap otherwise, so the waste costs almost no latency. Verified by
+  `scripts/verify-streaming.sh` scenarios 9–12 and 17–18 and `--bench --stream --realtime`.
 - `ChunkPlanner.swift` — pure (no I/O) policy deciding where to cut the growing recording into
   chunks at silence boundaries.
 - `WavTail.swift` — safely parses a WAV file that is still being written (the "tail" that has
@@ -31,7 +51,15 @@ pinned to version 1.0.0). To work in this area, read the files below.
   custom words. This is the main custom-word accuracy lever (e.g. it gets "Li-Fraumeni" and
   "VS Code" right). Kept ON by default.
 - `RepetitionGuard.swift` — detects "prompt regurgitation" (the decoder reciting the vocab list
-  back on pauses/silence) and flags it via a `scrub` result.
+  back on pauses/silence) and flags it via a `scrub` result. **Spoken maths is not a loop
+  (2026-09-23):** numbers, single letters, number words and spoken operators (`isMathToken`) repeat
+  legitimately ("26 x 26 x 26 x 10 x 10 x 10"), so on repetition alone they are loop tokens only at
+  ≥ 8 occurrences within the last 24 tokens (a stuck decoder repeats until its token budget runs
+  out); the net under that exemption: a transcript ENDING in one exact phrase (≤ 12 tokens)
+  repeated ≥ 6 times is a loop whatever its tokens (`trailingPhraseLoop` — catches long-cycle loops
+  like "page 1 of 10, page 1 of 10, …" that the count cannot see). Before, such maths was DELETED from the paste and cost a second, unprompted decode — the
+  "JVoice is slow on numbers" report; when a whole chunk was maths it came back empty and forced the
+  whole-file fallback.
 - `RegurgitationRecovery.swift` — re-decodes the same audio *without* the prompt, but **only when**
   a decode regurgitated or returned empty. This keeps prompt accuracy in the common case while
   making the failure mode (loops, scattered insertions, dropped speech) unreachable.
@@ -68,7 +96,8 @@ pinned to version 1.0.0). To work in this area, read the files below.
   user flow; it is a dev tool, co-located here because it exercises this pipeline.
 
 ## Invariants — do not break these
-1. A non-silent chunk is never dropped; on any doubt, fall back to a whole-file decode.
+1. A non-silent chunk is never dropped; on any doubt, re-decode it in context — locally from the
+   last kept piece (`StreamingTranscriptionSession.recoverLocally`), else a whole-file decode.
 2. Keep the vocabulary prompt ON; rely on RepetitionGuard + RegurgitationRecovery for the
    regurgitation failure mode rather than disabling the prompt.
 3. Long clips keep timestamps (the WhisperKit 1.0.0 truncation trap above).
