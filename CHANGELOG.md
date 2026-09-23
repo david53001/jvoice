@@ -4,6 +4,15 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
+## [1.1.2] — 2026-09-23
+
+### Fixed
+
+- **Dictated maths is faster and no longer loses numbers.** Spoken arithmetic that repeats itself — "26 times 26 times 26 times 10 times 10 times 10", "minus 3 minus 3 minus 3" — was mistaken for a speech-recognition loop: it was cut out of the pasted text and the audio was transcribed a second time. Numbers, single-letter variables and spoken operators now count as a loop only when one of them fills the end of the transcript (≥ 8 of the last 24 words), which real stuck-decoder loops always do (`Sources/JVoice/Services/Transcription/RepetitionGuard.swift`).
+- **One bad chunk no longer re-transcribes the whole dictation.** When a piece of a long dictation came back empty, JVoice threw away everything it had transcribed while you talked and started over (a 100 s dictation: 7 s after stop). It now keeps the good pieces and re-transcribes only the failed part together with the piece before it, falling back to the full re-transcription only if that also fails (`StreamingTranscriptionSession.swift`). Measured: 52 s dictation 9.8 s → 0.5 s after stop.
+- **Transcribing while you talk is more robust on soft audio.** A decode started during a pause is no longer thrown away and restarted when a breath flickers around the silence threshold, and a chunk can no longer skip soft audio sitting between that decode and the next chunk boundary (`StreamingTranscriptionSession.swift`).
+- **Music no longer jumps in volume when recording starts with Bluetooth headphones.** A 1.1.1 speed-up (a microphone recorder prepared ahead of the key press) sometimes opened the headphones' microphone before JVoice's switch to the built-in mic took effect, forcing the headphones into call mode. Presses that switch away from a Bluetooth mic now open a fresh recorder after the switch (`Sources/JVoice/Services/Audio/RecordingManager.swift`).
+
 ## [1.1.1] — 2026-09-21
 
 ### Fixed
