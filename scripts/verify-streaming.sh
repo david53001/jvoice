@@ -46,7 +46,7 @@ func fastConfig() -> ChunkPlanner.Config {
 
 actor IdxMock {
     private let emptyAtCall: Int
-    private var call = 0
+    private(set) var call = 0
     init(emptyAtCall: Int) { self.emptyAtCall = emptyAtCall }
     func next() -> String { call += 1; return call == emptyAtCall ? "" : "piece\(call)" }
 }
@@ -70,6 +70,14 @@ actor DecodeRecorder {
     let cleanResult: String
     init(_ promptResult: String, _ cleanResult: String) { self.promptResult = promptResult; self.cleanResult = cleanResult }
     func decode(_ usePrompt: Bool) -> String { calls.append(usePrompt); return usePrompt ? promptResult : cleanResult }
+}
+
+/// Polls `condition` every 10 ms (up to 5 s) — waits on real progress, not fixed sleeps.
+func waitUntil(_ condition: () async -> Bool) async throws {
+    for _ in 0..<500 {
+        if await condition() { return }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
 }
 
 let recVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
@@ -300,11 +308,11 @@ Task {
                                               recover: { samples in await rec.next(samples.count) },
                                               config: cfg, pollNanoseconds: 20_000_000, speculateAfterSeconds: 0.4,
                                               log: { events.add($0) })
-        await s.start(url: url); try await Task.sleep(nanoseconds: 100_000_000)
-        for segs in [[(1.1, 0.5), (0.5, 0.0)], [(1.1, 0.5), (0.5, 0.0)], [(0.4, 0.5), (0.6, 0.0)]] {
+        await s.start(url: url); try await waitUntil { await mock.call >= 1 }
+        for (i, segs) in [[(1.1, 0.5), (0.5, 0.0)], [(1.1, 0.5), (0.5, 0.0)], [(0.4, 0.5), (0.6, 0.0)]].enumerated() {
             let more = wavSegments(segs).dropFirst(44)
             let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
-            try await Task.sleep(nanoseconds: 120_000_000)
+            try await waitUntil { await mock.call >= i + 2 } // blocks cut (calls 2–3), tail speculated (call 4)
         }
         let r = await s.finish()
         let n = await rec.lastCount
@@ -380,7 +388,7 @@ Task {
         let s = StreamingTranscriptionSession(transcribe: { samples in await last.next(samples.count) },
                                               config: cfg, pollNanoseconds: 2_000_000_000, speculateAfterSeconds: 0.4,
                                               log: { events.add($0) })
-        await s.start(url: url); try await Task.sleep(nanoseconds: 100_000_000) // first poll speculated; next poll is 2 s away
+        await s.start(url: url); try await waitUntil { events.contains("started") } // first poll speculated; next poll is 2 s away
         let more = wavSegments([(0.5, 0.5), (0.2, 0.0)]).dropFirst(44)
         let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
         let r = await s.finish()
@@ -408,7 +416,7 @@ Task {
         let s = StreamingTranscriptionSession(transcribe: { samples in await slow.next(samples.count) },
                                               recover: { samples in await rec.next(samples.count) },
                                               config: fastConfig(), pollNanoseconds: 20_000_000, speculateAfterSeconds: 0)
-        await s.start(url: url); try await Task.sleep(nanoseconds: 60_000_000) // chunk 1 in flight; the rest is backlog
+        await s.start(url: url); try await waitUntil { await slow.counts.count >= 1 } // chunk 1 in flight; the rest is backlog
         let r = await s.finish()
         let c = await slow.counts
         let n = await rec.lastCount

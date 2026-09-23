@@ -356,7 +356,7 @@ private func append(_ data: Data, to url: URL) throws {
 
 private actor IndexedEmptyMock {
     private let emptyAtCall: Int
-    private var call = 0
+    private(set) var call = 0
     init(emptyAtCall: Int) { self.emptyAtCall = emptyAtCall }
     func next() -> String {
         call += 1
@@ -452,12 +452,14 @@ private actor IndexedEmptyMock {
         log: { events.add($0) }
     )
     await session.start(url: url)
-    try await Task.sleep(nanoseconds: 100_000_000)
-    for segments in [[(1.1, 0.5), (0.5, 0.0)], [(1.1, 0.5), (0.5, 0.0)], [(0.4, 0.5), (0.6, 0.0)]] {
+    try await waitUntil { await mock.call >= 1 }
+    // One growth per poll: each block is cut (calls 2–3), then the tail is speculated (call 4).
+    for (index, segments) in [[(1.1, 0.5), (0.5, 0.0)], [(1.1, 0.5), (0.5, 0.0)], [(0.4, 0.5), (0.6, 0.0)]].enumerated() {
         try append(makeWavSegments(segments), to: url)
-        try await Task.sleep(nanoseconds: 120_000_000)
+        try await waitUntil { await mock.call >= index + 2 }
     }
     let result = await session.finish()
+    #expect(await mock.call == 4)
     #expect(events.contains("decoded empty"))
     // Recovered in context from the last good piece — and the empty tail was NOT
     // decoded again on its own (a fifth transcribe call would yield "piece5").
@@ -529,6 +531,15 @@ private actor IndexedEmptyMock {
     #expect(result == "p26400 p2400") // chunk [0, 1.65 s) decoded in full, then the soft tail
 }
 
+/// Polls `condition` every 10 ms (up to 5 s): waits on real progress instead of
+/// fixed sleeps, so the timing-sensitive tests hold on slow, parallel CI runners.
+private func waitUntil(_ condition: () async -> Bool) async throws {
+    for _ in 0..<500 {
+        if await condition() { return }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
+}
+
 private actor SlowIndexedMock {
     private(set) var counts: [Int] = []
     private let emptyAtCall: Int
@@ -559,7 +570,7 @@ private actor SlowIndexedMock {
         log: { events.add($0) }
     )
     await session.start(url: url)
-    try await Task.sleep(nanoseconds: 100_000_000)
+    try await waitUntil { events.contains("started") } // the first poll speculated; the next is 2 s away
     try append(makeWavSegments([(0.5, 0.5), (0.2, 0.0)]), to: url)
     _ = await session.finish()
     #expect(events.contains("MISS"))
@@ -583,7 +594,7 @@ private actor SlowIndexedMock {
         speculateAfterSeconds: 0
     )
     await session.start(url: url)
-    try await Task.sleep(nanoseconds: 60_000_000)
+    try await waitUntil { await slow.counts.count >= 1 } // chunk 1 in flight; the rest is backlog
     let result = await session.finish()
     let counts = await slow.counts
     let regionSamples = await recovered.lastCount
