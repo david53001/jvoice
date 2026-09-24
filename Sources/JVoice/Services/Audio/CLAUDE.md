@@ -32,6 +32,13 @@ Captures microphone audio to a WAV file for the transcription pipeline.
   by recording from the built-in microphone, instead of letting macOS switch the headphones into
   the low-quality two-way headset profile (HFP) that recording would otherwise force.
 
+- `SilentCaptureDetector.swift` (2026-09-24) — names the input device when a recording is
+  exact-zero digital silence (e.g. a virtual mic like BlackHole); consulted only after the recording
+  was already judged silent, so it changes wording, never results. Also since then: the Bluetooth
+  redirect only targets PHYSICAL inputs (built-in/USB/Thunderbolt/FireWire/PCI — never a virtual
+  device), a spare recorder whose temp WAV was purged by macOS is replaced, and a mid-recording
+  recorder failure is reported to the coordinator (`onRecordingFailed`).
+
 ## How to verify changes here
 - `swift build` must pass. The relevant tests (`AudioInputRouterTests`,
   `RecordingManagerInterruptionTests`, `RecordingManagerDelegateTests`) run in CI

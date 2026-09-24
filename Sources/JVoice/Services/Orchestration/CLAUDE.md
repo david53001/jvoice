@@ -33,6 +33,12 @@ mirrors it), and updates stats.
   `streamingPoll` (100 ms cadence of the streaming session's WAV check) and `speculativeTailPause`
   (0.4 s of trailing silence before the pending tail is decoded speculatively).
 
+- `CoordinatorDecisions.swift` (2026-09-24) — the pure hotkey-press decision: a press between the
+  stop press and the paste is IGNORED (it used to cancel the in-flight transcription); a stop while
+  the mic is still opening ends the recording once it opens. `PasteManager` since then restores the
+  clipboard per item and skips the restore if the user copied during the window; a refused paste
+  (no Accessibility / target rejected) falls back to the clipboard and still records the history.
+
 ## Latency contract (2026-09-12, ported from the Windows port)
 The recording pill is shown on the hotkey press BEFORE any microphone work; the mic opens off the
 main actor; the paste skips the activate + 80 ms settle when the target is already frontmost; the

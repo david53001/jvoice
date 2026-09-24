@@ -42,6 +42,12 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   disables both global hotkeys while it listens — otherwise the registered chord is swallowed
   system-wide before the local event monitor sees it — and re-enables them when the Settings
   window stops being key, so a close mid-capture can never leave the hotkeys off.
+- `ShortcutCapturePolicy+AppKit.swift`, `SettingsEntryPolicy.swift`, `Components/InlineNotice.swift`
+  (2026-09-24) — the recorder refuses bare keys (only ⌘⌥⌃⇧ count as modifiers; F-keys may be bare;
+  bare ⌦ clears), system-reserved chords (`CopySymbolicHotKeys`), app-menu chords and a chord taken
+  by the other action, each with a reason; Custom Words / App Modes explain a rejected entry instead
+  of silently clearing it. `HUDWindow.prewarm()` swaps the hidden pill to the idle view so nothing
+  animates while hidden (was 2.3–5.5 % of a core from launch to the first dictation).
 - `SettingsSmokeRunner.swift` — the hidden `JVoice --settings-smoke` dev mode: it builds the real
   Settings window, shows it transparently so SwiftUI performs a genuine display pass, and exits 0.
   Run it **from an assembled `.app` bundle** — that is the environment the crash above only ever

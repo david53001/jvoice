@@ -60,6 +60,17 @@ pinned to version 1.0.0). To work in this area, read the files below.
   like "page 1 of 10, page 1 of 10, …" that the count cannot see). Before, such maths was DELETED from the paste and cost a second, unprompted decode — the
   "JVoice is slow on numbers" report; when a whole chunk was maths it came back empty and forced the
   whole-file fallback.
+- **Witness guards (2026-09-24, branch `improve/bug-hunt-and-parity`, ported from the Windows
+  port):** `RegurgitationRecovery.decode` is now the ONE prompt-failure policy for every decode path
+  — prompted decode first; only when a failure mode shows, ONE prompt-free "witness" decode decides:
+  `PhraseLoopGuard.swift` (a loop anywhere; pure-maths phrases need 12 repeats),
+  `SparseTranscriptGuard.swift` (≥ 10 s and < 4 chars/s → witness adopted if ≥ 2× the text),
+  `SilenceHallucinationGate.swift` (peak window RMS < 0.05, PROVISIONAL → keep only if the witness
+  shares a word) and `RepetitionGuard.isVocabularyList` (a short comma-separated recital of the
+  vocabulary, same agreement rule); `NonSpeechAnnotation.swift` makes caption-only decodes
+  ("[Music]", "*coughs*") empty inside `cleanRawDecode`. Decisions log as `Guard witness(…)` lines
+  (numbers only). Locked by `scripts/verify-streaming.sh` scenarios 21–25. The Windows
+  `TailCoverageGuard` was deliberately NOT adopted (see docs/HANDOFF.md 2026-09-24).
 - `RegurgitationRecovery.swift` — re-decodes the same audio *without* the prompt, but **only when**
   a decode regurgitated or returned empty. This keeps prompt accuracy in the common case while
   making the failure mode (loops, scattered insertions, dropped speech) unreachable.
@@ -69,7 +80,9 @@ pinned to version 1.0.0). To work in this area, read the files below.
   the bare lowercase `you` that Whisper emits for < 1 s of hum). Both engine decode paths run these
   two on the RAW decode (`WhisperKitTranscriptionEngine.cleanRawDecode`), so near-silent audio reads
   as an empty decode — the trigger for `RegurgitationRecovery` / the whole-file fallback.
-- `PhoneticMatcher.swift` — fuzzy sound-alike correction (e.g. "jay voice" → "JVoice").
+- `PhoneticMatcher.swift` — fuzzy sound-alike correction (e.g. "jay voice" → "JVoice"). Since
+  2026-09-24: edit distance ≤ 1 (was 2 — "verse"/"Obama" became Vercel/Ollama), never swallows the
+  word before a custom word, keeps possessives, never joins across a comma.
 - `Math/` — **spoken mathematics → real notation** (ported 1:1 from the Windows port's
   `windows/JVoice.Core/Math/`, 2026-09-21). "x squared plus y squared equals z squared" becomes
   "x² + y² = z²"; "the limit as x approaches 0 of sine of x over x equals 1" becomes
