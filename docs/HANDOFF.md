@@ -2,6 +2,15 @@
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+
+## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; IN PROGRESS, not merged/installed/pushed)
+
+**Ask (David):** take BetterScreenshot's tutorial feature (its guided tours: `../BetterScreenshot/Packages/TourKit` + `App/Tours/TourCoordinator.swift` + the Welcome window's "Want a quick tour?" question) and implement it in JVoice — covering the whole app, shown only the FIRST time (never to people who already use JVoice). Sub-agents allowed; conflicting work in separate worktrees, then merged.
+
+**Design (lead's decisions):** macOS only (the Windows port has no tour and no .NET toolchain on this Mac). Kit copied into `Sources/JVoice/Tours/Kit/` (no separate package), catalog `Sources/JVoice/Tours/TourCatalog.swift` = 3 tours: **Welcome** (menu-bar J · dictation shortcut · Try "press the shortcut" → advances on `recording.started`), **Recording** (first recording pill: Try "stop" → `recording.stopped`), **Settings** (9 Explain steps over the cards + ⓘ). Audience classified once in `JVoiceMain.main()` BEFORE `SettingsStore` writes anything: existing if the `com.jvoice.app` domain has any non-tour key or Microphone/Accessibility is already granted. Only new users see the Welcome window + question; everyone can replay from Help & Tours / ⓘ / Settings → Tours & Tips.
+
+**Progress:** `124c42c` foundation (Kit + coordinator + catalog, builds). Next: 4 agents in worktrees — (1) Welcome window + launch classification + AppDelegate wiring, (2) Settings anchors + ⓘ + Tours & Tips card + monochrome tag style, (3) menu bar Help & Tours + HUD pill anchor + VoiceCoordinator events, (4) tests (logic-test section + swift-testing files). Then merge, `swift build`, `run-logic-tests.sh`, `--settings-smoke` from an assembled `.app`, docs.
+
 ## 2026-09-24 session — Bug hunt + Windows→Mac accuracy parity (branch `improve/bug-hunt-and-parity`, NOT merged, NOT installed, NOT pushed — PAUSED by David: "not right now, just document it")
 
 **What David asked (2026-09-23):** use sub-agents to find issues and improve accuracy. He picked two tracks: (1) port the Windows port's accuracy guards to the Mac where they apply, (2) a codebase-wide bug hunt. Nine agents reported ~40 verified findings; four implementation agents plus the lead (me) fixed them in isolated git worktrees, merged one package at a time onto the local branch `improve/bug-hunt-and-parity`, which starts at `74d9b03` (= `main`, the shipped v1.1.2).
