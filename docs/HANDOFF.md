@@ -11,6 +11,8 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 
 **Progress:** `124c42c` foundation (Kit + coordinator + catalog, builds). Next: 4 agents in worktrees — (1) Welcome window + launch classification + AppDelegate wiring, (2) Settings anchors + ⓘ + Tours & Tips card + monochrome tag style, (3) menu bar Help & Tours + HUD pill anchor + VoiceCoordinator events, (4) tests (logic-test section + swift-testing files). Then merge, `swift build`, `run-logic-tests.sh`, `--settings-smoke` from an assembled `.app`, docs.
 
+**Deferred by David (same day):** review whether JVoice's MATHS dictation is accurate enough, using the real sample he saved — `docs/math-accuracy/README.md` (gitignored: screenshot of the problem + exported Recent Transcripts + log). Not started.
+
 ## 2026-09-24 session — Bug hunt + Windows→Mac accuracy parity (branch `improve/bug-hunt-and-parity`, NOT merged, NOT installed, NOT pushed — PAUSED by David: "not right now, just document it")
 
 **What David asked (2026-09-23):** use sub-agents to find issues and improve accuracy. He picked two tracks: (1) port the Windows port's accuracy guards to the Mac where they apply, (2) a codebase-wide bug hunt. Nine agents reported ~40 verified findings; four implementation agents plus the lead (me) fixed them in isolated git worktrees, merged one package at a time onto the local branch `improve/bug-hunt-and-parity`, which starts at `74d9b03` (= `main`, the shipped v1.1.2).
