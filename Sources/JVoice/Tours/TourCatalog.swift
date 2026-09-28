@@ -30,7 +30,7 @@ public enum TourCatalog {
                                     trigger: .surfaceShown(.recordingPill), steps: [
         TourStep(anchor: "pill.controls", kind: .tryIt(advanceOn: .action(TourEventName.recordingStopped)),
                  title: "JVoice is listening",
-                 body: "Speak, then press {shortcut:toggleRecording} again or click ■. Your words appear where you were typing."),
+                 body: "Speak, then press {shortcut:toggleRecording} again or click ■. Your words get typed for you."),
     ])
 
     /// The first Settings window (SwiftUI; anchors via `.tourAnchor`). The window scrolls, so the
@@ -41,7 +41,7 @@ public enum TourCatalog {
         TourStep(anchor: "settings.model", kind: .explain, title: "Speech model",
                  body: "Bigger models are more accurate but slower. Everything runs on this Mac."),
         TourStep(anchor: "settings.processing", kind: .explain, title: "Clean-up options",
-                 body: "Remove filler words, write spoken maths as symbols, and more. Changes apply right away."),
+                 body: "Drop filler words, turn spoken maths into symbols, and more."),
         TourStep(anchor: "settings.voiceStyle", kind: .explain, title: "Voice style",
                  body: "Choose how your text comes out, from very casual to formal."),
         TourStep(anchor: "settings.appModes", kind: .explain, title: "App modes",

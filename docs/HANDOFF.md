@@ -3,13 +3,19 @@
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
-## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; IN PROGRESS, not merged/installed/pushed)
+## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; BUILT + VERIFIED locally, NOT merged/installed/pushed, NOT dogfooded)
 
 **Ask (David):** take BetterScreenshot's tutorial feature (its guided tours: `../BetterScreenshot/Packages/TourKit` + `App/Tours/TourCoordinator.swift` + the Welcome window's "Want a quick tour?" question) and implement it in JVoice — covering the whole app, shown only the FIRST time (never to people who already use JVoice). Sub-agents allowed; conflicting work in separate worktrees, then merged.
 
 **Design (lead's decisions):** macOS only (the Windows port has no tour and no .NET toolchain on this Mac). Kit copied into `Sources/JVoice/Tours/Kit/` (no separate package), catalog `Sources/JVoice/Tours/TourCatalog.swift` = 3 tours: **Welcome** (menu-bar J · dictation shortcut · Try "press the shortcut" → advances on `recording.started`), **Recording** (first recording pill: Try "stop" → `recording.stopped`), **Settings** (9 Explain steps over the cards + ⓘ). Audience classified once in `JVoiceMain.main()` BEFORE `SettingsStore` writes anything: existing if the `com.jvoice.app` domain has any non-tour key or Microphone/Accessibility is already granted. Only new users see the Welcome window + question; everyone can replay from Help & Tours / ⓘ / Settings → Tours & Tips.
 
-**Progress:** `124c42c` foundation (Kit + coordinator + catalog, builds). Next: 4 agents in worktrees — (1) Welcome window + launch classification + AppDelegate wiring, (2) Settings anchors + ⓘ + Tours & Tips card + monochrome tag style, (3) menu bar Help & Tours + HUD pill anchor + VoiceCoordinator events, (4) tests (logic-test section + swift-testing files). Then merge, `swift build`, `run-logic-tests.sh`, `--settings-smoke` from an assembled `.app`, docs.
+**Done:** `124c42c` foundation (lead) → 4 agents in separate git worktrees, merged with no conflicts: `f2a2d68` Welcome window + launch classification + AppDelegate wiring; `f65cece` Settings anchors, title-bar ⓘ, Tours & Tips card, monochrome tag; `5069c8c` menu-bar Help & Tours, pill/status-item anchors, recording/paste events; `558cd5a` tests (Tours section in `scripts/run-logic-tests.sh` + `Tests/JVoiceTests/Tour*Tests.swift`). Lead follow-ups: Esc while recording a shortcut cancels the capture, not the tour; neutral `HUDState.notice` for tour messages; two tag bodies shortened to fit 2 lines. Full design: `Sources/JVoice/Tours/CLAUDE.md`.
+
+**Verified:** `swift build` + `swift build -c release`; `./scripts/run-logic-tests.sh` 982/982 (4 sections); `swift build --build-tests` compiles the new CI tests (NOT executed — CI only); `--settings-smoke` from an assembled `.app` OK (700×592); `./scripts/verify-streaming.sh` passes; audience classifier probed against throwaway UserDefaults suites (never the real domain).
+
+**NOT verified:** nobody has SEEN the tour on screen — the Welcome window, tag placement over the status item / pill / Settings cards, and the overlay over the non-activating pill were checked by reading code only (the app wasn't launched; seeing the first-run flow on David's Mac would need a wiped `com.jvoice.app` domain = his settings, so don't). Suggested check: install to a second macOS user account, or temporarily point `classifyAudienceIfNeeded` at a suite in a dev build. CI hasn't run the new swift-testing files.
+
+**Open/for David:** ship together with the paused bug-hunt batch (this branch contains it) or cherry-pick onto `main`; the Windows port has no tour yet.
 
 **Deferred by David (same day):** review whether JVoice's MATHS dictation is accurate enough, using the real sample he saved — `docs/math-accuracy/README.md` (gitignored: screenshot of the problem + exported Recent Transcripts + log). Not started.
 

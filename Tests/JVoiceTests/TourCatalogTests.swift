@@ -226,7 +226,7 @@ private let tagFitKeys = ["⌥Space", "⌃⌥⇧⌘Space", "⌃⌥⇧⌘F12", To
 /// Bodies found NOT to fit when these tests were written (2026-09-28): each wraps to a 3rd line, so the
 /// tag cuts its end off. Recorded as known issues (reported to the catalog owner, not fixed here); remove
 /// an entry once its copy is shortened. Keep in sync with `knownOverflows` in scripts/run-logic-tests.sh.
-private let knownTagOverflows: Set<String> = ["recordingPill/JVoice is listening", "settings/Clean-up options"]
+private let knownTagOverflows: Set<String> = []
 
 @MainActor
 @Suite struct TourTagFitTests {

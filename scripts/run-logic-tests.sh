@@ -1924,7 +1924,7 @@ let tagFitKeys = ["⌥Space", "⌃⌥⇧⌘Space", "⌃⌥⇧⌘F12", TourText.u
 /// tag cuts its end off. Reported to the catalog owner, not fixed here — they print a ⚠ instead of
 /// failing. Remove an entry once its copy is shortened (a ⚠ "now fits" says when). Any OTHER body that
 /// doesn't fit fails. Keep in sync with `knownTagOverflows` in Tests/JVoiceTests/TourCatalogTests.swift.
-let knownOverflows: Set<String> = ["recordingPill/JVoice is listening", "settings/Clean-up options"]
+let knownOverflows: Set<String> = []
 
 print("Tag fit — every body fits two lines at \(Int(TagStyle.tagMaxWidth)) pt")
 for tour in TourCatalog.all {

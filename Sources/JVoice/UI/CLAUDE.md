@@ -55,9 +55,24 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   registration, no login item, no model load), so it is safe to run while the installed app is in
   use. This is the only automated check that can catch an AppKit/SwiftUI crash in Settings on a
   machine that cannot execute the test suite.
+- `WelcomeWindow.swift` (2026-09-28) — the first-run window, shown at launch ONLY to users classified
+  "new" who haven't answered the tour question: a permissions page (Microphone + Accessibility with
+  live status) → "You're all set!" (shortcut cheat sheet + **"Want a quick tour?"** Show Me Around /
+  No Thanks; closing it on either page = No Thanks). Also opened on the all-set page (no question) by
+  Help & Tours → Take the Welcome Tour. Tour anchors `welcome.shortcut`, `welcome.tryIt`. Everything
+  about who sees it: `Sources/JVoice/Tours/CLAUDE.md`.
+- Tour hooks in the other surfaces: Settings cards carry `.tourAnchor("settings.*")`, a **Tours & Tips**
+  card (bottom of the right column: "Show Me Around" toggle = `firstUseToursEnabled`, Replay Welcome
+  Tour, Reset All Tours) and a title-bar **ⓘ** (`InfoButton`, anchor `settings.help`); `SettingsWindow`
+  claims Return/Esc while a shortcut row is recording (`TourKeysClaiming`) so Esc cancels the capture,
+  not the tour. The HUD's recording pill is anchored `pill.controls` and `HUDWindow` adopts
+  `TourHostShaping` (the tag dims only the pill, not its glow margin). `HUDState.notice` is a neutral
+  message pill (info icon) used for tour confirmations.
 - `MenuBarController.swift` — the menu-bar status item: a bold "J" template image when idle, a red
   microphone while recording, a tinted waveform while transcribing, plus the dropdown NSMenu.
   (Deliberately left untouched by the monochrome theming — it already adapts to the OS menu bar.)
+  The button is tour anchor `menuBar.icon`; the menu has a **Help & Tours** submenu (Welcome /
+  Recording / Settings tours, Reset All Tours).
 - `Components/` — shared UI subviews used by the above.
 
 ## How to verify changes here
