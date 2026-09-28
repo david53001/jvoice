@@ -120,3 +120,13 @@ final class HUDWindow: NSPanel {
         setFrameOrigin(NSPoint(x: x, y: y))
     }
 }
+
+/// The Recording tour runs on this panel (reported by `VoiceCoordinator` as the `.recordingPill`
+/// surface). The window is the capsule plus `HUDLayout.glowPadding` of transparent glow on every
+/// side, so the tour dims and keeps its tag clear of the capsule only — not a square band around it.
+extension HUDWindow: TourHostShaping {
+    var tourHostShape: TourHostShape? {
+        TourHostShape(frame: frame.insetBy(dx: HUDLayout.glowPadding, dy: HUDLayout.glowPadding),
+                      cornerRadius: HUDLayout.pillCorner)
+    }
+}

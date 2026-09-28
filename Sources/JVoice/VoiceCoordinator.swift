@@ -635,6 +635,20 @@ final class VoiceCoordinator: ObservableObject {
         if hudState != .recording { updateHUD(.recording) }
         Self.latencyLog.info("MicStarted +\(self.millisecondsSincePress, privacy: .public)ms after press")
 
+        // Tours: the pill is up and the mic is open — only now does this count as
+        // a started recording (a failed open above posts nothing). Deferred to the
+        // next main-queue turn so tour-tag window work never runs on the
+        // press → pill → mic path. The pill tour only attaches while THIS recording
+        // is still on screen (a stop pressed while the mic opened ends it below).
+        let tourGeneration = recordingGeneration
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            TourEvents.post(.action(TourEventName.recordingStarted))
+            if self.isRecording, self.recordingGeneration == tourGeneration, self.hudState == .recording {
+                TourEvents.surfaceShown(.recordingPill, in: self.hudWindow)
+            }
+        }
+
         // The user pressed stop while the mic was still opening: honour it now.
         if stopRequestedWhileStarting {
             stopRecordingAndTranscribe()
@@ -692,6 +706,10 @@ final class VoiceCoordinator: ObservableObject {
             }
             return
         }
+        // Tours: the pill tour's Try step completes on this — it must be posted
+        // while the pill still shows the recording row (its anchor), or the
+        // tour pauses instead of finishing.
+        TourEvents.post(.action(TourEventName.recordingStopped))
         // The pill switches to "transcribing" BEFORE the recorder is stopped
         // (the stop finalizes the WAV — ~10 ms of coreaudiod teardown that no
         // longer delays the state change the user is waiting to see).
@@ -873,6 +891,9 @@ final class VoiceCoordinator: ObservableObject {
             totalWordsSpoken = statsStore.totalWords
             averageWPM = statsStore.averageWPM
             minutesSaved = statsStore.estimatedMinutesSaved
+            // Tours: the text reached the user (pasted, or "Copied" in
+            // clipboard-only mode). Failed pastes returned above without it.
+            TourEvents.post(.action(TourEventName.dictationPasted))
         } catch {
             // A cancelled decode throws; the user moved on — no error pill.
             if Task.isCancelled || error is CancellationError { return }

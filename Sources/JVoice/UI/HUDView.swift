@@ -193,6 +193,11 @@ private struct RecordingPill: View {
                     .padding(.bottom, 6)
             }
         }
+        // The Recording tour's anchor spans the whole capsule (the centred row
+        // plus its label), so the tag's box outlines the pill itself. This
+        // frame repeats `pillChrome`'s own minimums, so layout is unchanged.
+        .frame(minWidth: HUDLayout.pillMinWidth, minHeight: HUDLayout.pillHeight)
+        .tourAnchor("pill.controls")
         .pillChrome(theme: theme)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Recording")
