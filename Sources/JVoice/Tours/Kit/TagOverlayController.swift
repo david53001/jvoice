@@ -68,6 +68,10 @@ public final class TagOverlayController: TourTagPresenting {
     private var laidOut: (anchor: CGRect, host: CGRect, tag: NSSize, decor: CGRect, tagFrame: CGRect)?
     private var keyMonitor: Any?
     private var resizeObserver: NSObjectProtocol?
+    /// One per scroll view the anchor sits in: re-lays out on every scroll step, in the same run-loop
+    /// turn as the scroll itself — the 0.1 s timer alone left the box a few frames behind the content
+    /// (David, 2026-09-28: "when you scroll the box shifts up… it lags back").
+    private var scrollObservers: [NSObjectProtocol] = []
     private var followTimer: Timer?
 
     public init() {
@@ -82,6 +86,7 @@ public final class TagOverlayController: TourTagPresenting {
     public func show(step: TourStep, body: String, number: Int, total: Int, anchor: NSView, host: NSWindow) {
         if self.host !== host { detach() }
         self.host = host
+        if self.anchor !== anchor || scrollObservers.isEmpty { followScrolling(of: anchor) }
         self.anchor = anchor
         shown = (step, body)
         isExplain = step.kind == .explain
@@ -115,7 +120,7 @@ public final class TagOverlayController: TourTagPresenting {
         detach()
         orderOutWindows()
         host = nil
-        anchor = nil
+        anchor = nil   // detach() stopped following its scroll views; the next show() re-follows
         shown = nil
         laidOut = nil
     }
@@ -147,7 +152,49 @@ public final class TagOverlayController: TourTagPresenting {
         }
     }
 
+    /// Observes every clip view between `anchor` and its window (a SwiftUI `ScrollView` is an
+    /// `NSScrollView` whose `NSClipView` posts a bounds change per scroll step — probed 2026-09-28).
+    private func followScrolling(of anchor: NSView) {
+        stopFollowingScrolling()
+        var view = anchor.superview
+        while let v = view {
+            if let clip = v as? NSClipView {
+                clip.postsBoundsChangedNotifications = true
+                // queue nil = delivered synchronously while the scroll is applied, so the overlay
+                // moves in the same frame as the content.
+                scrollObservers.append(NotificationCenter.default.addObserver(
+                    forName: NSView.boundsDidChangeNotification, object: clip, queue: nil) { [weak self] _ in
+                    if Thread.isMainThread {
+                        MainActor.assumeIsolated { self?.refresh() }
+                    } else {
+                        DispatchQueue.main.async { self?.refresh() }
+                    }
+                })
+            }
+            view = v.superview
+        }
+    }
+
+    private func stopFollowingScrolling() {
+        scrollObservers.forEach(NotificationCenter.default.removeObserver)
+        scrollObservers = []
+    }
+
+    /// The part of `anchor` actually on screen, in window coordinates: its frame cut to every scroll
+    /// view it sits in. Empty when it's scrolled fully out of sight. (`NSView.visibleRect` isn't used:
+    /// inside SwiftUI's scroll view it came back as the whole viewport, not the view's own part.)
+    static func visibleRectInWindow(of anchor: NSView) -> CGRect {
+        var rect = anchor.convert(anchor.bounds, to: nil)
+        var view = anchor.superview
+        while let v = view {
+            if let clip = v as? NSClipView { rect = rect.intersection(clip.convert(clip.bounds, to: nil)) }
+            view = v.superview
+        }
+        return rect
+    }
+
     private func detach() {
+        stopFollowingScrolling()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         keyMonitor = nil
         if let resizeObserver { NotificationCenter.default.removeObserver(resizeObserver) }
@@ -173,7 +220,15 @@ public final class TagOverlayController: TourTagPresenting {
             laidOut = nil
             return
         }
-        let anchorRect = host.convertToScreen(anchor.convert(anchor.bounds, to: nil))
+        // Cut to the scroll view's viewport, so the box never draws over the window's header or past
+        // its edge while the control scrolls; scrolled fully out of sight → hide until it's back.
+        let visiblePart = Self.visibleRectInWindow(of: anchor)
+        guard !visiblePart.isNull, visiblePart.width > 0, visiblePart.height > 0 else {
+            if decor.isVisible || tagPanel.isVisible { orderOutWindows() }
+            laidOut = nil
+            return
+        }
+        let anchorRect = host.convertToScreen(visiblePart)
         // What the user sees of the host: the pill's capsule, not its window grown for a hover hint.
         let shape = (host as? TourHostShaping)?.tourHostShape
         let hostRect = shape?.frame ?? host.frame

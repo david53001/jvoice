@@ -19,6 +19,8 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 
 **Install check:** after the install, `defaults read com.jvoice.app tourAudience` = `existing` — David's Mac correctly gets no automatic Welcome window/tour; he sees it via the ⓘ / Help & Tours.
 
+**Scroll-lag fix (David, same day: "when you scroll down the box shifts up… it lags back"):** the tag overlay only re-positioned on a 0.1 s timer; it now follows scroll-view clip-bounds notifications synchronously, cuts the box to the viewport and hides when the control is scrolled out. Probe `scripts/verify-tour-scroll.sh`: old code up to 222 pt behind after a scroll, new 0.0 pt at every step.
+
 **Open/for David:** ship together with the paused bug-hunt batch (this branch contains it) or cherry-pick onto `main`; the Windows port has no tour yet.
 
 **Deferred by David (same day):** review whether JVoice's MATHS dictation is accurate enough, using the real sample he saved — `docs/math-accuracy/README.md` (gitignored: screenshot of the problem + exported Recent Transcripts + log). Not started.

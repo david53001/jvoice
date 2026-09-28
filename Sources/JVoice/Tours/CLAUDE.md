@@ -70,6 +70,12 @@ root `CLAUDE.md`), `recording.stopped` (before the pill leaves the recording sta
   dark, text contrast 19:1 (`Kit/TagStyle.swift`). Return = Next, Esc = Skip Tour — except while a
   Settings shortcut row is recording (`SettingsWindow` adopts `TourKeysClaiming`), and on the pill,
   which can never become key (its tag buttons are clickable instead).
+- **Scrolling (fixed 2026-09-28):** the overlay follows the anchor's scroll views through their
+  `NSClipView` bounds-change notifications, delivered synchronously, so the box moves in the same turn
+  as the content (a SwiftUI `ScrollView` is an `NSScrollView` — `HostingScrollView` — whose clip view
+  posts per scroll step). Before, only the 0.1 s follow timer moved it and the box lagged up to ~220 pt
+  behind while scrolling Settings. The box is cut to the viewport and the tag hides while its control
+  is scrolled fully out of sight. Locked by `scripts/verify-tour-scroll.sh`.
 - Tag bodies must fit 2 lines at 260 pt with the longest shortcut (⌃⌥⇧⌘F12); the fit check in the
   logic tests fails otherwise.
 
@@ -92,6 +98,9 @@ root `CLAUDE.md`), `recording.stopped` (before the pill leaves the recording sta
 ## Verify
 - `swift build`; `./scripts/run-logic-tests.sh` (has a Tours section: engine, rules, audience, layout,
   catalog lint); `Tests/JVoiceTests/Tour*Tests.swift` run in CI only (**never** `swift test` locally).
+- `./scripts/verify-tour-scroll.sh` — compiles the Kit with `scripts/tour-scroll-probe/main.swift` and
+  EXECUTES it: the box must track a scrolling SwiftUI view with 0 pt lag (transparent windows behind
+  everything; safe to run).
 - Any Settings change: `--settings-smoke` from an assembled `.app` (recipe in `UI/CLAUDE.md`).
 - Never test against the real `com.jvoice.app` domain — use `UserDefaults(suiteName:)`. To see the
   first-run flow yourself on a machine that already ran JVoice you'd have to wipe the domain, which
