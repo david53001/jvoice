@@ -260,6 +260,10 @@ final class VoiceCoordinator: ObservableObject {
         }
     }
 
+    /// Set before `start()` when the first-run Welcome window will show: it asks for Accessibility
+    /// itself, so the launch-time system prompt would only stack a second dialog on top of it.
+    var suppressLaunchAccessibilityPrompt = false
+
     func start() {
         guard !didStart else { return }
         didStart = true
@@ -314,6 +318,7 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     private func ensureAccessibilityOnceForLaunch() {
+        guard !suppressLaunchAccessibilityPrompt else { return }
         let defaults = UserDefaults.standard
         let key = "jvoice.app.didPromptAXOnLaunch"
         let trusted = AXIsProcessTrusted()
