@@ -3,7 +3,7 @@
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
-## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; BUILT + VERIFIED locally, NOT merged/installed/pushed, NOT dogfooded)
+## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; BUILT + VERIFIED locally; INSTALLED to /Applications at David's request 2026-09-28 (`99abe37` — this also put the paused bug-hunt batch on his Mac for the first time); NOT merged/pushed)
 
 **Ask (David):** take BetterScreenshot's tutorial feature (its guided tours: `../BetterScreenshot/Packages/TourKit` + `App/Tours/TourCoordinator.swift` + the Welcome window's "Want a quick tour?" question) and implement it in JVoice — covering the whole app, shown only the FIRST time (never to people who already use JVoice). Sub-agents allowed; conflicting work in separate worktrees, then merged.
 
@@ -16,6 +16,8 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 **NOT verified:** nobody has SEEN the tour on screen — the Welcome window, tag placement over the status item / pill / Settings cards, and the overlay over the non-activating pill were checked by reading code only (the app wasn't launched; seeing the first-run flow on David's Mac would need a wiped `com.jvoice.app` domain = his settings, so don't). Suggested check: install to a second macOS user account, or temporarily point `classifyAudienceIfNeeded` at a suite in a dev build. CI hasn't run the new swift-testing files.
 
 **Follow-up (David, same day):** the ⓘ on top of every window, with Replay Tour + a "Show Me" list to explain one specific part — done: ⓘ added to the Welcome window, part replays via `TourEvents.replayPart` (see `Sources/JVoice/Tours/CLAUDE.md`). Logic tests 985/985, `--settings-smoke` OK.
+
+**Install check:** after the install, `defaults read com.jvoice.app tourAudience` = `existing` — David's Mac correctly gets no automatic Welcome window/tour; he sees it via the ⓘ / Help & Tours.
 
 **Open/for David:** ship together with the paused bug-hunt batch (this branch contains it) or cherry-pick onto `main`; the Windows port has no tour yet.
 
