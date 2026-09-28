@@ -36,6 +36,9 @@ final class TourCoordinator {
     private struct Session {
         var engine: TourEngine
         weak var window: NSWindow?
+        /// A single part asked for from the ⓘ ("Show Me: Custom Words") — a one-step copy of the tour.
+        /// It never marks the tour seen, never pauses/resumes, and never reports `onFinished`.
+        var isPart = false
     }
     private struct WeakWindow {
         let surface: TourSurface
@@ -78,6 +81,7 @@ final class TourCoordinator {
         TourEvents.onEvent = { [weak self] event in self?.handle(event) }
         TourEvents.onSurfaceShown = { [weak self] surface, window in self?.surfaceShown(surface, in: window) }
         TourEvents.onReplayRequested = { [weak self] id, window in self?.replay(id, in: window) }
+        TourEvents.onPartRequested = { [weak self] id, step, window in self?.replayPart(id, step: step, in: window) }
         TourEvents.onResetRequested = { [weak self] in self?.resetAllToursAndConfirm() }
     }
 
@@ -169,6 +173,19 @@ final class TourCoordinator {
         }
     }
 
+    /// The ⓘ's "Show Me" list: just step `step` of `id`, now, in `window` (the ⓘ's own window, where
+    /// the part's control lives). A part whose control isn't on screen says so instead.
+    func replayPart(_ id: TourID, step: Int, in window: NSWindow?) {
+        guard let full = tour(id), full.steps.indices.contains(step),
+              let window = window ?? visibleWindow(for: full.surface) else { return }
+        let part = Tour(id: full.id, version: full.version, surface: full.surface, trigger: .startedByApp,
+                        steps: [full.steps[step]])
+        track(full.surface, window)
+        if !start(id, in: window, from: 0, restart: true, explicit: part) {
+            notify?("\(full.steps[step].title) isn't on screen right now")
+        }
+    }
+
     /// The HUD note when a requested tour can't start now (its surface can't be opened on demand).
     static func startsLaterMessage(for id: TourID) -> String {
         switch id {
@@ -226,8 +243,8 @@ final class TourCoordinator {
     /// last step and hands over to `id`, finished.
     @discardableResult
     private func start(_ id: TourID, in window: NSWindow, from index: Int, restart: Bool = false,
-                       observed: Set<TourEvent> = []) -> Bool {
-        guard let tour = tour(id) else { return false }
+                       observed: Set<TourEvent> = [], explicit: Tour? = nil) -> Bool {
+        guard let tour = explicit ?? tour(id) else { return false }
         if !restart, let current = running, current.engine.tour.id == id, current.window === window { return true }
         var engine = TourEngine(tour: tour, observed: observed)
         let effect = engine.start(at: index, isPresent: presence(in: window))
@@ -235,8 +252,8 @@ final class TourCoordinator {
 
         finishToursHandingOver(to: id)
         if let current = running {
-            if current.engine.tour.id == id {
-                stopRunning()                       // replay of the running tour: start over
+            if current.engine.tour.id == id || current.isPart {
+                stopRunning()                       // replay of the running tour / a part: start over
             } else {
                 var engine = current.engine
                 if case .paused(let at) = engine.pause() {
@@ -247,7 +264,12 @@ final class TourCoordinator {
                 stopRunning()
             }
         }
-        running = Session(engine: engine, window: window)
+        running = Session(engine: engine, window: window, isPart: explicit != nil)
+        if explicit != nil {
+            watch(window)
+            apply(effect)
+            return true
+        }
         pending.removeAll { $0 == id }
         clearPausedIndex(for: id)
         watch(window)
@@ -275,6 +297,16 @@ final class TourCoordinator {
     private func apply(_ effect: TourEngine.Effect, completedTry: Bool = false) {
         guard let session = running else { return }
         let tour = session.engine.tour
+        if session.isPart {
+            switch effect {
+            case .none, .nothingToShow: return
+            case .show(let index): present(index)
+            case .finished, .skipped, .paused:
+                stopRunning()
+                resumeSuspended()
+            }
+            return
+        }
         switch effect {
         case .none, .nothingToShow:
             return
@@ -353,7 +385,7 @@ final class TourCoordinator {
     /// Takes the running tour off screen. One that had finished (its last Try step done, maybe still
     /// showing "Done" when the next tour replaces it) is reported through `onFinished`.
     private func stopRunning() {
-        let finished = running.flatMap { $0.engine.status == .finished ? $0.engine.tour.id : nil }
+        let finished = running.flatMap { !$0.isPart && $0.engine.status == .finished ? $0.engine.tour.id : nil }
         generation += 1
         showingCompleted = false
         shownProgress = nil

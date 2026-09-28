@@ -54,7 +54,7 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
     }
 
     /// The ⓘ's Keyboard Shortcuts list: the two global chords, as currently set (unset ones left out).
-    private static func infoShortcuts() -> [(keys: String, action: String)] {
+    static func infoShortcuts() -> [(keys: String, action: String)] {
         #if canImport(KeyboardShortcuts)
         let actions: [(name: KeyboardShortcuts.Name, title: String)] = [
             (.toggleRecording, "Toggle Recording"),

@@ -53,7 +53,7 @@ public enum TourCatalog {
         TourStep(anchor: "settings.customWords", kind: .explain, title: "Custom words",
                  body: "Add names and jargon so JVoice always spells them your way."),
         TourStep(anchor: "settings.help", kind: .explain, title: "Replay any tour",
-                 body: "Click ⓘ any time to take this tour again."),
+                 body: "Click ⓘ to replay this tour, or pick one part to see again."),
     ])
 }
 

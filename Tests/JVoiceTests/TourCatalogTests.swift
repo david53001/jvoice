@@ -183,6 +183,13 @@ private func makeSettingsTour(_ steps: [TourStep]) -> Tour {
         for id in TourID.allCases { #expect(TourCatalog.tour(id).id == id) }
     }
 
+    @Test func stepTitlesAreUniqueWithinATour() {
+        // They are the ⓘ menu's "Show Me" items — two with the same name would be indistinguishable.
+        for tour in TourCatalog.all {
+            #expect(Set(tour.steps.map(\.title)).count == tour.steps.count, "\(tour.id.rawValue)")
+        }
+    }
+
     @Test func everySurfaceHasATour() {
         #expect(Set(TourCatalog.all.map(\.surface)) == Set(TourSurface.allCases))
     }

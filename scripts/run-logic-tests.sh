@@ -1889,6 +1889,9 @@ print("Catalog shape")
 expectEqual(Set(TourCatalog.all.map(\.id)), Set(TourID.allCases), "every TourID has a tour")
 expectEqual(TourCatalog.all.count, TourID.allCases.count, "…exactly one each")
 expectEqual(Set(TourCatalog.all.map(\.id)).count, TourCatalog.all.count, "tour ids are unique")
+for tour in TourCatalog.all {
+    expectEqual(Set(tour.steps.map(\.title)).count, tour.steps.count, "\(tour.id.rawValue): step titles are unique (they are the ⓘ's Show Me items)")
+}
 expectEqual(Set(TourCatalog.all.map(\.surface)), Set(TourSurface.allCases), "every TourSurface has a tour")
 for id in TourID.allCases {
     expectEqual(TourCatalog.tour(id).id, id, "TourCatalog.tour(\(id)) returns it")

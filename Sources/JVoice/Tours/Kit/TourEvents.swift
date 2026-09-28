@@ -9,6 +9,7 @@ public enum TourEvents {
     public static var onSurfaceShown: ((TourSurface, NSWindow) -> Void)?
     public static var onReplayRequested: ((TourID, NSWindow?) -> Void)?
     public static var onResetRequested: (() -> Void)?
+    public static var onPartRequested: ((TourID, Int, NSWindow?) -> Void)?
 
     public static func post(_ event: TourEvent) { onEvent?(event) }
 
@@ -21,6 +22,11 @@ public enum TourEvents {
     /// (nil from the menu bar — the coordinator then starts it when its surface next appears).
     public static func replay(_ tour: TourID, in window: NSWindow?) {
         onReplayRequested?(tour, window)
+    }
+
+    /// The ⓘ's "Show Me" list: explain just step `step` of `tour` (one tag, Done), in `window`.
+    public static func replayPart(_ tour: TourID, step: Int, in window: NSWindow?) {
+        onPartRequested?(tour, step, window)
     }
 
     /// Help & Tours → Reset All Tours, or Settings → Tours & Tips → Reset All Tours. Clears

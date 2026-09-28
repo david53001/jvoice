@@ -33,7 +33,15 @@ people who already use JVoice must never get it by itself.
 3. A tour starts **by itself** only when `firstUseToursEnabled == true` (absent = off) and its version
    isn't in `toursSeen` (`TourRules.shouldAutoStart`). Existing users: no window, no automatic tour, ever
    (also not after a version bump). Everyone can run any tour on purpose: menu bar → Help & Tours,
-   Settings' ⓘ, Settings → Tours & Tips (which also has the opt-in toggle and Reset All Tours).
+   the ⓘ, Settings → Tours & Tips (which also has the opt-in toggle and Reset All Tours).
+
+**The ⓘ (David, 2026-09-28: "on top of everything")** sits in the title bar's top-right of every JVoice
+window — Settings and the Welcome window (the pill is too small; its tour replays from the menu bar).
+Its menu: **Replay Tour** (the whole tour) · **Show Me** — one item per step, by title ("Custom words",
+"Your shortcut"…), which explains JUST that part: `TourEvents.replayPart` →
+`TourCoordinator.replayPart` runs a one-step copy of the tour (a "part" session: never marks the tour
+seen, never pauses/resumes, never fires `onFinished`; a part whose control isn't on screen gets a HUD
+notice) · Keyboard Shortcuts. Step titles must be unique within a tour (lint-tested) since they're menu items.
 
 Persisted UserDefaults keys (`TourPreferenceKey`, nothing else): `tourAudience`, `tourQuestionAnswered`,
 `firstUseToursEnabled`, `toursSeen` (tour id → version), `toursPaused` (tour id → step to resume at).

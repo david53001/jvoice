@@ -1,8 +1,10 @@
 import AppKit
 
 /// The ⓘ on every window (spec §14.3): a small borderless ⓘ that opens a menu —
-/// **Replay Tour** (→ `TourEvents.replay(tour, in: window)`) · **Keyboard Shortcuts** (a popover
-/// listing the window's shortcuts; the item is left out when there are none).
+/// **Replay Tour** (→ `TourEvents.replay(tour, in: window)`) · **Show Me** — one item per step of the
+/// window's tour (its title, e.g. "Custom words"), which explains just that part
+/// (→ `TourEvents.replayPart`) · **Keyboard Shortcuts** (a popover listing the window's shortcuts; the
+/// item is left out when there are none).
 ///
 /// Titled windows: `InfoButton.install(in:tour:shortcuts:)` puts it in the title bar's top-right
 /// corner as its own trailing accessory, right of any accessory already there (the editor's
@@ -12,6 +14,7 @@ import AppKit
 public final class InfoButton: NSButton {
     public static let size = NSSize(width: 26, height: 22)
     public static let replayTitle = "Replay Tour"
+    public static let partsHeader = "Show Me"
     public static let shortcutsTitle = "Keyboard Shortcuts"
     public static let toolTipText = "Tour & Keyboard Shortcuts"
 
@@ -78,7 +81,22 @@ public final class InfoButton: NSButton {
         replay.image = NSImage(systemSymbolName: "play.circle", accessibilityDescription: nil)
         replay.target = self
         menu.addItem(replay)
+        let steps = TourCatalog.tour(tour).steps
+        if steps.count > 1 {
+            menu.addItem(.separator())
+            let header = NSMenuItem(title: Self.partsHeader, action: nil, keyEquivalent: "")
+            header.isEnabled = false
+            menu.addItem(header)
+            for (index, step) in steps.enumerated() {
+                let item = NSMenuItem(title: step.title, action: #selector(showPart(_:)), keyEquivalent: "")
+                item.tag = index
+                item.target = self
+                item.indentationLevel = 1
+                menu.addItem(item)
+            }
+        }
         if !shortcuts.isEmpty {
+            menu.addItem(.separator())
             let keys = NSMenuItem(title: Self.shortcutsTitle, action: #selector(showShortcuts), keyEquivalent: "")
             keys.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: nil)
             keys.target = self
@@ -95,6 +113,10 @@ public final class InfoButton: NSButton {
 
     @objc func replayTour() {
         TourEvents.replay(tour, in: window)
+    }
+
+    @objc func showPart(_ sender: NSMenuItem) {
+        TourEvents.replayPart(tour, step: sender.tag, in: window)
     }
 
     @objc func showShortcuts() {

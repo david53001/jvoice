@@ -15,6 +15,8 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 
 **NOT verified:** nobody has SEEN the tour on screen — the Welcome window, tag placement over the status item / pill / Settings cards, and the overlay over the non-activating pill were checked by reading code only (the app wasn't launched; seeing the first-run flow on David's Mac would need a wiped `com.jvoice.app` domain = his settings, so don't). Suggested check: install to a second macOS user account, or temporarily point `classifyAudienceIfNeeded` at a suite in a dev build. CI hasn't run the new swift-testing files.
 
+**Follow-up (David, same day):** the ⓘ on top of every window, with Replay Tour + a "Show Me" list to explain one specific part — done: ⓘ added to the Welcome window, part replays via `TourEvents.replayPart` (see `Sources/JVoice/Tours/CLAUDE.md`). Logic tests 985/985, `--settings-smoke` OK.
+
 **Open/for David:** ship together with the paused bug-hunt batch (this branch contains it) or cherry-pick onto `main`; the Windows port has no tour yet.
 
 **Deferred by David (same day):** review whether JVoice's MATHS dictation is accurate enough, using the real sample he saved — `docs/math-accuracy/README.md` (gitignored: screenshot of the problem + exported Recent Transcripts + log). Not started.

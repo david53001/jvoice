@@ -49,6 +49,9 @@ final class WelcomeWindow: NSWindow {
         ))
         setContentSize(NSSize(width: WelcomeView.width, height: WelcomeView.height))
         center()
+        // The ⓘ like every JVoice window: replay the Welcome tour or one part of it. The view's 40 pt
+        // top / 36 pt side padding keeps it clear of the content under the transparent title bar.
+        InfoButton.install(in: self, tour: .welcome, shortcuts: SettingsWindow.infoShortcuts())
 
         closeObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: self, queue: .main
