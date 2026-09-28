@@ -1,8 +1,13 @@
 import AppKit
 
-/// The app side of the guided tours (v3 spec §14, §14.9). Owns who gets tours, what starts when,
-/// persistence, and driving the on-screen tag; the rules themselves are TourKit's pure `TourAudience`,
-/// `TourRules` and `TourEngine`. Surfaces never talk to this class — they post through `TourEvents`.
+/// The app side of JVoice's guided tours (ported from BetterScreenshot, its v3 spec §14 / §14.9). Owns
+/// who gets tours, what starts when, persistence, and driving the on-screen tag; the rules themselves
+/// are the pure `TourAudience`, `TourRules` and `TourEngine` in `Tours/Kit/`. Surfaces never talk to
+/// this class — they post through `TourEvents`. `AppDelegate` creates the one instance and sets the hooks.
+///
+/// New users only: `classifyAudienceIfNeeded` runs in `JVoiceMain.main()` before anything writes a
+/// preference; only a `.new` user is asked "Want a quick tour?" (the Welcome window), and nothing ever
+/// starts by itself unless that user said yes (or later turned first-use tours on in Settings).
 ///
 /// Persisted (UserDefaults, `TourPreferenceKey`): `tourAudience`, `tourQuestionAnswered`,
 /// `firstUseToursEnabled`, `toursSeen` (tour id → version), `toursPaused` (tour id → step index).
@@ -12,11 +17,11 @@ final class TourCoordinator {
     private let catalog: [Tour]
     private let makePresenter: () -> TourTagPresenting
     private let shortcutText: (String) -> String?
-    /// Opens a surface's window so a tour asked for from the menu can start (Welcome, Settings, History).
-    /// Returns false when that surface can't be opened on demand (editor, recording…) — the tour then
+    /// Opens a surface's window so a tour asked for from the menu can start (Welcome, Settings).
+    /// Returns false when that surface can't be opened on demand (the recording pill) — the tour then
     /// waits for the user to get there.
     var openSurface: ((TourSurface) -> Bool)?
-    /// A short confirmation for the user (the app shows it in its HUD).
+    /// A short confirmation for the user (JVoice shows it in the HUD pill).
     var notify: ((String) -> Void)?
     /// A tour was finished (its last step done or handed over — not Skip tour). The app closes the Welcome
     /// window when the Welcome tour ends, so it isn't left behind the tours that follow (review W4).
@@ -67,11 +72,13 @@ final class TourCoordinator {
         self.shortcutText = shortcutText
     }
 
-    /// Connects the `TourEvents` bus to this coordinator.
+    /// Connects the `TourEvents` bus to this coordinator (events, surfaces, replay, and Reset All Tours —
+    /// which also confirms through `notify`).
     func install() {
         TourEvents.onEvent = { [weak self] event in self?.handle(event) }
         TourEvents.onSurfaceShown = { [weak self] surface, window in self?.surfaceShown(surface, in: window) }
         TourEvents.onReplayRequested = { [weak self] id, window in self?.replay(id, in: window) }
+        TourEvents.onResetRequested = { [weak self] in self?.resetAllToursAndConfirm() }
     }
 
     // MARK: - Who gets tours (§14.9)
@@ -137,7 +144,14 @@ final class TourCoordinator {
         suspended.removeAll()
     }
 
-    // MARK: - Help & Tours menu / ⓘ
+    /// `resetAllTours()` + the HUD confirmation. With first-use tours off nothing starts by itself
+    /// afterwards, so the confirmation says how to get them back.
+    func resetAllToursAndConfirm() {
+        resetAllTours()
+        notify?(TourRules.resetConfirmation(firstUseToursEnabled: firstUseToursEnabled))
+    }
+
+    // MARK: - Menu bar "Tours" / ⓘ
 
     /// Runs `id` from its first step: now in `window` (the ⓘ), or — from the menu (nil) — now if its
     /// surface is on screen, otherwise when it next appears (opening it first if we can).
@@ -151,7 +165,15 @@ final class TourCoordinator {
         if let window = visibleWindow(for: tour.surface), start(id, in: window, from: 0, restart: true) { return }
         queue(id)
         if openSurface?(tour.surface) != true {
-            notify?("\(id.menuTitle) starts the next time you use it")
+            notify?(Self.startsLaterMessage(for: id))
+        }
+    }
+
+    /// The HUD note when a requested tour can't start now (its surface can't be opened on demand).
+    static func startsLaterMessage(for id: TourID) -> String {
+        switch id {
+        case .recordingPill: return "The recording tour starts at your next dictation"
+        case .welcome, .settings: return "\(id.menuTitle) starts the next time you open it"
         }
     }
 
@@ -181,13 +203,12 @@ final class TourCoordinator {
             if effect != .none {
                 apply(effect, completedTry: true)
             } else {
-                // The action may have hidden the step's control (panel closed, tool changed): check after
+                // The action may have hidden the step's control (window closed, pill gone): check after
                 // the UI has updated.
                 DispatchQueue.main.async { [weak self] in self?.checkHost() }
             }
         }
-        // Event-triggered tours (Text on choosing Text…) never interrupt a running tour; they stay
-        // eligible for the next time.
+        // Event-triggered tours never interrupt a running tour; they stay eligible for the next time.
         guard !wasRunning, running == nil else { return }
         let trigger = TourTrigger.event(event)
         let requested = pending.compactMap { tour($0) }.filter { $0.trigger == trigger }
@@ -354,7 +375,7 @@ final class TourCoordinator {
     }
 
     /// A tour that hands over to `id` and stopped on its last step (running or paused) is done once
-    /// `id` starts — e.g. the capture that ends the Welcome tour also opens Quick Access, in either order.
+    /// `id` starts. (No JVoice tour hands over today; kept so a future chain behaves like BetterScreenshot's.)
     private func finishToursHandingOver(to id: TourID) {
         let paused = pausedIndexes
         for tour in catalog where tour.handsOverTo == id && !tour.steps.isEmpty {
@@ -395,7 +416,7 @@ final class TourCoordinator {
         watchdog = timer
     }
 
-    /// Host gone or hidden (panels are ordered out, not closed) → pause; step's control gone → skip it.
+    /// Host gone or hidden (the HUD pill is ordered out, not closed) → pause; step's control gone → skip it.
     private func checkHost() {
         guard var session = running, !showingCompleted else { return }
         guard let window = session.window, window.isVisible else {
