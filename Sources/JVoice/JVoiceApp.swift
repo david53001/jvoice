@@ -1,4 +1,6 @@
 import AppKit
+import ApplicationServices
+import AVFoundation
 import SwiftUI
 
 @main
@@ -22,6 +24,18 @@ enum JVoiceMain {
         // Settings on a machine that cannot execute the test suite.
         if SettingsSmokeRunner.shouldRun(arguments: CommandLine.arguments) {
             MainActor.assumeIsolated { SettingsSmokeRunner.runAndExit() }
+        }
+        // Guided tours are for NEW users only (BetterScreenshot spec §14.9). Decide once, for good,
+        // whether this is a first launch — and do it HERE, before `JVoiceApp.main()` builds the
+        // AppDelegate → VoiceCoordinator → SettingsStore, whose init writes `jvoice.app.settings.state`
+        // on a fresh install (and the KeyboardShortcuts names write their defaults on first touch),
+        // either of which would make a brand-new user look like an existing one. Nothing above this line
+        // writes to UserDefaults; the dev modes above exit and are never classified. When in doubt the
+        // answer is "existing" (e.g. a `.build/` binary with no bundle id): an existing user is never
+        // asked and never gets a tour by itself.
+        MainActor.assumeIsolated {
+            let micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
+            TourCoordinator.classifyAudienceIfNeeded(permissionGranted: micGranted || AXIsProcessTrusted())
         }
         JVoiceApp.main()
     }
