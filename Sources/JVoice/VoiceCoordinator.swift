@@ -476,7 +476,7 @@ final class VoiceCoordinator: ObservableObject {
             menuBarController.updateActivity(.recording)
         case .downloadingModel, .preparingModel, .transcribing:
             menuBarController.updateActivity(.transcribing)
-        case .idle, .done, .copied, .error:
+        case .idle, .done, .copied, .error, .notice:
             menuBarController.updateActivity(.idle)
         }
     }
@@ -920,7 +920,7 @@ final class VoiceCoordinator: ObservableObject {
         return TextProcessor.removeWhisperHallucinations(text)
     }
 
-    private func scheduleHUDReset(after delayNanoseconds: UInt64 = 1_000_000_000) {
+    func scheduleHUDReset(after delayNanoseconds: UInt64 = 1_000_000_000) {
         hudDismissTask?.cancel()
         hudDismissTask = Task { [weak self] in
             do {

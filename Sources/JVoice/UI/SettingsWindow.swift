@@ -6,7 +6,10 @@ import KeyboardShortcuts
 #endif
 
 @MainActor
-final class SettingsWindow: NSWindow {
+final class SettingsWindow: NSWindow, TourKeysClaiming {
+    /// While a shortcut row is recording, Return/Esc go to it, not to the tour tag (Esc cancels).
+    var claimsTourKeys: Bool { ShortcutRecorder.activeCaptures > 0 }
+
     /// The title bar's ⓘ (Replay Tour · Keyboard Shortcuts). Installed in `init` so `--settings-smoke`
     /// builds and draws it too.
     private var infoButton: InfoButton?

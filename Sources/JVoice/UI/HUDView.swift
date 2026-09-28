@@ -16,7 +16,7 @@ struct HUDView: View {
             PreparingModelPill(theme: theme)
         case .transcribing:
             TranscribingPill(theme: theme)
-        case .done, .copied, .error:
+        case .done, .copied, .error, .notice:
             StatusPill(state: state, theme: theme)
         case .idle:
             EmptyView()
@@ -332,6 +332,7 @@ private struct StatusPill: View {
     var body: some View {
         let text: String = {
             if case .error(let message) = state, !message.isEmpty { return message }
+            if case .notice(let message) = state { return message }
             return state.headline
         }()
 

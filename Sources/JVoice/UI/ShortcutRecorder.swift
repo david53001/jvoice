@@ -104,6 +104,10 @@ struct ShortcutRecorder: View {
         shortcutText = KeyboardShortcuts.getShortcut(for: name).map { "\($0)" } ?? ""
     }
 
+    /// Recorders listening for a chord right now. While any is, Return and Esc belong to it (Esc
+    /// cancels), not to a tour tag's Next / Skip Tour — `SettingsWindow.claimsTourKeys`.
+    static var activeCaptures = 0
+
     private func toggleCapture() {
         isCapturing ? endCapture() : beginCapture()
     }
@@ -111,6 +115,7 @@ struct ShortcutRecorder: View {
     private func beginCapture() {
         guard !isCapturing else { return }
         isCapturing = true
+        Self.activeCaptures += 1
         refusalMessage = nil
 
         // A registered global chord is swallowed system-wide — by this app
@@ -126,6 +131,7 @@ struct ShortcutRecorder: View {
     private func endCapture() {
         guard isCapturing else { return }
         isCapturing = false
+        Self.activeCaptures = max(0, Self.activeCaptures - 1)
 
         if let monitor {
             NSEvent.removeMonitor(monitor)

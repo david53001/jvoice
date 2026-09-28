@@ -15,6 +15,8 @@ public enum HUDState: Equatable, Codable, Sendable {
     /// an app — never say "Pasted".
     case copied(String)
     case error(String)
+    /// A neutral, transient message (e.g. "Tours reset") — info icon, no warning styling.
+    case notice(String)
 
     public enum AccentRole: String, Codable, Sendable {
         case secondary
@@ -40,6 +42,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         case done
         case copied
         case error
+        case notice
     }
 
     public var displayText: String {
@@ -60,6 +63,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Copied"
         case .error(let message):
             return message.isEmpty ? "Something went wrong" : message
+        case .notice(let message):
+            return message
         }
     }
 
@@ -81,6 +86,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Copied"
         case .error:
             return "Something Went Wrong"
+        case .notice(let message):
+            return message
         }
     }
 
@@ -100,6 +107,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return nil
         case .error(let message):
             return message.isEmpty ? "Something went wrong" : message
+        case .notice:
+            return nil
         }
     }
 
@@ -121,6 +130,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "doc.on.clipboard"
         case .error:
             return "exclamationmark.triangle.fill"
+        case .notice:
+            return "info.circle.fill"
         }
     }
 
@@ -140,6 +151,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return .green
         case .error:
             return .orange
+        case .notice:
+            return .secondary
         }
     }
 
@@ -147,7 +160,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .idle:
             return false
-        case .recording, .downloadingModel, .preparingModel, .transcribing, .done, .copied, .error:
+        case .recording, .downloadingModel, .preparingModel, .transcribing, .done, .copied, .error, .notice:
             return true
         }
     }
@@ -156,14 +169,14 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .recording, .downloadingModel, .preparingModel, .transcribing:
             return true
-        case .idle, .done, .copied, .error:
+        case .idle, .done, .copied, .error, .notice:
             return false
         }
     }
 
     public var isTerminal: Bool {
         switch self {
-        case .done, .copied, .error:
+        case .done, .copied, .error, .notice:
             return true
         case .idle, .recording, .downloadingModel, .preparingModel, .transcribing:
             return false
@@ -172,7 +185,7 @@ public enum HUDState: Equatable, Codable, Sendable {
 
     public var payload: String? {
         switch self {
-        case .done(let text), .copied(let text), .error(let text):
+        case .done(let text), .copied(let text), .error(let text), .notice(let text):
             return text
         case .idle, .recording, .downloadingModel, .preparingModel, .transcribing:
             return nil
@@ -203,6 +216,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             self = .copied(try container.decode(String.self, forKey: .payload))
         case .error:
             self = .error(try container.decode(String.self, forKey: .payload))
+        case .notice:
+            self = .notice(try container.decode(String.self, forKey: .payload))
         }
     }
 
@@ -230,6 +245,9 @@ public enum HUDState: Equatable, Codable, Sendable {
             try container.encode(text, forKey: .payload)
         case .error(let message):
             try container.encode(Kind.error, forKey: .kind)
+            try container.encode(message, forKey: .payload)
+        case .notice(let message):
+            try container.encode(Kind.notice, forKey: .kind)
             try container.encode(message, forKey: .payload)
         }
     }
