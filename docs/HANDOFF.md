@@ -1,9 +1,9 @@
-# HANDOFF — state as of 2026-09-24 (v1.1.2 shipped; a second batch — bug-hunt fixes + Windows accuracy guards — sits UNMERGED on branch `improve/bug-hunt-and-parity`; the maths-engine part of it is unfinished; PAUSED by David)
+# HANDOFF — state as of 2026-09-28 (v1.1.3 shipped: first-run guided tour + the 2026-09-24 bug-hunt batch; the maths-engine package is still unfinished in its worktree)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
-## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; BUILT + VERIFIED locally; INSTALLED to /Applications at David's request 2026-09-28 (`99abe37` — this also put the paused bug-hunt batch on his Mac for the first time); NOT merged/pushed)
+## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; SHIPPED as v1.1.3 — `main` fast-forwarded to it)
 
 **Ask (David):** take BetterScreenshot's tutorial feature (its guided tours: `../BetterScreenshot/Packages/TourKit` + `App/Tours/TourCoordinator.swift` + the Welcome window's "Want a quick tour?" question) and implement it in JVoice — covering the whole app, shown only the FIRST time (never to people who already use JVoice). Sub-agents allowed; conflicting work in separate worktrees, then merged.
 
@@ -22,6 +22,8 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 **Scroll-lag fix (David, same day: "when you scroll down the box shifts up… it lags back"):** the tag overlay only re-positioned on a 0.1 s timer; it now follows scroll-view clip-bounds notifications synchronously, cuts the box to the viewport and hides when the control is scrolled out. Probe `scripts/verify-tour-scroll.sh`: old code up to 222 pt behind after a scroll, new 0.0 pt at every step.
 
 **Release (David, same day: "document this then push and update the installer"):** shipped together with the bug-hunt batch as **v1.1.3** (Info.plist 1.1.3 / build 5, CHANGELOG `[1.1.3]`, README download link → v1.1.3) — push → CI → fast-forward `main` → `./scripts/package-release.sh` → GitHub release `v1.1.3` (see the ship record at the end of this entry). The unfinished maths-engine worktree is NOT in it. The Windows port has no tour yet.
+
+**Ship record (v1.1.3, 2026-09-28):** release commit `744407b` (Info.plist 1.1.3 / build 5, CHANGELOG `[1.1.3]`, README link → `v1.1.3/JVoice-1.1.3.dmg`); branch pushed first and CI run `36458889009` passed — swift-testing **502 authored = 502 executed**, all four logic-script sections incl. Tours; then `origin/main` fast-forwarded `74d9b03 → 744407b` (so `main` now also carries the whole bug-hunt batch; `improve/bug-hunt-and-parity` was never pushed separately). `./scripts/package-release.sh` → `dist/JVoice.app.zip` + `dist/JVoice-1.1.3.dmg`, signed "JVoice Self-Signed" (leaf `H"1164938a…7860"`, unchanged → users keep permissions). GitHub release `v1.1.3` (marked Latest) carries both assets. Verified after publishing: `scripts/install.sh`'s release query resolves to `…/v1.1.3/JVoice.app.zip`; the downloaded zip passes `codesign --verify --deep --strict`, reports 1.1.3 and passes `--settings-smoke`; the README DMG link returns HTTP 200. David's `/Applications/JVoice.app` is the dev build of `157698d` (same code as 1.1.3, but its Info.plist still says 1.1.2); running the one-liner or `./scripts/dev-install.sh` makes it report 1.1.3.
 
 **Deferred by David (same day):** review whether JVoice's MATHS dictation is accurate enough, using the real sample he saved — `docs/math-accuracy/README.md` (gitignored: screenshot of the problem + exported Recent Transcripts + log). Not started.
 
