@@ -33,6 +33,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         guard let button = item.button else { return }
         button.imagePosition = .imageOnly
         button.toolTip = "JVoice"
+        button.tourAnchor = "menuBar.icon"   // the Welcome tour's first step
         updateStatusButton(button)
     }
 
@@ -58,9 +59,32 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         launchItem.state = (coordinator?.launchAtLogin ?? false) ? .on : .off
         menu.addItem(launchItem)
 
+        menu.addItem(helpToursItem())
+
         menu.addItem(.separator())
 
         menu.addItem(menuItem("Quit JVoice", #selector(quit)))
+    }
+
+    /// "Help & Tours ▸": Take the Welcome Tour · one "<Name> Tour" per other tour · Reset All Tours.
+    /// Each tour item carries its `TourID` raw value as `representedObject`.
+    private func helpToursItem() -> NSMenuItem {
+        let submenu = NSMenu(title: "Help & Tours")
+        func addTour(_ title: String, _ tour: TourID) {
+            let item = menuItem(title, #selector(replayTour(_:)))
+            item.representedObject = tour.rawValue
+            submenu.addItem(item)
+        }
+        addTour("Take the \(TourID.welcome.menuTitle)", .welcome)
+        submenu.addItem(.separator())
+        for tour in TourID.allCases where tour != .welcome {
+            addTour(tour.menuTitle, tour)
+        }
+        submenu.addItem(.separator())
+        submenu.addItem(menuItem("Reset All Tours", #selector(resetTours)))
+        let parent = NSMenuItem(title: "Help & Tours", action: nil, keyEquivalent: "")
+        parent.submenu = submenu
+        return parent
     }
 
     private func menuItem(_ title: String, _ action: Selector) -> NSMenuItem {
@@ -80,6 +104,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     @objc private func toggleLaunchAtLogin() {
         guard let coordinator else { return }
         coordinator.setLaunchAtLogin(!coordinator.launchAtLogin)
+    }
+
+    /// Help & Tours: run a tour from its first step (now if its surface is on screen, otherwise the
+    /// next time it appears) / forget which tours were seen. No-ops while no tour coordinator is installed.
+    @objc private func replayTour(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String, let tour = TourID(rawValue: raw) else { return }
+        TourEvents.replay(tour, in: nil)
+    }
+
+    @objc private func resetTours() {
+        TourEvents.resetAll()
     }
 
     @objc private func quit() {
