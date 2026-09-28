@@ -21,7 +21,7 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 
 **Scroll-lag fix (David, same day: "when you scroll down the box shifts up… it lags back"):** the tag overlay only re-positioned on a 0.1 s timer; it now follows scroll-view clip-bounds notifications synchronously, cuts the box to the viewport and hides when the control is scrolled out. Probe `scripts/verify-tour-scroll.sh`: old code up to 222 pt behind after a scroll, new 0.0 pt at every step.
 
-**Open/for David:** ship together with the paused bug-hunt batch (this branch contains it) or cherry-pick onto `main`; the Windows port has no tour yet.
+**Release (David, same day: "document this then push and update the installer"):** shipped together with the bug-hunt batch as **v1.1.3** (Info.plist 1.1.3 / build 5, CHANGELOG `[1.1.3]`, README download link → v1.1.3) — push → CI → fast-forward `main` → `./scripts/package-release.sh` → GitHub release `v1.1.3` (see the ship record at the end of this entry). The unfinished maths-engine worktree is NOT in it. The Windows port has no tour yet.
 
 **Deferred by David (same day):** review whether JVoice's MATHS dictation is accurate enough, using the real sample he saved — `docs/math-accuracy/README.md` (gitignored: screenshot of the problem + exported Recent Transcripts + log). Not started.
 

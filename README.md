@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/inst
 
 That downloads the newest release, puts `JVoice.app` in `/Applications`, clears the quarantine flag, and launches it — no "unverified developer" dance. (Read it first if you like: [`scripts/install.sh`](scripts/install.sh).)
 
-**Manually:** **[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/download/v1.1.2/JVoice-1.1.2.dmg)** — macOS 14+ (Apple Silicon recommended)
+**Manually:** **[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/download/v1.1.3/JVoice-1.1.3.dmg)** — macOS 14+ (Apple Silicon recommended)
 
 1. Open the DMG and drag **JVoice** into **Applications**.
 2. First launch: macOS says it *"can't verify the developer."* Click **Done** (not "Move to Trash").
@@ -91,6 +91,8 @@ Both produce identical transcripts — the GPU build is just *faster* on support
 1. Press your hotkey — by default <kbd>⌥Space</kbd> on macOS or <kbd>Ctrl+Shift+Space</kbd> on Windows, and rebindable in Settings — a recording indicator appears.
 2. Talk. Press the hotkey again to stop.
 3. Transcribed, tone-styled text is pasted at your cursor.
+
+New to JVoice? The first time it opens it offers a quick guided tour (macOS) — it points out each part the first time you use it, and existing users never see it unless they ask. Replay it any time from the **ⓘ** at the top of a window (whole tour, or just one part) or menu bar → **Help & Tours**.
 
 Open **Settings** (menu-bar / tray icon → Settings…) for language, tone style, Whisper model, filler-word removal, custom words, and your dictation stats. Your recent transcripts are kept there too — copy any one back to the clipboard, or clear them. Everything stays on your machine.
 

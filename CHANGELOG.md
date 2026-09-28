@@ -4,6 +4,22 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
+## [1.1.3] — 2026-09-28
+
+### Added
+
+- **A first-run guided tour — for new users only.** The first time JVoice opens on a Mac that has never run it, a Welcome window sets up Microphone and Accessibility access, shows your dictation shortcut, and asks **"Want a quick tour?"**. Say yes and JVoice points out each part the first time you reach it: the menu-bar icon and shortcut (then "try it now" — the step finishes by itself when you start recording), the recording pill on your first dictation, and every card of Settings the first time you open it. Each step outlines the real control with a short tag; Next / Skip Step / Skip Tour (Return / Esc) always work. **People who already use JVoice never get it automatically** — JVoice decides once, before it writes anything, whether this Mac has used it before (any saved setting, or Microphone/Accessibility already granted), and existing users see no window and no tour, now or after later updates. Adapted from BetterScreenshot's guided tours (`Sources/JVoice/Tours/`).
+- **An ⓘ at the top of every JVoice window** (Settings and the Welcome window): **Replay Tour** runs the window's tour again, and **Show Me** lists each part (Your stats, Speech model, Custom words, Your shortcut…) so you can have just one explained. Also: menu bar → **Help & Tours** (every tour + Reset All Tours) and Settings → **Tours & Tips** ("Show Me Around" turns the first-time tours on for anyone).
+
+### Fixed
+
+- **A second press while a dictation was still being transcribed threw that dictation away.** It is now ignored; and when a paste is refused (no Accessibility access, or the target app rejects it) the text goes to the clipboard and Recent Transcripts instead of being lost. Clipboard restore after a paste no longer overwrites something you copied in the meantime.
+- **Speech recognition guards against more failure modes:** a phrase repeated in a loop anywhere in the text, a long stretch of speech skipped, quiet noise or music turning into invented words, a recited list of your custom words, and caption-only results ("[Music]", "(wind blowing)") — each re-checked once without the custom-word hint, which then decides.
+- **Custom words:** no longer swallow the word before them ("I deployed 2 Vercel apps" kept its "2"), keep possessives ("Vercel's"), don't join across commas, and need a closer sound-alike before replacing a word. Filler removal no longer eats "ER", "err", "Uh-oh" or "Mm-hmm".
+- **Shortcut recorder** refuses bare keys, system shortcuts (⌘Space, ⌘⇧3…), app-menu chords (⌘C, ⌘V, ⌘Q…) and a chord already used by the other action, and says why. Rejected custom words stay in the field with the reason.
+- **The hidden recording pill no longer animates in the background** from launch until the first dictation (it used 2–5 % of a CPU core while idle).
+- Recording from Bluetooth setups without a built-in mic no longer redirects to virtual devices; a silent input device is named in the error; a recorder failing mid-recording says "Recording was interrupted"; quitting mid-transcription deletes that dictation's audio; ⌘, opens the real Settings window.
+
 ## [1.1.2] — 2026-09-23
 
 ### Fixed
