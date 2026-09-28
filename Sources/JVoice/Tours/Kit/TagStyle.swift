@@ -5,15 +5,23 @@ import AppKit
 /// (`docs/MAC-TO-WINDOWS-PARITY-v3.md` §7.3) copies the numbers from here.
 public enum TagStyle {
     // MARK: Colour
-    /// The tour colour — red #C62D22 — for the outline box, the leader line and the tag. A deeper shade
-    /// of the mock's #FF453A so the tag's white text clears WCAG AA: white on it is 5.5:1 (#FF453A was
-    /// 3.4:1 — review 2026-09-26, T1). `TagContrastTests` checks every text/background pair below.
-    public static let tourRed = NSColor(srgbRed: 198 / 255, green: 45 / 255, blue: 34 / 255, alpha: 1)
+    /// JVoice is strictly monochrome (`UI/Theme.swift`: black / white / grey, no hue), so the tag is
+    /// too, inverted against its host for the strongest contrast: a near-black tag on a light host, a
+    /// white tag on a dark one (`hostIsDark` = `TagOverlayController.isDark(anchor.effectiveAppearance)`).
+    /// The outline box and the leader line take the tag's colour. Contrast (WCAG, sRGB):
+    /// - title / body / done label / "Skip Step" outline on the tag: ink ↔ paper = 19.1:1, both hosts;
+    /// - counter + "Skip Tour" (`secondaryTextAlpha` 0.9): 15.5:1 on the ink tag, 14.9:1 on the paper tag;
+    /// - "Next" / "Done" capsule (the tag's own colour on the text colour): 19.1:1, both hosts.
+    /// Ink is the light theme's `textPrimary` (white 0.06, #0F0F0F).
+    public static let tourInk = NSColor(srgbRed: 0.06, green: 0.06, blue: 0.06, alpha: 1)
+    public static let tourPaper = NSColor.white
+    /// The tag bubble, the outline box and the leader line.
+    public static func tagColour(hostIsDark: Bool) -> NSColor { hostIsDark ? tourPaper : tourInk }
     /// The tag's text: title, body, the Try step's "Skip Step" outline button, the done state.
-    public static let textColour = NSColor.white
-    /// The primary (Next / Done) capsule: white fill, tour-red label.
-    public static let filledButtonFill = NSColor.white
-    public static var filledButtonText: NSColor { tourRed }
+    public static func textColour(hostIsDark: Bool) -> NSColor { hostIsDark ? tourInk : tourPaper }
+    /// The primary (Next / Done) capsule: filled with the text colour, labelled in the tag's colour.
+    public static func filledButtonFill(hostIsDark: Bool) -> NSColor { textColour(hostIsDark: hostIsDark) }
+    public static func filledButtonText(hostIsDark: Bool) -> NSColor { tagColour(hostIsDark: hostIsDark) }
     /// The dim laid over the rest of the host window (black at this alpha)…
     public static let dimAlpha: CGFloat = 0.2
     /// …and over an always-dark host (the editor, video editor, record strip, pill, Settings), where 20%
@@ -59,9 +67,11 @@ public enum TagStyle {
     public static let buttonHeight: CGFloat = 20
     public static let buttonPaddingX: CGFloat = 8
     public static let buttonGap: CGFloat = 4
-    /// White at this alpha: the step counter and the "Skip Tour" link (4.7:1 on the tag red).
+    /// The text colour at this alpha: the step counter and the "Skip Tour" link (≥ 14.9:1, see Colour).
     public static let secondaryTextAlpha: CGFloat = 0.9
-    public static var secondaryTextColour: NSColor { textColour.withAlphaComponent(secondaryTextAlpha) }
+    public static func secondaryTextColour(hostIsDark: Bool) -> NSColor {
+        textColour(hostIsDark: hostIsDark).withAlphaComponent(secondaryTextAlpha)
+    }
 
     // MARK: Strings
     public static let nextTitle = "Next"

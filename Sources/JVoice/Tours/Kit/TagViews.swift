@@ -30,6 +30,8 @@ final class TagDecorView: NSView {
     var dim: (rect: CGRect, radius: CGFloat)?
     /// 20 %, or 35 % over a dark host (`TagStyle.dimAlpha(hostIsDark:)`).
     var dimAlpha = TagStyle.dimAlpha
+    /// Picks the outline + leader colour (`TagStyle.tagColour(hostIsDark:)`).
+    var hostIsDark = false
     /// Outline's inner edge (anchor + padding) and outer edge (inner + stroke).
     var box: CGRect = .zero
     var outer: CGRect = .zero
@@ -51,7 +53,7 @@ final class TagDecorView: NSView {
             NSGraphicsContext.restoreGraphicsState()
         }
 
-        TagStyle.tourRed.setStroke()
+        TagStyle.tagColour(hostIsDark: hostIsDark).setStroke()
         let half = TagStyle.boxStroke / 2
         let radius = TagStyle.boxRadius + half
         let outline = NSBezierPath(roundedRect: box.insetBy(dx: -half, dy: -half), xRadius: radius, yRadius: radius)
@@ -75,6 +77,8 @@ final class TagButton: NSButton {
     enum Style { case filled, outline, link }
 
     var style: Style { didSet { restyle() } }
+    /// Monochrome, inverted against the host (`TagStyle`).
+    var hostIsDark = false { didSet { if hostIsDark != oldValue { restyle() } } }
 
     init(style: Style) {
         self.style = style
@@ -99,9 +103,9 @@ final class TagButton: NSButton {
     func setLabel(_ text: String) {
         let colour: NSColor
         switch style {
-        case .filled: colour = TagStyle.filledButtonText
-        case .outline: colour = TagStyle.textColour
-        case .link: colour = TagStyle.secondaryTextColour
+        case .filled: colour = TagStyle.filledButtonText(hostIsDark: hostIsDark)
+        case .outline: colour = TagStyle.textColour(hostIsDark: hostIsDark)
+        case .link: colour = TagStyle.secondaryTextColour(hostIsDark: hostIsDark)
         }
         attributedTitle = NSAttributedString(string: text, attributes: [
             .font: TagStyle.buttonFont, .foregroundColor: colour,
@@ -117,14 +121,15 @@ final class TagButton: NSButton {
 
     private func restyle() {
         layer?.cornerRadius = TagStyle.buttonHeight / 2
-        layer?.backgroundColor = style == .filled ? TagStyle.filledButtonFill.cgColor : NSColor.clear.cgColor
+        layer?.backgroundColor = style == .filled
+            ? TagStyle.filledButtonFill(hostIsDark: hostIsDark).cgColor : NSColor.clear.cgColor
         layer?.borderWidth = style == .outline ? 1 : 0
-        layer?.borderColor = TagStyle.textColour.cgColor
+        layer?.borderColor = TagStyle.textColour(hostIsDark: hostIsDark).cgColor
         setLabel(attributedTitle.string)
     }
 }
 
-/// The red tag bubble: title, body (≤ 2 lines), footer "2 of 7 · Skip tour · Next".
+/// The tag bubble (monochrome, inverted against the host): title, body (≤ 2 lines), footer "2 of 7 · Skip tour · Next".
 final class TagBubbleView: NSView {
     let titleLabel = NSTextField(labelWithString: "")
     let bodyLabel = NSTextField(wrappingLabelWithString: "")
@@ -139,36 +144,32 @@ final class TagBubbleView: NSView {
     var onSkipTour: (() -> Void)?
     /// False on the last Explain step ("Done" alone — `TagStyle.showsSkipTour`).
     private var offersSkipTour = true
+    /// Recolours the bubble for its host: a near-black tag on a light host, white on a dark one.
+    var hostIsDark = false { didSet { if hostIsDark != oldValue { applyColours() } } }
 
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.backgroundColor = TagStyle.tourRed.cgColor
         layer?.cornerRadius = TagStyle.tagRadius
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
 
         titleLabel.font = TagStyle.titleFont
-        titleLabel.textColor = TagStyle.textColour
         titleLabel.lineBreakMode = .byTruncatingTail
         titleLabel.maximumNumberOfLines = 1
 
         bodyLabel.font = TagStyle.bodyFont
-        bodyLabel.textColor = TagStyle.textColour
         bodyLabel.maximumNumberOfLines = TagStyle.bodyMaxLines
         bodyLabel.cell?.truncatesLastVisibleLine = true
         bodyLabel.lineBreakMode = .byWordWrapping
 
         counterLabel.font = TagStyle.footerFont
-        counterLabel.textColor = TagStyle.secondaryTextColour
 
         doneIcon.image = NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: nil)?
             .withSymbolConfiguration(.init(pointSize: 13, weight: .semibold))
-        doneIcon.contentTintColor = TagStyle.textColour
         doneLabel.font = TagStyle.buttonFont
-        doneLabel.textColor = TagStyle.textColour
 
         skipTourButton.setLabel(TagStyle.skipTourTitle)
         skipTourButton.target = self
@@ -179,6 +180,19 @@ final class TagBubbleView: NSView {
         for v in [titleLabel, bodyLabel, counterLabel, skipTourButton, primaryButton, doneIcon, doneLabel] as [NSView] {
             addSubview(v)
         }
+        applyColours()
+    }
+
+    private func applyColours() {
+        let text = TagStyle.textColour(hostIsDark: hostIsDark)
+        layer?.backgroundColor = TagStyle.tagColour(hostIsDark: hostIsDark).cgColor
+        titleLabel.textColor = text
+        bodyLabel.textColor = text
+        counterLabel.textColor = TagStyle.secondaryTextColour(hostIsDark: hostIsDark)
+        doneIcon.contentTintColor = text
+        doneLabel.textColor = text
+        skipTourButton.hostIsDark = hostIsDark
+        primaryButton.hostIsDark = hostIsDark
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }

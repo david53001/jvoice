@@ -116,6 +116,9 @@ struct SettingsView: View {
     @State private var wordNotice: String?
     @State private var appMatchNotice: String?
     @State private var showResetConfirm = false
+    /// Mirror of `TourSettings.firstUseToursEnabled` (a plain UserDefaults key SwiftUI can't observe):
+    /// refreshed on appear and whenever a window becomes key, written through on change.
+    @State private var toursEnabled = false
 
     var body: some View {
         let theme = coordinator.appTheme.theme
@@ -156,6 +159,8 @@ struct SettingsView: View {
                     VStack(spacing: 12) {
                         recentTranscriptsSection(theme)
                         customWordsSection(theme)
+                        // The right column is the shorter one, so this card costs no height.
+                        toursSection(theme)
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
@@ -182,6 +187,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity)
         }
+        .tourAnchor("settings.stats")
     }
 
     /// Human-readable "time saved" cell: "—" under a minute, "{n} min" up to an
@@ -223,6 +229,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .tourAnchor("settings.model")
     }
 
     private func processingSection(_ theme: Theme) -> some View {
@@ -242,6 +249,7 @@ struct SettingsView: View {
                           isOn: $coordinator.copyToClipboardOnly, theme)
             }
         }
+        .tourAnchor("settings.processing")
     }
 
     /// A labelled switch row matching the original Processing toggle style.
@@ -272,6 +280,7 @@ struct SettingsView: View {
             }
             .pickerStyle(.segmented)
         }
+        .tourAnchor("settings.voiceStyle")
     }
 
     private func languageSection(_ theme: Theme) -> some View {
@@ -376,6 +385,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .tourAnchor("settings.appModes")
     }
 
     private func shortcutSection(_ theme: Theme) -> some View {
@@ -403,6 +413,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .tourAnchor("settings.shortcut")
     }
 
     private func recentTranscriptsSection(_ theme: Theme) -> some View {
@@ -438,6 +449,7 @@ struct SettingsView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .tourAnchor("settings.transcripts")
     }
 
     private func customWordsSection(_ theme: Theme) -> some View {
@@ -499,6 +511,33 @@ struct SettingsView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .tourAnchor("settings.customWords")
+    }
+
+    /// "Tours & Tips": the first-use tours switch, plus replay/reset (see `Tours/TourCatalog.swift`).
+    private func toursSection(_ theme: Theme) -> some View {
+        SettingsSection("Tours & Tips", theme: theme) {
+            VStack(alignment: .leading, spacing: 12) {
+                toggleRow("Show Me Around",
+                          "Point out each part the first time you use it.",
+                          isOn: Binding(get: { toursEnabled },
+                                        set: { toursEnabled = $0; TourSettings.firstUseToursEnabled = $0 }),
+                          theme)
+
+                HStack(spacing: 6) {
+                    Button("Replay Welcome Tour") { TourEvents.replay(.welcome, in: nil) }
+                        .buttonStyle(SettingsButtonStyle(theme: theme))
+                    Button("Reset All Tours") { TourEvents.resetAll() }
+                        .buttonStyle(SettingsButtonStyle(theme: theme))
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .onAppear { toursEnabled = TourSettings.firstUseToursEnabled }
+        // The Welcome window's "Show Me Around" can flip it while Settings stays open.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            toursEnabled = TourSettings.firstUseToursEnabled
         }
     }
 
