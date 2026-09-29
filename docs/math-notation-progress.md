@@ -134,6 +134,41 @@ Verification (all with the standalone probe = same five sources the app compiles
   ("log base 2 of" ×1,000 = 4,000 words) ≤ 0.1 s, 5,000-deep ≤ 1.8 s, "x squared" ×50,000 28 s. Real
   dictation never nests past a handful; noted, not optimised further.
 
+## Fix — David's failed dictation on the installed build (2026-09-29, after Step 2)
+
+**Symptom.** "K squared plus the root of K cubed times Kx squared sigma of 3." pasted as
+`K² plus the root of K³ times Kx squared sigma of 3.` — only the two scripts converted.
+**Now:** `K² + √K³ × Kx² σ(3).` Four causes, each reproduced first:
+1. **Bare "root of" was not a keyword**, so "root" was an ordinary word that ended the run and stranded
+   "plus". New keyword `"root of"` = square root, lexed WEAK: it renders inside a run something else
+   activated ("x plus the root of 2" → `x + √2`), and activates on its own only when its radicand takes a
+   power ("the root of K cubed" → `the √K³`; the weak root reads its radicand with `tryPoweredOperand`).
+   "the root of the problem", "the root of 3 problems", "root of all evil", "root for the team" stay words.
+2. **Whisper glued two variables into "Kx".** New lexer step 5b: a two-letter token, not all capitals
+   (acronyms: TV, PC, AI, UK), not in a list of ~130 English/unit/interjection two-letter words (ok, is,
+   an, at, my, so, to, us, if, of, or, it, as, be, by, go, he, me, no, up, we, am, do, hi, oh, ox, ax, cm,
+   kg, …), is a variable ONLY right after an infix operator or right before a script keyword
+   ("squared", "cubed", "sub", "super", "to the power"). It is marked `glued` + weak: an operator or
+   script next to it never activates because of it (`Parser.gluedBase`), so it renders only in an already
+   activated run. Three-letter tokens were NOT included (the brief allowed 2–3): "x equals 5 plus tax"
+   would become `x = 5 + tax`. Consequence: "x equals xy squared" alone stays words (conservative).
+3. **"the" mid-run** needed no new code: `tryOperand` already skips a "the" in operand position (that is
+   how "plus the square root of" worked); it only failed because "root" was a word (cause 1).
+4. **"sigma of 3"** → `σ(3)`: a Greek letter followed by "of" is applied like "f of x" (weak, `Parser.
+   isGreekLetter`). "sigma" is NOT turned into ∑ — **David hasn't said what he meant; flag for him.**
+   Side fix: a limit's target is read with `allowApply: false`, so "the limit as x approaches pi of sine x"
+   stays `lim_(x→π) sin x` rather than `π(sin x)`.
+- **Layout choice:** "times" after an UNBRACKETED root is `×` (`√K³ × Kx²`; also `√k³ × kx²` for the old
+  "square root" sentence, which pasted `√k³kx²`). Juxtaposition is the spec's rule for letter terms, but
+  `√K³Kx²` reads as one radicand √(K³Kx²); `×` keeps the letters and the root's extent unambiguous
+  (`MathScript.endsInOpenRadical`). `Kx²` and `σ(3)` were spoken with no "times", so they stay spaced.
+- **Verified:** logic tests 1114/1114 (+24); Swift cases through the probe 181 conversions + 129
+  leave-alone, 0 failures; everyday corpus 494, variants, maths corpus 367, repo prose (18,398 lines):
+  **0 lines differ** from the engine before this fix; the 55-sentence bleed list unchanged; a new
+  42-sentence list for root/sigma/two-letter words (`bleed_kx.txt` in the helpers folder) unchanged except
+  the two lines that already converted ("x equals 5 plus ok" → `x = 5 plus ok`, "x equals 5 so it works");
+  Windows spec 106/130 as before; release `--math-probe` identical to the probe on 1,078 lines.
+
 ## Deviations from the spec (and why)
 
 1. **A spoken leading "the" is kept**: "the square root of 14" → `the √14`, "the natural log of 2" →
@@ -223,7 +258,14 @@ Verification (all with the standalone probe = same five sources the app compiles
    DerivRatio; `PowerIsUnmistakable` skips a leading minus; tryOperand(): `Radical` for roots and the √
    prefix, marked function names (`FunctionMarks`), `ApplyFunction` with a script-operand argument and
    ln/powered-function activation, `Quantity(k)`; `Group` stops an unclosed bracket at "all over".
-5. `MathSpeechTests.cs` / `MathSymbolsTests.cs`: take the expectations from the Swift files
+5. The 2026-09-29 dictation fix: keyword "root of" (lexed weak; weak root reads a powered radicand and
+   activates only when it took a power; `keyword()` does not activate a weak root); `Item.Glued` + lexer
+   step 5b (`IsGluedVariables`, the two-letter word list, `IsInfix`, `StartsScript`) + `GluedBase`
+   suppressing activation in the operator branch, scripts and "squared"/"cubed"; Greek letter + "of" →
+   application (`IsGreekLetter`); limit target read with `allowApply: false`; `MathScript.
+   EndsInOpenRadical` → `×` in `ProductSeparator`. Tests: the "David's failed dictation" block and the
+   root/sigma/two-letter leave-alone lines in `MathSpeechTests.swift`.
+6. `MathSpeechTests.cs` / `MathSymbolsTests.cs`: take the expectations from the Swift files
    (`Tests/JVoiceTests/MathSpeechTests.swift` — the "shared notation format" block and the new leave-alone
    lines; `MathSymbolsTests.swift` — the "times"/"dot" lookups and the four updated conversions).
 

@@ -307,6 +307,8 @@ public enum MathScript {
         guard let r = right.first, let l = left.last else { return cross }
         if r.isNumber || "+-±∓.∞".contains(r) { return cross }
         if l == "%" || l == "°" || containsTopLevelSlash(left) { return cross }
+        // "√K³" then "Kx²": standing together they would read as one radicand, √(K³Kx²).
+        if endsInOpenRadical(left) { return cross }
         if spacedFunctionName(right) || isDifferential(right) { return " " }
         if isApplication(left) || isApplication(right) { return cross }
         if needsGrouping(left, leadingSign: false) || needsGrouping(right) { return cross }
@@ -323,6 +325,19 @@ public enum MathScript {
         let scalars = operand.unicodeScalars
         guard scalars.count == 2, let first = scalars.first, let last = scalars.last else { return false }
         return first == "d" && isLetter(last)
+    }
+
+    /// A root sign at the top level whose radicand is NOT bracketed ("√K³", "3√2"): whatever
+    /// is written straight after it would look like more radicand.
+    private static func endsInOpenRadical(_ operand: String) -> Bool {
+        let scalars = Array(operand.unicodeScalars)
+        var depth = 0
+        for (index, scalar) in scalars.enumerated() {
+            if openers.contains(scalar) { depth += 1 } else if closers.contains(scalar) { depth -= 1 }
+            guard depth == 0, scalar == "√" || scalar == "∛" || scalar == "∜" else { continue }
+            if index + 1 < scalars.count, scalars[index + 1] != "(" { return true }
+        }
+        return false
     }
 
     private static func containsTopLevelSlash(_ operand: String) -> Bool {

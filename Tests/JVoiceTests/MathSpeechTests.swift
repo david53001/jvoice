@@ -179,6 +179,14 @@ private let mathConverts: [(String, String)] = [
     ("the limit as n tends to infinity of 1 over n equals 0", "the lim_(n→∞) 1/n = 0"),
     ("20 percent of 50 equals 10", "20% of 50 = 10"),
     ("angle A B C equals 90 degrees", "∠ABC = 90°"),
+    // ── David's failed dictation, 2026-09-29: bare "root of", glued "Kx", "sigma of" ──
+    ("K squared plus the root of K cubed times Kx squared sigma of 3.", "K² + √K³ × Kx² σ(3)."),
+    ("k squared plus the square root of k cubed times k x squared", "k² + √k³ × kx²"),
+    ("x plus the root of 2", "x + √2"),
+    ("the root of K cubed", "the √K³"),
+    ("k squared times Kx squared", "k²Kx²"),
+    ("x equals sigma of 3", "x = σ(3)"),
+    ("the limit as x approaches pi of sine x", "the lim_(x→π) sin x"),
     // ── explicit escape hatch ──
     ("start equation capital sigma end equation", "Σ"),
     ("write start equation alpha end equation here", "write α here"),
@@ -264,6 +272,22 @@ private let mathLeavesAlone: [String] = [
     "dx dy is a nice dance",
     "section d y and d x",
     "it went from 5 to the minus 3 degrees",
+    // bare "root of", "sigma of" and two-letter words (2026-09-29 fix)
+    "the root of the problem",
+    "the root of 3 problems",
+    "root of all evil",
+    "root for the team",
+    "the root of our 3 main problems is time",
+    "sigma of 3 people",
+    "six sigma of 3 teams",
+    "it was 2 plus ok",
+    "he got 5 plus TV",
+    "5 plus me",
+    "3 times is enough",
+    "7 times or so",
+    "we need 5 plus AI tools",
+    "my PC squared",
+    "Ok squared away",
 ]
 
 

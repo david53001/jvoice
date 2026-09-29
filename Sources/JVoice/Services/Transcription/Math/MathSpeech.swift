@@ -208,9 +208,14 @@ public enum MathSpeech {
         var key: Kw = .none
         var weak = false
         var ordinal: Ordinal = .none
+        /// Two variables whisper glued into one word ("Kx"): an operand that never makes a
+        /// construct around it count as mathematics (lexer step 5b).
+        var glued = false
 
         init(_ kind: ItemKind, _ text: String, _ start: Int, _ count: Int,
-             sym: MathSymbol? = nil, key: Kw = .none, weak: Bool = false, ordinal: Ordinal = .none) {
+             sym: MathSymbol? = nil, key: Kw = .none, weak: Bool = false, ordinal: Ordinal = .none,
+             glued: Bool = false) {
+            self.glued = glued
             self.kind = kind
             self.text = text
             self.start = start
@@ -254,6 +259,9 @@ public enum MathSpeech {
         "square root of": (.root, "2"),
         "square root": (.root, "2"),
         "cube root of": (.root, "3"),
+        // Bare "root of" is the square root, WEAK (lexer): "the root of K cubed" converts inside
+        // an equation or when its radicand is a power; "the root of the problem" never.
+        "root of": (.root, "2"),
         "cube root": (.root, "3"),
         "over": (.over, ""),
         // "a plus b all over 2" → (a + b)/2: the whole side so far is the numerator. WEAK —
@@ -416,8 +424,11 @@ public enum MathSpeech {
                     i += 1
                     continue
                 }
+                // A bare "root of" ("the root of K cubed") is weak too: "the root of 3 problems"
+                // is English. "square root of" is not.
+                let bareRoot = keyword.key == .root && core.caseInsensitiveCompare("root") == .orderedSame
                 items.append(Item(.keyword, keyword.payload, i, keyword.consumed, key: keyword.key,
-                                  weak: bareToThe))
+                                  weak: bareToThe || bareRoot))
                 i += keyword.consumed
                 continue
             }
@@ -451,10 +462,61 @@ public enum MathSpeech {
                 continue
             }
 
+            // 5b) "times Kx squared": whisper glued two variables into one word. Only a
+            //     two-letter, mixed- or lower-case token that is no English word, and only
+            //     where it can only be an operand — right after an infix operator or right
+            //     before a script ("squared", "sub", …). It is WEAK and GLUED: nothing around
+            //     it activates because of it, so it renders only inside a run something else
+            //     already made mathematics ("K squared plus … times Kx squared" → Kx²).
+            if isGluedVariables(core),
+               isInfix(items.last) || startsScript(cores, i + 1) {
+                items.append(Item(.variable, core, i, 1, weak: true, glued: true))
+                i += 1
+                continue
+            }
+
             items.append(Item(.word, core, i, 1))
             i += 1
         }
         return items
+    }
+
+    /// Two-letter words that are English (or units, or interjections) and never glued
+    /// variables — compared case-insensitively. All-caps pairs (TV, PC, UK, AI) are refused
+    /// separately as acronyms.
+    private static let twoLetterWords: Set<String> = [
+        "ab", "ad", "ah", "al", "am", "an", "as", "at", "aw", "ax", "ay", "be", "bi", "by", "cm",
+        "co", "da", "do", "dr", "ed", "eh", "em", "en", "er", "ex", "fa", "ft", "go", "ha", "he",
+        "hi", "hm", "ho", "hz", "id", "if", "im", "in", "is", "it", "jo", "ka", "kg", "km", "la",
+        "lb", "li", "lo", "ma", "me", "mi", "ml", "mg", "mm", "mo", "mr", "ms", "mu", "my", "na",
+        "nd", "ne", "no", "nu", "ob", "od", "of", "oh", "oi", "ok", "om", "on", "oo", "op", "or",
+        "os", "ow", "ox", "oy", "oz", "pa", "pe", "pi", "pm", "po", "qi", "re", "rd", "sh", "si",
+        "so", "st", "ta", "th", "ti", "to", "tv", "uh", "um", "un", "up", "ur", "us", "ut", "vs",
+        "we", "wo", "xi", "ya", "ye", "yo", "yu", "za",
+    ]
+
+    /// "Kx", "xy", "kx" — a token whisper glued from two spoken variables. Two ASCII letters,
+    /// not all capitals (acronyms), not an English/unit two-letter word.
+    private static func isGluedVariables(_ core: String) -> Bool {
+        let chars = Array(core)
+        guard chars.count == 2, chars.allSatisfy({ $0.isAsciiLetter }),
+              !chars.allSatisfy({ $0.isUppercase }) else { return false }
+        return !twoLetterWords.contains(core.lowercased())
+    }
+
+    private static func isInfix(_ item: Item?) -> Bool {
+        guard let item, item.kind == .symbol, let kind = item.sym?.kind else { return false }
+        return kind == .relation || kind == .operatorSymbol
+    }
+
+    /// A script keyword starts at `i`: "squared", "cubed", "sub…", "super…", "to the power".
+    private static func startsScript(_ cores: [String], _ i: Int) -> Bool {
+        guard i < cores.count, let keyword = tryKeyword(cores, i) else { return false }
+        switch keyword.key {
+        case .pow2, .pow3, .sub, .sup: return true
+        case .power: return keyword.consumed > 2 || cores[i].caseInsensitiveCompare("raised") == .orderedSame
+        default: return false
+        }
     }
 
     /// Letters a differential is written with — whisper's one-word "dy"/"dx"/"dt" form is only
@@ -1133,7 +1195,9 @@ public enum MathSpeech {
                     if sym.text == Parser.timesMarker { expr.groupTrailingOne() }
                     expr.pushInfix(sym.text, relation: sym.kind == .relation)
                     expr.pushOperand(rhs.text)
-                    if sym.activates && !it.weak && !articlePair { activated = true }
+                    // A glued "Kx" on either side is no evidence of mathematics (lexer 5b).
+                    if sym.activates && !it.weak && !articlePair && !items[i + 1].glued
+                        && !gluedBase(i) { activated = true }
                     if given { relationsInPart = 0 } else if budgeted { relationsInPart += 1 }
                     i = rhs.next
                     return true
@@ -1263,7 +1327,7 @@ public enum MathSpeech {
                 guard let script = isSuper ? tryExponent(i + 1) : tryScriptOperand(i + 1) else { return false }
                 expr.replaceLast(MathScript.attach(isSuper ? MathScript.powerBase(expr.lastText) : expr.lastText,
                                                    MathScript.scriptOperand(script.text), superscript: isSuper))
-                if !it.weak || powerIsUnmistakable(i, script.next) { activated = true }
+                if (!it.weak || powerIsUnmistakable(i, script.next)) && !gluedBase(i) { activated = true }
                 i = script.next
                 return true
 
@@ -1271,17 +1335,18 @@ public enum MathSpeech {
                 guard expr.lastIsOperand else { return false }
                 expr.replaceLast(MathScript.attach(MathScript.powerBase(expr.lastText), it.key == .pow2 ? "2" : "3",
                                                    superscript: true))
-                activated = true
+                if !gluedBase(i) { activated = true }
                 i += 1
                 return true
 
             case .root, .abs, .derivRatio:
                 // All three build a self-contained operand, so tryOperand owns the one
                 // implementation and they also work in operand position ("x equals the
-                // square root of 2", "from 0 to the square root of 2").
+                // square root of 2", "from 0 to the square root of 2"). A bare "root of" is
+                // weak: tryOperand decides whether it activates.
                 guard let built = tryOperand(i) else { return false }
                 expr.pushOperand(built.text)
-                activated = true
+                if !it.weak { activated = true }
                 i = built.next
                 return true
 
@@ -1370,7 +1435,8 @@ public enum MathSpeech {
                 guard variable.next < items.count,
                       items[variable.next].key == .approaches || items[variable.next].key == .tendsTo
                 else { return false }
-                guard let target = tryOperand(variable.next + 1) else { return false }
+                // allowApply: false — the "of" after the target opens the limit's BODY.
+                guard let target = tryOperand(variable.next + 1, allowApply: false) else { return false }
                 var afterTarget = target.next
                 if afterTarget < items.count, items[afterTarget].key == .of { afterTarget += 1 }
                 expr.pushHead(MathScript.attach("lim", "\(variable.text)→\(target.text)", superscript: false))
@@ -1473,6 +1539,18 @@ public enum MathSpeech {
             return operand.dropFirst().allSatisfy { !$0.isASCII || !$0.isLetter && !$0.isNumber }
         }
 
+        /// The operand ending just before `i` (past any "squared"/"cubed") is a glued "Kx".
+        private func gluedBase(_ i: Int) -> Bool {
+            var j = i - 1
+            while j >= 0, items[j].kind == .keyword, items[j].key == .pow2 || items[j].key == .pow3 { j -= 1 }
+            return j >= 0 && items[j].glued
+        }
+
+        static func isGreekLetter(_ text: String) -> Bool {
+            guard text.unicodeScalars.count == 1, let scalar = text.unicodeScalars.first else { return false }
+            return (0x391...0x3C9).contains(scalar.value)
+        }
+
         private func isMinus(_ item: Item) -> Bool {
             item.kind == .symbol && item.sym?.kind == .operatorSymbol && item.sym?.text == "-"
         }
@@ -1538,6 +1616,14 @@ public enum MathSpeech {
                 case .root:
                     var j = k + 1
                     if j < items.count, items[j].key == .of { j += 1 }
+                    if it.weak {
+                        // Bare "root of": the radicand takes its power ("the root of K cubed" →
+                        // √K³), and only a powered radicand makes it mathematics on its own —
+                        // "the root of 3 problems" stays words unless the run is an equation.
+                        guard let plain = tryOperand(j), let radicand = tryPoweredOperand(j) else { return nil }
+                        if radicand.next > plain.next { activated = true }
+                        return (MathScript.radical(Parser.rootSign(it.text), radicand.text), radicand.next)
+                    }
                     guard let radicand = tryOperand(j) else { return nil }
                     activated = true
                     return (MathScript.radical(Parser.rootSign(it.text), radicand.text), radicand.next)
@@ -1602,6 +1688,11 @@ public enum MathSpeech {
             case .symbol:
                 guard let sym = it.sym else { return nil }
                 if sym.kind == .operand {
+                    // "sigma of 3" → σ(3): a Greek letter applied with "of", like "f of x". Weak.
+                    if allowApply, Parser.isGreekLetter(sym.text), k + 1 < items.count,
+                       items[k + 1].key == .of, let arg = subExpression(k + 2, .argument) {
+                        return ("\(sym.text)(\(arg.text))", arg.next)
+                    }
                     return (sym.text, k + 1)
                 }
                 if sym.kind == .open { return group(k) }

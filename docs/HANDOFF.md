@@ -13,7 +13,9 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 
 **Needs David:** denominator brackets `12/(2T)` (JVoice now) vs BetterScreenshot's wording `12/2T` — the two apps should agree; keep or drop a spoken leading "the" (`the √14`); spec §6 decisions unchanged. His real dictation ("k plus 1 times k plus 2 …", meaning a product of brackets) needs "the quantity …" or "open paren" — worth telling him before the pending maths-accuracy review (`docs/math-accuracy/`, gitignored).
 
-**Not done:** the Windows engine (no .NET here — mirror list in the progress doc); the `--no-math` bench measurement; CI; install. Nested chains of one construct are now quadratic in depth (1,000-deep ≤ 0.1 s; real dictation nests a handful).
+**Follow-up fix (same day, David's real dictation on the installed branch build):** "K squared plus the root of K cubed times Kx squared sigma of 3." pasted `K² plus the root of K³ times Kx squared sigma of 3.`; now `K² + √K³ × Kx² σ(3).` — bare "root of" is a weak square root, whisper's glued "Kx" is read as two variables only after an operator/before a script (never activating, English two-letter words and acronyms excluded), "sigma of 3" → `σ(3)` (**not** ∑ — ask David what he meant), `×` after an unbracketed root. Every corpus 0 lines changed; logic tests 1114/1114. Details: `docs/math-notation-progress.md` "Fix — David's failed dictation". Reinstalled to `/Applications` with `./scripts/dev-install.sh` (see below).
+
+**Not done:** the Windows engine (no .NET here — mirror list in the progress doc); the `--no-math` bench measurement; CI. Nested chains of one construct are now quadratic in depth (1,000-deep ≤ 0.1 s; real dictation nests a handful).
 
 
 ## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; SHIPPED as v1.1.3 — `main` fast-forwarded to it)

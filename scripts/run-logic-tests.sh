@@ -774,6 +774,14 @@ for (spoken, pasted, why) in [
     ("x tends to infinity", "x → ∞", "tends to"),
     ("20 percent of 50 equals 10", "20% of 50 = 10", "percent of inside an equation"),
     ("angle A B C equals 90 degrees", "∠ABC = 90°", "∠ binds tight"),
+    // David's failed dictation (2026-09-29): bare "root of", whisper's glued "Kx", "sigma of"
+    ("K squared plus the root of K cubed times Kx squared sigma of 3.", "K² + √K³ × Kx² σ(3).", "David's root/Kx/sigma dictation"),
+    ("k squared plus the square root of k cubed times k x squared", "k² + √k³ × kx²", "× after an unbracketed root"),
+    ("x plus the root of 2", "x + √2", "bare root of inside an equation"),
+    ("the root of K cubed", "the √K³", "bare root of a power activates"),
+    ("k squared times Kx squared", "k²Kx²", "glued Kx is juxtaposed variables"),
+    ("x equals sigma of 3", "x = σ(3)", "Greek letter + of is an application"),
+    ("the limit as x approaches pi of sine x", "the lim_(x→π) sin x", "a limit target is never applied"),
 ] {
     expectEqual(MathSpeech.convert(spoken), pasted, "format: \(why)")
     expectEqual(MathSpeech.convert(pasted), pasted, "format idempotent: \(why)")
@@ -825,6 +833,17 @@ for prose in [
     "I'm 100 percent of the way there",
     "dx dy is a nice dance",
     "it went from 5 to the minus 3 degrees",
+    // bare "root of", "sigma of", two-letter words
+    "the root of the problem",
+    "the root of 3 problems",
+    "root of all evil",
+    "the root of our 3 main problems is time",
+    "sigma of 3 people",
+    "it was 2 plus ok",
+    "he got 5 plus TV",
+    "5 plus me",
+    "7 times or so",
+    "my PC squared",
     "alright so for the Bible study tonight we are in John chapter 3 verse 16, for God so loved the world that he gave his only begotten son, and a lot of people read that verse a hundred times",
 ] {
     expectEqual(MathSpeech.convert(prose), prose, "untouched: \"\(prose.prefix(46))\"")
