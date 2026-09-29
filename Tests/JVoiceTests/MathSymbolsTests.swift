@@ -113,7 +113,10 @@ private let lookups: [(String, String, MathKind)] = [
     ("is perpendicular to", "\u{22A5}", .relation), ("is parallel to", "\u{2225}", .relation),
     ("divides", "\u{2223}", .relation), ("such that", "\u{2223}", .relation),
     ("does not divide", "\u{2224}", .relation),
-    ("multiplied by", "\u{00B7}", .operatorSymbol), ("cross product", "\u{00D7}", .operatorSymbol),
+    // "times" / "multiplied by" map to the engine's internal times marker "*" (laid out as ×
+    // or juxtaposition, never printed); the middle dot is the dot product alone.
+    ("multiplied by", "*", .operatorSymbol), ("times", "*", .operatorSymbol),
+    ("dot", "\u{00B7}", .operatorSymbol), ("cross product", "\u{00D7}", .operatorSymbol),
     ("per", "/", .operatorSymbol), ("plus or minus", "\u{00B1}", .operatorSymbol),
     ("dot product", "\u{00B7}", .operatorSymbol), ("tensor product", "\u{2297}", .operatorSymbol),
     ("direct sum", "\u{2295}", .operatorSymbol), ("xor", "\u{2295}", .operatorSymbol),
@@ -271,17 +274,17 @@ private let vocabularyConverts: [(String, String)] = [
     // operators & greek
     ("capital gamma equals capital lambda", "Γ = Λ"),
     ("v dot w equals 0", "v · w = 0"),
-    ("h bar times omega", "ℏ · ω"),
+    ("h bar times omega", "ℏω"),
     ("3 choose 2 equals 3", "C(3, 2) = 3"),
     ("p hat plus or minus 2", "p̂ ± 2"),
     ("30 degrees celsius plus 5", "30°C + 5"),
     // postfixes
-    ("v transpose times w", "vᵀ · w"),
-    ("A inverse times A equals 1", "A⁻¹ · A = 1"),
+    ("v transpose times w", "vᵀw"),
+    ("A inverse times A equals 1", "A⁻¹A = 1"),
     // functions
     ("the determinant of A equals 0", "det(A) = 0"),
     ("sigma squared equals the variance of x", "σ² = Var(x)"),
-    ("the natural log of x is less than x", "the ln(x) < x"),
+    ("the natural log of x is less than x", "the ln x < x"),
     ("the floor of x plus 1", "floor(x) + 1"),
     ("the probability of x equals 0.5", "P(x) = 0.5"),
     ("x bar equals mu", "x̄ = μ"),

@@ -191,6 +191,8 @@ public enum MathSpeech {
     private enum Kw {
         case none, sub, sup, pow2, pow3, power, root, over, from, to, of
         case abs, deriv, partialDeriv, wrt, limit, asKeyword, approaches, base, choose, the
+        // 2026-09-29, docs/math-notation-format.md
+        case allOver, quantity, tendsTo, derivRatio
     }
 
     /// How an exponent after a power keyword was said: as a plain operand ("to the 3"), as
@@ -254,6 +256,14 @@ public enum MathSpeech {
         "cube root of": (.root, "3"),
         "cube root": (.root, "3"),
         "over": (.over, ""),
+        // "a plus b all over 2" → (a + b)/2: the whole side so far is the numerator. WEAK —
+        // it never makes a run mathematics by itself ("there were 5 all over 2 floors"), and
+        // a multi-term numerator has already activated through its own operator.
+        "all over": (.allOver, ""),
+        // "the square root of the quantity b squared minus 4 a c" → √(b² - 4ac): the spoken
+        // open bracket. Weak like every bracket, and only a group when it holds more than one
+        // term ("the quantity x equals 5" stays words).
+        "the quantity": (.quantity, ""),
         "from": (.from, ""),
         "to": (.to, ""),
         "of": (.of, ""),
@@ -266,7 +276,8 @@ public enum MathSpeech {
         "lim": (.limit, ""),
         "as": (.asKeyword, ""),
         "approaches": (.approaches, ""),
-        "tends to": (.approaches, ""),
+        // Inside a limit it is "approaches"; on its own, "x tends to infinity" → x → ∞.
+        "tends to": (.tendsTo, ""),
         "goes to": (.approaches, ""),
     ]
 
@@ -343,6 +354,24 @@ public enum MathSpeech {
                 continue
             }
 
+            // 1c) "d y by d x" / "dy by dx" → dy/dx, one activating operand. Without "by" only
+            //     when both were SPOKEN letter by letter ("d y d x") and nothing stands before
+            //     them that they could belong to: after an integrand or an integral sign "dy dx"
+            //     is a double integral's two differentials.
+            if let top = differential(cores, i) {
+                var j = i + top.consumed
+                let saidBy = j < cores.count && cores[j].caseInsensitiveCompare("by") == .orderedSame
+                if saidBy { j += 1 }
+                if let bottom = differential(cores, j),
+                   saidBy || (top.consumed == 2 && bottom.consumed == 2 && !endsOperand(items.last)
+                              && !(items.last?.sym?.kind == .prefix)) {
+                    items.append(Item(.keyword, top.text + "/" + bottom.text, i, j + bottom.consumed - i,
+                                      key: .derivRatio))
+                    i = j + bottom.consumed
+                    continue
+                }
+            }
+
             // 2) "sum"/"product" — only a big operator when bounds follow
             if let bigOp = boundedOnly[core.lowercased()], i + 1 < cores.count,
                cores[i + 1].caseInsensitiveCompare("from") == .orderedSame {
@@ -379,6 +408,14 @@ public enum MathSpeech {
                 // The bare "to the" is weak; "to the power (of)" is not.
                 let bareToThe = keyword.key == .power && keyword.consumed == 2
                     && core.caseInsensitiveCompare("to") == .orderedSame
+                // "x to the quantity n plus 1": the "the" belongs to "the quantity", and a
+                // grouped exponent is unmistakable.
+                if bareToThe, i + 2 < cores.count,
+                   cores[i + 2].caseInsensitiveCompare("quantity") == .orderedSame {
+                    items.append(Item(.keyword, keyword.payload, i, 1, key: .power))
+                    i += 1
+                    continue
+                }
                 items.append(Item(.keyword, keyword.payload, i, keyword.consumed, key: keyword.key,
                                   weak: bareToThe))
                 i += keyword.consumed
@@ -391,12 +428,13 @@ public enum MathSpeech {
             }
 
             // 4b) "3 x 4": whisper writes a spoken "times" as the letter x. Between two numbers
-            //     it is the multiplication dot — and WEAK, so "a 2 x 4 board" and "my monitor
-            //     is 1920 x 1080" stay words unless something else makes the run mathematics
-            //     ("26 x 26 x 26 equals 17,576").
+            //     it is a spoken "times" (so "3 × 4") — and WEAK, so "a 2 x 4 board" and "my
+            //     monitor is 1920 x 1080" stay words unless something else makes the run
+            //     mathematics ("26 x 26 x 26 equals 17,576").
             if core == "x" || core == "X", let last = items.last, last.kind == .number,
                SpokenNumbers.tryRead(cores, i + 1) != nil {
-                items.append(Item(.symbol, "·", i, 1, sym: MathSymbol("·", .operatorSymbol), weak: true))
+                items.append(Item(.symbol, Parser.timesMarker, i, 1,
+                                  sym: MathSymbol(Parser.timesMarker, .operatorSymbol), weak: true))
                 i += 1
                 continue
             }
@@ -417,6 +455,43 @@ public enum MathSpeech {
             i += 1
         }
         return items
+    }
+
+    /// Letters a differential is written with — whisper's one-word "dy"/"dx"/"dt" form is only
+    /// trusted for these, so "do", "de", "Dr" never read as one.
+    private static let differentialLetters: Set<Character> = Array("xyztuvwrspqnk").reduce(into: []) { $0.insert($1) }
+
+    /// One differential at `i`: whisper's "dy", or spoken "d y" / "d theta". Nil otherwise.
+    private static func differential(_ cores: [String], _ i: Int) -> (text: String, consumed: Int)? {
+        guard i < cores.count else { return nil }
+        let word = Array(cores[i])
+        if word.count == 2, word[0] == "d", differentialLetters.contains(word[1]) {
+            return (cores[i], 1)
+        }
+        guard cores[i] == "d", i + 1 < cores.count else { return nil }
+        let next = cores[i + 1]
+        if next.count == 1, let letter = next.first, letter.isASCII, letter.isLetter, next != "I" {
+            return ("d" + next, 2)
+        }
+        if let greek = MathSymbols.phrases[next.lowercased()], greek.kind == .operand,
+           greek.text.count == 1, greek.text.first!.isLetter, !greek.text.first!.isASCII {
+            return ("d" + greek.text, 2)
+        }
+        return nil
+    }
+
+    /// True when `item` is something a following operand would multiply (so "dy dx" after it
+    /// is two differentials, not a derivative).
+    private static func endsOperand(_ item: Item?) -> Bool {
+        guard let item else { return false }
+        switch item.kind {
+        case .number, .variable: return true
+        case .keyword: return [.pow2, .pow3, .derivRatio].contains(item.key)
+        case .symbol:
+            guard let kind = item.sym?.kind else { return false }
+            return kind == .operand || kind == .postfix || kind == .close
+        case .word: return false
+        }
     }
 
     private static func tryKeyword(_ cores: [String], _ i: Int) -> (key: Kw, payload: String, consumed: Int)? {
@@ -505,6 +580,8 @@ public enum MathSpeech {
             let role: Role
             let tight: Bool
             var made: Made = .plain
+            /// An infix that is a RELATION ("=", "<", "→"): where one side of an equation ends.
+            var relation = false
         }
 
         private var parts: [Part] = []
@@ -526,6 +603,9 @@ public enum MathSpeech {
 
             let tight = tightNext
                 || (parts.last.map { $0.role == .operand && Expr.juxtaposes($0.text, text) } ?? false)
+                // "angle A B C" → ∠ABC, "triangle A B C" → △ABC: the glyph names the points.
+                || (parts.last.map { $0.role == .operand && ($0.text == "∠" || $0.text == "△") } ?? false)
+                    && text.first?.isLetter == true
             parts.append(Part(text: text, role: .operand, tight: tight))
             tightNext = false
         }
@@ -536,9 +616,38 @@ public enum MathSpeech {
             tightNext = false
         }
 
-        func pushInfix(_ text: String) {
-            parts.append(Part(text: text, role: .infix, tight: false))
+        func pushInfix(_ text: String, relation: Bool = false) {
+            parts.append(Part(text: text, role: .infix, tight: false, relation: relation))
             tightNext = false
+        }
+
+        /// Where the current side of the equation begins: just after the last relation or
+        /// "lim"/"∑" head, else 0 — what "all over" takes as its numerator.
+        func sideStart() -> Int {
+            var s = parts.count
+            while s > 0 {
+                let part = parts[s - 1]
+                if part.role == .head || (part.role == .infix && part.relation) { break }
+                s -= 1
+            }
+            return s
+        }
+
+        /// "n minus 1 times d" is (n - 1)d — nobody multiplies by a spoken 1 on purpose, so a
+        /// "times" straight after "<lettered term> ± 1" takes that whole difference (the
+        /// arithmetic-sequence term aₙ = a₁ + (n - 1)d). Only the one term before the 1:
+        /// "a₁ + n - 1 times d" groups "n - 1", never "a₁ + n - 1".
+        func groupTrailingOne() {
+            let c = parts.count
+            guard c >= 3, parts[c - 1].role == .operand, parts[c - 1].text == "1", !parts[c - 1].tight,
+                  parts[c - 2].role == .infix, parts[c - 2].text == "+" || parts[c - 2].text == "-",
+                  parts[c - 3].role == .operand else { return }
+            var s = c - 3
+            while s > 0, parts[s].tight, parts[s - 1].role == .operand { s -= 1 }
+            guard (s...(c - 3)).contains(where: { Expr.hasLetter(parts[$0].text) }) else { return }
+            // …and a whole term: not the tail of a product ("2 times n minus 1 times d").
+            if s > 0, parts[s - 1].role == .infix, Parser.products.contains(parts[s - 1].text) { return }
+            collapse(from: s, into: "(\(render(from: s)))")
         }
 
         /// Unused — as in the C# original, which builds a bracketed group as one whole
@@ -557,11 +666,23 @@ public enum MathSpeech {
 
         func render() -> String { render(from: 0) }
 
+        /// A spoken "times" is laid out only here, once both of its sides are final (a later
+        /// "squared" or "factorial" still changes them): `MathScript.productSeparator` picks
+        /// "×", a space, or juxtaposition.
         func render(from start: Int) -> String {
             var out = ""
+            var joined = false
             for index in start..<parts.count {
-                if index > start && !parts[index].tight { out += " " }
-                out += parts[index].text
+                let part = parts[index]
+                if part.role == .infix, part.text == Parser.timesMarker,
+                   index > start, index + 1 < parts.count {
+                    out += MathScript.productSeparator(parts[index - 1].text, parts[index + 1].text)
+                    joined = true
+                    continue
+                }
+                if index > start && !part.tight && !joined { out += " " }
+                joined = false
+                out += part.text
             }
             return out
         }
@@ -709,6 +830,8 @@ public enum MathSpeech {
         case argument
         /// What "P of" / "the probability of" apply to (rule 5): the whole event.
         case event
+        /// The denominator after "all over" (rule 6): everything up to the next relation.
+        case side
     }
 
     /// One run's items plus the facts about them the parser asks over and over — computed
@@ -901,6 +1024,15 @@ public enum MathSpeech {
     ///      "P of X equals 3 equals 0.2" → "P(X = 3) = 0.2". An unclosed bracket — "the
     ///      probability that …" — closes before its second relation the same way: "… that X
     ///      is at most 3 equals 0.65" → "P(X ≤ 3) = 0.65".
+    ///   6. "ALL OVER" (2026-09-29) takes the whole side so far as its numerator and the rest
+    ///      of the side, up to the next relation, as its denominator: "x squared minus 9 all
+    ///      over x minus 3" → "(x² - 9)/(x - 3)". "THE QUANTITY" opens a bracket that closes
+    ///      at "close bracket", else before the next relation or "all over", else at the end
+    ///      of the run: "the square root of the quantity b squared minus 4 a c" → "√(b² -
+    ///      4ac)". Without them every construct takes the SMALLEST reading (spec §6.1):
+    ///      "the square root of x plus 1" → "√x + 1", "log base 3 of x plus 1" → "log₃x + 1".
+    ///   7. "TIMES" after "<lettered term> ± 1" takes that difference: "n minus 1 times d" →
+    ///      "(n - 1)d" (`Expr.groupTrailingOne`).
     /// None of this can make ordinary speech convert: grouping only decides where operands
     /// END. Every item it takes is one the flat fold would have read into the same run, and
     /// activation still comes only from the constructs themselves.
@@ -917,7 +1049,14 @@ public enum MathSpeech {
         private var activated = false
 
         static let additive: Set<String> = ["+", "-", "±", "∓"]
-        static let products: Set<String> = ["·"]
+        /// The internal text of a spoken "times" / "multiplied by" (and whisper's "3 x 4").
+        /// It never reaches the output: `Expr.render` lays it out as "×", a space or
+        /// juxtaposition. "·" is the dot product alone.
+        static let timesMarker = "*"
+        static let products: Set<String> = ["·", timesMarker]
+        /// Marks that turn a letter into a named function when "of" follows: "f prime of x"
+        /// → f′(x), "f inverse of x" → f⁻¹(x).
+        static let functionMarks: Set<String> = ["′", "″", "‴", "⁻¹"]
         private static let setOperations: Set<String> = ["∪", "∩", "∖"]
 
         /// The functions that apply to a whole expression (rules 4 and 5) rather than to one
@@ -952,6 +1091,25 @@ public enum MathSpeech {
             if it.kind == .symbol, let sym = it.sym {
                 if sym.kind == .relation || sym.kind == .operatorSymbol {
                     guard reaches(sym, i, expr), expr.lastIsOperand else { return false }
+
+                    // "divided by" keeps the school ÷ between plain numbers ("6 × 7 ÷ 2") and
+                    // is a fraction in algebra ("x divided by 2 y" → x/2y), its denominator
+                    // read like one after "over" (a power stays on it: "x/y²").
+                    if sym.text == "÷" {
+                        guard let bottom = subExpression(i + 1, .product) else { return false }
+                        if MathScript.isNumeric(expr.lastText) && MathScript.isNumeric(bottom.text) {
+                            expr.pushInfix("÷")
+                            expr.pushOperand(bottom.text)
+                        } else {
+                            expr.collapse(from: expr.count - 1,
+                                          into: MathScript.slashFraction(expr.lastText, bottom.text),
+                                          made: .quotient)
+                        }
+                        if sym.activates && !it.weak { activated = true }
+                        i = bottom.next
+                        return true
+                    }
+
                     guard let rhs = tryOperand(i + 1) else { return false }
 
                     let given = sym.kind == .relation && sym.text == "∣"
@@ -972,7 +1130,8 @@ public enum MathSpeech {
                         && items[i + 1].kind == .number && rhs.next == i + 2
                         && Expr.isPlainNumber(rhs.text)
 
-                    expr.pushInfix(sym.text)
+                    if sym.text == Parser.timesMarker { expr.groupTrailingOne() }
+                    expr.pushInfix(sym.text, relation: sym.kind == .relation)
                     expr.pushOperand(rhs.text)
                     if sym.activates && !it.weak && !articlePair { activated = true }
                     if given { relationsInPart = 0 } else if budgeted { relationsInPart += 1 }
@@ -994,6 +1153,10 @@ public enum MathSpeech {
                     } else {
                         expr.attachToLast(sym.text)
                     }
+                    // "5 factorial" → 5! on its own — but only where it ENDS the dictation or
+                    // sentence: "a 2 by 2 factorial design" is statistics English, and "5
+                    // factorial ways" reads fine as words.
+                    if sym.activates && i + 1 == items.count && ctx.cleanEnd { activated = true }
                     i += 1
                     return true
                 }
@@ -1009,7 +1172,7 @@ public enum MathSpeech {
                 // only as an implicit product ("over 2 pi" → "2π"); anything else belongs to
                 // the construct around it.
                 if scope != .run, expr.lastIsOperand,
-                   !(scope == .product && Expr.continuesImplicitly(expr.lastText, operand.text)) {
+                   !((scope == .product || scope == .side) && Expr.continuesImplicitly(expr.lastText, operand.text)) {
                     activated = wasActivated
                     return false
                 }
@@ -1029,6 +1192,8 @@ public enum MathSpeech {
             switch scope {
             case .run:
                 return true
+            case .side:
+                return !isRelation
             case .sum:
                 return isSum && expr.firstTermHasLetter
                     && !startsApplication(i + 1) && !ctx.startsBinomial(i + 1)
@@ -1054,6 +1219,7 @@ public enum MathSpeech {
         private func allows(_ key: Kw) -> Bool {
             switch scope {
             case .run: return true
+            case .side: return key != .allOver && key != .tendsTo
             case .sum: return key == .sub
             case .argument: return key == .sub || key == .choose
             case .product: return key == .sub || key == .pow2 || key == .pow3 || key == .choose
@@ -1093,21 +1259,24 @@ public enum MathSpeech {
             switch it.key {
             case .sub, .sup, .power:
                 guard expr.lastIsOperand else { return false }
-                guard let script = tryScriptOperand(i + 1) else { return false }
-                expr.replaceLast(MathScript.attach(expr.lastText, script.text, superscript: it.key != .sub))
+                let isSuper = it.key != .sub
+                guard let script = isSuper ? tryExponent(i + 1) : tryScriptOperand(i + 1) else { return false }
+                expr.replaceLast(MathScript.attach(isSuper ? MathScript.powerBase(expr.lastText) : expr.lastText,
+                                                   MathScript.scriptOperand(script.text), superscript: isSuper))
                 if !it.weak || powerIsUnmistakable(i, script.next) { activated = true }
                 i = script.next
                 return true
 
             case .pow2, .pow3:
                 guard expr.lastIsOperand else { return false }
-                expr.replaceLast(MathScript.attach(expr.lastText, it.key == .pow2 ? "2" : "3", superscript: true))
+                expr.replaceLast(MathScript.attach(MathScript.powerBase(expr.lastText), it.key == .pow2 ? "2" : "3",
+                                                   superscript: true))
                 activated = true
                 i += 1
                 return true
 
-            case .root, .abs:
-                // Both build a self-contained operand, so tryOperand owns the one
+            case .root, .abs, .derivRatio:
+                // All three build a self-contained operand, so tryOperand owns the one
                 // implementation and they also work in operand position ("x equals the
                 // square root of 2", "from 0 to the square root of 2").
                 guard let built = tryOperand(i) else { return false }
@@ -1116,12 +1285,18 @@ public enum MathSpeech {
                 i = built.next
                 return true
 
+            case .quantity:
+                // A bracket: weak, it renders inside a run something else made mathematics.
+                guard let built = tryOperand(i) else { return false }
+                expr.pushOperand(built.text)
+                i = built.next
+                return true
+
             case .over:
-                // A division is written the way it is written on paper (David, 2026-08-30):
-                // stacked when the two sides are small enough to stack ("1 over 2" → "½",
-                // "22 over 7" → "²²⁄₇"), and with the division SIGN when they are not
-                // ("1 over n squared" → "1 ÷ n²"). Never a bare slash. How far each side
-                // reaches is rule 3 of the grouping rule.
+                // A division is a slash (docs/math-notation-format.md, 2026-09-29 — the format
+                // BetterScreenshot pastes too): "π/6", "1/x²", "(10 × 9 × 8)/(3 × 2 × 1)",
+                // with parentheses on a side that holds a space or an operator. How far each
+                // side reaches is rule 3 of the grouping rule.
                 guard expr.lastIsOperand else { return false }
                 if scope == .event && startsApplication(i + 1) { return false }
                 let top = expr.tailStart(joinedBy: Parser.products, wall: .quotient)
@@ -1129,24 +1304,43 @@ public enum MathSpeech {
                 guard let bottom = subExpression(i + 1, .product, joinsProducts: topIsProduct) else {
                     return false
                 }
-                if bottom.compound {
-                    // A product over a product.
-                    let numerator = expr.render(from: top)
-                    let shown = topIsProduct ? "(\(numerator))" : numerator
-                    expr.collapse(from: top, into: "\(shown) ÷ (\(bottom.text))", made: .quotient)
-                } else if !expr.lastIsDivisor,
-                          let stacked = MathScript.fraction(expr.lastText, bottom.text) {
-                    // The factor beside "over" by the one after it, stacked.
-                    expr.collapse(from: expr.count - 1, into: stacked, made: .quotient)
-                } else {
-                    // …or with the sign — always after a "÷", since "a over b over 2" is
-                    // a ÷ b ÷ 2, never a ÷ ᵇ⁄₂.
-                    expr.pushInfix("÷")
-                    expr.pushOperand(bottom.text)
-                    expr.markLast(.quotient)
-                }
+                // A product over a product; otherwise the factor beside "over" by the one after.
+                let from = bottom.compound ? top : expr.count - 1
+                expr.collapse(from: from, into: MathScript.slashFraction(expr.render(from: from), bottom.text),
+                              made: .quotient)
                 activated = true
                 i = bottom.next
+                return true
+
+            case .allOver:
+                // Rule 6: the whole side so far over the rest of the side. Weak.
+                guard expr.lastIsOperand else { return false }
+                let top = expr.sideStart()
+                guard let bottom = subExpression(i + 1, .side) else { return false }
+                expr.collapse(from: top, into: MathScript.slashFraction(expr.render(from: top), bottom.text),
+                              made: .quotient)
+                i = bottom.next
+                return true
+
+            case .tendsTo:
+                // "x tends to infinity" → x → ∞. Only after a LOWER-CASE variable (with its
+                // scripts: "aₙ tends to 0") or an application ("f(x)"): "type 2 tends to 3 times
+                // more" and "plan B tends to 5 percent" are English, and so is the article "a".
+                guard expr.lastIsOperand, Parser.canTend(expr.lastText),
+                      let target = tryOperand(i + 1) else { return false }
+                expr.pushInfix("→", relation: true)
+                expr.pushOperand(target.text)
+                activated = true
+                i = target.next
+                return true
+
+            case .of:
+                // "20 percent of 50" stays one operand inside an equation: "20% of 50 = 10".
+                // Weak: "I'm 100 percent of the way there" is still a sentence.
+                guard expr.lastIsOperand, expr.lastText.hasSuffix("%"),
+                      let whole = tryOperand(i + 1) else { return false }
+                expr.attachToLast(" of " + whole.text)
+                i = whole.next
                 return true
 
             case .choose:
@@ -1173,7 +1367,9 @@ public enum MathSpeech {
                 let j = i + 1
                 guard j < items.count, items[j].key == .asKeyword else { return false }
                 guard let variable = tryOperand(j + 1) else { return false }
-                guard variable.next < items.count, items[variable.next].key == .approaches else { return false }
+                guard variable.next < items.count,
+                      items[variable.next].key == .approaches || items[variable.next].key == .tendsTo
+                else { return false }
                 guard let target = tryOperand(variable.next + 1) else { return false }
                 var afterTarget = target.next
                 if afterTarget < items.count, items[afterTarget].key == .of { afterTarget += 1 }
@@ -1198,7 +1394,9 @@ public enum MathSpeech {
         ///     stays words, and still renders once something else activates the run: "2 to
         ///     the 10 equals 1024" → "2¹⁰ = 1024".
         private func powerIsUnmistakable(_ i: Int, _ end: Int) -> Bool {
-            let exponent = items[i + 1]
+            // A signed exponent is judged by its number: "from 5 to the minus 3" is no power.
+            var exponent = items[i + 1]
+            if isMinus(exponent), i + 2 < items.count { exponent = items[i + 2] }
             let base = items[i - 1]
             let plainBase = base.kind == .number || (base.kind == .variable && base.weak)
             switch exponent.ordinal {
@@ -1266,6 +1464,30 @@ public enum MathSpeech {
             return current
         }
 
+        /// What may stand before "tends to": a lower-case variable — Greek included — with any
+        /// scripts ("x", "aₙ", "θ"), or a function application ("f(x)"). Never "a" or "i".
+        static func canTend(_ operand: String) -> Bool {
+            if MathScript.isApplication(operand) { return true }
+            guard let first = operand.first, first.isLetter, first.isLowercase,
+                  operand != "a", operand != "i" else { return false }
+            return operand.dropFirst().allSatisfy { !$0.isASCII || !$0.isLetter && !$0.isNumber }
+        }
+
+        private func isMinus(_ item: Item) -> Bool {
+            item.kind == .symbol && item.sym?.kind == .operatorSymbol && item.sym?.text == "-"
+        }
+
+        /// An exponent: an operand with its implicit product and any "squared"/"cubed" that
+        /// follows, optionally signed with a spoken "minus" — "10 to the power of minus 3" →
+        /// 10⁻³, "e to the minus x squared" → e^(-x²) (the "²" has no superscript form, so the
+        /// whole exponent falls back rather than mixing styles).
+        private func tryExponent(_ k: Int) -> (text: String, next: Int)? {
+            if k < items.count, isMinus(items[k]), let body = tryPoweredOperand(k + 1) {
+                return ("-" + body.text, body.next)
+            }
+            return tryPoweredOperand(k)
+        }
+
         /// As above, plus a trailing "squared"/"cubed" — without it "the derivative of x
         /// cubed with respect to x" would lose the whole construct at the word "cubed".
         private func tryPoweredOperand(_ k: Int) -> (text: String, next: Int)? {
@@ -1318,12 +1540,20 @@ public enum MathSpeech {
                     if j < items.count, items[j].key == .of { j += 1 }
                     guard let radicand = tryOperand(j) else { return nil }
                     activated = true
-                    return (Parser.rootSign(it.text) + radicand.text, radicand.next)
+                    return (MathScript.radical(Parser.rootSign(it.text), radicand.text), radicand.next)
 
                 case .abs:
                     guard let inner = tryOperand(k + 1) else { return nil }
                     activated = true
                     return ("|" + inner.text + "|", inner.next)
+
+                case .derivRatio:
+                    // "d y by d x" → dy/dx: never ordinary speech, so it activates.
+                    activated = true
+                    return (it.text, k + 1)
+
+                case .quantity:
+                    return quantity(k)
 
                 default:
                     return nil
@@ -1344,18 +1574,30 @@ public enum MathSpeech {
 
             case .variable:
                 if it.weak && k == ctx.weakCutoff { return nil }
-                var text = it.text
+                var name = it.text
                 var next = k + 1
+                // "f prime of x" → f′(x), "f inverse of x" → f⁻¹(x): the mark belongs to the
+                // function's NAME when "of" follows it.
+                var marked = false
+                if allowApply, !it.weak, next + 1 < items.count, items[next].kind == .symbol,
+                   let mark = items[next].sym, mark.kind == .postfix,
+                   Parser.functionMarks.contains(mark.text), items[next + 1].key == .of {
+                    name += mark.text
+                    next += 1
+                    marked = true
+                }
                 // "f of x" → "f(x)" — and, by rules 4 and 5, "f of n minus 1" → "f(n - 1)",
                 // "P of X less than 3" → "P(X < 3)". Only a real (non-weak) variable may be
-                // applied like a function: "5 of 10" and "a of the" must stay words. Never
-                // activating on its own — something else in the run has to be mathematics.
+                // applied like a function: "5 of 10" and "a of the" must stay words. A bare
+                // "f of x" never activates on its own — something else in the run has to be
+                // mathematics — but a MARKED one does: "f inverse of x" is never English.
                 if allowApply, !it.weak, next < items.count, items[next].key == .of,
                    let arg = subExpression(next + 1, it.text == "P" ? .event : .argument) {
-                    text = "\(it.text)(\(arg.text))"
-                    next = arg.next
+                    if marked { activated = true }
+                    return ("\(name)(\(arg.text))", arg.next)
                 }
-                return (text, next)
+                if marked { return (it.text, k + 1) } // no argument after all: the mark is a postfix
+                return (name, next)
 
             case .symbol:
                 guard let sym = it.sym else { return nil }
@@ -1365,6 +1607,7 @@ public enum MathSpeech {
                 if sym.kind == .open { return group(k) }
                 if sym.kind == .prefix && !sym.isBigOperator {
                     guard let inner = tryOperand(k + 1) else { return nil }
+                    if sym.text == "√" { return (MathScript.radical(sym.text, inner.text), inner.next) }
                     return (sym.text + inner.text, inner.next)
                 }
                 if sym.kind == .function {
@@ -1382,14 +1625,18 @@ public enum MathSpeech {
                         j = base.next
                         activated = true
                     }
-                    // "sine squared theta" → "sin²θ" — the power belongs to the name.
+                    // "sine squared theta" → "sin²θ" — the power belongs to the name, and a
+                    // powered function is never English, so it activates.
+                    var powered = false
                     if j < items.count, items[j].kind == .keyword {
                         if items[j].key == .pow2 || items[j].key == .pow3 {
                             name = MathScript.attach(name, items[j].key == .pow2 ? "2" : "3", superscript: true)
                             j += 1
+                            powered = true
                         } else if items[j].key == .power, let power = tryScriptOperand(j + 1) {
                             name = MathScript.attach(name, power.text, superscript: true)
                             j = power.next
+                            powered = true
                         }
                     }
                     if j < items.count, items[j].key == .of { j += 1 }
@@ -1399,8 +1646,13 @@ public enum MathSpeech {
                         guard let arg = subExpression(j, scope) else { return nil }
                         return ("\(name)(\(arg.text))", arg.next)
                     }
-                    guard let arg = tryOperand(j) else { return nil }
-                    return ("\(name)(\(arg.text))", arg.next)
+                    // One operand with its implicit product ("cosine 2 theta" → cos 2θ) — the
+                    // SMALLEST reading (spec §6.1): "sine of x plus 1" is sin x + 1; say "sine
+                    // of the quantity x plus 1" for sin(x + 1).
+                    guard let arg = tryScriptOperand(j) else { return nil }
+                    // "the natural log of 2" → ln 2 on its own: "natural log" is never English.
+                    if powered || sym.text == "ln" { activated = true }
+                    return (MathScript.applyFunction(name, arg.text), arg.next)
                 }
                 return nil
 
@@ -1427,7 +1679,11 @@ public enum MathSpeech {
                 }
             }
 
-            let innerEnd = end < 0 ? items.count : end
+            // An unclosed bracket also ends where "all over" takes the whole side (rule 6).
+            var innerEnd = end < 0 ? items.count : end
+            if end < 0, let allOver = (k + 1..<items.count).first(where: { items[$0].key == .allOver }) {
+                innerEnd = allOver
+            }
             let close = end < 0 ? Parser.closing(open) : (items[end].sym?.text ?? Parser.closing(open))
             guard innerEnd > k + 1 else { return nil }
 
@@ -1439,6 +1695,50 @@ public enum MathSpeech {
             activated = activated || innerActivated
 
             return (open + body + close, end < 0 ? k + 1 + used : end + 1)
+        }
+
+        /// "the quantity …" (rule 6): a spoken open bracket. It closes at a close bracket, else
+        /// just before the next relation or "all over", else at the end of the run — and it is
+        /// only a group when what it holds is more than one term, so "the quantity x equals 5"
+        /// is left as words.
+        private func quantity(_ k: Int) -> (text: String, next: Int)? {
+            var depth = 0
+            var end = items.count
+            var closed = false
+            var j = k + 1
+            scan: while j < items.count {
+                let item = items[j]
+                if item.kind == .symbol, let sym = item.sym {
+                    switch sym.kind {
+                    case .open:
+                        depth += 1
+                    case .close:
+                        if depth == 0 { end = j; closed = true; break scan }
+                        depth -= 1
+                    case .relation:
+                        if depth == 0 { end = j; break scan }
+                    default:
+                        break
+                    }
+                } else if depth == 0, item.key == .allOver {
+                    end = j
+                    break
+                }
+                j += 1
+            }
+            guard end > k + 1 else { return nil }
+
+            let inside = Run(items: Array(items[(k + 1)..<end]), weakCutoff: -1,
+                             cleanEnd: end == items.count ? ctx.cleanEnd : true)
+            let (body, innerActivated, used) = Parser(inside).run(0)
+            guard used > 0, !closed || used == end - k - 1 else { return nil }
+            let next = closed ? end + 1 : k + 1 + used
+            activated = activated || innerActivated
+            if MathScript.needsGrouping(body, leadingSign: false) { return ("(" + body + ")", next) }
+            // One term built from several spoken pieces ("the quantity 5 over 6 to the 4" →
+            // (5/6)⁴) needs no extra brackets; a lone word after it is no group at all.
+            guard used > 1 else { return nil }
+            return (body, next)
         }
 
         private static func closing(_ open: String) -> String {

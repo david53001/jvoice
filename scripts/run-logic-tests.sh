@@ -695,13 +695,13 @@ expectEqual(MathSpeech.convert("a subscript n equals 1 plus 7n"), "aₙ = 1 + 7n
 expectEqual(MathSpeech.convert("x squared plus y squared equals z squared"), "x² + y² = z²", "powers")
 expectEqual(MathSpeech.convert("the square root of 16 equals 4"), "the √16 = 4", "square root")
 expectEqual(MathSpeech.convert("twenty five divided by five equals five"), "25 ÷ 5 = 5", "spoken numbers + division")
-expectEqual(MathSpeech.convert("3 over 4 plus 1 over 4 equals 1"), "¾ + ¼ = 1", "stacked fractions")
-expectEqual(MathSpeech.convert("1 over n squared"), "1 ÷ n²", "the power belongs to the denominator")
-expectEqual(MathSpeech.convert("3 times 4 equals 12"), "3 · 4 = 12", "times is the middle dot")
-expectEqual(MathSpeech.convert("log base 2 of 8"), "log₂(8)", "a named base activates")
+expectEqual(MathSpeech.convert("3 over 4 plus 1 over 4 equals 1"), "3/4 + 1/4 = 1", "over is a slash (spec §4)")
+expectEqual(MathSpeech.convert("1 over n squared"), "1/n²", "the power belongs to the denominator")
+expectEqual(MathSpeech.convert("3 times 4 equals 12"), "3 × 4 = 12", "times between numbers is ×")
+expectEqual(MathSpeech.convert("log base 2 of 8"), "log₂8", "a named base activates; one-token argument")
 expectEqual(MathSpeech.convert("u n equals 1 plus 7n"), "uₙ = 1 + 7n", "a classic index is a sequence term")
-expectEqual(MathSpeech.convert("the limit as x approaches 0 of sine of x over x equals 1"), "the lim_(x→0) sin(x) ÷ x = 1", "limit")
-expectEqual(MathSpeech.convert("the sum from n equals 1 to infinity of 1 over n squared"), "the ∑ₙ₌₁^∞ 1 ÷ n²", "bounded sum")
+expectEqual(MathSpeech.convert("the limit as x approaches 0 of sine of x over x equals 1"), "the lim_(x→0) (sin x)/x = 1", "limit")
+expectEqual(MathSpeech.convert("the sum from n equals 1 to infinity of 1 over n squared"), "the ∑ₙ₌₁^∞ 1/n²", "bounded sum")
 expectEqual(MathSpeech.convert("the derivative of y with respect to x"), "the dy/dx", "derivative")
 expectEqual(MathSpeech.convert("n choose k equals 10"), "C(n, k) = 10", "binomial")
 expectEqual(MathSpeech.convert("theta equals 30 degrees"), "θ = 30°", "greek + postfix")
@@ -710,7 +710,7 @@ expectEqual(MathSpeech.convert("write start equation alpha end equation here"), 
 // David's real 2026-09-21 physics dictation — the one that exposed the parity gap.
 expectEqual(
     MathSpeech.convert("we're just going to use S equals U plus V divided by 2 times T. Basically, since the initial and final velocities are both 6, it would be 12 over 2T equals 400."),
-    "we're just going to use S = U + V ÷ 2 · T. Basically, since the initial and final velocities are both 6, it would be 12 ÷ 2T = 400.",
+    "we're just going to use S = U + V/2 × T. Basically, since the initial and final velocities are both 6, it would be 12/(2T) = 400.",
     "David's SUVAT dictation")
 
 print("MathSpeech.convert — the 2026-09-23 package (bug-hunt fixes 1–7)")
@@ -718,23 +718,66 @@ print("MathSpeech.convert — the 2026-09-23 package (bug-hunt fixes 1–7)")
 expectEqual(MathSpeech.convert("x to the 3"), "x³", "fix 1: a letter base makes 'to the' a power")
 expectEqual(MathSpeech.convert("2 to the power of 10"), "2¹⁰", "fix 1: 'to the power of' always activates")
 // 2. whisper's "x" for a spoken "times" between numbers
-expectEqual(MathSpeech.convert("3 x 4 equals 12"), "3 · 4 = 12", "fix 2: '3 x 4' is a product, not x₄")
+expectEqual(MathSpeech.convert("3 x 4 equals 12"), "3 × 4 = 12", "fix 2: '3 x 4' is a product, not x₄")
 // 3. the auto-closed "probability that" bracket closes before its second relation
 expectEqual(MathSpeech.convert("the probability that X is less than or equal to 3 equals 0.65"), "P(X ≤ 3) = 0.65", "fix 3")
 // 4. "over" takes a following choose / factorial as one factor
-expectEqual(MathSpeech.convert("1 over 52 choose 5"), "1 ÷ C(52, 5)", "fix 4: over a binomial")
-expectEqual(MathSpeech.convert("1 over n factorial"), "1 ÷ n!", "fix 4: over a factorial")
+expectEqual(MathSpeech.convert("1 over 52 choose 5"), "1/C(52, 5)", "fix 4: over a binomial")
+expectEqual(MathSpeech.convert("1 over n factorial"), "1/n!", "fix 4: over a factorial")
 // 5. smart grouping
 expectEqual(MathSpeech.convert("n choose n minus k"), "C(n, n - k)", "fix 5: choose takes a lettered sum")
 expectEqual(MathSpeech.convert("n plus k minus 1 choose k"), "C(n + k - 1, k)", "fix 5: …on both sides")
-expectEqual(MathSpeech.convert("10 times 9 times 8 over 3 times 2 times 1"), "(10 · 9 · 8) ÷ (3 · 2 · 1)", "fix 5: product over product")
+expectEqual(MathSpeech.convert("10 times 9 times 8 over 3 times 2 times 1"), "(10 × 9 × 8)/(3 × 2 × 1)", "fix 5: product over product")
 expectEqual(MathSpeech.convert("the probability of A given B"), "P(A ∣ B)", "fix 5: P of takes the event")
 expectEqual(MathSpeech.convert("f of n minus 1 equals 2"), "f(n - 1) = 2", "fix 5: f of takes a sum")
-expectEqual(MathSpeech.convert("n factorial over k factorial times n minus k factorial"), "n! ÷ (k! · (n - k)!)", "fix 5: the counting formula")
+expectEqual(MathSpeech.convert("n factorial over k factorial times n minus k factorial"), "n!/(k!(n - k)!)", "fix 5: the counting formula")
 // 6. spoken ordinal powers
 expectEqual(MathSpeech.convert("10 to the fifth"), "10⁵", "fix 6: ordinal exponent")
 expectEqual(MathSpeech.convert("x to the third power"), "x³", "fix 6: ordinal + power")
 expectEqual(MathSpeech.convert("x to the 3rd"), "x³", "fix 6: numeric ordinal")
+
+print("MathSpeech.convert — the shared notation format (docs/math-notation-format.md §4, 2026-09-29)")
+for (spoken, pasted, why) in [
+    ("a plus b over 2", "a + b/2", "over is a slash"),
+    ("a plus b all over 2", "(a + b)/2", "all over closes the numerator"),
+    ("pi over 6", "π/6", "π/6"),
+    ("a over b plus c over d", "a/b + c/d", "two fractions"),
+    ("x squared minus 9 all over x minus 3", "(x² - 9)/(x - 3)", "all over: both sides bracketed"),
+    ("12 over 2T equals 400", "12/(2T) = 400", "a juxtaposed denominator is bracketed"),
+    ("5 over 6 to the fourth", "(5/6)⁴", "a power raises the whole fraction"),
+    ("a sub n equals a sub 1 plus n minus 1 times d", "aₙ = a₁ + (n - 1)d", "'n minus 1 times d' is (n - 1)d"),
+    ("6 times 7 divided by 2", "6 × 7 ÷ 2", "× and ÷ between numbers"),
+    ("x times 2 equals 10", "x × 2 = 10", "× before a number"),
+    ("26 choose 4 times 10 choose 3", "C(26, 4) × C(10, 3)", "× between applications"),
+    ("2 times sine x times cosine x equals 1", "2 sin x cos x = 1", "a space before a function"),
+    ("a dot b", "a · b", "· is the dot product"),
+    ("x divided by 2 y equals 1", "x/(2y) = 1", "divided by is a fraction in algebra"),
+    ("sine squared theta", "sin²θ", "powered function, activates"),
+    ("cosine 2 theta equals 1", "cos 2θ = 1", "one-token argument"),
+    ("sine of x plus 1 equals 2", "sin x + 1 = 2", "smallest reading (spec §6.1)"),
+    ("sine of the quantity x plus 1", "sin(x + 1)", "the quantity groups"),
+    ("natural log of 2", "ln 2", "ln activates"),
+    ("log base 3 of the quantity x plus 1", "log₃(x + 1)", "grouped log argument"),
+    ("the square root of 2 x equals 4", "the √(2x) = 4", "two-factor radicand bracketed"),
+    ("the square root of x plus 1", "the √x + 1", "smallest root reading"),
+    ("x equals negative b plus or minus the square root of the quantity b squared minus 4 a c all over 2 a",
+     "x = (-b ± √(b² - 4ac))/(2a)", "the quadratic formula"),
+    ("10 to the power of minus 3", "10⁻³", "signed exponent"),
+    ("e to the minus x squared", "e^(-x²)", "nested script falls back"),
+    ("x to the quantity n plus 1", "xⁿ⁺¹", "grouped exponent"),
+    ("d y by d x equals 3 x squared minus 4", "dy/dx = 3x² - 4", "d y by d x"),
+    ("d y d x", "dy/dx", "d y d x"),
+    ("the double integral of f d y d x", "the ∬ f dy dx", "differentials after an integrand stay two"),
+    ("f prime of x equals 2 x plus 1", "f′(x) = 2x + 1", "f prime of x"),
+    ("f inverse of x", "f⁻¹(x)", "f inverse of x activates"),
+    ("5 factorial", "5!", "a closing factorial activates"),
+    ("x tends to infinity", "x → ∞", "tends to"),
+    ("20 percent of 50 equals 10", "20% of 50 = 10", "percent of inside an equation"),
+    ("angle A B C equals 90 degrees", "∠ABC = 90°", "∠ binds tight"),
+] {
+    expectEqual(MathSpeech.convert(spoken), pasted, "format: \(why)")
+    expectEqual(MathSpeech.convert(pasted), pasted, "format idempotent: \(why)")
+}
 
 print("MathSpeech.convert — ordinary speech comes back byte-identical")
 for prose in [
@@ -768,6 +811,20 @@ for prose in [
     "y is 5 more than x",
     "I'm bringing a plus one",
     "the infection rate is 5 per 100,000",
+    // the 2026-09-29 format's new words (factorial, the quantity, tends to, all over, …)
+    "it's a 2 by 2 factorial design",
+    "a 2 factorial design with 3 levels",
+    "so that's 7 factorial which is a lot",
+    "the quantity of water was 5 liters",
+    "type 2 tends to 3 times more often",
+    "plan B tends to 5 percent of cases",
+    "it was all over the news",
+    "there were 20 all over 5 states",
+    "the natural log cabin",
+    "the prime minister of 3 countries",
+    "I'm 100 percent of the way there",
+    "dx dy is a nice dance",
+    "it went from 5 to the minus 3 degrees",
     "alright so for the Bible study tonight we are in John chapter 3 verse 16, for God so loved the world that he gave his only begotten son, and a lot of people read that verse a hundred times",
 ] {
     expectEqual(MathSpeech.convert(prose), prose, "untouched: \"\(prose.prefix(46))\"")

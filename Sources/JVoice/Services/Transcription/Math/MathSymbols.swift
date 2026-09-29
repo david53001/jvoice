@@ -70,6 +70,11 @@ public enum MathSymbols {
     /// births"). It still renders inside a run something else activated ("v = 5m / s²").
     public static let weakOperators: Set<String> = ["/"]
 
+    /// Postfixes that DO count as evidence of mathematics, because their spoken form is never
+    /// ordinary English: "5 factorial" → "5!" on its own (2026-09-29). Every other postfix
+    /// ("percent", "degrees", "prime", "inverse") stays weak.
+    public static let activatingPostfixes: Set<String> = ["!", "!!"]
+
     /// Prefixes whose body follows after a SPACE ("∑ᵢ₌₁ⁿ i²") rather than binding tight ("√x").
     public static let bigOperators: Set<String> = ["∑", "∏", "∫", "∬", "∭", "∮", "⋃", "⋂", "⨁", "lim"]
 
@@ -89,6 +94,8 @@ public enum MathSymbols {
         "absolute value of", "absolute value", "derivative of", "partial derivative of",
         "with respect to", "limit", "limit as", "as", "approaches", "tends to", "goes to",
         "to the", "base", "choose", "the",
+        // 2026-09-29: grouping words ("all over", "the quantity")
+        "all over", "the quantity",
         // explicit span markers
         "start equation", "begin equation", "end equation", "end of equation",
     ]
@@ -198,12 +205,12 @@ public enum MathSymbols {
         // arithmetic
         add("+", .operatorSymbol, "plus", "added to", "+")
         add("-", .operatorSymbol, "minus", "take away")
-        // Multiplication prints the MIDDLE DOT, not "×" (David, 2026-08-30): "3 · 4" is how
-        // a multiplication is written once the operands are symbols, and "×" stays what it
-        // is uniquely — the cross product. A resolution ("1600 times 1080") therefore also
-        // comes out with a dot; consistency beats a special case here.
-        add("·", .operatorSymbol, "times", "multiplied by", "dot product", "dot",
-            "inner product", "scalar product", "·")
+        // A spoken "times" is laid out by the engine once both sides are known
+        // (docs/math-notation-format.md, 2026-09-29): "×" between numbers ("6 × 7"),
+        // juxtaposition between letter terms ("2ab", "(n - 1)d"). "*" is only its internal
+        // marker and never printed. The MIDDLE DOT is the dot product alone ("a · b").
+        add("*", .operatorSymbol, "times", "multiplied by")
+        add("·", .operatorSymbol, "dot product", "dot", "inner product", "scalar product", "·")
         add("×", .operatorSymbol, "cross product", "cartesian product", "×")
         add("÷", .operatorSymbol, "divided by", "÷")
         // WEAK (see `weakOperators`): "m per s" → "m / s" inside an equation, but "the
