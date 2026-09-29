@@ -1,9 +1,11 @@
-# HANDOFF — state as of 2026-09-29 (v1.1.3 shipped; native-look redesign built on branch `feat/native-look`, awaiting David's dogfood; the maths-engine package is still unfinished in its worktree)
+# HANDOFF — state as of 2026-09-29 (v1.1.4 shipped: the native macOS look + morphing pill; the maths-engine package is still unfinished in its worktree)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
-## 2026-09-29 session — Native macOS look (MacStats design language) for the whole UI (branch `feat/native-look`, off `feat/guided-tour` @ `0877330`; NOT merged, NOT pushed; INSTALLED to /Applications for David's dogfood via `./scripts/dev-install.sh` from the worktree, 2026-09-29)
+## 2026-09-29 session — Native macOS look (MacStats design language) for the whole UI (branch `feat/native-look`, off `feat/guided-tour` @ `0877330`; SHIPPED as v1.1.4 — `main` fast-forwarded to it)
+
+**Ship record (v1.1.4, 2026-09-29, David: "merge to main and update the installer"):** release commit `5c4748d` (Info.plist 1.1.4 / build 6, CHANGELOG `[1.1.4]`, README link → `v1.1.4/JVoice-1.1.4.dmg`); branch pushed first and CI run `36595563381` passed — swift-testing **504 authored = 504 executed**, logic scripts 987/987; then `origin/main` fast-forwarded `987d2f9 → 5c4748d` (this also published `0877330`, the math-notation-format doc commit that was on `feat/guided-tour`). `./scripts/package-release.sh` → `dist/JVoice.app.zip` + `dist/JVoice-1.1.4.dmg`, signed "JVoice Self-Signed" (leaf `H"1164938a…7860"`, unchanged → users keep permissions). GitHub release `v1.1.4` (Latest) carries both assets. Verified after publishing: `scripts/install.sh`'s release query resolves to `…/v1.1.4/JVoice.app.zip`; the downloaded zip passes `codesign --verify --deep --strict` and reports 1.1.4; the README DMG link returns 200. David's `/Applications/JVoice.app` is the dev build of the same code (`9076d12`, Info.plist 1.1.3) — the one-liner makes it report 1.1.4.
 
 **Ask (David, overnight/unattended):** apply the redesign spec `../MacStats/docs/design-language/jvoice-native-redesign.md` (design language: `../MacStats/docs/design-language/README.md`) to ALL of JVoice's UI — pills, Settings, everything — so it looks like his MacStats app / an Apple-native app. No sub-agents except one final reviewer.
 
