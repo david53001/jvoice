@@ -66,8 +66,11 @@ root `CLAUDE.md`), `recording.stopped` (before the pill leaves the recording sta
 - `recording.started` is posted only after the mic actually opened (a failed open posts nothing, so no
   tag appears over a permission dialog); `surfaceShown(.recordingPill)` only if that same recording is
   still on screen.
-- The tag is **monochrome** (BetterScreenshot's is red): near-black bubble on light windows, white on
-  dark, text contrast 19:1 (`Kit/TagStyle.swift`). Return = Next, Esc = Skip Tour — except while a
+- The tag follows the native look (2026-09-29, replacing the monochrome ink/paper tag): a `.popover`
+  material bubble with continuous corners in the HOST's light/dark (the overlay panels copy it), system
+  label colours, the outline box (1.5 pt line on a 2 pt layout band — `TagStyle.outlineWidth` /
+  `boxStroke`; tag geometry stays whole-point) + leader + Next capsule in the user's accent colour
+  (`Kit/TagStyle.swift`). Return = Next, Esc = Skip Tour — except while a
   Settings shortcut row is recording (`SettingsWindow` adopts `TourKeysClaiming`), and on the pill,
   which can never become key (its tag buttons are clickable instead).
 - **Scrolling (fixed 2026-09-28):** the overlay follows the anchor's scroll views through their
@@ -86,7 +89,7 @@ root `CLAUDE.md`), `recording.stopped` (before the pill leaves the recording sta
   classifier + keys), `TourEvents` (the one-way bus surfaces post to; also `resetAll()` and
   `TourSettings`), `TourAnchor`, `TourTagPresenting` + `TagOverlayController`/`TagViews`/`TagLayout`/
   `TagStyle`/`TagKeys`/`TourHostShaping` (the on-screen tag: click-through dim, outline, leader, bubble;
-  monochrome to match JVoice's theme), `InfoButton` (the ⓘ).
+  native material + accent colour, like the rest of JVoice), `InfoButton` (the ⓘ).
 - `TourCoordinator.swift` — owns triggers, hand-overs, pausing (host window closed → pause; resumes
   next time), persistence and the tag. Surfaces never call it — they post through `TourEvents`.
 - `TourCatalog.swift` — every tour + the menu titles.

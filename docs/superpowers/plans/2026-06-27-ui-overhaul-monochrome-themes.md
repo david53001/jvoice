@@ -1,3 +1,5 @@
+> **SUPERSEDED 2026-09-29** by the native macOS look (David's MacStats design language — spec `../MacStats/docs/design-language/jvoice-native-redesign.md`, as built: branch `feat/native-look`, `Sources/JVoice/UI/CLAUDE.md`). The monochrome "pure black/white/grey, no hue" direction below no longer applies; its theme-persistence plumbing and pill layout were kept.
+
 # JVoice UI Overhaul — Monochrome Themes, Redesigned Pill, Specific Errors — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

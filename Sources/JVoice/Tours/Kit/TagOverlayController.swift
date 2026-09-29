@@ -1,8 +1,8 @@
 import AppKit
 
 /// The on-screen tour tag (spec §14.3, the owner's mock): an outline box around the real control, a tag
-/// bubble joined to it by a leader line, and a light dim over the rest of the host window. Monochrome,
-/// inverted against the host (`TagStyle` — near-black on a light host, white on a dark one).
+/// bubble joined to it by a leader line, and a light dim over the rest of the host window. Native look
+/// (`TagStyle`): a material bubble in the host's appearance, the outline in the user's accent colour.
 ///
 /// Two borderless panels, children of the host window so they move, hide and z-order with it:
 /// - **decor** (dim + box + leader line) ignores the mouse — clicks land on the real controls under it,
@@ -262,8 +262,13 @@ public final class TagOverlayController: TourTagPresenting {
         decorView.dim = isMenuBarHost ? nil : (local(hostRect), shape?.cornerRadius ?? Self.cornerRadius(of: host))
         let hostIsDark = Self.isDark(anchor.effectiveAppearance)
         decorView.dimAlpha = TagStyle.dimAlpha(hostIsDark: hostIsDark)
-        decorView.hostIsDark = hostIsDark
-        bubble.hostIsDark = hostIsDark
+        // The overlay takes the host's light/dark (a Settings window forced Dark on a light system…),
+        // so the bubble's material and label colours match the window it points into.
+        let appearance = NSAppearance(named: hostIsDark ? .darkAqua : .aqua)
+        if decor.appearance?.name != appearance?.name {
+            decor.appearance = appearance
+            tagPanel.appearance = appearance
+        }
         decorView.box = local(p.box)
         decorView.outer = local(p.outer)
         decorView.leader = p.leader.map { (local($0.from), local($0.to)) }
@@ -276,7 +281,7 @@ public final class TagOverlayController: TourTagPresenting {
     }
 
     /// Dark Aqua (or vibrant dark — the HUD panels): the dim goes to `TagStyle.darkHostDimAlpha` and the
-    /// tag turns white (`TagStyle.tagColour(hostIsDark:)`).
+    /// overlay's panels take the dark appearance.
     static func isDark(_ appearance: NSAppearance) -> Bool {
         appearance.bestMatch(from: [.aqua, .darkAqua, .vibrantLight, .vibrantDark]).map {
             $0 == .darkAqua || $0 == .vibrantDark

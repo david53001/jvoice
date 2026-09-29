@@ -1,4 +1,11 @@
 import AppKit
+import SwiftUI
+
+/// A continuous-corner (squircle) rounded rect, as a `CGPath` — `NSBezierPath(roundedRect:)` and
+/// `CGPath(roundedRect:)` are circular arcs, which the native look avoids.
+func continuousRoundedPath(_ rect: CGRect, radius: CGFloat) -> CGPath {
+    RoundedRectangle(cornerRadius: max(0, radius), style: .continuous).path(in: rect).cgPath
+}
 
 /// The overlay's windows: borderless, transparent, never key or main, never activate the app.
 /// The decor panel also ignores the mouse, so clicks land on the real control underneath.
@@ -30,8 +37,6 @@ final class TagDecorView: NSView {
     var dim: (rect: CGRect, radius: CGFloat)?
     /// 20 %, or 35 % over a dark host (`TagStyle.dimAlpha(hostIsDark:)`).
     var dimAlpha = TagStyle.dimAlpha
-    /// Picks the outline + leader colour (`TagStyle.tagColour(hostIsDark:)`).
-    var hostIsDark = false
     /// Outline's inner edge (anchor + padding) and outer edge (inner + stroke).
     var box: CGRect = .zero
     var outer: CGRect = .zero
@@ -40,33 +45,32 @@ final class TagDecorView: NSView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 
     override func draw(_ dirtyRect: NSRect) {
+        guard let cg = NSGraphicsContext.current?.cgContext else { return }
         if let dim {
-            NSGraphicsContext.saveGraphicsState()
-            let windowShape = NSBezierPath(roundedRect: dim.rect, xRadius: dim.radius, yRadius: dim.radius)
-            windowShape.addClip()   // the part of the hole outside the window must stay clear, not flip to dim
-            let path = NSBezierPath(roundedRect: dim.rect, xRadius: dim.radius, yRadius: dim.radius)
-            let outerRadius = TagStyle.boxRadius + TagStyle.boxStroke
-            path.append(NSBezierPath(roundedRect: outer, xRadius: outerRadius, yRadius: outerRadius))
-            path.windingRule = .evenOdd
-            NSColor.black.withAlphaComponent(dimAlpha).setFill()
-            path.fill()
-            NSGraphicsContext.restoreGraphicsState()
+            cg.saveGState()
+            let windowShape = continuousRoundedPath(dim.rect, radius: dim.radius)
+            cg.addPath(windowShape)
+            cg.clip()   // the part of the hole outside the window must stay clear, not flip to dim
+            cg.addPath(windowShape)
+            cg.addPath(continuousRoundedPath(outer, radius: TagStyle.boxRadius + TagStyle.boxStroke))
+            cg.setFillColor(NSColor.black.withAlphaComponent(dimAlpha).cgColor)
+            cg.fillPath(using: .evenOdd)
+            cg.restoreGState()
         }
 
-        TagStyle.tagColour(hostIsDark: hostIsDark).setStroke()
-        let half = TagStyle.boxStroke / 2
-        let radius = TagStyle.boxRadius + half
-        let outline = NSBezierPath(roundedRect: box.insetBy(dx: -half, dy: -half), xRadius: radius, yRadius: radius)
-        outline.lineWidth = TagStyle.boxStroke
-        outline.stroke()
+        // `NSAppearance.current` is this view's during `draw`, so the accent resolves for the host.
+        cg.setStrokeColor(TagStyle.accentColour.cgColor)
+        let half = TagStyle.outlineWidth / 2
+        cg.addPath(continuousRoundedPath(box.insetBy(dx: -half, dy: -half), radius: TagStyle.boxRadius + half))
+        cg.setLineWidth(TagStyle.outlineWidth)
+        cg.strokePath()
 
         if let leader {
-            let line = NSBezierPath()
-            line.move(to: leader.from)
-            line.line(to: leader.to)
-            line.lineWidth = TagStyle.leaderWidth
-            line.lineCapStyle = .round
-            line.stroke()
+            cg.move(to: leader.from)
+            cg.addLine(to: leader.to)
+            cg.setLineWidth(TagStyle.leaderWidth)
+            cg.setLineCap(.round)
+            cg.strokePath()
         }
     }
 }
@@ -77,8 +81,6 @@ final class TagButton: NSButton {
     enum Style { case filled, outline, link }
 
     var style: Style { didSet { restyle() } }
-    /// Monochrome, inverted against the host (`TagStyle`).
-    var hostIsDark = false { didSet { if hostIsDark != oldValue { restyle() } } }
 
     init(style: Style) {
         self.style = style
@@ -103,9 +105,9 @@ final class TagButton: NSButton {
     func setLabel(_ text: String) {
         let colour: NSColor
         switch style {
-        case .filled: colour = TagStyle.filledButtonText(hostIsDark: hostIsDark)
-        case .outline: colour = TagStyle.textColour(hostIsDark: hostIsDark)
-        case .link: colour = TagStyle.secondaryTextColour(hostIsDark: hostIsDark)
+        case .filled: colour = TagStyle.filledButtonText
+        case .outline: colour = TagStyle.textColour
+        case .link: colour = TagStyle.secondaryTextColour
         }
         attributedTitle = NSAttributedString(string: text, attributes: [
             .font: TagStyle.buttonFont, .foregroundColor: colour,
@@ -119,17 +121,29 @@ final class TagButton: NSButton {
         return style == .link ? text + 4 : text + 2 * TagStyle.buttonPaddingX
     }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        restyle()
+    }
+
+    /// Capsules: accent-filled (Next / Done), a faint tint ("Skip Step" — no 1 pt outline), or a bare
+    /// link ("Skip Tour"). Layer colours are resolved in this view's appearance.
     private func restyle() {
         layer?.cornerRadius = TagStyle.buttonHeight / 2
-        layer?.backgroundColor = style == .filled
-            ? TagStyle.filledButtonFill(hostIsDark: hostIsDark).cgColor : NSColor.clear.cgColor
-        layer?.borderWidth = style == .outline ? 1 : 0
-        layer?.borderColor = TagStyle.textColour(hostIsDark: hostIsDark).cgColor
+        layer?.cornerCurve = .continuous
+        effectiveAppearance.performAsCurrentDrawingAppearance {
+            switch style {
+            case .filled: layer?.backgroundColor = TagStyle.filledButtonFill.cgColor
+            case .outline: layer?.backgroundColor = TagStyle.subtleButtonFill.cgColor
+            case .link: layer?.backgroundColor = NSColor.clear.cgColor
+            }
+        }
         setLabel(attributedTitle.string)
     }
 }
 
-/// The tag bubble (monochrome, inverted against the host): title, body (≤ 2 lines), footer "2 of 7 · Skip tour · Next".
+/// The tag bubble — a `.popover`-material squircle in the host's appearance: title, body (≤ 2 lines),
+/// footer "2 of 7 · Skip tour · Next".
 final class TagBubbleView: NSView {
     let titleLabel = NSTextField(labelWithString: "")
     let bodyLabel = NSTextField(wrappingLabelWithString: "")
@@ -144,15 +158,21 @@ final class TagBubbleView: NSView {
     var onSkipTour: (() -> Void)?
     /// False on the last Explain step ("Done" alone — `TagStyle.showsSkipTour`).
     private var offersSkipTour = true
-    /// Recolours the bubble for its host: a near-black tag on a light host, white on a dark one.
-    var hostIsDark = false { didSet { if hostIsDark != oldValue { applyColours() } } }
+    /// The bubble's backdrop: a behind-window material, masked to the continuous-cornered tag shape.
+    private let backdrop = NSVisualEffectView()
 
     override var isFlipped: Bool { true }
 
     override init(frame: NSRect) {
         super.init(frame: frame)
         wantsLayer = true
-        layer?.cornerRadius = TagStyle.tagRadius
+        backdrop.material = .popover
+        backdrop.blendingMode = .behindWindow
+        backdrop.state = .active
+        backdrop.maskImage = Self.maskImage(radius: TagStyle.tagRadius)
+        backdrop.autoresizingMask = [.width, .height]
+        backdrop.frame = bounds
+        addSubview(backdrop)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
 
@@ -183,16 +203,30 @@ final class TagBubbleView: NSView {
         applyColours()
     }
 
+    /// System label colours (they resolve in the bubble's appearance); the done tick is green.
     private func applyColours() {
-        let text = TagStyle.textColour(hostIsDark: hostIsDark)
-        layer?.backgroundColor = TagStyle.tagColour(hostIsDark: hostIsDark).cgColor
-        titleLabel.textColor = text
-        bodyLabel.textColor = text
-        counterLabel.textColor = TagStyle.secondaryTextColour(hostIsDark: hostIsDark)
-        doneIcon.contentTintColor = text
-        doneLabel.textColor = text
-        skipTourButton.hostIsDark = hostIsDark
-        primaryButton.hostIsDark = hostIsDark
+        titleLabel.textColor = TagStyle.textColour
+        bodyLabel.textColor = TagStyle.textColour
+        counterLabel.textColor = TagStyle.secondaryTextColour
+        doneIcon.contentTintColor = .systemGreen
+        doneLabel.textColor = TagStyle.textColour
+    }
+
+    /// A stretchable continuous-corner mask. The cap insets cover the whole squircle transition
+    /// (≈ 1.53 × the radius), so stretching never bends the curve.
+    private static func maskImage(radius: CGFloat) -> NSImage {
+        let cap = ceil(radius * 1.6)
+        let side = cap * 2 + 1
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            guard let cg = NSGraphicsContext.current?.cgContext else { return false }
+            cg.addPath(continuousRoundedPath(rect, radius: radius))
+            cg.setFillColor(NSColor.black.cgColor)
+            cg.fillPath()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: cap, left: cap, bottom: cap, right: cap)
+        image.resizingMode = .stretch
+        return image
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }

@@ -1,7 +1,28 @@
-# HANDOFF — state as of 2026-09-28 (v1.1.3 shipped: first-run guided tour + the 2026-09-24 bug-hunt batch; the maths-engine package is still unfinished in its worktree)
+# HANDOFF — state as of 2026-09-29 (v1.1.3 shipped; native-look redesign built on branch `feat/native-look`, awaiting David's dogfood; the maths-engine package is still unfinished in its worktree)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+
+## 2026-09-29 session — Native macOS look (MacStats design language) for the whole UI (branch `feat/native-look`, off `feat/guided-tour` @ `0877330`; NOT merged, NOT installed, NOT pushed)
+
+**Ask (David, overnight/unattended):** apply the redesign spec `../MacStats/docs/design-language/jvoice-native-redesign.md` (design language: `../MacStats/docs/design-language/README.md`) to ALL of JVoice's UI — pills, Settings, everything — so it looks like his MacStats app / an Apple-native app. No sub-agents except one final reviewer.
+
+**Where:** a separate git worktree at `.claude/worktrees/native-look` (branch `feat/native-look`), so the main checkout (on `feat/guided-tour`, with an unrelated uncommitted `docs/math-notation-format.md` edit) was not touched. To try it: `cd .claude/worktrees/native-look && ./scripts/dev-install.sh` (David runs it), or merge the branch.
+
+**Done (spec phases 1–5; phase 6, the app icon, is optional — "only if the user asks" — not done):**
+- Tokens: `UI/Theme.swift` → semantic `Color.primary` tints (`Theme.native`) + a `Design` table from MacStats; `danger` = red.
+- Appearance: `AppTheme` gains **System** (default). `SettingsState` schema **v4 → v5**: a v1–v4 `.dark` (the old *default*) migrates to `.system` once, an explicit `.light` is kept (test-locked in `SettingsStateMigrationTests` + logic tests). Consequence: once this build saves, an older JVoice build refuses the v5 blob and starts from defaults (same as every schema bump).
+- Settings: translucent `.sidebar` window material (`WindowMaterial.install`), dot-free cards (`CardBackground`), text styles, native small switches, segmented System/Light/Dark picker, `SubtleButtonStyle` buttons (destructive = red), hover-revealed row actions, `NSAlert` sheet for Restore Defaults.
+- HUD: Liquid Glass capsule on macOS 26 / `.hudWindow` material before (guarded `#if compiler(>=6.2)` + `#available`; the non-glass branch was compile-checked by flipping the guard), ONE shadow = the panel's system shadow, no glow, flat-line bars, red stop square, no "RECORDING" label, status symbols in their meaning colour (no badge circle). Pill sits where it did (`HUDLayout.bottomGap`).
+- Welcome: same material, real app icon, native large bordered/prominent buttons, card rows.
+- Tour tag: `.popover` material bubble with continuous corners in the host's appearance, accent-colour outline/leader/Next.
+- New hidden dev mode `JVoice --ui-preview <dir>` (`UI/UIPreviewRunner.swift`) that screenshots every surface — see `Sources/JVoice/UI/CLAUDE.md`.
+
+**Deliberately NOT done:** HUD state cross-fades / animated width changes (spec §3 Phase 3.5): the pill's window snaps to each state's size synchronously and the recording show must stay instant (latency contract), so a SwiftUI cross-fade would clip or delay; show/hide stay instant as the spec requires. The menu-bar menu and the ⓘ popover were left alone (already native, per spec).
+
+**Verified:** `swift build` + `swift build -c release`; `./scripts/run-logic-tests.sh` 987/987; `./scripts/verify-tour-scroll.sh` PASS; `--settings-smoke` from an assembled `.app` OK (700×592, unchanged); `--ui-preview` screenshots of Settings/Welcome/tour tag (Light + Dark) and all 7 HUD states looked right by eye. CI-only swift-testing files updated for the new default/migration (NOT executed locally — never run `swift test` here).
+
+**NOT verified:** the live app (hotkey → pill latency, real mic bars, glass over a bright wallpaper, Settings while key/active = translucent). Suggested dogfood: install from the worktree, dictate once in Light and once in Dark, open Settings over a bright wallpaper, switch System/Light/Dark with Settings open.
 
 ## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; SHIPPED as v1.1.3 — `main` fast-forwarded to it)
 

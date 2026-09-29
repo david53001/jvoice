@@ -5,23 +5,22 @@ import AppKit
 /// (`docs/MAC-TO-WINDOWS-PARITY-v3.md` §7.3) copies the numbers from here.
 public enum TagStyle {
     // MARK: Colour
-    /// JVoice is strictly monochrome (`UI/Theme.swift`: black / white / grey, no hue), so the tag is
-    /// too, inverted against its host for the strongest contrast: a near-black tag on a light host, a
-    /// white tag on a dark one (`hostIsDark` = `TagOverlayController.isDark(anchor.effectiveAppearance)`).
-    /// The outline box and the leader line take the tag's colour. Contrast (WCAG, sRGB):
-    /// - title / body / done label / "Skip Step" outline on the tag: ink ↔ paper = 19.1:1, both hosts;
-    /// - counter + "Skip Tour" (`secondaryTextAlpha` 0.9): 15.5:1 on the ink tag, 14.9:1 on the paper tag;
-    /// - "Next" / "Done" capsule (the tag's own colour on the text colour): 19.1:1, both hosts.
-    /// Ink is the light theme's `textPrimary` (white 0.06, #0F0F0F).
-    public static let tourInk = NSColor(srgbRed: 0.06, green: 0.06, blue: 0.06, alpha: 1)
-    public static let tourPaper = NSColor.white
-    /// The tag bubble, the outline box and the leader line.
-    public static func tagColour(hostIsDark: Bool) -> NSColor { hostIsDark ? tourPaper : tourInk }
-    /// The tag's text: title, body, the Try step's "Skip Step" outline button, the done state.
-    public static func textColour(hostIsDark: Bool) -> NSColor { hostIsDark ? tourInk : tourPaper }
-    /// The primary (Next / Done) capsule: filled with the text colour, labelled in the tag's colour.
-    public static func filledButtonFill(hostIsDark: Bool) -> NSColor { textColour(hostIsDark: hostIsDark) }
-    public static func filledButtonText(hostIsDark: Bool) -> NSColor { tagColour(hostIsDark: hostIsDark) }
+    /// JVoice follows the native macOS look (`UI/Theme.swift`, the MacStats design language): the tag
+    /// is a `.popover`-material bubble in the host's appearance (the overlay's panels take the host's
+    /// light/dark — `TagOverlayController`), with system label colours on it, so contrast is the
+    /// system's own. The one hue is the user's accent colour (System Settings → Appearance): the
+    /// outline box, the leader line and the primary capsule.
+    /// The outline box and the leader line.
+    public static var accentColour: NSColor { .controlAccentColor }
+    /// The tag's text: title, body, the done state, the "Skip Step" capsule's label.
+    public static var textColour: NSColor { .labelColor }
+    /// The step counter and the "Skip Tour" link.
+    public static var secondaryTextColour: NSColor { .secondaryLabelColor }
+    /// The primary (Next / Done) capsule: the accent colour with a white label, like a default button…
+    public static var filledButtonFill: NSColor { .controlAccentColor }
+    public static let filledButtonText = NSColor.white
+    /// …and the Try step's "Skip Step": a faint label-colour tint (MacStats' small button, 0.08).
+    public static var subtleButtonFill: NSColor { NSColor.labelColor.withAlphaComponent(0.08) }
     /// The dim laid over the rest of the host window (black at this alpha)…
     public static let dimAlpha: CGFloat = 0.2
     /// …and over an always-dark host (the editor, video editor, record strip, pill, Settings), where 20%
@@ -33,11 +32,14 @@ public enum TagStyle {
     // MARK: Outline box + leader
     /// Gap between the highlighted control and the inner edge of the outline.
     public static let boxPadding: CGFloat = 4
-    /// Outline thickness; drawn outside the padding (it covers 4–6 pt outside the control).
+    /// The outline's band outside the padding (it covers 4–6 pt outside the control) — layout geometry:
+    /// the dim's hole and the tag spacing are measured from it, in whole points.
     public static let boxStroke: CGFloat = 2
+    /// The visible outline, drawn on the band's inner edge (a thin native accent line, not a 2 pt rule).
+    public static let outlineWidth: CGFloat = 1.5
     /// Corner radius of the outline's inner edge.
     public static let boxRadius: CGFloat = 6
-    public static let leaderWidth: CGFloat = 2
+    public static let leaderWidth: CGFloat = 1.5
     /// Gap between the outline's outer edge and the tag, spanned by the leader line.
     public static let leaderLength: CGFloat = 24
     /// The tag never comes closer than this to the edges of the screen's visible frame.
@@ -67,11 +69,6 @@ public enum TagStyle {
     public static let buttonHeight: CGFloat = 20
     public static let buttonPaddingX: CGFloat = 8
     public static let buttonGap: CGFloat = 4
-    /// The text colour at this alpha: the step counter and the "Skip Tour" link (≥ 14.9:1, see Colour).
-    public static let secondaryTextAlpha: CGFloat = 0.9
-    public static func secondaryTextColour(hostIsDark: Bool) -> NSColor {
-        textColour(hostIsDark: hostIsDark).withAlphaComponent(secondaryTextAlpha)
-    }
 
     // MARK: Strings
     public static let nextTitle = "Next"

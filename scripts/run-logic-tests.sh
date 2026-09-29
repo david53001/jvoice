@@ -631,7 +631,9 @@ expect(abs(SilenceHallucinationGate.peakWindowRMS(gateBurst) - 0.5) < 0.0001, "p
 print("AppTheme")
 expectEqual(AppTheme.dark.toggled, .light, "dark toggles to light")
 expectEqual(AppTheme.light.toggled, .dark, "light toggles to dark")
-expectEqual(try! JSONDecoder().decode(AppTheme.self, from: "\"sepia\"".data(using: .utf8)!), .dark, "unknown theme → dark")
+expectEqual(AppTheme.system.toggled, .dark, "system toggles to dark")
+expectEqual(try! JSONDecoder().decode(AppTheme.self, from: "\"sepia\"".data(using: .utf8)!), .system, "unknown theme → system")
+expectEqual(AppTheme.allCases, [.system, .light, .dark], "picker order: System, Light, Dark")
 
 print("DictationError")
 expect(DictationError.allCases.allSatisfy { !$0.message.isEmpty }, "every error has a message")
