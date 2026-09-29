@@ -4,6 +4,17 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
+## [1.1.4] — 2026-09-29
+
+### Changed
+
+- **JVoice now looks like a native Mac app.** Settings and the Welcome window sit on a softly see-through background (the desktop shows through, like System Settings), with rounded "squircle" cards, standard macOS text sizes and native switches, pickers and buttons — no more solid black page and no more little dots before every heading. Colour is used only where it means something: red for stop and destructive actions, green for done, orange for warnings.
+- **Light, Dark — or follow your Mac.** A System / Light / Dark picker at the top of Settings; **System** is the new default (if you had the old default dark look, you're moved to System; an explicit Light choice is kept). Your settings stay readable by older JVoice versions.
+- **A glass recording pill.** The pill is a Liquid Glass capsule on macOS 26 (a frosted material on macOS 14–15) with one soft shadow instead of a glow, a calm waveform that rests as a flat line, and a red stop button. **Each pill now fits its content** — "Pasted" is a small capsule, errors get room to wrap — and one state turns into the next (recording → transcribing → pasted) with a subtle resize. The pill still appears the instant you press the shortcut.
+- **Tour tags** match: a frosted bubble in your window's light/dark look, with the outline and Next button in your Mac's accent colour.
+
+---
+
 ## [1.1.3] — 2026-09-28
 
 ### Added
