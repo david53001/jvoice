@@ -92,7 +92,9 @@ pinned to version 1.0.0). To work in this area, read the files below.
   `TextProcessor.process`, and gated on the opt-out `SettingsState.mathNotation` (default ON);
   with it off NO maths code runs (`--bench … --no-math` does the same).
   - `MathSymbols.swift` — the ~700-form vocabulary ("how it is said" → "what to print"), data only.
-    "times" maps to the internal marker `*` (never printed); `·` is the dot product only.
+    "times" maps to the internal marker `*` (never printed); `·` is the dot product only. Bare
+    "sigma" is NOT a key: it is the sum sign ∑ (David, 2026-09-29), parsed by the engine like
+    "sum" (weak without "from"); the letter σ is "lowercase sigma" / "small sigma".
   - `MathSpeech.swift` — the grammar, the activation rules and the emitter. **The no-bleed
     guarantee is STRUCTURAL, not a classifier**: a word only becomes a symbol inside a RUN
     (consecutive maths-lexing words, ended by any ordinary word or punctuation), and a run only

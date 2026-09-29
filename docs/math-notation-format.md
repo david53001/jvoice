@@ -88,7 +88,7 @@ decision: "readable Unicode, not LaTeX"). Its source of truth is BetterScreensho
 | Calculus | `∫ ∑ ∏ ∂ ∞ ′ ″` and `lim` | Prime is U+2032 `′`, not an apostrophe. |
 | Roots | `√ ∛ ∜` | |
 | Geometry | `° ∠ ⊥ ∥ △ ≅ ∼` | |
-| Greek | `α β γ δ ε θ λ μ π ρ σ τ φ ω Δ Σ Ω` | Say the name, get the letter. Capitals only when said ("capital delta"). |
+| Greek | `α β γ δ ε θ λ μ π ρ σ τ φ ω Δ Σ Ω` | Say the name, get the letter. Capitals only when said ("capital delta"). **Exception — "sigma" is the SUM SIGN `∑`** (David, 2026-09-29): "sigma from i equals 1 to n of i" → `∑ᵢ₌₁ⁿ i`, like "sum from …". The letter `σ` is "lowercase sigma" / "small sigma"; `Σ` is "capital sigma". |
 | Fractions | `½ ⅓ ⅔ ¼ ¾ ⅕ ⅛` | Only for spoken simple number fractions ("three quarters" of a quantity); algebra uses `/`. |
 | Other | `% ‰ ! |x| ⌊x⌋ ⌈x⌉` | |
 

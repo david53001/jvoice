@@ -138,7 +138,8 @@ Verification (all with the standalone probe = same five sources the app compiles
 
 **Symptom.** "K squared plus the root of K cubed times Kx squared sigma of 3." pasted as
 `K² plus the root of K³ times Kx squared sigma of 3.` — only the two scripts converted.
-**Now:** `K² + √K³ × Kx² σ(3).` Four causes, each reproduced first:
+**Now:** `K² + √K³ × Kx² ∑ 3.` (it was `… σ(3).` until David said "sigma" means the sum sign — see
+"sigma = ∑" below). Four causes, each reproduced first:
 1. **Bare "root of" was not a keyword**, so "root" was an ordinary word that ended the run and stranded
    "plus". New keyword `"root of"` = square root, lexed WEAK: it renders inside a run something else
    activated ("x plus the root of 2" → `x + √2`), and activates on its own only when its radicand takes a
@@ -154,7 +155,8 @@ Verification (all with the standalone probe = same five sources the app compiles
    would become `x = 5 + tax`. Consequence: "x equals xy squared" alone stays words (conservative).
 3. **"the" mid-run** needed no new code: `tryOperand` already skips a "the" in operand position (that is
    how "plus the square root of" worked); it only failed because "root" was a word (cause 1).
-4. **"sigma of 3"** → `σ(3)`: a Greek letter followed by "of" is applied like "f of x" (weak, `Parser.
+4. **"sigma of 3"** → first `σ(3)`, now `∑ 3` (next section). The rule added here still holds for the other
+   Greek letters and for "lowercase sigma of 3" → `σ(3)`: a Greek letter followed by "of" is applied like "f of x" (weak, `Parser.
    isGreekLetter`). "sigma" is NOT turned into ∑ — **David hasn't said what he meant; flag for him.**
    Side fix: a limit's target is read with `allowApply: false`, so "the limit as x approaches pi of sine x"
    stays `lim_(x→π) sin x` rather than `π(sin x)`.
@@ -168,6 +170,32 @@ Verification (all with the standalone probe = same five sources the app compiles
   42-sentence list for root/sigma/two-letter words (`bleed_kx.txt` in the helpers folder) unchanged except
   the two lines that already converted ("x equals 5 plus ok" → `x = 5 plus ok`, "x equals 5 so it works");
   Windows spec 106/130 as before; release `--math-probe` identical to the probe on 1,078 lines.
+
+## "sigma" = ∑ (David, 2026-09-29, same day)
+
+David: by "sigma" he means the SUM SIGN `∑`, not `σ`.
+- **Bounded** — exactly like "sum": "sigma from i equals 1 to n of i" → `∑ᵢ₌₁ⁿ i`, "Sigma from k equals 0 to
+  infinity of x to the k" → `∑ₖ₌₀^∞ xᵏ` (activating). "sum i equals 1 to n" (no "from") is not supported
+  for "sum" either, so not for "sigma".
+- **Unbounded** ("sigma of 3"): "sum of 3" stays words even inside an equation, on purpose — "the sum of my
+  fears" is everyday English. "sigma" is rarely English next to "of", so the safest consistent option is a
+  WEAK `∑`: it renders only inside a run something else made mathematics, and it is laid out like the
+  other unbounded big operator (`∫ 3` for "integral of 3") — a space before its body: `… Kx² ∑ 3.` On its
+  own ("sigma of 3", "six sigma of 3 teams", "Six Sigma", "sigma male", "that's so sigma") it stays words.
+- As for "sum"/"integral", a big operator cannot be the right side of "equals": "x equals sigma of 3" and
+  "x equals the sum from i equals 1 to n of i" leave the "equals" as a word (pre-existing, not changed).
+- **The letter σ** is only "lowercase sigma" / "small sigma" ("small sigma equals 2" → `σ = 2`); `Σ` stays
+  "capital/big/uppercase sigma"; "sigma squared" follows the ∑ rules (so on its own it stays words).
+- **Cost, for David:** statistics dictation that says "sigma" for the standard deviation no longer gets `σ`.
+  7 of the 367 maths-corpus lines changed, all this kind, e.g. "sigma squared equals 2.5" (was `σ² = 2.5`,
+  now words), "z equals x minus mu over sigma" (was `z = x - μ/σ`, now `z = x - μ over sigma`), "x bar plus
+  or minus 1.96 times sigma over the square root of n". No line got a wrong `∑`. Say "lowercase sigma".
+- Code: lexer step 2b in `MathSpeech.swift` (bare "sigma" → `∑` prefix, weak unless "from" follows);
+  `bigOperator` activates for a weak ∑ only when bounded; `MathSymbols` drops the bare "sigma" key, adds
+  "lowercase/small/lower case sigma" → σ, and reserves "sigma".
+- Verified: everyday 494, variants, repo prose 18,398: 0 lines differ; bleed lists unchanged (6 sigma
+  sentences added to `bleed_kx.txt`); maths corpus: the 7 lines above; logic tests 1123/1123; Swift cases
+  through the probe 184 + 135, 0 failures; release `--math-probe` identical to the probe.
 
 ## Deviations from the spec (and why)
 
@@ -265,7 +293,10 @@ Verification (all with the standalone probe = same five sources the app compiles
    application (`IsGreekLetter`); limit target read with `allowApply: false`; `MathScript.
    EndsInOpenRadical` → `×` in `ProductSeparator`. Tests: the "David's failed dictation" block and the
    root/sigma/two-letter leave-alone lines in `MathSpeechTests.swift`.
-6. `MathSpeechTests.cs` / `MathSymbolsTests.cs`: take the expectations from the Swift files
+6. "sigma" = ∑: `MathSpeech.cs` lexer step 2b + the weak-∑ check in `BigOperator`; `MathSymbols.cs` removes the
+   bare "sigma" key, adds "lowercase sigma"/"small sigma"/"lower case sigma" → σ, reserves "sigma".
+   `MathSymbolsTests.cs`: "sigma squared equals the variance of x" becomes "lowercase sigma squared …".
+7. `MathSpeechTests.cs` / `MathSymbolsTests.cs`: take the expectations from the Swift files
    (`Tests/JVoiceTests/MathSpeechTests.swift` — the "shared notation format" block and the new leave-alone
    lines; `MathSymbolsTests.swift` — the "times"/"dot" lookups and the four updated conversions).
 

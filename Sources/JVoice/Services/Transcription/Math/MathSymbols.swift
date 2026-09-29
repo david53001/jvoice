@@ -89,7 +89,7 @@ public enum MathSymbols {
         "over", "from", "to", "of", "point",
         // big-operator openers (bare "sum"/"product" are ordinary English — the engine only
         // accepts them with bounds, e.g. "sum from n equals 1 to infinity")
-        "sum", "sums", "summation", "product", "products",
+        "sum", "sums", "summation", "product", "products", "sigma",
         // structural constructs
         "absolute value of", "absolute value", "derivative of", "partial derivative of",
         "with respect to", "limit", "limit as", "as", "approaches", "tends to", "goes to",
@@ -366,7 +366,12 @@ public enum MathSymbols {
         greek("ο", "Ο", "omicron")
         greek("π", "Π", "pi")
         greek("ρ", "Ρ", "rho", "varrho")
+        // Bare "sigma" is the SUM SIGN ∑ (David, 2026-09-29) — the engine parses it like "sum",
+        // so it is reserved, not a key here. The letter is "lowercase/small sigma"; the capital
+        // letter Σ keeps "capital/big/uppercase sigma".
         greek("σ", "Σ", "sigma")
+        d.removeValue(forKey: "sigma")
+        add("σ", .operand, "lowercase sigma", "small sigma", "lower case sigma")
         greek("τ", "Τ", "tau")
         greek("υ", "Υ", "upsilon")
         greek("φ", "Φ", "phi", "varphi")

@@ -388,6 +388,18 @@ public enum MathSpeech {
                 continue
             }
 
+            // 2b) "sigma" is the SUM SIGN (David, 2026-09-29), never the letter σ — that is
+            //     "lowercase sigma" / "small sigma" in the vocabulary. With bounds it is exactly
+            //     "sum from … to …"; without them it is a WEAK ∑ that renders only inside a run
+            //     something else made mathematics ("… Kx squared sigma of 3" → "… Kx² ∑ 3"),
+            //     so "Six Sigma", "sigma male", "that's so sigma" stay words.
+            if core.caseInsensitiveCompare("sigma") == .orderedSame {
+                let bounded = i + 1 < cores.count && cores[i + 1].caseInsensitiveCompare("from") == .orderedSame
+                items.append(Item(.symbol, "∑", i, 1, sym: MathSymbol("∑", .prefix), weak: !bounded))
+                i += 1
+                continue
+            }
+
             // 3) numbers ("twenty five" → 25, "7", "7n")
             if isCoefficient(core) {
                 items.append(Item(.number, core, i, 1))
@@ -1514,7 +1526,8 @@ public enum MathSpeech {
             if !bounded && tryOperand(j) == nil { return false }
 
             expr.pushHead(text)
-            activated = true
+            // A bare "sigma" (weak) activates nothing: "six sigma of 3 teams" is English.
+            if bounded || !items[i].weak { activated = true }
             i = j
             return true
         }

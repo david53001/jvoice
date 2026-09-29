@@ -283,7 +283,7 @@ private let vocabularyConverts: [(String, String)] = [
     ("A inverse times A equals 1", "A⁻¹A = 1"),
     // functions
     ("the determinant of A equals 0", "det(A) = 0"),
-    ("sigma squared equals the variance of x", "σ² = Var(x)"),
+    ("lowercase sigma squared equals the variance of x", "σ² = Var(x)"),
     ("the natural log of x is less than x", "the ln x < x"),
     ("the floor of x plus 1", "floor(x) + 1"),
     ("the probability of x equals 0.5", "P(x) = 0.5"),

@@ -775,12 +775,14 @@ for (spoken, pasted, why) in [
     ("20 percent of 50 equals 10", "20% of 50 = 10", "percent of inside an equation"),
     ("angle A B C equals 90 degrees", "∠ABC = 90°", "∠ binds tight"),
     // David's failed dictation (2026-09-29): bare "root of", whisper's glued "Kx", "sigma of"
-    ("K squared plus the root of K cubed times Kx squared sigma of 3.", "K² + √K³ × Kx² σ(3).", "David's root/Kx/sigma dictation"),
+    ("K squared plus the root of K cubed times Kx squared sigma of 3.", "K² + √K³ × Kx² ∑ 3.", "David's root/Kx/sigma dictation (sigma = ∑)"),
     ("k squared plus the square root of k cubed times k x squared", "k² + √k³ × kx²", "× after an unbracketed root"),
     ("x plus the root of 2", "x + √2", "bare root of inside an equation"),
     ("the root of K cubed", "the √K³", "bare root of a power activates"),
     ("k squared times Kx squared", "k²Kx²", "glued Kx is juxtaposed variables"),
-    ("x equals sigma of 3", "x = σ(3)", "Greek letter + of is an application"),
+    ("x equals lowercase sigma of 3", "x = σ(3)", "Greek letter + of is an application"),
+    ("the sigma from i equals 1 to n of i", "the ∑ᵢ₌₁ⁿ i", "sigma with bounds is the sum sign"),
+    ("small sigma equals 2", "σ = 2", "the letter is small/lowercase sigma"),
     ("the limit as x approaches pi of sine x", "the lim_(x→π) sin x", "a limit target is never applied"),
 ] {
     expectEqual(MathSpeech.convert(spoken), pasted, "format: \(why)")
@@ -839,6 +841,10 @@ for prose in [
     "root of all evil",
     "the root of our 3 main problems is time",
     "sigma of 3 people",
+    "Six Sigma",
+    "sigma male",
+    "that's so sigma",
+    "our six sigma training took 5 days",
     "it was 2 plus ok",
     "he got 5 plus TV",
     "5 plus me",
