@@ -2,10 +2,11 @@ import Foundation
 
 /// Hidden CLI bench mode:
 ///
-///     JVoice --bench <audio.wav> [--model tiny|base|small|large] [--vocab "Word1,Word2"] [--stream [--realtime]] [--repeat N [--idle S]]
+///     JVoice --bench <audio.wav> [--model tiny|base|small|large] [--vocab "Word1,Word2"] [--stream [--realtime]] [--repeat N [--idle S]] [--no-math]
 ///
 /// Transcribes one file with timing and prints both the raw transcript and the
-/// TextProcessor-processed output. Dev-only: this machine cannot execute
+/// TextProcessor-processed output (then Math Notation, like the app with the toggle on;
+/// `--no-math` skips it, like the toggle off — docs/math-notation-format.md §5). Dev-only: this machine cannot execute
 /// XCTest, so this is how transcription speed and vocabulary biasing are
 /// actually verified end-to-end.
 enum BenchRunner {
@@ -27,7 +28,7 @@ enum BenchRunner {
     private static func run(arguments: [String]) async -> Int32 {
         guard let benchIndex = arguments.firstIndex(of: "--bench"),
               arguments.count > benchIndex + 1 else {
-            FileHandle.standardError.write(Data("usage: JVoice --bench <audio.wav> [--model tiny|base|small|large] [--lang en|ro] [--vocab \"Word1,Word2\"] [--stream [--realtime]] [--repeat N [--idle S]]\n".utf8))
+            FileHandle.standardError.write(Data("usage: JVoice --bench <audio.wav> [--model tiny|base|small|large] [--lang en|ro] [--vocab \"Word1,Word2\"] [--stream [--realtime]] [--repeat N [--idle S]] [--no-math]\n".utf8))
             return 64
         }
         let audioURL = URL(fileURLWithPath: arguments[benchIndex + 1])
@@ -69,7 +70,9 @@ enum BenchRunner {
         }
 
         let useDecoderPrompt = !arguments.contains("--no-prompt")
-        print("model: \(model.rawValue)   audio: \(audioURL.lastPathComponent)   lang: \(language.whisperCode)   vocab: \(vocabulary.isEmpty ? "—" : vocabulary.joined(separator: ", "))   decoderPrompt: \(useDecoderPrompt ? "on" : "off")")
+        // --no-math: the Math Notation toggle OFF — no maths work at all (spec §5: "off" must stay free of it).
+        let mathNotation = !arguments.contains("--no-math")
+        print("model: \(model.rawValue)   audio: \(audioURL.lastPathComponent)   lang: \(language.whisperCode)   vocab: \(vocabulary.isEmpty ? "—" : vocabulary.joined(separator: ", "))   decoderPrompt: \(useDecoderPrompt ? "on" : "off")   math: \(mathNotation ? "on" : "off")")
 
         #if canImport(WhisperKit)
         let engine = WhisperKitTranscriptionEngine(model: model, language: language, vocabulary: vocabulary, useVocabularyPrompt: useDecoderPrompt)
@@ -109,10 +112,12 @@ enum BenchRunner {
             print("raw:       \"\(raw)\"")
             // Same post-processing stack as the app's default settings: the
             // developer-terms pack laid under the user's words (theirs win).
+            let postStart = Date()
             let userDict = DeveloperTerms.augment(TextProcessor.buildUserDictionary(from: vocabulary))
             let styled = TextProcessor.process(raw, mode: .casual, extraDictionary: userDict, vocabulary: vocabulary)
             // Math notation runs last here too, so the bench shows what actually pastes.
-            let processed = MathSpeech.convert(styled)
+            let processed = mathNotation ? MathSpeech.convert(styled) : styled
+            print(String(format: "postprocess:  %.2f ms (math %@)", Date().timeIntervalSince(postStart) * 1000, mathNotation ? "on" : "off"))
             print("processed: \"\(processed)\"")
             return 0
         } catch {
