@@ -45,7 +45,7 @@ public struct MathSymbol: Equatable, Sendable {
     /// surrounding run of words into mathematics.
     public var activates: Bool {
         kind == .relation
-            || kind == .operatorSymbol
+            || (kind == .operatorSymbol && !MathSymbols.weakOperators.contains(text))
             || (kind == .prefix && !MathSymbols.weakPrefixes.contains(text))
     }
 

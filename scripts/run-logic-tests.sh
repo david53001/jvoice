@@ -713,6 +713,29 @@ expectEqual(
     "we're just going to use S = U + V ÷ 2 · T. Basically, since the initial and final velocities are both 6, it would be 12 ÷ 2T = 400.",
     "David's SUVAT dictation")
 
+print("MathSpeech.convert — the 2026-09-23 package (bug-hunt fixes 1–7)")
+// 1. a bare "to the" needs an unmistakable exponent
+expectEqual(MathSpeech.convert("x to the 3"), "x³", "fix 1: a letter base makes 'to the' a power")
+expectEqual(MathSpeech.convert("2 to the power of 10"), "2¹⁰", "fix 1: 'to the power of' always activates")
+// 2. whisper's "x" for a spoken "times" between numbers
+expectEqual(MathSpeech.convert("3 x 4 equals 12"), "3 · 4 = 12", "fix 2: '3 x 4' is a product, not x₄")
+// 3. the auto-closed "probability that" bracket closes before its second relation
+expectEqual(MathSpeech.convert("the probability that X is less than or equal to 3 equals 0.65"), "P(X ≤ 3) = 0.65", "fix 3")
+// 4. "over" takes a following choose / factorial as one factor
+expectEqual(MathSpeech.convert("1 over 52 choose 5"), "1 ÷ C(52, 5)", "fix 4: over a binomial")
+expectEqual(MathSpeech.convert("1 over n factorial"), "1 ÷ n!", "fix 4: over a factorial")
+// 5. smart grouping
+expectEqual(MathSpeech.convert("n choose n minus k"), "C(n, n - k)", "fix 5: choose takes a lettered sum")
+expectEqual(MathSpeech.convert("n plus k minus 1 choose k"), "C(n + k - 1, k)", "fix 5: …on both sides")
+expectEqual(MathSpeech.convert("10 times 9 times 8 over 3 times 2 times 1"), "(10 · 9 · 8) ÷ (3 · 2 · 1)", "fix 5: product over product")
+expectEqual(MathSpeech.convert("the probability of A given B"), "P(A ∣ B)", "fix 5: P of takes the event")
+expectEqual(MathSpeech.convert("f of n minus 1 equals 2"), "f(n - 1) = 2", "fix 5: f of takes a sum")
+expectEqual(MathSpeech.convert("n factorial over k factorial times n minus k factorial"), "n! ÷ (k! · (n - k)!)", "fix 5: the counting formula")
+// 6. spoken ordinal powers
+expectEqual(MathSpeech.convert("10 to the fifth"), "10⁵", "fix 6: ordinal exponent")
+expectEqual(MathSpeech.convert("x to the third power"), "x³", "fix 6: ordinal + power")
+expectEqual(MathSpeech.convert("x to the 3rd"), "x³", "fix 6: numeric ordinal")
+
 print("MathSpeech.convert — ordinary speech comes back byte-identical")
 for prose in [
     "this is a subscript of the value",
@@ -739,6 +762,12 @@ for prose in [
     "my sin is always before me",
     "for all three of us it was a long day",
     "he was given 3 days to think it over",
+    // the 2026-09-23 package's leak fixes (1 and 7)
+    "I gave 5 to the 3 kids",
+    "compared 2019 to the 2020 season it was better",
+    "y is 5 more than x",
+    "I'm bringing a plus one",
+    "the infection rate is 5 per 100,000",
     "alright so for the Bible study tonight we are in John chapter 3 verse 16, for God so loved the world that he gave his only begotten son, and a lot of people read that verse a hundred times",
 ] {
     expectEqual(MathSpeech.convert(prose), prose, "untouched: \"\(prose.prefix(46))\"")

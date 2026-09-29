@@ -101,6 +101,26 @@ private let mathConverts: [(String, String)] = [
     ("a n equals a 1 times r to the power of n", "aₙ = a₁ · rⁿ"),
     ("5000 parentheses open, 1 plus 1.03 over 100 parentheses close", "5000 (1 + 1.03 ÷ 100)"),
     ("x equals open paren a plus b close paren times c", "x = (a + b) · c"),
+    // ── the 2026-09-23 package (bug-hunt fixes 1–6; diverges from Windows on grouping) ──
+    ("x to the 3", "x³"),
+    ("2 to the power of 10", "2¹⁰"),
+    ("3 x 4 equals 12", "3 · 4 = 12"),
+    ("26 x 26 x 26 equals 17,576", "26 · 26 · 26 = 17576"),
+    ("the probability that X is less than or equal to 3 equals 0.65", "P(X ≤ 3) = 0.65"),
+    ("1 over 52 choose 5", "1 ÷ C(52, 5)"),
+    ("1 over n factorial", "1 ÷ n!"),
+    ("n choose n minus k", "C(n, n - k)"),
+    ("n plus k minus 1 choose k", "C(n + k - 1, k)"),
+    ("n choose k equals n minus 1 choose k minus 1 plus n minus 1 choose k",
+     "C(n, k) = C(n - 1, k - 1) + C(n - 1, k)"),
+    ("10 times 9 times 8 over 3 times 2 times 1", "(10 · 9 · 8) ÷ (3 · 2 · 1)"),
+    ("n factorial over k factorial times n minus k factorial", "n! ÷ (k! · (n - k)!)"),
+    ("the probability of A given B", "P(A ∣ B)"),
+    ("P of X less than 3", "P(X < 3)"),
+    ("f of n equals f of n minus 1 plus f of n minus 2", "f(n) = f(n - 1) + f(n - 2)"),
+    ("10 to the fifth", "10⁵"),
+    ("x to the third power", "x³"),
+    ("x to the 3rd", "x³"),
     // ── explicit escape hatch ──
     ("start equation capital sigma end equation", "Σ"),
     ("write start equation alpha end equation here", "write α here"),
@@ -157,6 +177,16 @@ private let mathLeavesAlone: [String] = [
     "the log of the tree was rotten through",
     "we need to log in with the email first",
     "she went over to plan b 2 instead",
+    // the 2026-09-23 package's leak fixes (bug-hunt fixes 1 and 7)
+    "I gave 5 to the 3 kids",
+    "compared 2019 to the 2020 season it was better",
+    "it went from 1990 to the 2000s",
+    "y is 5 more than x",
+    "we got 20 more than 15 last year",
+    "I'm bringing a plus one",
+    "he's a plus one at the wedding",
+    "the infection rate is 5 per 100,000",
+    "about 3 per 1000 births",
 ]
 
 

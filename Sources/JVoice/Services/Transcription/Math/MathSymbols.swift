@@ -29,6 +29,8 @@ import Foundation
 ///     the alpha and the omega").
 ///   • "is" / "are" / "by" / "in" / "on" / "at" / "than" — the connective tissue of every
 ///     sentence; as a Relation they would turn ordinary clauses into equations.
+///   • "more than" / "is more than" — "y is 5 more than x" is y = x + 5, not y > x, and "we
+///     got 20 more than 15 last year" is a sentence. "greater than" carries ">" instead.
 ///   • "cross" — "the cross of Christ". Only "cross product" / "cartesian product" → ×.
 ///   • "sin" / "cos" / "tan" / "sec" / "cot" — the bare three-letter trig abbreviations are
 ///     ordinary English ("my sin", "a tan", "wait a sec"). The spelled-out spoken forms
@@ -62,6 +64,11 @@ public enum MathSymbols {
     /// "negative" was the one prefix that fired in ordinary speech ("between 60 and
     /// negative 50"). It still renders inside a run something else activated ("x = -5").
     public static let weakPrefixes: Set<String> = ["-"]
+
+    /// Operators that do NOT count as evidence of mathematics: "per" ("/") joins two numbers
+    /// in ordinary speech far more often than in an equation ("5 per 100,000", "3 per 1000
+    /// births"). It still renders inside a run something else activated ("v = 5m / s²").
+    public static let weakOperators: Set<String> = ["/"]
 
     /// Prefixes whose body follows after a SPACE ("∑ᵢ₌₁ⁿ i²") rather than binding tight ("√x").
     public static let bigOperators: Set<String> = ["∑", "∏", "∫", "∬", "∭", "∮", "⋃", "⋂", "⨁", "lim"]
@@ -134,7 +141,10 @@ public enum MathSymbols {
             "not equal to", "is not equal to", "does not equal", "not equals", "isn't equal to",
             "is unequal to", "≠", "!=")
         add("<", .relation, "less than", "is less than", "is smaller than", "is fewer than", "<")
-        add(">", .relation, "greater than", "is greater than", "more than", "is more than",
+        // NOT "more than" / "is more than": "y is 5 more than x" means y = x + 5, and "we got
+        // 20 more than 15 last year" is a sentence. "no more than" (≤) stays — "no" rules out
+        // the comparative reading.
+        add(">", .relation, "greater than", "is greater than",
             "is bigger than", "is larger than", ">")
         add("≤", .relation, "less than or equal to", "is less than or equal to",
             "less than or equal", "at most", "is at most", "no more than", "<=", "≤")
@@ -196,7 +206,9 @@ public enum MathSymbols {
             "inner product", "scalar product", "·")
         add("×", .operatorSymbol, "cross product", "cartesian product", "×")
         add("÷", .operatorSymbol, "divided by", "÷")
-        add("/", .operatorSymbol, "per")                 // "m per s" → "m / s"
+        // WEAK (see `weakOperators`): "m per s" → "m / s" inside an equation, but "the
+        // infection rate is 5 per 100,000" is a sentence.
+        add("/", .operatorSymbol, "per")
         add("±", .operatorSymbol, "plus or minus", "plus minus", "±")
         add("∓", .operatorSymbol, "minus or plus")
 
@@ -463,7 +475,7 @@ public enum MathSymbols {
         // "of <thing>" takes ONE operand (a Function); "that <clause>" takes a whole
         // proposition, so it opens a bracket the run closes for us:
         //   "the probability of x equals 0.5"        → "P(x) = 0.5"
-        //   "the probability that x is more than 5"  → "P(x > 5)"
+        //   "the probability that x is greater than 5"  → "P(x > 5)"
         add("P(", .open, "probability that", "the probability that",
             "conditional probability of", "the conditional probability of")
 
