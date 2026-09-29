@@ -3,7 +3,7 @@
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
-## 2026-09-29 session — Native macOS look (MacStats design language) for the whole UI (branch `feat/native-look`, off `feat/guided-tour` @ `0877330`; NOT merged, NOT installed, NOT pushed)
+## 2026-09-29 session — Native macOS look (MacStats design language) for the whole UI (branch `feat/native-look`, off `feat/guided-tour` @ `0877330`; NOT merged, NOT pushed; INSTALLED to /Applications for David's dogfood via `./scripts/dev-install.sh` from the worktree, 2026-09-29)
 
 **Ask (David, overnight/unattended):** apply the redesign spec `../MacStats/docs/design-language/jvoice-native-redesign.md` (design language: `../MacStats/docs/design-language/README.md`) to ALL of JVoice's UI — pills, Settings, everything — so it looks like his MacStats app / an Apple-native app. No sub-agents except one final reviewer.
 
