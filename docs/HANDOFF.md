@@ -1,6 +1,19 @@
-# HANDOFF — state as of 2026-09-28 (v1.1.3 shipped: first-run guided tour + the 2026-09-24 bug-hunt batch; the maths-engine package is still unfinished in its worktree)
+# HANDOFF — state as of 2026-09-29 (v1.1.3 shipped; branch `feat/math-format` — the maths-engine package landed + the shared notation format — is committed locally, NOT merged/pushed/installed)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
+
+
+## 2026-09-29 session — maths engine: the unfinished package landed, then the shared notation format (branch `feat/math-format`, off `feat/guided-tour` @ `0877330`; 3 commits, NOT merged, NOT pushed, NOT installed)
+
+**Ask (lead session, from David's spec `docs/math-notation-format.md`):** (1) land the unfinished 2026-09-23 maths-engine package from worktree `.claude/worktrees/agent-a94ba1b50b2a7c999` to its acceptance bar; (2) implement the spec's §4 table (the format BetterScreenshot's Capture Text pastes), except the §6 open decisions; add `--no-math` to `--bench`. Full log, deviations, Windows mirror list and a before/after table of every §3/§4 example: **`docs/math-notation-progress.md`**.
+
+**Commits:** `563bf4f` the package (bug-hunt fixes 1–7: "to the" between plain numbers, whisper's "3 x 4", the "probability that" bracket, "over" a choose/factorial, smart grouping, ordinal powers, the "more than"/"a plus one"/"per" leaks) · `6bcd031` the format: "over" → `/` with brackets on multi-term sides (`(x² - 9)/(x - 3)`, `12/(2T)`), no stacked `ᵇ⁄₂`; "times" → `×` between numbers / juxtaposition between letter terms (`6 × 7 ÷ 2`, `(n - 1)d`), `·` only for "dot"; "divided by" `÷` only between plain numbers; `sin θ`, `cos 2θ`, `sin²θ`, `ln 2`, `log₂8`; `√(2x)`; `10⁻³`, `e^(-x²)`; `dy/dx`, `f′(x)`, `f⁻¹(x)`, `5!`, `x → ∞`, `20% of 50`, `∠ABC`; new WEAK grouping words "all over" and "the quantity" (`√(b² - 4ac)`, `sin(x + 1)`, the quadratic formula `(-b ± √(b² - 4ac))/(2a)`) · `fdacf33` `--bench … --no-math` (+ a `postprocess: … ms` line; not run). Plus this docs commit.
+
+**Verified:** `swift build -c release` ✓; `./scripts/run-logic-tests.sh` **1090/1090** (was 985); swift-testing cases NOT run (never locally) — every conversion/leave-alone case in `MathSpeechTests.swift` + `MathSymbolsTests.swift` (174 + 114) was checked through a standalone probe of the same sources, incl. idempotence; `.build/release/JVoice --math-probe` byte-identical to that probe on 1,036 lines. No-bleed: the 494-sentence everyday corpus (`.build/bench-2026-09-23/hunt-math/`) — 479 byte-identical, the same 15 pre-existing conversions as before (only their symbols changed); a new 55-sentence bleed list for the new trigger words (saved in `hunt-math/format-2026-09-29/`) caught "a 2 by 2 factorial design" → `2!` and "plan B tends to 5 percent" → `→` before commit (both fixed); 18,397 lines of repo prose: 2 newly converted, both quoting spoken maths. Maths corpus: every changed line reviewed (80 for the package, 153 for the format). Windows spec cases: 106/130 identical, the 24 others are deliberate symbol changes.
+
+**Needs David:** denominator brackets `12/(2T)` (JVoice now) vs BetterScreenshot's wording `12/2T` — the two apps should agree; keep or drop a spoken leading "the" (`the √14`); spec §6 decisions unchanged. His real dictation ("k plus 1 times k plus 2 …", meaning a product of brackets) needs "the quantity …" or "open paren" — worth telling him before the pending maths-accuracy review (`docs/math-accuracy/`, gitignored).
+
+**Not done:** the Windows engine (no .NET here — mirror list in the progress doc); the `--no-math` bench measurement; CI; install. Nested chains of one construct are now quadratic in depth (1,000-deep ≤ 0.1 s; real dictation nests a handful).
 
 
 ## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; SHIPPED as v1.1.3 — `main` fast-forwarded to it)
@@ -49,6 +62,8 @@ Plus one UNCOMMITTED change on the branch: the "never run the suite locally" rul
 **NOT verified yet:** CI on the branch (never pushed); `--settings-smoke` on the merged build (the UI agent passed it in its own worktree); `python3 scripts/verify-transcription.py --model large --quick` on the merged build; a live dogfood.
 
 ### Unfinished — the maths-engine package (David approved the design)
+
+> **Update 2026-09-29:** landed on branch `feat/math-format` (commit `563bf4f`) and then extended with the shared notation format — see the 2026-09-29 entry at the top and `docs/math-notation-progress.md`. The text below is the original brief.
 
 The agent was stopped when the session ended. Its partial, UNCOMMITTED work (~600 changed lines in `Sources/JVoice/Services/Transcription/Math/MathSpeech.swift`, `MathSymbol.swift`, `MathSymbols.swift`; NO tests, NO acceptance run, compile state unknown) is in the worktree `.claude/worktrees/agent-a94ba1b50b2a7c999`. The bug hunt's corpora (494 everyday sentences for the no-bleed guarantee, 367 maths dictations), probes and a patched prototype for fixes 1–4 + 6 are in `.build/bench-2026-09-23/hunt-math/` (gitignored). The fixes, with the examples that must pass:
 1. "to the" must not activate between two plain numbers: "I gave 5 to the 3 kids" → unchanged (today "I gave 5³ kids"); "x to the 3" / "2 to the power of 10" still convert.

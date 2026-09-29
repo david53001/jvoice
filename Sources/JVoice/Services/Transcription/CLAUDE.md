@@ -84,11 +84,15 @@ pinned to version 1.0.0). To work in this area, read the files below.
   2026-09-24: edit distance ≤ 1 (was 2 — "verse"/"Obama" became Vercel/Ollama), never swallows the
   word before a custom word, keeps possessives, never joins across a comma.
 - `Math/` — **spoken mathematics → real notation** (ported 1:1 from the Windows port's
-  `windows/JVoice.Core/Math/`, 2026-09-21). "x squared plus y squared equals z squared" becomes
+  `windows/JVoice.Core/Math/`, 2026-09-21; the macOS engine has since diverged — the 2026-09-23
+  grouping package and the 2026-09-29 output format, listed for the Windows port in
+  `docs/math-notation-progress.md`). "x squared plus y squared equals z squared" becomes
   "x² + y² = z²"; "the limit as x approaches 0 of sine of x over x equals 1" becomes
-  "the lim_(x→0) sin(x) ÷ x = 1". Applied LAST in `VoiceCoordinator.finishTranscription`, after
-  `TextProcessor.process`, and gated on the opt-out `SettingsState.mathNotation` (default ON).
+  "the lim_(x→0) (sin x)/x = 1". Applied LAST in `VoiceCoordinator.finishTranscription`, after
+  `TextProcessor.process`, and gated on the opt-out `SettingsState.mathNotation` (default ON);
+  with it off NO maths code runs (`--bench … --no-math` does the same).
   - `MathSymbols.swift` — the ~700-form vocabulary ("how it is said" → "what to print"), data only.
+    "times" maps to the internal marker `*` (never printed); `·` is the dot product only.
   - `MathSpeech.swift` — the grammar, the activation rules and the emitter. **The no-bleed
     guarantee is STRUCTURAL, not a classifier**: a word only becomes a symbol inside a RUN
     (consecutive maths-lexing words, ended by any ordinary word or punctuation), and a run only
@@ -97,16 +101,31 @@ pinned to version 1.0.0). To work in this area, read the files below.
     root, fraction, bounds, derivative, limit, absolute value, choose). π, α, %, °, `sin`,
     brackets, number words and signs are WEAK: they render inside an already-activated run and
     stay plain words otherwise. When nothing activates, `convert` returns the input unchanged.
+    **Structural activators added 2026-09-29**, each checked against a bleed list for its own
+    words: "d y by d x" (→ `dy/dx`); "f prime/inverse of x" (a single non-weak letter + mark +
+    "of" + operand); "natural log of …" and a powered function ("sine squared θ"); a factorial
+    ONLY where it ends the sentence ("a 2 by 2 factorial design" is English); "tends to" ONLY after
+    a lower-case variable or `f(x)` ("plan B tends to 5 percent" is English). The grouping words
+    "all over" and "the quantity" are WEAK. How far each construct reaches is the numbered
+    grouping rule on `Parser` (rules 1–7); without a grouping word every construct takes the
+    SMALLEST reading (`√x + 1`, `sin x + 1`, `log₃x + 1` — spec §6.1).
   - `SpokenNumbers.swift` — "twenty five" → "25", "three point one four" → "3.14", "three
     quarters" → "¾". Greedy on purpose (it only ever runs inside a recognised run) but it never
     over-consumes: "and", "point" and "a" are each settled by lookahead.
-  - `MathScript.swift` — Unicode super/subscripts and stacked fractions, all-or-nothing with a
-    `^`/`_` fallback (there is no subscript "b", so "a subscript b" prints `a_b`).
+  - `MathScript.swift` — Unicode super/subscripts, all-or-nothing with a `^`/`_` fallback (there
+    is no subscript "b", so "a subscript b" prints `a_b`), and the LAYOUT of the shared format:
+    `slashFraction` (a side gets brackets when it holds a space or an operator, a denominator also
+    when it is a juxtaposed product — `12/(2T)`), `radical` (`√(2x)`), `applyFunction` (`sin θ`,
+    `sin²θ`, `log₂8`, `sin(x + 1)`), `productSeparator` (a spoken "times" is `×` between numbers,
+    juxtaposition between letter terms: `6 × 7`, `(n - 1)d`), `powerBase` (`(5/6)⁴`). The stacked
+    `fraction` (`½`, `ˣ⁄ₙ`) is no longer used by the engine.
   - `MathSymbol.swift` — `MathKind` + the one record type; `activates` is the whole rule.
   - `MathProbe.swift` — the hidden `--math-probe` command-line mode; see the verification section.
   - **Output format:** `docs/math-notation-format.md` — the notation shared with BetterScreenshot's
-    Capture Text (Unicode, `/` fractions, `×` vs `·`, `^(…)` fallbacks), where today's output differs, and
-    the rule that the Math Notation toggle must measurably save time when off.
+    Capture Text (Unicode, `/` fractions, `×` vs `·`, `^(…)` fallbacks) and the rule that the Math
+    Notation toggle must measurably save time when off. Its §4 is implemented on macOS (branch
+    `feat/math-format`, 2026-09-29); what changed, deviations and the before/after probe table are in
+    `docs/math-notation-progress.md`.
 - `BenchRunner.swift` — the hidden `--bench` command-line harness that measures transcription
   speed and verifies vocabulary biasing / streaming on this machine. Not part of the running app's
   user flow; it is a dev tool, co-located here because it exercises this pipeline.
@@ -121,7 +140,10 @@ pinned to version 1.0.0). To work in this area, read the files below.
    re-run the no-bleed half of the suite (`./scripts/run-logic-tests.sh`) AND sweep a real corpus
    through `--math-probe`; a new vocabulary entry of an ACTIVATING kind (Relation / Operator /
    Prefix) is the only thing that can turn a sentence into an equation, so everyday English words
-   may only ever be added as weak kinds.
+   may only ever be added as weak kinds. A new STRUCTURAL activator (like the 2026-09-29 ones) must
+   also be swept against a list of ordinary sentences using its own words — the 494-sentence corpus
+   in `.build/bench-2026-09-23/hunt-math/` never said "factorial design" or "plan B tends to", which
+   is how two bleeds nearly shipped.
 
 ## How to verify changes here
 - `./scripts/verify-streaming.sh` — compiles and EXECUTES the streaming data-loss + recovery

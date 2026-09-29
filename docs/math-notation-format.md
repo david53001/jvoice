@@ -17,7 +17,10 @@ This document does four things:
 3. Sets the rule for the Math Notation toggle: switching it off must actually save time (§5).
 4. Lists the open decisions (§6) and how to verify changes (§7).
 
-It is written for a session with no context. Nothing in it has been implemented in JVoice yet.
+It is written for a session with no context. **Status (2026-09-29):** the macOS engine implements §4 on
+branch `feat/math-format` (not merged, not released) — see the Status column in §4 and
+`docs/math-notation-progress.md` for what changed, deviations and the Windows mirror list. The Windows
+engine (`windows/JVoice.Core/Math/`) does not yet.
 
 **Where the format comes from.** It is the format BetterScreenshot adopted on 2026-09-28 (David's
 decision: "readable Unicode, not LaTeX"). Its source of truth is BetterScreenshot's
@@ -36,9 +39,9 @@ decision: "readable Unicode, not LaTeX"). Its source of truth is BetterScreensho
   `UI/SettingsView.swift` (≈ line 241).
 - The Mac engine is a 1:1 port of the Windows port's `windows/JVoice.Core/Math/`, whose spec tests are
   `windows/JVoice.Tests/MathSpeechTests.cs`. **Every format change below must be made in both engines.**
-- An unfinished maths-engine rework is sitting uncommitted in the worktree
-  `.claude/worktrees/agent-a94ba1b50b2a7c999`; see `docs/HANDOFF.md`, 2026-09-24,
-  "Unfinished — the maths-engine package". Reconcile with it before editing `Math/`.
+- The maths-engine rework that sat uncommitted in `.claude/worktrees/agent-a94ba1b50b2a7c999` (`docs/HANDOFF.md`,
+  2026-09-24, "Unfinished — the maths-engine package") landed on branch `feat/math-format` on 2026-09-29,
+  together with this format (`docs/math-notation-progress.md`).
 
 ---
 
@@ -143,30 +146,34 @@ What JVoice should paste. The "today" column in §4 shows where it differs.
 build dated 2026-09-28 19:59 (the branch was `feat/guided-tour`, with HEAD at `987d2f9`). The probe prints
 what Math Notation would paste.
 
-| Spoken | JVoice today | Should be | Change |
-|---|---|---|---|
-| a plus b over 2 | `a + ᵇ⁄₂` | `a + b/2` | Stop printing stacked super/sub fractions (`ᵇ⁄₂`): many fonts render them badly and they can't be edited. Use `/`. |
-| a plus b all over 2 | `a + b all over 2` | `(a + b)/2` | "all over" should close a whole numerator. |
-| pi over 6; a over b plus c over d; 1 over x squared | `π ÷ 6`; `a ÷ b + c ÷ d`; `1 ÷ x²` | `π/6`; `a/b + c/d`; `1/x²` | "over" → `/`. |
-| the limit … of sine of x over x | `the lim_(x→0) sin(x) ÷ x = 1` | `lim_(x→0) (sin x)/x = 1` | Same `/` rule; the `lim_(…)` form already matches. |
-| the square root of x plus 1 | `the √x + 1` | `√(x + 1)` or `√x + 1` | Ambiguous when spoken (§6.1), but multi-term radicands need `√(…)`. |
-| the square root of b squared minus 4 a c | `the √b² - 4ac` | `√(b² - 4ac)` | Needs a scope rule. |
-| a sub n equals a sub 1 plus n minus 1 times d | `aₙ = a₁ + n - 1 · d` | `aₙ = a₁ + (n - 1)d` | `·` for "times" between terms reads as a dot product; use juxtaposition or `×`. |
-| 6 times 7 divided by 2 | `6 · 7 ÷ 2` | `6 × 7 ÷ 2` | `×` between numbers. |
-| sine squared theta plus cosine squared theta | `sin²(θ) + cos²(θ) = 1` | `sin²θ + cos²θ = 1` | Parentheses only for multi-term arguments. |
-| d y by d x equals … | `d y by dx = 3x² - 4` | `dy/dx = 3x² - 4` | Add the derivative forms. |
-| f prime of x | `f prime of x = 2x + 1` | `f′(x) = 2x + 1` | Add "prime". |
-| f inverse of x | unchanged | `f⁻¹(x)` | Add. |
-| 10 to the power of minus 3 | unchanged | `10⁻³` | Add "to the power of". |
-| e to the minus x squared | `e to the minus x²` | `e^(-x²)` | Nested script → fallback. |
-| H 2 O | unchanged | `H₂O` | Only with a safe chemistry rule (§6.4). |
-| 5 factorial | unchanged | `5!` | Add. |
-| the natural log of 2 | unchanged | `ln 2` | Add. |
-| x tends to infinity | unchanged | `x → ∞` | Add "tends to". |
-| 20 percent of 50 | unchanged | `20% of 50` | Add as a weak word (converts only inside an activated maths run, principle 7). |
-| log base 3 of x plus 1 | `log₃(x) + 1` | `log₃(x + 1)` | Scope (§6.1). |
-| angle A B C | `∠ ABC` | `∠ABC` | No space after `∠`. |
-| n choose r | `C(n, r)` | `ⁿCᵣ` or `C(n, r)` | David's call (§6.2). |
+| Spoken | JVoice today | Should be | Change | Status on `feat/math-format` (2026-09-29) |
+|---|---|---|---|---|
+| a plus b over 2 | `a + ᵇ⁄₂` | `a + b/2` | Stop printing stacked super/sub fractions (`ᵇ⁄₂`): many fonts render them badly and they can't be edited. Use `/`. | ✅ `a + b/2` |
+| a plus b all over 2 | `a + b all over 2` | `(a + b)/2` | "all over" should close a whole numerator. | ✅ `(a + b)/2` — "all over" is a new weak keyword |
+| pi over 6; a over b plus c over d; 1 over x squared | `π ÷ 6`; `a ÷ b + c ÷ d`; `1 ÷ x²` | `π/6`; `a/b + c/d`; `1/x²` | "over" → `/`. | ✅ `π/6`; `a/b + c/d`; `1/x²` |
+| the limit … of sine of x over x | `the lim_(x→0) sin(x) ÷ x = 1` | `lim_(x→0) (sin x)/x = 1` | Same `/` rule; the `lim_(…)` form already matches. | ✅ `the lim_(x→0) (sin x)/x = 1` (a spoken leading "the" is kept, as for `the √14`) |
+| the square root of x plus 1 | `the √x + 1` | `√(x + 1)` or `√x + 1` | Ambiguous when spoken (§6.1), but multi-term radicands need `√(…)`. | ✅ `√x + 1` by default (§6.1 smallest reading); `√(x + 1)` with "the square root of the quantity x plus 1" |
+| the square root of b squared minus 4 a c | `the √b² - 4ac` | `√(b² - 4ac)` | Needs a scope rule. | ⚠️ default stays `√b² - 4ac` (§6.1 smallest reading); "the square root of **the quantity** b squared minus 4 a c" → `√(b² - 4ac)` |
+| a sub n equals a sub 1 plus n minus 1 times d | `aₙ = a₁ + n - 1 · d` | `aₙ = a₁ + (n - 1)d` | `·` for "times" between terms reads as a dot product; use juxtaposition or `×`. | ✅ `aₙ = a₁ + (n - 1)d` (a "times" after "… ± 1" takes the difference) |
+| 6 times 7 divided by 2 | `6 · 7 ÷ 2` | `6 × 7 ÷ 2` | `×` between numbers. | ✅ `6 × 7 ÷ 2` |
+| sine squared theta plus cosine squared theta | `sin²(θ) + cos²(θ) = 1` | `sin²θ + cos²θ = 1` | Parentheses only for multi-term arguments. | ✅ `sin²θ + cos²θ = 1` |
+| d y by d x equals … | `d y by dx = 3x² - 4` | `dy/dx = 3x² - 4` | Add the derivative forms. | ✅ `dy/dx = 3x² - 4` (also "d y d x") |
+| f prime of x | `f prime of x = 2x + 1` | `f′(x) = 2x + 1` | Add "prime". | ✅ `f′(x) = 2x + 1` |
+| f inverse of x | unchanged | `f⁻¹(x)` | Add. | ✅ `f⁻¹(x)` (converts on its own) |
+| 10 to the power of minus 3 | unchanged | `10⁻³` | Add "to the power of". | ✅ `10⁻³` |
+| e to the minus x squared | `e to the minus x²` | `e^(-x²)` | Nested script → fallback. | ✅ `e^(-x²)` |
+| H 2 O | unchanged | `H₂O` | Only with a safe chemistry rule (§6.4). | ⏸ open decision §6.4 — not implemented |
+| 5 factorial | unchanged | `5!` | Add. | ✅ `5!` (on its own only when it ends the sentence: "a 2 by 2 factorial design" stays words) |
+| the natural log of 2 | unchanged | `ln 2` | Add. | ✅ `the ln 2` (converts on its own; the spoken "the" is kept) |
+| x tends to infinity | unchanged | `x → ∞` | Add "tends to". | ✅ `x → ∞` (after a lower-case variable or `f(x)` only) |
+| 20 percent of 50 | unchanged | `20% of 50` | Add as a weak word (converts only inside an activated maths run, principle 7). | ✅ weak: alone it stays words; inside an equation `20% of 50 = 10` |
+| log base 3 of x plus 1 | `log₃(x) + 1` | `log₃(x + 1)` | Scope (§6.1). | ⚠️ default `log₃x + 1` (§6.1 smallest reading); "log base 3 of the quantity x plus 1" → `log₃(x + 1)` |
+| angle A B C | `∠ ABC` | `∠ABC` | No space after `∠`. | ✅ `∠ABC = 90°` (alone, "angle A B C" stays words — weak) |
+| n choose r | `C(n, r)` | `ⁿCᵣ` or `C(n, r)` | David's call (§6.2). | ⏸ open decision §6.2 — `C(n, r)` kept |
+
+Status legend: ✅ matches on `feat/math-format` · ⚠️ the default is §6.1's smallest reading; the spoken grouping
+word "the quantity" (a new weak open bracket) gives the grouped form · ⏸ an open decision in §6, left as is.
+The before/after probe table for every §3/§4 example is in `docs/math-notation-progress.md`.
 
 Already matching the format:
 - `x² + y² = z²`, `x₁ + x₂`, `e^(iπ) + 1 = 0`, `∫₀¹ x² dx`, `∑ᵢ₌₁ⁿ i`
@@ -202,6 +209,8 @@ every maths-only pass and is ≈ 3× faster with it off (median 413 → 133 ms p
 3. **Measure both modes.** `BenchRunner` (the `--bench` mode) applies `MathSpeech.convert` unconditionally
    (`BenchRunner.swift` ≈ line 115). Add a `--no-math` flag, run the same clips with and without it, and
    record stop→paste for each. Add the numbers to the Settings help text only if the difference is real.
+   *(2026-09-29, `feat/math-format`: `--no-math` exists and the whole-file path prints `postprocess: … ms`;
+   the clips have NOT been run yet.)*
 4. **Say it honestly in Settings.** Today's subtitle, "Spoken equations become symbols: x squared equals 4
    → x² = 4", is accurate. Don't claim "off is faster" until item 3 shows it.
 
