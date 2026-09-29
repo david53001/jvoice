@@ -29,9 +29,8 @@ final class HUDWindow: NSPanel {
         isFloatingPanel = true
         isOpaque = false
         backgroundColor = .clear
-        // The capsule's one soft shadow is the system window shadow, traced from the pill's own
-        // alpha (re-traced after every size/state change — `retraceShadow`).
-        hasShadow = true
+        // The capsule draws its own soft shadow (HUDView's `PillShadow`), inside `shadowPadding`.
+        hasShadow = false
         // HUD must stay above the panel (which sits at statusWindow + 1)
         // so the recording pill never disappears behind the panel.
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 2)
@@ -50,6 +49,8 @@ final class HUDWindow: NSPanel {
 
     private var isPrewarmed = false
     private var prewarmHidePending = false
+    /// Shrinks the panel to the new capsule once a morph has finished (`update`).
+    private var settleWork: DispatchWorkItem?
 
     /// Realize the panel ONCE while the app is idle so the first hotkey press
     /// doesn't pay window-server surface creation + the SwiftUI hosting view's
@@ -88,7 +89,12 @@ final class HUDWindow: NSPanel {
         // A real state change always wins over a still-pending prewarm hide.
         prewarmHidePending = false
         alphaValue = 1
+        // One visible pill replacing another morphs (the capsule resizes, contents cross-fade); the
+        // first show and the hide stay instant.
+        let morphs = isVisible && currentState.isVisible && state.isVisible
         currentState = state
+        settleWork?.cancel()
+        settleWork = nil
         // System / Light / Dark: the material, glass and semantic colours all follow the panel's
         // appearance (nil = macOS's). Assigned only on a change — it re-resolves the whole view tree.
         let wanted = theme.nsAppearance
@@ -97,25 +103,40 @@ final class HUDWindow: NSPanel {
             state: state,
             theme: theme.theme,
             meter: meter,
-            onStop: onStop
+            onStop: onStop,
+            animated: morphs
         )
         ignoresMouseEvents = (state != .recording)
 
         if state.isVisible {
-            sizeToFit()
+            if morphs {
+                // Room for both capsules while the old one animates into the new (content is
+                // bottom-anchored and centred, so neither moves); shrink to the new one afterwards.
+                sizeToFit(atLeast: frame.size)
+                let work = DispatchWorkItem { [weak self] in
+                    guard let self, self.isVisible else { return }
+                    self.settleWork = nil
+                    self.sizeToFit()
+                    self.positionAtBottomCenter()
+                }
+                settleWork = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + HUDLayout.morphSettleDelay, execute: work)
+            } else {
+                sizeToFit()
+            }
             positionAtBottomCenter()
             orderFrontRegardless()
-            retraceShadow()
         } else {
             orderOut(nil)
         }
     }
 
-    private func sizeToFit() {
+    /// Sizes the panel to the capsule now showing (never below `atLeast`, used during a morph).
+    private func sizeToFit(atLeast floor: NSSize = .zero) {
         let fittingSize = hostingController.view.fittingSize
-        let minimumSize = HUDLayout.minimumSize(for: currentState)
-        let width = max(minimumSize.width, fittingSize.width)
-        let height = max(minimumSize.height, fittingSize.height)
+        let minimumSize = HUDLayout.minimumSize
+        let width = max(minimumSize.width, fittingSize.width, floor.width)
+        let height = max(minimumSize.height, fittingSize.height, floor.height)
         setFrame(NSRect(origin: frame.origin, size: NSSize(width: width, height: height)), display: false)
     }
 
@@ -126,24 +147,19 @@ final class HUDWindow: NSPanel {
         let y = visibleFrame.minY + HUDLayout.bottomGap - HUDLayout.shadowPadding
         setFrameOrigin(NSPoint(x: x, y: y))
     }
-
-    /// The window server traces a borderless panel's shadow from what was last drawn, so after a new
-    /// state is shown the shadow is re-traced on the next turn (once SwiftUI has drawn it) — never on
-    /// the press → pill path itself (latency contract).
-    private func retraceShadow() {
-        DispatchQueue.main.async { [weak self] in
-            guard let self, self.isVisible else { return }
-            self.invalidateShadow()
-        }
-    }
 }
 
 /// The Recording tour runs on this panel (reported by `VoiceCoordinator` as the `.recordingPill`
-/// surface). The window is the capsule plus `HUDLayout.shadowPadding` of transparent margin on every
-/// side, so the tour dims and keeps its tag clear of the capsule only — not a square band around it.
+/// surface). The window is the capsule plus `HUDLayout.shadowPadding` of transparent margin (and,
+/// during a morph, room for the bigger of two capsules), so the tour dims and keeps its tag clear of the
+/// capsule only — bottom-anchored and centred, like the content — not a square band around it.
 extension HUDWindow: TourHostShaping {
     var tourHostShape: TourHostShape? {
-        TourHostShape(frame: frame.insetBy(dx: HUDLayout.shadowPadding, dy: HUDLayout.shadowPadding),
-                      cornerRadius: HUDLayout.pillCorner)
+        let pad = HUDLayout.shadowPadding
+        let fit = hostingController.view.fittingSize
+        let width = min(frame.width, max(fit.width, HUDLayout.minimumSize.width)) - 2 * pad
+        let height = min(frame.height, max(fit.height, HUDLayout.minimumSize.height)) - 2 * pad
+        let capsule = CGRect(x: frame.midX - width / 2, y: frame.minY + pad, width: width, height: height)
+        return TourHostShape(frame: capsule, cornerRadius: min(HUDLayout.pillCorner, height / 2))
     }
 }

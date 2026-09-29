@@ -232,6 +232,8 @@ public final class TagOverlayController: TourTagPresenting {
         // What the user sees of the host: the pill's capsule, not its window grown for a hover hint.
         let shape = (host as? TourHostShaping)?.tourHostShape
         let hostRect = shape?.frame ?? host.frame
+        // Before the unchanged-geometry early return: a System / Light / Dark switch moves nothing.
+        followHostAppearance(of: anchor)
         if let l = laidOut, l.anchor == anchorRect, l.host == hostRect, l.tag == tagSize,
            decor.isVisible, tagPanel.isVisible, decor.frame == l.decor, tagPanel.frame == l.tagFrame { return }
 
@@ -260,15 +262,6 @@ public final class TagOverlayController: TourTagPresenting {
         func local(_ r: CGRect) -> CGRect { r.offsetBy(dx: -o.x, dy: -o.y) }
         func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - o.x, y: p.y - o.y) }
         decorView.dim = isMenuBarHost ? nil : (local(hostRect), shape?.cornerRadius ?? Self.cornerRadius(of: host))
-        let hostIsDark = Self.isDark(anchor.effectiveAppearance)
-        decorView.dimAlpha = TagStyle.dimAlpha(hostIsDark: hostIsDark)
-        // The overlay takes the host's light/dark (a Settings window forced Dark on a light system…),
-        // so the bubble's material and label colours match the window it points into.
-        let appearance = NSAppearance(named: hostIsDark ? .darkAqua : .aqua)
-        if decor.appearance?.name != appearance?.name {
-            decor.appearance = appearance
-            tagPanel.appearance = appearance
-        }
         decorView.box = local(p.box)
         decorView.outer = local(p.outer)
         decorView.leader = p.leader.map { (local($0.from), local($0.to)) }
@@ -278,6 +271,18 @@ public final class TagOverlayController: TourTagPresenting {
         tagPanel.setFrame(p.tag, display: true)
         orderIn(host: host)
         laidOut = (anchorRect, hostRect, tagSize, decor.frame, tagPanel.frame)
+    }
+
+    /// The overlay takes the host's light/dark (a Settings window forced Dark on a light system…), so
+    /// the bubble's material, label colours and the dim strength match the window it points into.
+    private func followHostAppearance(of anchor: NSView) {
+        let hostIsDark = Self.isDark(anchor.effectiveAppearance)
+        let appearance = NSAppearance(named: hostIsDark ? .darkAqua : .aqua)
+        guard decor.appearance?.name != appearance?.name else { return }
+        decor.appearance = appearance
+        tagPanel.appearance = appearance
+        decorView.dimAlpha = TagStyle.dimAlpha(hostIsDark: hostIsDark)
+        decorView.needsDisplay = true
     }
 
     /// Dark Aqua (or vibrant dark — the HUD panels): the dim goes to `TagStyle.darkHostDimAlpha` and the

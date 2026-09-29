@@ -16,24 +16,34 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   .tertiary` text; `danger` = red) and `Design` (radii/opacities copied from MacStats). `AppTheme`
   (`Models/`) is **System** (default — follows macOS) / Light / Dark; `AppTheme.nsAppearance` is the
   override set on each NSWindow (`nil` = follow macOS) — windows never use `.preferredColorScheme`
-  (SwiftUI can't reliably hand a window back to the system appearance). Settings schema v5 migrated the
-  old `.dark` default to `.system` once; an explicit `.light` was kept.
+  (SwiftUI can't reliably hand a window back to the system appearance). Persisted under a NEW
+  `SettingsState` key `appearance` (schema stays v4, so older builds still read the blob); the legacy
+  `theme` field is still written (dark/light only). A blob without `appearance` maps the old `.dark`
+  default to `.system` and keeps an explicit `.light`.
 - `Components/` — `CardBackground` (the inset card: 0.04 tint, 0.5 pt hairline, radius 10 continuous) +
   `inputFieldStyle()`; `SubtleButtonStyle` (MacStats' small button; `destructive:` = red label);
   `VisualEffectBackground` (an `NSVisualEffectView`, behind-window) and `WindowMaterial.install` (makes a
-  window's content a `.sidebar` material under a transparent title bar — Settings + Welcome);
+  window's content a `.sidebar` material under a transparent title bar — Settings + Welcome; Settings
+  passes `belowTitleBar: true` so its scrolling content never slides under the title bar);
   `InlineNotice`; `PanelPressableButtonStyle`.
 - `HUDView.swift` / `HUDWindow.swift` / `HUDLayout.swift` — the HUD (heads-up display): a floating
   **glass capsule** — Liquid Glass (`.glassEffect(.regular, in: Capsule())`) on macOS 26, the
-  `.hudWindow` behind-window material + 0.5 pt hairline before. The glass call MUST stay inside
-  `#if compiler(>=6.2)` + `if #available(macOS 26, *)` (CI builds with Xcode 16 / Swift 6.1). Its one
-  shadow is the panel's **system window shadow** (`hasShadow = true`, re-traced with
-  `invalidateShadow()` on the turn after each state is shown — not a SwiftUI `.shadow`, which would
-  shadow the text through the translucent body). **Recording** / **transcribing**: the J mark ·
+  `.hudWindow` behind-window material (masked with a stretchable capsule `maskImage` — a behind-window
+  effect view ignores clip shapes) + 0.5 pt hairline before; `JVOICE_HUD_MATERIAL=1` forces that
+  fallback on macOS 26 for previews. The glass call MUST stay inside `#if compiler(>=6.2)` +
+  `if #available(macOS 26, *)` (CI builds with Xcode 16 / Swift 6.1). One soft shadow, `PillShadow`: a
+  capsule shadow with the capsule itself cut away, so no text shadows through the translucent body.
+  **Pills hug their content and morph (David, 2026-09-29):** ONE capsule wraps whichever pill is
+  showing; each pill reports its own size (`fixedSize` — recording/transcribing 240 wide, "Pasted" as
+  small as its text, errors wrap at `HUDLayout.pillMaxWidth`), so recording → transcribing → Pasted
+  resizes that capsule with `HUDLayout.morph` (`.snappy(0.3)`) while the contents cross-fade. The
+  panel grows to fit both capsules for the morph and shrinks to the new one `morphSettleDelay` later
+  (content is bottom-anchored + centred, so nothing jumps). The FIRST show and the hide never animate
+  (`HUDView.animated` is set only when a visible pill replaces another) — latency contract. **Recording** / **transcribing**: the J mark ·
   waveform bars (3 pt capsules resting at 2 pt = a calm flat line, secondary→primary opacity with
   level) · a red stop square (no label — the red control says "recording"). **Downloading / preparing /
   done / copied / error / notice**: the SF Symbol in `HUDState.accentRole`'s colour + `.callout` text
-  (no badge circle). `HUDLayout.shadowPadding` (16) is the transparent margin for that shadow;
+  (no badge circle). `HUDLayout.shadowPadding` (22) is the transparent margin for that shadow;
   `bottomGap` keeps the capsule where it always was. `HUDWindow.update(state:theme:meter:)` is the entry point. **Latency contract
   (2026-09-12):** `VoiceCoordinator.toggleRecording` shows `.recording` synchronously on the hotkey
   press, BEFORE any microphone work — the pill must never wait on the recorder. `HUDWindow.prewarm()`
@@ -81,7 +91,7 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   machine that cannot execute the test suite.
 - `UIPreviewRunner.swift` (2026-09-29) — the hidden `JVoice --ui-preview <dir>` dev mode: opens the
   real Settings (Light + Dark, plus a tour tag on the model card), Welcome (both pages) and every HUD
-  state, and saves a `screencapture -R` PNG of the screen under each (desktop included, so the
+  state (plus a frame half-way through the transcribing → Pasted morph), and saves a `screencapture -R` PNG of the screen under each (desktop included, so the
   translucency shows — a `-l` single-window capture has no backdrop and renders glass black). Never
   calls `VoiceCoordinator.start()`, never writes a setting (appearances are forced on the windows).
   Windows really appear on screen ~1 s each; needs Screen Recording permission for the terminal.
@@ -97,7 +107,8 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   Tour, Reset All Tours) and a title-bar **ⓘ** (`InfoButton`, anchor `settings.help`); `SettingsWindow`
   claims Return/Esc while a shortcut row is recording (`TourKeysClaiming`) so Esc cancels the capture,
   not the tour. The HUD's recording pill is anchored `pill.controls` and `HUDWindow` adopts
-  `TourHostShaping` (the tag dims only the capsule, not its shadow margin). `HUDState.notice` is a neutral
+  `TourHostShaping` (the tag dims only the capsule — computed from the pill's fitting size — not its
+  shadow margin or a morph's spare room). `HUDState.notice` is a neutral
   message pill (info icon) used for tour confirmations.
 - `MenuBarController.swift` — the menu-bar status item: a bold "J" template image when idle, a red
   microphone while recording, a tinted waveform while transcribing, plus the dropdown NSMenu.

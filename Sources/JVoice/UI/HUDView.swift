@@ -5,19 +5,45 @@ struct HUDView: View {
     var theme: Theme = .native
     var meter: AudioLevelMeter? = nil
     var onStop: (() -> Void)? = nil
+    /// Morph from the pill on screen: the ONE capsule resizes to the new content (`HUDLayout.morph`)
+    /// while the old content fades out and the new fades in. `HUDWindow` sets it only when a visible
+    /// pill replaces another — the first show and the hide stay instant (latency contract).
+    var animated = false
 
     var body: some View {
+        Group {
+            if state.isVisible {
+                // Every pill reports its own size (the recording/transcribing row is 240 wide, a status
+                // pill is as wide as its text), so the capsule hugs it at any panel size — and animates
+                // between two pills' sizes instead of stretching to the panel.
+                content
+                    .fixedSize(horizontal: true, vertical: false)
+                    .pillChrome()
+            }
+        }
+        .animation(animated ? HUDLayout.morph : nil, value: state)
+        // Bottom-anchored: while the panel is briefly bigger than the new capsule (`HUDWindow.update`),
+        // the capsule's bottom edge and centre stay put.
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    @ViewBuilder private var content: some View {
         switch state {
         case .recording:
             RecordingPill(theme: theme, meter: meter, onStop: onStop)
+                .transition(.opacity)
         case .downloadingModel(let downloaded, let total):
             DownloadingModelPill(downloaded: downloaded, total: total, theme: theme)
+                .transition(.opacity)
         case .preparingModel:
             PreparingModelPill(theme: theme)
+                .transition(.opacity)
         case .transcribing:
             TranscribingPill(theme: theme)
+                .transition(.opacity)
         case .done, .copied, .error, .notice:
             StatusPill(state: state, theme: theme)
+                .transition(.opacity)
         case .idle:
             EmptyView()
         }
@@ -41,23 +67,47 @@ extension HUDState.AccentRole {
 
 private extension View {
     /// The floating capsule: Liquid Glass on macOS 26, the `.hudWindow` material (behind-window blur,
-    /// plus a 0.5 pt hairline — glass draws its own edge) before. No fill, border or glow of its own;
-    /// the one soft shadow is the panel's system window shadow (`HUDWindow.hasShadow`), so text never
-    /// casts one through the translucent body. `HUDLayout.shadowPadding` keeps it from clipping.
-    func pillChrome(theme: Theme, minWidth: CGFloat = HUDLayout.pillMinWidth, maxWidth: CGFloat? = nil) -> some View {
+    /// plus a 0.5 pt hairline — glass draws its own edge) before. No fill, border or glow of its own,
+    /// and ONE soft shadow (`PillShadow`), drawn outside the capsule only so no text shadows through the
+    /// translucent body. Applied once, around whichever content is showing, so a state change resizes
+    /// this same capsule instead of swapping it. `HUDLayout.shadowPadding` keeps the shadow unclipped.
+    func pillChrome() -> some View {
         self
-            .frame(minWidth: minWidth,
-                   maxWidth: maxWidth,
-                   minHeight: HUDLayout.pillHeight)
+            .frame(minHeight: HUDLayout.pillHeight)
             .modifier(PillMaterial())
+            .background(PillShadow())
             .padding(HUDLayout.shadowPadding)
     }
 }
 
+/// A soft drop shadow OUTSIDE the capsule: a black capsule's shadow with the capsule itself cut away,
+/// so it never darkens the translucent body. Being SwiftUI, it follows the capsule's size animation
+/// (a window-server shadow would lag as a stale outline until re-traced).
+private struct PillShadow: View {
+    var body: some View {
+        Capsule(style: .continuous)
+            .fill(Color.black)
+            .shadow(color: .black.opacity(0.22), radius: 10, y: 4)
+            .mask(
+                Rectangle()
+                    .padding(-HUDLayout.shadowPadding)
+                    .overlay(Capsule(style: .continuous).blendMode(.destinationOut))
+                    .compositingGroup()
+            )
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+    }
+}
+
 private struct PillMaterial: ViewModifier {
+    /// Dev only: `JVOICE_HUD_MATERIAL=1` shows the pre-macOS-26 material pill on macOS 26, so
+    /// `--ui-preview` can screenshot the fallback on this Mac.
+    static let forceFallback = ProcessInfo.processInfo.environment["JVOICE_HUD_MATERIAL"] == "1"
+    private static let mask = VisualEffectBackground.capsuleMask(height: HUDLayout.pillHeight)
+
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
-        if #available(macOS 26, *) {
+        if #available(macOS 26, *), !Self.forceFallback {
             content.glassEffect(.regular, in: Capsule())
         } else {
             fallback(content)
@@ -69,7 +119,7 @@ private struct PillMaterial: ViewModifier {
 
     private func fallback(_ content: Content) -> some View {
         content
-            .background(VisualEffectBackground(material: .hudWindow).clipShape(Capsule()))
+            .background(VisualEffectBackground(material: .hudWindow, maskImage: Self.mask).clipShape(Capsule()))
             .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: Design.hairlineWidth))
     }
 }
@@ -212,7 +262,6 @@ private struct RecordingPill: View {
         // itself. This frame repeats `pillChrome`'s own minimums, so layout is unchanged.
         .frame(minWidth: HUDLayout.pillMinWidth, minHeight: HUDLayout.pillHeight)
         .tourAnchor("pill.controls")
-        .pillChrome(theme: theme)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Recording")
     }
@@ -229,7 +278,7 @@ private struct TranscribingPill: View {
             Color.clear.frame(width: 22) // keep bars centered (no stop button)
         }
         .padding(.horizontal, 16)
-        .pillChrome(theme: theme)
+        .frame(minWidth: HUDLayout.pillMinWidth, minHeight: HUDLayout.pillHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Transcribing")
     }
@@ -268,10 +317,8 @@ private struct DownloadingModelPill: View {
                     theme: theme
                 )
             }
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
-        .pillChrome(theme: theme)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Downloading model, \(ModelDownloadProgress.label(downloaded: downloaded, total: total))")
     }
@@ -321,10 +368,8 @@ private struct PreparingModelPill: View {
                 .font(.caption)
                 .foregroundStyle(theme.textSecondary)
             }
-            Spacer(minLength: 0)
         }
         .padding(.horizontal, 16)
-        .pillChrome(theme: theme)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Preparing model")
     }
@@ -335,6 +380,17 @@ private struct PreparingModelPill: View {
 private struct StatusPill: View {
     let state: HUDState
     let theme: Theme
+
+    /// The text's own width, capped so the capsule never exceeds `HUDLayout.pillMaxWidth` (beyond it
+    /// the text wraps, ≤ 2 lines). Measured, because a flexible `maxWidth` frame would stretch the
+    /// capsule to whatever room the panel offers.
+    private static let font = NSFont.systemFont(ofSize: NSFont.preferredFont(forTextStyle: .callout).pointSize,
+                                                weight: .medium)
+    private static let maxTextWidth = HUDLayout.pillMaxWidth - 16 - 20 - 10 - 20   // padding · icon · gap · padding
+    static func textWidth(_ text: String) -> CGFloat {
+        let width = (text as NSString).size(withAttributes: [.font: font]).width
+        return min(ceil(width) + 2, maxTextWidth)
+    }
 
     var body: some View {
         let text: String = {
@@ -352,13 +408,13 @@ private struct StatusPill: View {
                 .frame(width: 20)
             Text(text)
                 .font(.callout.weight(.medium))
+                .frame(width: Self.textWidth(text), alignment: .leading)
                 .foregroundStyle(theme.textPrimary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .pillChrome(theme: theme, maxWidth: 360)
+        .padding(.leading, 16)
+        .padding(.trailing, 20)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
     }

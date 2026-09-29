@@ -69,17 +69,29 @@ import Foundation
     #expect(decoded.schemaVersion == SettingsState.currentSchemaVersion)
 }
 
-@Test func v4DarkThemeMigratesToSystemOnce() throws {
-    // Before v5, `.dark` was the default rather than a choice, so it becomes `.system`;
-    // an explicit `.light` is kept, and a v5 `.dark` is a real choice and stays.
-    func decode(_ version: Int, _ theme: String) throws -> AppTheme {
-        let json = "{\"schemaVersion\":\(version),\"theme\":\"\(theme)\"}".data(using: .utf8)!
-        return try JSONDecoder().decode(SettingsState.self, from: json).theme
+@Test func legacyThemeMigratesToSystemAppearance() throws {
+    // A blob without `appearance` (older build): `.dark` was the old default, not a choice, so it
+    // becomes `.system`; an explicit `.light` is kept. `appearance`, when present, wins.
+    func decode(_ json: String) throws -> AppTheme {
+        try JSONDecoder().decode(SettingsState.self, from: json.data(using: .utf8)!).theme
     }
-    #expect(try decode(4, "dark") == .system)
-    #expect(try decode(4, "light") == .light)
-    #expect(try decode(5, "dark") == .dark)
-    #expect(try decode(5, "system") == .system)
+    #expect(try decode("{\"schemaVersion\":4,\"theme\":\"dark\"}") == .system)
+    #expect(try decode("{\"schemaVersion\":4,\"theme\":\"light\"}") == .light)
+    #expect(try decode("{\"schemaVersion\":4,\"theme\":\"dark\",\"appearance\":\"dark\"}") == .dark)
+    #expect(try decode("{\"schemaVersion\":4,\"theme\":\"dark\",\"appearance\":\"system\"}") == .system)
+}
+
+@Test func appearanceKeepsOlderBuildsReadable() throws {
+    // The schema stays v4 and the legacy `theme` field is still written (never "system", which an
+    // older build doesn't know), so a v1.1.3 build keeps reading the blob.
+    for (appearance, legacy) in [(AppTheme.system, "dark"), (.dark, "dark"), (.light, "light")] {
+        var s = SettingsState()
+        s.theme = appearance
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(s)) as! [String: Any]
+        #expect(object["schemaVersion"] as? Int == 4)
+        #expect(object["theme"] as? String == legacy)
+        #expect(object["appearance"] as? String == appearance.rawValue)
+    }
 }
 
 @Test func themeRoundTripsThroughSettingsState() throws {

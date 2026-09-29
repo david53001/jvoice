@@ -29,13 +29,13 @@ enum UIPreviewRunner {
         let coordinator = VoiceCoordinator()
         var saved = 0
 
-        func capture(_ window: NSWindow, _ name: String) {
+        func capture(_ window: NSWindow, _ name: String, after delay: TimeInterval = 0.8) {
             window.displayIfNeeded()
-            capture(window.frame, name)
+            capture(window.frame, name, after: delay)
         }
 
-        func capture(_ frame: NSRect, _ name: String) {
-            RunLoop.main.run(until: Date().addingTimeInterval(0.8))
+        func capture(_ frame: NSRect, _ name: String, after delay: TimeInterval = 0.8) {
+            RunLoop.main.run(until: Date().addingTimeInterval(delay))
             let out = dir.appendingPathComponent("\(name).png").path
             let task = Process()
             task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
@@ -93,6 +93,12 @@ enum UIPreviewRunner {
                 hud.update(state: state, theme: theme)
                 capture(hud, "hud-\(stateName)-\(label)")
             }
+            // Half-way through the transcribing → Pasted morph (`HUDLayout.morph`, 0.3 s).
+            hud.update(state: .transcribing, theme: theme)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+            hud.update(state: .done("Pasted"), theme: theme)
+            capture(hud, "hud-morph-mid-\(label)", after: 0.12)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.5))
         }
         hud.update(state: .idle)
 

@@ -41,9 +41,9 @@ private struct AppearancePicker: View {
     var body: some View {
         Picker("Appearance", selection: $selection) {
             ForEach(AppTheme.allCases) { theme in
-                Image(systemName: Self.symbol(theme))
+                Label(theme.displayName, systemImage: Self.symbol(theme))
+                    .labelStyle(.iconOnly)
                     .help(theme.displayName)
-                    .accessibilityLabel(theme.displayName)
                     .tag(theme)
             }
         }
@@ -517,8 +517,11 @@ struct SettingsView: View {
         alert.messageText = "Reset all JVoice settings to defaults?"
         alert.informativeText = "Your custom words, model choice, and language will be restored to defaults, and your recent transcripts will be cleared. Recording statistics will not be affected."
         alert.alertStyle = .warning
-        alert.addButton(withTitle: "Reset").hasDestructiveAction = true
-        alert.addButton(withTitle: "Cancel")
+        // Return must not wipe settings: Cancel is the default button, Reset is click-only (red).
+        let resetButton = alert.addButton(withTitle: "Reset")
+        resetButton.hasDestructiveAction = true
+        resetButton.keyEquivalent = ""
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\r"
         let reset = { (response: NSApplication.ModalResponse) in
             if response == .alertFirstButtonReturn { coordinator.resetSettings() }
         }

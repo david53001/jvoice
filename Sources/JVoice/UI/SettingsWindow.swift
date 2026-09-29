@@ -27,7 +27,7 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
         isReleasedWhenClosed = false
         appearance = coordinator.appTheme.nsAppearance   // nil = follow macOS
         // A behind-window material under a transparent title bar: the desktop shows softly through.
-        WindowMaterial.install(SettingsView(coordinator: coordinator), in: self)
+        WindowMaterial.install(SettingsView(coordinator: coordinator), in: self, belowTitleBar: true)
         center()
 
         // Title-bar row, top-right. The SwiftUI header's appearance picker sits below the title bar — the
