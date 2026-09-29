@@ -1,9 +1,9 @@
-# HANDOFF — state as of 2026-09-29 (v1.1.3 shipped; branch `feat/math-format` — the maths-engine package landed + the shared notation format — is committed locally, NOT merged/pushed/installed)
+# HANDOFF — state as of 2026-09-29 (v1.1.3 shipped; branch `feat/math-format` — the maths-engine package landed + the shared notation format — is committed locally and INSTALLED to /Applications for dogfooding 2026-09-29; NOT merged/pushed)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
-## 2026-09-29 session — maths engine: the unfinished package landed, then the shared notation format (branch `feat/math-format`, off `feat/guided-tour` @ `0877330`; 3 commits, NOT merged, NOT pushed, NOT installed)
+## 2026-09-29 session — maths engine: the unfinished package landed, then the shared notation format (branch `feat/math-format`, off `feat/guided-tour` @ `0877330`; 3 commits, NOT merged, NOT pushed; installed via `./scripts/dev-install.sh` 2026-09-29, `--settings-smoke` OK from the installed .app)
 
 **Ask (lead session, from David's spec `docs/math-notation-format.md`):** (1) land the unfinished 2026-09-23 maths-engine package from worktree `.claude/worktrees/agent-a94ba1b50b2a7c999` to its acceptance bar; (2) implement the spec's §4 table (the format BetterScreenshot's Capture Text pastes), except the §6 open decisions; add `--no-math` to `--bench`. Full log, deviations, Windows mirror list and a before/after table of every §3/§4 example: **`docs/math-notation-progress.md`**.
 
