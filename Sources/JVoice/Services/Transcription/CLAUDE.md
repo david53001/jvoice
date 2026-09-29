@@ -104,6 +104,9 @@ pinned to version 1.0.0). To work in this area, read the files below.
     `^`/`_` fallback (there is no subscript "b", so "a subscript b" prints `a_b`).
   - `MathSymbol.swift` — `MathKind` + the one record type; `activates` is the whole rule.
   - `MathProbe.swift` — the hidden `--math-probe` command-line mode; see the verification section.
+  - **Output format:** `docs/math-notation-format.md` — the notation shared with BetterScreenshot's
+    Capture Text (Unicode, `/` fractions, `×` vs `·`, `^(…)` fallbacks), where today's output differs, and
+    the rule that the Math Notation toggle must measurably save time when off.
 - `BenchRunner.swift` — the hidden `--bench` command-line harness that measures transcription
   speed and verifies vocabulary biasing / streaming on this machine. Not part of the running app's
   user flow; it is a dev tool, co-located here because it exercises this pipeline.
