@@ -53,20 +53,33 @@ import Foundation
     #expect(decoded == .casual)
 }
 
-@Test func newSettingsStateDefaultsToDarkTheme() {
-    #expect(SettingsState().theme == .dark)
+@Test func newSettingsStateDefaultsToSystemTheme() {
+    #expect(SettingsState().theme == .system)
 }
 
-@Test func decodesV1BlobWithoutThemeAsDark() throws {
+@Test func decodesV1BlobWithoutThemeAsSystem() throws {
     // A schema-v1 blob predates the theme field; it must decode (v1 < current)
-    // and default theme to .dark.
+    // and default theme to .system (follow macOS).
     let v1JSON = """
     {"schemaVersion":1,"mode":"casual","model":"tiny","language":"english",
      "customWords":[],"removeFillerWords":true}
     """.data(using: .utf8)!
     let decoded = try JSONDecoder().decode(SettingsState.self, from: v1JSON)
-    #expect(decoded.theme == .dark)
+    #expect(decoded.theme == .system)
     #expect(decoded.schemaVersion == SettingsState.currentSchemaVersion)
+}
+
+@Test func v4DarkThemeMigratesToSystemOnce() throws {
+    // Before v5, `.dark` was the default rather than a choice, so it becomes `.system`;
+    // an explicit `.light` is kept, and a v5 `.dark` is a real choice and stays.
+    func decode(_ version: Int, _ theme: String) throws -> AppTheme {
+        let json = "{\"schemaVersion\":\(version),\"theme\":\"\(theme)\"}".data(using: .utf8)!
+        return try JSONDecoder().decode(SettingsState.self, from: json).theme
+    }
+    #expect(try decode(4, "dark") == .system)
+    #expect(try decode(4, "light") == .light)
+    #expect(try decode(5, "dark") == .dark)
+    #expect(try decode(5, "system") == .system)
 }
 
 @Test func themeRoundTripsThroughSettingsState() throws {

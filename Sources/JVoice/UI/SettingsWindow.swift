@@ -25,13 +25,14 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
 
         title = "Settings"
         isReleasedWhenClosed = false
-        appearance = NSAppearance(named: coordinator.appTheme == .dark ? .darkAqua : .aqua)
+        appearance = coordinator.appTheme.nsAppearance   // nil = follow macOS
+        // A behind-window material under a transparent title bar: the desktop shows softly through.
+        WindowMaterial.install(SettingsView(coordinator: coordinator), in: self)
         center()
-        contentView = NSHostingView(rootView: SettingsView(coordinator: coordinator))
 
-        // Title-bar row, top-right. The SwiftUI header's sun/moon toggle sits below the title bar — the
+        // Title-bar row, top-right. The SwiftUI header's appearance picker sits below the title bar — the
         // hosting view keeps content inside the safe area (measured 2026-09-28 on macOS 26: title bar
-        // 32 pt, window grows to 592 tall; the ⓘ sits 5–27 pt from the top, the toggle starts at 50 pt).
+        // 32 pt, window grows to 592 tall; the ⓘ sits 5–27 pt from the top, the picker starts at ~50 pt).
         let info = InfoButton.install(in: self, tour: .settings, shortcuts: Self.infoShortcuts())
         info.tourAnchor = "settings.help"
         infoButton = info

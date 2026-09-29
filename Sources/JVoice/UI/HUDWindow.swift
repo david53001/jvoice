@@ -14,7 +14,7 @@ final class HUDWindow: NSPanel {
                   styleMask style: NSWindow.StyleMask,
                   backing bufferingType: NSWindow.BackingStoreType,
                   defer flag: Bool) {
-        self.hostingController = NSHostingController(rootView: HUDView(state: .idle, theme: .dark))
+        self.hostingController = NSHostingController(rootView: HUDView(state: .idle))
         super.init(contentRect: contentRect, styleMask: style, backing: bufferingType, defer: flag)
     }
 
@@ -29,7 +29,9 @@ final class HUDWindow: NSPanel {
         isFloatingPanel = true
         isOpaque = false
         backgroundColor = .clear
-        hasShadow = false
+        // The capsule's one soft shadow is the system window shadow, traced from the pill's own
+        // alpha (re-traced after every size/state change — `retraceShadow`).
+        hasShadow = true
         // HUD must stay above the panel (which sits at statusWindow + 1)
         // so the recording pill never disappears behind the panel.
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 2)
@@ -66,7 +68,7 @@ final class HUDWindow: NSPanel {
         isPrewarmed = true
         prewarmHidePending = true
         currentState = .recording
-        hostingController.rootView = HUDView(state: .recording, theme: .dark, meter: nil, onStop: nil)
+        hostingController.rootView = HUDView(state: .recording, meter: nil, onStop: nil)
         alphaValue = 0
         sizeToFit()
         positionAtBottomCenter()
@@ -82,11 +84,15 @@ final class HUDWindow: NSPanel {
         }
     }
 
-    func update(state: HUDState, theme: AppTheme = .dark, meter: AudioLevelMeter? = nil) {
+    func update(state: HUDState, theme: AppTheme = .system, meter: AudioLevelMeter? = nil) {
         // A real state change always wins over a still-pending prewarm hide.
         prewarmHidePending = false
         alphaValue = 1
         currentState = state
+        // System / Light / Dark: the material, glass and semantic colours all follow the panel's
+        // appearance (nil = macOS's). Assigned only on a change — it re-resolves the whole view tree.
+        let wanted = theme.nsAppearance
+        if appearance?.name != wanted?.name { appearance = wanted }
         hostingController.rootView = HUDView(
             state: state,
             theme: theme.theme,
@@ -99,6 +105,7 @@ final class HUDWindow: NSPanel {
             sizeToFit()
             positionAtBottomCenter()
             orderFrontRegardless()
+            retraceShadow()
         } else {
             orderOut(nil)
         }
@@ -116,17 +123,27 @@ final class HUDWindow: NSPanel {
         guard let screen = NSScreen.main else { return }
         let visibleFrame = screen.visibleFrame
         let x = visibleFrame.midX - frame.width / 2
-        let y = visibleFrame.minY + 24
+        let y = visibleFrame.minY + HUDLayout.bottomGap - HUDLayout.shadowPadding
         setFrameOrigin(NSPoint(x: x, y: y))
+    }
+
+    /// The window server traces a borderless panel's shadow from what was last drawn, so after a new
+    /// state is shown the shadow is re-traced on the next turn (once SwiftUI has drawn it) — never on
+    /// the press → pill path itself (latency contract).
+    private func retraceShadow() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isVisible else { return }
+            self.invalidateShadow()
+        }
     }
 }
 
 /// The Recording tour runs on this panel (reported by `VoiceCoordinator` as the `.recordingPill`
-/// surface). The window is the capsule plus `HUDLayout.glowPadding` of transparent glow on every
+/// surface). The window is the capsule plus `HUDLayout.shadowPadding` of transparent margin on every
 /// side, so the tour dims and keeps its tag clear of the capsule only — not a square band around it.
 extension HUDWindow: TourHostShaping {
     var tourHostShape: TourHostShape? {
-        TourHostShape(frame: frame.insetBy(dx: HUDLayout.glowPadding, dy: HUDLayout.glowPadding),
+        TourHostShape(frame: frame.insetBy(dx: HUDLayout.shadowPadding, dy: HUDLayout.shadowPadding),
                       cornerRadius: HUDLayout.pillCorner)
     }
 }

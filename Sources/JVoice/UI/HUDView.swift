@@ -2,7 +2,7 @@ import SwiftUI
 
 struct HUDView: View {
     let state: HUDState
-    var theme: Theme = .dark
+    var theme: Theme = .native
     var meter: AudioLevelMeter? = nil
     var onStop: (() -> Void)? = nil
 
@@ -24,28 +24,53 @@ struct HUDView: View {
     }
 }
 
+extension HUDState.AccentRole {
+    /// The system colour this role means (the pill's one meaningful hue).
+    var color: Color {
+        switch self {
+        case .secondary: return .secondary
+        case .red:       return .red
+        case .blue:      return .blue
+        case .green:     return .green
+        case .orange:    return .orange
+        }
+    }
+}
+
 // MARK: - Shared pill chrome
 
 private extension View {
-    /// Monochrome pill body + soft, even glow that fully fades within the
-    /// surrounding glow padding (no square clip).
+    /// The floating capsule: Liquid Glass on macOS 26, the `.hudWindow` material (behind-window blur,
+    /// plus a 0.5 pt hairline — glass draws its own edge) before. No fill, border or glow of its own;
+    /// the one soft shadow is the panel's system window shadow (`HUDWindow.hasShadow`), so text never
+    /// casts one through the translucent body. `HUDLayout.shadowPadding` keeps it from clipping.
     func pillChrome(theme: Theme, minWidth: CGFloat = HUDLayout.pillMinWidth, maxWidth: CGFloat? = nil) -> some View {
         self
             .frame(minWidth: minWidth,
                    maxWidth: maxWidth,
                    minHeight: HUDLayout.pillHeight)
-            .background(
-                RoundedRectangle(cornerRadius: HUDLayout.pillCorner, style: .continuous)
-                    .fill(theme.pillBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: HUDLayout.pillCorner, style: .continuous)
-                            .strokeBorder(theme.hairline, lineWidth: 1)
-                    )
-            )
-            .shadow(color: theme.pillGlow, radius: 16)
-            .shadow(color: theme.pillGlow.opacity(0.6), radius: 28)
-            .shadow(color: theme.pillDropShadow, radius: 12, x: 0, y: 6)
-            .padding(HUDLayout.glowPadding)
+            .modifier(PillMaterial())
+            .padding(HUDLayout.shadowPadding)
+    }
+}
+
+private struct PillMaterial: ViewModifier {
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26, *) {
+            content.glassEffect(.regular, in: Capsule())
+        } else {
+            fallback(content)
+        }
+        #else
+        fallback(content)
+        #endif
+    }
+
+    private func fallback(_ content: Content) -> some View {
+        content
+            .background(VisualEffectBackground(material: .hudWindow).clipShape(Capsule()))
+            .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: Design.hairlineWidth))
     }
 }
 
@@ -55,7 +80,7 @@ private struct JMark: View {
     let theme: Theme
     var body: some View {
         Text("J")
-            .font(.system(size: 22, weight: .heavy))
+            .font(.title3.weight(.heavy))
             .foregroundStyle(theme.barFill)
             .frame(width: 18)
             .accessibilityHidden(true)
@@ -64,27 +89,41 @@ private struct JMark: View {
 
 // MARK: - Waveform bars
 
+/// Shared bar geometry: thin capsules that rest as a calm flat line (2 pt), never a row of dots.
+private enum Bars {
+    static let count = 15
+    static let width: CGFloat = 3
+    static let spacing: CGFloat = 2
+    static let minHeight: CGFloat = 2
+    static let rowHeight: CGFloat = 26
+
+    /// Quiet bars sit at a secondary opacity and rise to full `.primary` with their height.
+    static func opacity(height: CGFloat, maxHeight: CGFloat) -> Double {
+        let t = max(0, min(1, (height - minHeight) / max(1, maxHeight - minHeight)))
+        return 0.45 + 0.55 * Double(t)
+    }
+}
+
 /// Recording: mic-reactive bars (driven by the live meter, with a subtle
 /// per-bar oscillation so they look alive even at a steady level).
 private struct ReactiveBars: View {
     @ObservedObject var meter: AudioLevelMeter
     let theme: Theme
-    let barCount = 15
-    private let minH: CGFloat = 4
     private let maxH: CGFloat = 26
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 3) {
-                ForEach(0..<barCount, id: \.self) { i in
+            HStack(spacing: Bars.spacing) {
+                ForEach(0..<Bars.count, id: \.self) { i in
+                    let h = height(i, t)
                     Capsule(style: .continuous)
-                        .fill(theme.barFill)
-                        .frame(width: 3, height: height(i, t))
+                        .fill(theme.barFill.opacity(Bars.opacity(height: h, maxHeight: maxH)))
+                        .frame(width: Bars.width, height: h)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: maxH)
+            .frame(height: Bars.rowHeight)
         }
         .accessibilityHidden(true)
     }
@@ -92,74 +131,58 @@ private struct ReactiveBars: View {
     private func height(_ i: Int, _ t: TimeInterval) -> CGFloat {
         let level = CGFloat(meter.level)                       // 0…1
         let osc = 0.55 + 0.45 * CGFloat(sin(t * 6 + Double(i) * 0.7)) // 0.1…1
-        return minH + (maxH - minH) * level * osc
+        return Bars.minHeight + (maxH - Bars.minHeight) * level * osc
     }
 }
 
 /// Transcribing: a gentle, low-amplitude shimmer (no mic input during decode).
 private struct ShimmerBars: View {
     let theme: Theme
-    let barCount = 15
-    private let minH: CGFloat = 4
-    private let maxH: CGFloat = 11
+    private let maxH: CGFloat = 10
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 3) {
-                ForEach(0..<barCount, id: \.self) { i in
+            HStack(spacing: Bars.spacing) {
+                ForEach(0..<Bars.count, id: \.self) { i in
+                    let h = height(i, t)
                     Capsule(style: .continuous)
-                        .fill(theme.barFill.opacity(0.85))
-                        .frame(width: 3, height: height(i, t))
+                        .fill(theme.barFill.opacity(Bars.opacity(height: h, maxHeight: maxH) * 0.85))
+                        .frame(width: Bars.width, height: h)
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 26)
+            .frame(height: Bars.rowHeight)
         }
         .accessibilityHidden(true)
     }
 
     private func height(_ i: Int, _ t: TimeInterval) -> CGFloat {
         let wave = 0.5 + 0.5 * CGFloat(sin(t * 3 + Double(i) * 0.6))
-        return minH + (maxH - minH) * wave
+        return Bars.minHeight + (maxH - Bars.minHeight) * wave
     }
 }
 
 // MARK: - Stop button
 
+/// The red stop control: a continuous-cornered red square (radius 6) with a white stop glyph
+/// (radius 2) — it alone says "recording", so the pill needs no label.
 private struct StopButton: View {
-    let theme: Theme
     let action: () -> Void
     var body: some View {
         Button(action: action) {
             ZStack {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(theme.barFill.opacity(0.14))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(theme.barFill.opacity(0.45), lineWidth: 1)
-                    )
+                    .fill(Color.red)
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(theme.barFill)
-                    .frame(width: 7, height: 7)
+                    .fill(Color.white)
+                    .frame(width: 8, height: 8)
             }
             .frame(width: 22, height: 22)
         }
         .buttonStyle(PanelPressableButtonStyle())
+        .help("Stop recording")
         .accessibilityLabel("Stop recording")
-    }
-}
-
-// MARK: - Bottom label
-
-private struct PillLabel: View {
-    let text: String
-    let theme: Theme
-    var body: some View {
-        Text(text.uppercased())
-            .font(.system(size: 7, weight: .semibold))
-            .tracking(1.6)
-            .foregroundStyle(theme.textMuted)
     }
 }
 
@@ -171,31 +194,22 @@ private struct RecordingPill: View {
     let onStop: (() -> Void)?
 
     var body: some View {
-        ZStack {
-            HStack(spacing: 14) {
-                JMark(theme: theme)
-                if let meter {
-                    ReactiveBars(meter: meter, theme: theme)
-                } else {
-                    ShimmerBars(theme: theme) // defensive fallback
-                }
-                if let onStop {
-                    StopButton(theme: theme, action: onStop)
-                } else {
-                    Color.clear.frame(width: 22)
-                }
+        HStack(spacing: 14) {
+            JMark(theme: theme)
+            if let meter {
+                ReactiveBars(meter: meter, theme: theme)
+            } else {
+                ShimmerBars(theme: theme) // defensive fallback
             }
-            .padding(.horizontal, 16)
-
-            VStack {
-                Spacer()
-                PillLabel(text: "Recording", theme: theme)
-                    .padding(.bottom, 6)
+            if let onStop {
+                StopButton(action: onStop)
+            } else {
+                Color.clear.frame(width: 22)
             }
         }
-        // The Recording tour's anchor spans the whole capsule (the centred row
-        // plus its label), so the tag's box outlines the pill itself. This
-        // frame repeats `pillChrome`'s own minimums, so layout is unchanged.
+        .padding(.horizontal, 16)
+        // The Recording tour's anchor spans the whole capsule, so the tag's box outlines the pill
+        // itself. This frame repeats `pillChrome`'s own minimums, so layout is unchanged.
         .frame(minWidth: HUDLayout.pillMinWidth, minHeight: HUDLayout.pillHeight)
         .tourAnchor("pill.controls")
         .pillChrome(theme: theme)
@@ -209,20 +223,12 @@ private struct RecordingPill: View {
 private struct TranscribingPill: View {
     let theme: Theme
     var body: some View {
-        ZStack {
-            HStack(spacing: 14) {
-                JMark(theme: theme)
-                ShimmerBars(theme: theme)
-                Color.clear.frame(width: 22) // keep bars centered (no stop button)
-            }
-            .padding(.horizontal, 16)
-
-            VStack {
-                Spacer()
-                PillLabel(text: "Transcribing", theme: theme)
-                    .padding(.bottom, 6)
-            }
+        HStack(spacing: 14) {
+            JMark(theme: theme)
+            ShimmerBars(theme: theme)
+            Color.clear.frame(width: 22) // keep bars centered (no stop button)
         }
+        .padding(.horizontal, 16)
         .pillChrome(theme: theme)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Transcribing")
@@ -247,14 +253,14 @@ private struct DownloadingModelPill: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "arrow.down.circle")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(theme.textPrimary)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(HUDState.AccentRole.blue.color)
             VStack(alignment: .leading, spacing: 4) {
                 Text("Downloading Model")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(theme.textPrimary)
                 Text(ModelDownloadProgress.label(downloaded: downloaded, total: total))
-                    .font(.system(size: 10, weight: .medium))
+                    .font(.caption)
                     .monospacedDigit()
                     .foregroundStyle(theme.textSecondary)
                 ProgressBar(
@@ -279,13 +285,14 @@ private struct ProgressBar: View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(theme.hairline)
+                    .fill(Color.primary.opacity(0.1))
                 Capsule()
-                    .fill(theme.barFill)
+                    .fill(HUDState.AccentRole.blue.color)
                     .frame(width: geometry.size.width * fraction)
+                    .animation(.smooth(duration: 0.3), value: fraction)
             }
         }
-        .frame(width: 150, height: 3)
+        .frame(width: 150, height: 4)
     }
 }
 
@@ -301,17 +308,17 @@ private struct PreparingModelPill: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: "gearshape.2")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(theme.textPrimary)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(HUDState.AccentRole.blue.color)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Optimizing for Neural Engine")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                     .foregroundStyle(theme.textPrimary)
                 TimelineView(.periodic(from: startDate, by: 1)) { context in
                     Text("One-time per model — keep JVoice open · \(Self.elapsed(startDate, context.date))")
                         .monospacedDigit()
                 }
-                .font(.system(size: 10, weight: .medium))
+                .font(.caption)
                 .foregroundStyle(theme.textSecondary)
             }
             Spacer(minLength: 0)
@@ -323,7 +330,7 @@ private struct PreparingModelPill: View {
     }
 }
 
-// MARK: - Status pill (done / error)
+// MARK: - Status pill (done / copied / error / notice)
 
 private struct StatusPill: View {
     let state: HUDState
@@ -336,18 +343,15 @@ private struct StatusPill: View {
             return state.headline
         }()
 
+        // The symbol alone, in the state's meaning colour (green done, orange error, secondary
+        // notice) — no badge behind it.
         return HStack(spacing: 10) {
-            ZStack {
-                Circle()
-                    .fill(theme.barFill.opacity(0.12))
-                    .overlay(Circle().strokeBorder(theme.barFill.opacity(0.30), lineWidth: 1))
-                    .frame(width: 28, height: 28)
-                Image(systemName: state.systemImageName)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(theme.textPrimary)
-            }
+            Image(systemName: state.systemImageName)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(state.accentRole.color)
+                .frame(width: 20)
             Text(text)
-                .font(.system(size: 12, weight: .semibold))
+                .font(.callout.weight(.medium))
                 .foregroundStyle(theme.textPrimary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)

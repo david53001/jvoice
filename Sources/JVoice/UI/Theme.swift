@@ -1,72 +1,72 @@
+import AppKit
 import SwiftUI
 
-/// Monochrome (pure black & white) design tokens — the single source of truth
-/// for every JVoice surface we draw ourselves (HUD pill + Settings cards).
-/// Native SwiftUI controls (segmented pickers, toggles, the shortcut recorder)
-/// follow `.preferredColorScheme(colorScheme)`; these tokens cover the rest.
-/// No hue anywhere — only neutral greys/black/white.
+/// Native macOS design tokens (the MacStats design language —
+/// `../MacStats/docs/design-language/README.md`). Every surface JVoice draws itself sits on a system
+/// material (the window/pill backdrop) and uses *tints* of `Color.primary` on top of it, so the blur
+/// shows through and light/dark adapt by themselves. Opacities live in `Design`.
 struct Theme {
-    let colorScheme: ColorScheme
+    /// The explicit appearance override, or nil to follow macOS (`AppTheme.system`).
+    let colorScheme: ColorScheme?
 
-    // Surfaces
-    let windowBackground: Color
-    let surface: Color           // cards + pill body
-    let inputBackground: Color
-    let hairline: Color          // 1px borders / dividers
+    // Surfaces — tints over the material, never solid fills.
+    var surface: Color { Color.primary.opacity(Design.cardFill) }
+    var inputBackground: Color { Color.primary.opacity(Design.inputFill) }
+    /// Borders and dividers, drawn at `Design.hairlineWidth`.
+    var hairline: Color { Color.primary.opacity(Design.cardHairline) }
 
     // Content
-    let textPrimary: Color
-    let textSecondary: Color
-    let textMuted: Color
+    var textPrimary: Color { .primary }
+    var textSecondary: Color { .secondary }
+    var textMuted: Color { Color(nsColor: .tertiaryLabelColor) }
 
-    // Pill
-    let barFill: Color           // waveform bars + the "J" mark
-    let pillBackground: Color
-    let pillGlow: Color          // soft, even glow around the pill
-    let pillDropShadow: Color
+    /// Waveform bars + the "J" mark.
+    var barFill: Color { .primary }
 
-    /// Destructive affordance. Kept monochrome to honor the black/white
-    /// direction; the confirmation dialog is the real safety net. (Reversible:
-    /// swap to a red here if a coloured Quit/Reset is wanted later.)
-    var danger: Color { textPrimary }
+    /// Destructive affordance (Apple convention).
+    var danger: Color { .red }
 
-    static let dark = Theme(
-        colorScheme: .dark,
-        windowBackground: Color(white: 0.04),
-        surface: Color(white: 0.075),
-        inputBackground: Color(white: 0.10),
-        hairline: Color.white.opacity(0.10),
-        textPrimary: .white,
-        textSecondary: Color.white.opacity(0.62),
-        textMuted: Color.white.opacity(0.40),
-        barFill: .white,
-        pillBackground: Color(white: 0.05),
-        pillGlow: Color.white.opacity(0.06),
-        pillDropShadow: Color.black.opacity(0.45)
-    )
+    static let native = Theme(colorScheme: nil)
+}
 
-    static let light = Theme(
-        colorScheme: .light,
-        windowBackground: Color(white: 0.93),
-        surface: .white,
-        inputBackground: Color(white: 0.96),
-        hairline: Color.black.opacity(0.10),
-        textPrimary: Color(white: 0.06),
-        textSecondary: Color.black.opacity(0.55),
-        textMuted: Color.black.opacity(0.40),
-        barFill: Color(white: 0.06),
-        pillBackground: .white,
-        pillGlow: Color.black.opacity(0.10),
-        pillDropShadow: Color.black.opacity(0.18)
-    )
+/// Sizes and opacities, copied from MacStats' `Design.swift` (design-language README §2).
+enum Design {
+    /// Content cards in a regular window (System Settings' grouped sections are ~10).
+    static let cardCornerRadius: CGFloat = 10
+    /// Card surface — a touch more transparent than MacStats' 0.05, as asked.
+    static let cardFill: Double = 0.04
+    static let cardHoverFill: Double = 0.085
+    static let cardPressedFill: Double = 0.12
+    static let cardHairline: Double = 0.08
+    static let hairlineWidth: CGFloat = 0.5
+    static let inputFill: Double = 0.06
+    /// Rows inside a card (transcripts, words) under the pointer.
+    static let rowHoverFill: Double = 0.07
+    static let rowCornerRadius: CGFloat = 6
+    /// Small secondary buttons (`SubtleButtonStyle`).
+    static let smallButtonFill: Double = 0.08
+    static let smallButtonHoverFill: Double = 0.12
+    static let smallButtonPressedFill: Double = 0.16
+    static let smallButtonRadius: CGFloat = 6
+    static let smallButtonHeight: CGFloat = 24
 }
 
 extension AppTheme {
-    /// The concrete monochrome tokens for this appearance.
+    /// The tokens for this appearance (they only differ in the override).
     var theme: Theme {
         switch self {
-        case .dark:  return .dark
-        case .light: return .light
+        case .system: return .native
+        case .dark:   return Theme(colorScheme: .dark)
+        case .light:  return Theme(colorScheme: .light)
+        }
+    }
+
+    /// The AppKit appearance to force on a window, or nil to follow macOS.
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: return nil
+        case .dark:   return NSAppearance(named: .darkAqua)
+        case .light:  return NSAppearance(named: .aqua)
         }
     }
 }

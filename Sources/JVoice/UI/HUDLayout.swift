@@ -1,19 +1,20 @@
 import AppKit
 
 enum HUDLayout {
+    /// The capsule's corner radius (half its height).
     static let pillCorner: CGFloat = 28
     static let pillHeight: CGFloat = 56
     static let pillMinWidth: CGFloat = 240
 
-    /// Transparent margin around the pill INSIDE the window, so the soft glow
-    /// fades out fully before the window edge. The old square-glow bug came
-    /// from sizing the window to the pill's `fittingSize`, which excludes shadow
-    /// blur — the blur then clipped at the window border. This padding must
-    /// exceed the largest glow radius used in HUDView (28) plus any offset.
-    static let glowPadding: CGFloat = 40
+    /// Transparent margin around the capsule INSIDE the panel, so the panel's soft system shadow
+    /// (`HUDWindow.hasShadow`) and the stop button's press never clip at the window edge.
+    static let shadowPadding: CGFloat = 16
+
+    /// The capsule's distance from the bottom of the screen's visible frame (above the Dock).
+    static let bottomGap: CGFloat = 64
 
     static func minimumSize(for state: HUDState) -> NSSize {
-        NSSize(width: pillMinWidth + glowPadding * 2,
-               height: pillHeight + glowPadding * 2)
+        NSSize(width: pillMinWidth + shadowPadding * 2,
+               height: pillHeight + shadowPadding * 2)
     }
 }

@@ -6,12 +6,13 @@ import Foundation
 @Test func appThemeToggleAlternates() {
     #expect(AppTheme.dark.toggled == .light)
     #expect(AppTheme.light.toggled == .dark)
+    #expect(AppTheme.system.toggled == .dark)
 }
 
-@Test func appThemeUnknownDecodesToDark() throws {
+@Test func appThemeUnknownDecodesToSystem() throws {
     let json = "\"sepia\"".data(using: .utf8)!
     let decoded = try JSONDecoder().decode(AppTheme.self, from: json)
-    #expect(decoded == .dark)
+    #expect(decoded == .system)
 }
 
 @Test func appThemeRoundTrips() throws {
