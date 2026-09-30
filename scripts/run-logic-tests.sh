@@ -1045,6 +1045,42 @@ let systemSettings = SettingsEntryPolicy.appRuleTarget(for: "system settings", i
 expectEqual(systemSettings, .app(.init(name: "System Settings", bundleID: "com.apple.systempreferences")), "a real installed app resolves (System Settings)")
 }
 
+print("UIOpacity — Settings → Appearance → Opacity → each surface's backing alpha (2026-09-30)")
+do {
+    func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
+    expectEqual(UIOpacity.defaultsKey, "jvoice.app.uiOpacity", "key in JVoice's namespace (shared spec §2)")
+    expectEqual(UIOpacity.defaultValue, 0.5, "default = 0.5")
+    for surface in [UIOpacity.Surface.window, .pill] {
+        let a = UIOpacity.anchors(for: surface)
+        expect(near(UIOpacity.backingAlpha(1, on: surface), 1), "\(surface): 1 = solid")
+        expect(near(UIOpacity.backingAlpha(0.5, on: surface), a.standard), "\(surface): 0.5 = the designed default")
+        expect(near(UIOpacity.backingAlpha(0, on: surface), a.transparent), "\(surface): 0 = the clamped floor")
+        expect(near(UIOpacity.backingAlpha(0.25, on: surface), (a.transparent + a.standard) / 2), "\(surface): linear 0 → 0.5")
+        expect(near(UIOpacity.backingAlpha(0.75, on: surface), (a.standard + 1) / 2), "\(surface): linear 0.5 → 1")
+        var last = -1.0
+        var monotonic = true
+        for step in 0...100 {
+            let alpha = UIOpacity.backingAlpha(Double(step) / 100, on: surface)
+            if alpha < last || alpha < 0 || alpha > 1 { monotonic = false }
+            last = alpha
+        }
+        expect(monotonic, "\(surface): never less solid as the slider moves right, always within 0…1")
+        expect(near(UIOpacity.backingAlpha(-3, on: surface), a.transparent) && near(UIOpacity.backingAlpha(7, on: surface), 1),
+               "\(surface): out-of-range values clamp")
+        expect(near(UIOpacity.backingAlpha(.nan, on: surface), a.standard), "\(surface): NaN reads as the default")
+    }
+    // The pill floats over any app: it never goes fully see-through (readability clamp, measured ≥ 3:1 at 0).
+    expect(UIOpacity.anchors(for: .pill).transparent >= 0.45, "pill keeps a backing ≥ 0.45 even at 0")
+    let suite = "jvoice.test.opacity.\(UUID().uuidString)"
+    let d = UserDefaults(suiteName: suite)!
+    expectEqual(UIOpacity.stored(in: d), 0.5, "never written → default")
+    d.set(0.2, forKey: UIOpacity.defaultsKey)
+    expectEqual(UIOpacity.stored(in: d), 0.2, "stored value read back")
+    d.set(4.0, forKey: UIOpacity.defaultsKey)
+    expectEqual(UIOpacity.stored(in: d), 1.0, "stored out-of-range value clamps")
+    d.removePersistentDomain(forName: suite)
+}
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S)")
     exit(1)
@@ -1059,6 +1095,7 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/UI/ShortcutCapturePolicy.swift" \
     "$REPO_ROOT/Sources/JVoice/UI/ShortcutCapturePolicy+AppKit.swift" \
     "$REPO_ROOT/Sources/JVoice/UI/SettingsEntryPolicy.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/UIOpacity.swift" \
     "$TMP_DIR/ui/main.swift" \
     -o "$TMP_DIR/ui-logic-tests"
 

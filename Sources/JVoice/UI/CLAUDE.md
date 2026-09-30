@@ -20,14 +20,26 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   `SettingsState` key `appearance` (schema stays v4, so older builds still read the blob); the legacy
   `theme` field is still written (dark/light only). A blob without `appearance` maps the old `.dark`
   default to `.system` and keeps an explicit `.light`.
+- **Opacity (2026-09-30, Settings → Appearance; shared spec
+  `../MacStats/docs/design-language/opacity-setting.md` §2):** one 0…1 value (`jvoice.app.uiOpacity`,
+  default 0.5, live) drives every translucent surface. `UIOpacity.swift` is the pure mapping (tested in
+  `scripts/run-logic-tests.sh`, Settings UI section): each surface = its system material + a *backing* of
+  `windowBackgroundColor` at `backingAlpha` — windows/tour tag 0 → 0.35 → 1 over `.popover`, pill
+  0.45 → 0.62 → 1 over `.clear` glass (the pill never goes below 0.45: it floats over white pages and must
+  keep ≥ 3:1). `Components/OpacityBacking.swift` = `UIOpacityStore.shared` (the live value, a
+  publisher the AppKit views can follow too) + `OpacityBackingView` (AppKit) + `OpacityBacking`
+  (SwiftUI). Measurements behind the numbers: `docs/opacity-progress.md`.
 - `Components/` — `CardBackground` (the inset card: 0.04 tint, 0.5 pt hairline, radius 10 continuous) +
   `inputFieldStyle()`; `SubtleButtonStyle` (MacStats' small button; `destructive:` = red label);
   `VisualEffectBackground` (an `NSVisualEffectView`, behind-window) and `WindowMaterial.install` (makes a
-  window's content a `.sidebar` material under a transparent title bar — Settings + Welcome; Settings
+  window's content a `.popover` material + the Opacity backing under a transparent title bar — Settings +
+  Welcome; was `.sidebar` until 2026-09-30; Settings
   passes `belowTitleBar: true` so its scrolling content never slides under the title bar);
   `InlineNotice`; `PanelPressableButtonStyle`.
 - `HUDView.swift` / `HUDWindow.swift` / `HUDLayout.swift` — the HUD (heads-up display): a floating
-  **glass capsule** — Liquid Glass (`.glassEffect(.regular, in: Capsule())`) on macOS 26, the
+  **glass capsule** — Liquid Glass on macOS 26 (since 2026-09-30 a `.clear` glass layer BEHIND the content
+  plus the Opacity backing: `.regular` glass flipped itself and its text light over a white page, and glass
+  content washed the red stop to pink), the
   `.hudWindow` behind-window material (masked with a stretchable capsule `maskImage` — a behind-window
   effect view ignores clip shapes) + 0.5 pt hairline before; `JVOICE_HUD_MATERIAL=1` forces that
   fallback on macOS 26 for previews. The glass call MUST stay inside `#if compiler(>=6.2)` +
@@ -91,10 +103,15 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   machine that cannot execute the test suite.
 - `UIPreviewRunner.swift` (2026-09-29) — the hidden `JVoice --ui-preview <dir>` dev mode: opens the
   real Settings (Light + Dark, plus a tour tag on the model card), Welcome (both pages) and every HUD
-  state (plus a frame half-way through the transcribing → Pasted morph), and saves a `screencapture -R` PNG of the screen under each (desktop included, so the
-  translucency shows — a `-l` single-window capture has no backdrop and renders glass black). Never
-  calls `VoiceCoordinator.start()`, never writes a setting (appearances are forced on the windows).
-  Windows really appear on screen ~1 s each; needs Screen Recording permission for the terminal.
+  state (plus a frame half-way through the transcribing → Pasted morph), and saves a PNG of the screen region under each (backdrop included, so the
+  translucency shows — a single-window capture has no backdrop and renders glass black). Since
+  2026-09-30 the capture is in-process `CGWindowListCreateImage` (via `dlsym`), which needs NO Screen
+  Recording permission for the app's own windows; flags `--opacity <v>` (preview a value, never saved),
+  `--backdrop white|black|wallpaper` (a known background — other apps' windows aren't captured),
+  `--active` (active material although the windows aren't key), `--hud-timeline` (pills at 0.5/2/5 s).
+  Settings is also captured scrolled to the bottom (the Appearance card). Never calls
+  `VoiceCoordinator.start()`, never writes a setting (appearances are forced on the windows).
+  Windows really appear on screen ~1 s each.
 - `WelcomeWindow.swift` (2026-09-28) — the first-run window (same translucent material as Settings,
   the real app icon, native `.borderedProminent`/`.bordered` large buttons), shown at launch ONLY to users classified
   "new" who haven't answered the tour question: a permissions page (Microphone + Accessibility with
@@ -132,4 +149,6 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   blank: SwiftUI's content is drawn by the render server). To LOOK at a visual change, run
   `"$APP/Contents/MacOS/JVoice" --ui-preview <dir>` from the assembled bundle above (copy
   `Resources/AppIcon.icns` into `$APP/Contents/Resources/` for the Welcome icon) and open the PNGs.
-  Materials follow the window's active state, so the previews (never key) show the inactive look.
+  Materials follow the window's active state, so the previews (never key) show the inactive look unless
+  you pass `--active`. Contrast/see-through were measured from these PNGs with small PIL scripts
+  (method in `docs/opacity-progress.md`).

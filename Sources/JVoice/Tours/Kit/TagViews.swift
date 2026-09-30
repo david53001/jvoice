@@ -173,6 +173,11 @@ final class TagBubbleView: NSView {
         backdrop.autoresizingMask = [.width, .height]
         backdrop.frame = bounds
         addSubview(backdrop)
+        // Settings → Opacity: the window colour over the material, like Settings itself (`UIOpacity`).
+        let backing = OpacityBackingView(surface: .window, cornerRadius: TagStyle.tagRadius)
+        backing.autoresizingMask = [.width, .height]
+        backing.frame = bounds
+        addSubview(backing)
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
 

@@ -1,7 +1,17 @@
-# HANDOFF — state as of 2026-09-29 (v1.1.4 shipped: the native macOS look + morphing pill; the maths-engine package is still unfinished in its worktree)
+# HANDOFF — state as of 2026-09-30 (v1.1.4 shipped: the native macOS look + morphing pill; Opacity setting built on `feat/opacity-setting`, not merged; the maths-engine package is still unfinished in its worktree)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+
+## 2026-09-30 session — Opacity setting + "a touch more transparent" (branch `feat/opacity-setting`, off `feat/native-look`; NOT merged / pushed / installed)
+
+**Ask (David, via the lead agent):** make JVoice a touch more transparent, like MacStats, and add an Opacity setting identical in MacStats, JVoice and BetterScreenshot (shared spec `../MacStats/.claude/worktrees/opacity/docs/design-language/opacity-setting.md`). Worktree `.claude/worktrees/opacity`.
+
+**Done:** Settings → new **Appearance** card (bottom of the right column): Opacity slider Transparent…Opaque, small bordered **Default** (disabled at 0.5), help line; live, stored as `jvoice.app.uiOpacity` (standard domain, default 0.5). Every translucent surface = system material + a `windowBackgroundColor` backing whose alpha the slider sets (`UI/UIOpacity.swift`, pure + logic-tested; `UI/Components/OpacityBacking.swift`): Settings/Welcome/tour tag `.popover` (was `.sidebar`) with backing 0 → 0.35 → 1; the HUD pill `.clear` Liquid Glass as a background layer (was `.regular` as the content's effect — it flipped light over white pages and washed the red stop pink) with backing 0.45 → 0.62 → 1. At the default: windows 17 → 23 % see-through (Dark), pill steady with 5.1:1 text over a white page. `--ui-preview` gained in-process capture (no Screen Recording permission needed), `--opacity`, `--backdrop`, `--active`, `--hud-timeline` and a scrolled-to-bottom Settings shot. Full numbers, screenshots and method: `docs/opacity-progress.md`.
+
+**Verified:** `swift build`, `swift build -c release`, `swift build --build-tests` (compile only); `./scripts/run-logic-tests.sh` 1009/1009 (22 new, Settings UI section); `--settings-smoke` OK (700×592); `--ui-preview` at 0/0.5/1 × Light/Dark over white, black and a bright wallpaper, looked at by eye; contrast measured from the PNGs.
+
+**NOT verified:** the live app (real pill over apps, Settings while key, dragging the slider), Reduce Transparency, macOS 14/15 (fallback pill only emulated via `JVOICE_HUD_MATERIAL=1`). "Restore Default Settings…" doesn't reset Opacity (separate key; follow-up if wanted).
 
 ## 2026-09-29 session — Native macOS look (MacStats design language) for the whole UI (branch `feat/native-look`, off `feat/guided-tour` @ `0877330`; SHIPPED as v1.1.4 — `main` fast-forwarded to it)
 

@@ -124,6 +124,8 @@ struct SettingsView: View {
     /// Mirror of `TourSettings.firstUseToursEnabled` (a plain UserDefaults key SwiftUI can't observe):
     /// refreshed on appear and whenever a window becomes key, written through on change.
     @State private var toursEnabled = false
+    /// Settings → Appearance → Opacity; shared with every window and pill, which follow it live.
+    @ObservedObject private var opacity = UIOpacityStore.shared
 
     var body: some View {
         let theme = coordinator.appTheme.theme
@@ -164,8 +166,9 @@ struct SettingsView: View {
                     VStack(spacing: 12) {
                         recentTranscriptsSection
                         customWordsSection(theme)
-                        // The right column is the shorter one, so this card costs no height.
+                        // The right column is the shorter one, so these cards cost no height.
                         toursSection
+                        appearanceSection
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
@@ -495,6 +498,38 @@ struct SettingsView: View {
         // The Welcome window's "Show Me Around" can flip it while Settings stays open.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             toursEnabled = TourSettings.firstUseToursEnabled
+        }
+    }
+
+    /// "Appearance": the Opacity slider shared by MacStats, JVoice and BetterScreenshot
+    /// (`../MacStats/docs/design-language/opacity-setting.md` §2). Applies live; "Default" = 0.5.
+    private var appearanceSection: some View {
+        SettingsSection("Appearance") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Opacity")
+                        .font(.callout)
+                    Spacer(minLength: 0)
+                    Button("Default") { opacity.value = UIOpacity.defaultValue }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(abs(opacity.value - UIOpacity.defaultValue) < 0.001)
+                        .help("Back to the standard look")
+                }
+                Slider(value: $opacity.value, in: 0...1) {
+                    Text("Opacity")
+                } minimumValueLabel: {
+                    Text("Transparent").font(.caption).foregroundStyle(.secondary)
+                } maximumValueLabel: {
+                    Text("Opaque").font(.caption).foregroundStyle(.secondary)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                Text("How much of what's behind JVoice shows through its windows and the recording pill.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
     }
 

@@ -41,22 +41,32 @@ struct VisualEffectBackground: NSViewRepresentable {
     }
 }
 
+@MainActor
 enum WindowMaterial {
+    /// `--ui-preview --active` only: draw the material in its active (key-window) state although the
+    /// preview's windows are never key — a background process can't take activation from the terminal.
+    static var forcesActiveState = false
+
     /// Makes `window`'s content a behind-window material (the desktop shows softly through), with
     /// `rootView` hosted on top and the title bar transparent so the material runs under it.
-    /// `.sidebar` is the translucency the owner asked for; `.underWindowBackground` is one step less
-    /// see-through if text ever gets muddy over a bright wallpaper.
+    /// `.popover` is the MacStats panel's family (2026-09-30, "a touch more transparent"; was `.sidebar`);
+    /// over it lies an `OpacityBackingView` — the window colour at the Settings → Opacity alpha
+    /// (`UIOpacity`, `.window`), which sets how much actually shows through.
     @discardableResult
     /// `belowTitleBar`: the SwiftUI content starts under the (transparent) title bar instead of behind
     /// it — for scrolling content, which would otherwise pass visibly under the title and traffic
     /// lights on macOS 14/15 (no automatic scroll-edge effect there). The material still runs under it.
     static func install<V: View>(_ rootView: V, in window: NSWindow,
-                                 material: NSVisualEffectView.Material = .sidebar,
+                                 material: NSVisualEffectView.Material = .popover,
                                  belowTitleBar: Bool = false) -> NSHostingView<V> {
         let effect = NSVisualEffectView()
         effect.material = material
         effect.blendingMode = .behindWindow
-        effect.state = .followsWindowActiveState
+        effect.state = forcesActiveState ? .active : .followsWindowActiveState
+        let backing = OpacityBackingView(surface: .window)
+        backing.frame = effect.bounds
+        backing.autoresizingMask = [.width, .height]
+        effect.addSubview(backing)
         let hosting = NSHostingView(rootView: rootView)
         hosting.translatesAutoresizingMaskIntoConstraints = false
         effect.addSubview(hosting)

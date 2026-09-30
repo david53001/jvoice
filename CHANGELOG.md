@@ -4,6 +4,18 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Opacity setting.** Settings → **Appearance** → **Opacity**: a slider from *Transparent* to *Opaque* that sets how much of what's behind JVoice shows through its windows, tour tags and the recording pill. It applies instantly; **Default** puts it back. The same setting exists in MacStats and BetterScreenshot.
+
+### Changed
+
+- **A touch more see-through by default, like MacStats.** Settings and the Welcome window use the same frosted material family as MacStats' panel, slightly more transparent than before. The recording pill is now a steady frosted capsule that keeps its colour over any app — before, over a white page it could turn itself white after a second — and the red stop button stays red. Text stays readable at the default even over a white page (checked: ≥ 5:1 for the pill's text).
+
+---
+
 ## [1.1.4] — 2026-09-29
 
 ### Changed
