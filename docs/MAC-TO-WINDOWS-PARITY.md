@@ -49,6 +49,7 @@ summarises them for Windows and adds the Windows comparison.
 | `briefs/*.md` | The Mac area briefs (`CLAUDE.md` files): `mac-root`, `UI`, `Tours`, `Transcription` (math-format version), `Audio`, `Orchestration`. Dense and exact. |
 | `src/tour-opacity/…` | Mac Swift sources for the Tours kit, the UI pure-logic files, and the streaming/text/orchestration files referenced below (also readable via `git show origin/feat/tour-opacity:…`). |
 | `src/math-format/…` | Mac Swift sources + tests of the maths engine from the unpushed `feat/math-format` branch. |
+| `design-language/` | David's cross-app design language (from his MacStats repo, which the PC doesn't have): `README.md` (the native look), `jvoice-native-redesign.md` (how it was applied to JVoice), `opacity-setting.md` (the shared Opacity spec). |
 
 ### 0.3 House rules that apply on Windows too
 - David's global rules: plan big, do small; verify (build + relevant tests) before saying done; touch
@@ -588,7 +589,7 @@ the better-screenshot repo) has the same brief for its port — keep both Window
 On Windows, "native" means **Windows 11 Fluent**: Mica/Acrylic backdrops, Segoe UI Variable, system
 light/dark, accent colour, rounded corners, standard controls.
 
-### 8.1 The rules (from `docs/mac-reference/briefs/UI.md` and the MacStats design language)
+### 8.1 The rules (from `docs/mac-reference/briefs/UI.md` and `docs/mac-reference/design-language/README.md` + `jvoice-native-redesign.md`)
 - System materials behind content — **never opaque black/white/grey fills**.
 - Surfaces are **tints of the text colour** over the material: card fill = primary text colour at **4 %**,
   card hover 8.5 %, pressed 12 %; input fill 6 %; card hairline = primary at **8 %**, **0.5 pt** wide
@@ -681,7 +682,7 @@ Pasted sequence; no jump, no animation on first show; crisp at the stretched res
 
 ## 9. Opacity setting (Mac d060a72, `feat/tour-opacity`) — MISSING (P1)
 
-Identical setting in all three apps (MacStats, JVoice, BetterScreenshot).
+Identical setting in all three apps (MacStats, JVoice, BetterScreenshot); shared spec: `docs/mac-reference/design-language/opacity-setting.md`.
 - **UI**: Settings → **Appearance** card → **Opacity**: a slider labelled *Transparent* (left) … *Opaque*
   (right) + a **Default** button. Live (every window and the pill update while dragging).
 - **Storage**: `jvoice.app.uiOpacity` (Double, 0…1, default **0.5**, a separate key — not inside the settings
