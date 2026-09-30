@@ -25,7 +25,7 @@ how to check it.
 | `windows-port` | The Windows port. **You work here.** Tip when this doc was written: `11465a4` ("§7 #49 shipped"), plus this doc's commit. |
 | `origin/main` | macOS app through v1.1.4 (native look, guided tour, bug-hunt fixes). Contains `windows/` unchanged from `windows-port`. |
 | `origin/feat/tour-opacity` | `main` + the Opacity setting + tour polish + "windows open on the active display" (the newest macOS UI). |
-| `feat/math-format` | **Local to the Mac, NOT on GitHub.** The new maths engine + shared notation format. Its sources are copied into this repo at `docs/mac-reference/src/math-format/` so you can read them. |
+| `origin/feat/math-format` | The new maths engine + shared notation format (pushed 2026-09-30; `git show origin/feat/math-format:<path>`). Its sources are also copied into `docs/mac-reference/src/math-format/`. |
 
 - Read a Mac file without switching branches:
   `git fetch origin && git show origin/feat/tour-opacity:Sources/JVoice/UI/HUDView.swift`.
