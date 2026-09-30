@@ -77,6 +77,7 @@ final class WelcomeWindow: NSWindow {
         startPolling()
         // Accessory (LSUIElement) app: without this the window opens behind the frontmost app.
         NSApp.activate(ignoringOtherApps: true)
+        centerOnActiveScreen()   // on the display the user is on, not always the primary one
         makeKeyAndOrderFront(nil)
         TourEvents.surfaceShown(.welcome, in: self)
     }

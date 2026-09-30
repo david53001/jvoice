@@ -36,6 +36,11 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   Welcome; was `.sidebar` until 2026-09-30; Settings
   passes `belowTitleBar: true` so its scrolling content never slides under the title bar);
   `InlineNotice`; `PanelPressableButtonStyle`.
+- `ActiveScreen.swift` (2026-09-30) — `NSScreen.underMouse` (the display with the pointer) and
+  `NSWindow.centerOnActiveScreen()`. Settings and Welcome centre on it each time they open from hidden,
+  and the pill picks it when it appears (kept while it's up, so a morph never jumps monitors) — David:
+  windows must open on the screen he's using, not the main one (`NSScreen.main` / `center()` meant the
+  primary display for a windowless menu-bar app).
 - `HUDView.swift` / `HUDWindow.swift` / `HUDLayout.swift` — the HUD (heads-up display): a floating
   **glass capsule** — Liquid Glass on macOS 26 (since 2026-09-30 a `.clear` glass layer BEHIND the content
   plus the Opacity backing: `.regular` glass flipped itself and its text light over a white page, and glass
@@ -109,7 +114,10 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   Recording permission for the app's own windows; flags `--opacity <v>` (preview a value, never saved),
   `--backdrop white|black|wallpaper` (a known background — other apps' windows aren't captured),
   `--active` (active material although the windows aren't key), `--hud-timeline` (pills at 0.5/2/5 s).
-  Settings is also captured scrolled to the bottom (the Appearance card). Never calls
+  Settings is also captured scrolled to the bottom (the Appearance card). Since 2026-09-30 it also
+  captures the Settings tour's Opacity step with its demo playing (`tour-opacity-falling|transparent|
+  rising|opaque-*.png`) and the Recording tour's tag on the pill (`tour-pill-*.png` — the outline must be
+  a capsule hugging it). Never calls
   `VoiceCoordinator.start()`, never writes a setting (appearances are forced on the windows).
   Windows really appear on screen ~1 s each.
 - `WelcomeWindow.swift` (2026-09-28) — the first-run window (same translucent material as Settings,

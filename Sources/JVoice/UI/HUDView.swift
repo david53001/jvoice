@@ -265,10 +265,11 @@ private struct RecordingPill: View {
             }
         }
         .padding(.horizontal, 16)
-        // The Recording tour's anchor spans the whole capsule, so the tag's box outlines the pill
-        // itself. This frame repeats `pillChrome`'s own minimums, so layout is unchanged.
+        // The Recording tour's anchor spans the whole capsule and declares its radius, so the tag's box
+        // is a capsule hugging the pill (not a rectangle around it). This frame repeats `pillChrome`'s own
+        // minimums, so layout is unchanged.
         .frame(minWidth: HUDLayout.pillMinWidth, minHeight: HUDLayout.pillHeight)
-        .tourAnchor("pill.controls")
+        .tourAnchor("pill.controls", cornerRadius: HUDLayout.pillCorner)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Recording")
     }

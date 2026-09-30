@@ -53,7 +53,7 @@ E = Explain step, T = Try step.
 |---|---|---|
 | Welcome | Show Me Around / menu / replay | E menu-bar J (`menuBar.icon`) · E dictation shortcut (`welcome.shortcut`) · T "Try it now" (`welcome.tryIt`, advances on `recording.started`) |
 | Recording | first recording pill (`surfaceShown(.recordingPill)`) | T "JVoice is listening" (`pill.controls`, advances on `recording.stopped`) |
-| Settings | first Settings window | E stats · model · processing · voice style · app modes · shortcut · recent transcripts · custom words · ⓘ (`settings.*`) |
+| Settings | first Settings window | E stats · model · processing · voice style · app modes · shortcut · recent transcripts · custom words · Opacity (`settings.appearance`, plays a demo) · ⓘ (`settings.*`) |
 
 Events (`TourEventName`, posted by `VoiceCoordinator`): `recording.started` (after the pill is shown,
 on the next main-queue turn — never between the press and the pill/mic, see the latency contract in the
@@ -79,6 +79,24 @@ root `CLAUDE.md`), `recording.stopped` (before the pill leaves the recording sta
   posts per scroll step). Before, only the 0.1 s follow timer moved it and the box lagged up to ~220 pt
   behind while scrolling Settings. The box is cut to the viewport and the tag hides while its control
   is scrolled fully out of sight. Locked by `scripts/verify-tour-scroll.sh`.
+- **Outline shape (2026-09-30, David: "it doesn't perfectly outline that pill"):** a control can declare
+  its own corner radius — `.tourAnchor("pill.controls", cornerRadius: HUDLayout.pillCorner)` (stored on
+  the anchor's `TourAnchorNSView`, read as `NSView.tourCornerRadius`). The box then uses
+  `TagLayout.boxRadius` = that radius + `boxPadding`, capped at half the box's short side, so around the
+  capsule pill it is a concentric capsule (drawn as a circular `Capsule()`, the pill's own shape) instead
+  of a 6 pt-radius rectangle; the dim's hole and the leader's corner clearance use the same radius.
+  Anchors without a radius keep `TagStyle.boxRadius`. See it with `--ui-preview` (`tour-pill-*.png`).
+- **Step demos (2026-09-30, David: show the opacity "bar slowly going down… decreased and increased"):**
+  a step can play something while it's on screen — `TourCoordinator.makeDemo` (set in `AppDelegate`)
+  returns a `TourStepDemo` for it; the coordinator starts it after the tag shows and stops it whenever the
+  step leaves (`present` of another step, a Try step's "done", `stopRunning` = finish/skip/pause). Its
+  live caption is appended to the body through `TourTagPresenting.updateBody`. The only one is the
+  Opacity step's `OpacityTourDemo`: it drives `UIOpacityStore.shared.value` along the pure
+  `OpacityDemoTimeline` (user's value → 0 → 1 → back, eased, looping ~9.5 s; readout "Watch: 37 % ↓",
+  "Watch: 0 % Transparent", "Yours: 50 %"), so the real slider moves and every window follows live. It
+  **never saves**: `persists` is off while it plays (restored to its previous mode after — so
+  `--ui-preview` still writes nothing), `stop()` puts the user's value back, and a value that isn't the
+  demo's own (the user dragged the slider or pressed Default) ends the demo and is kept + saved.
 - Tag bodies must fit 2 lines at 260 pt with the longest shortcut (⌃⌥⇧⌘F12); the fit check in the
   logic tests fails otherwise.
 
@@ -93,14 +111,16 @@ root `CLAUDE.md`), `recording.stopped` (before the pill leaves the recording sta
 - `TourCoordinator.swift` — owns triggers, hand-overs, pausing (host window closed → pause; resumes
   next time), persistence and the tag. Surfaces never call it — they post through `TourEvents`.
 - `TourCatalog.swift` — every tour + the menu titles.
+- `OpacityTourDemo.swift` (`TourStepDemo` + the player) and `OpacityDemoTimeline.swift` (pure motion,
+  logic-tested) — the Opacity step's demo.
 - Wiring: `AppDelegate.swift` (creates + installs the coordinator, Welcome window at launch,
   `openSurface`, `notify`), `UI/WelcomeWindow.swift`, `UI/MenuBarController.swift` (Help & Tours submenu, `menuBar.icon`),
-  `UI/HUDView.swift` (`pill.controls`), `UI/SettingsView.swift` + `SettingsWindow.swift` (anchors,
+  `UI/HUDView.swift` (`pill.controls`, capsule radius), `UI/SettingsView.swift` + `SettingsWindow.swift` (anchors incl. `settings.appearance`,
   Tours & Tips card, ⓘ, `surfaceShown(.settings)`), `VoiceCoordinator.swift` (events).
 
 ## Verify
 - `swift build`; `./scripts/run-logic-tests.sh` (has a Tours section: engine, rules, audience, layout,
-  catalog lint); `Tests/JVoiceTests/Tour*Tests.swift` run in CI only (**never** `swift test` locally).
+  catalog lint, outline shape, Opacity demo timeline + its readouts' fit); `Tests/JVoiceTests/Tour*Tests.swift` run in CI only (**never** `swift test` locally).
 - `./scripts/verify-tour-scroll.sh` — compiles the Kit with `scripts/tour-scroll-probe/main.swift` and
   EXECUTES it: the box must track a scrolling SwiftUI view with 0 pt lag (transparent windows behind
   everything; safe to run).

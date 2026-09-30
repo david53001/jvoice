@@ -1,6 +1,21 @@
-# HANDOFF — state as of 2026-09-30 (v1.1.4 shipped: the native macOS look + morphing pill; Opacity setting built on `feat/opacity-setting`, not merged; the maths-engine package is still unfinished in its worktree)
+# HANDOFF — state as of 2026-09-30 (tour fixes + Opacity tour step + windows on the active display on `feat/tour-opacity` (= `feat/opacity-setting` + this), pushed as a branch and installed; v1.1.4 is the last release; the maths-engine package is still unfinished in its worktree)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
+
+
+## 2026-09-30 session (2) — Tour polish: capsule outline on the pill, an animated Opacity step, windows on the active display (branch `feat/tour-opacity`, off `feat/opacity-setting`; PUSHED as a branch, installed to /Applications; `main` NOT moved, no release)
+
+**Asks (David, dictated):** (1) the recording tour "doesn't perfectly outline that pill"; (2) the tour has no Opacity part — it must show the opacity, with "the bar slowly going down" and how it decreased and increased; (3) (mid-task) Settings / the UI must open "on the screen that you actually open it on, not on the main screen"; then push to GitHub and reinstall the app. Worktree `.claude/worktrees/tour-opacity`.
+
+**Done:**
+1. **Pill outline** — the box was a 6 pt-radius rectangle around the 56 pt capsule (screenshot proved it). Anchors can now declare their shape: `.tourAnchor("pill.controls", cornerRadius: HUDLayout.pillCorner)`; `TagLayout.boxRadius` makes the box a concentric capsule (drawn with SwiftUI's circular `Capsule()`, like the pill); the dim hole + leader clearance follow. Details: `Sources/JVoice/Tours/CLAUDE.md` → "Outline shape".
+2. **Opacity step** — new Settings-tour step "Opacity" (anchor `settings.appearance`, 9 of 10, before the ⓘ step; also in the ⓘ's Show Me list). While it's up, `OpacityTourDemo` glides the real slider from the user's value → 0 → 1 → back (eased, looping ~9.5 s) so the whole window follows live, and the tag reads "Watch: 37 % ↓" / "Watch: 0 % Transparent" / "Watch: 100 % Opaque" / "Yours: 50 %". It never writes the setting; touching the slider hands control back. New generic hooks: `TourCoordinator.makeDemo` / `TourStepDemo`, `TourTagPresenting.updateBody`. Details: Tours brief → "Step demos".
+3. **Active display** — `UI/ActiveScreen.swift`: Settings and Welcome centre on the display under the mouse each time they open; the pill appears on that display (kept during its morphs).
+4. `scripts/verify-tour-scroll.sh` was already broken on `feat/opacity-setting` (the tag uses `OpacityBackingView`, not in its file list) — fixed.
+
+**Verified:** `swift build -c release`, `swift build --build-tests` (compile only; new CI file `Tests/JVoiceTests/TourOpacityAndShapeTests.swift`); `./scripts/run-logic-tests.sh` 1027/1027 (18 new, Tours section); `./scripts/verify-tour-scroll.sh` PASS; `--settings-smoke` OK (700×592); `--ui-preview` looked at: `tour-pill-*` (capsule hugging the pill), `tour-opacity-{falling,transparent,rising,opaque}-*` (thumb + readout correct); `jvoice.app.uiOpacity` still 0.5 after the preview (nothing written).
+
+**NOT verified:** the active-display behaviour on a real second monitor (only one display was connected here — logic is `NSEvent.mouseLocation` → screen); the Opacity demo interrupted by a live slider drag was reasoned, not clicked; CI result — see the push below.
 
 
 ## 2026-09-30 session — Opacity setting + "a touch more transparent" (branch `feat/opacity-setting`, off `feat/native-look`; NOT merged / pushed / installed)

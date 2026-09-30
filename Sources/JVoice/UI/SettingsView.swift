@@ -531,6 +531,8 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+        // The Settings tour's Opacity step plays the slider down and up here (`OpacityTourDemo`).
+        .tourAnchor(OpacityTourDemo.anchor)
     }
 
     /// The MacStats footer: the secondary/destructive actions as small buttons, red where destructive.

@@ -93,6 +93,27 @@ enum UIPreviewRunner {
                 capture(settings.frame.union(tag.tagPanel.frame), "tour-tag-\(label)")
                 tag.hide()
             }
+            // The Opacity step with its demo playing: falling, at Transparent, rising, at Opaque.
+            if let anchor = settings.view(forTourAnchor: OpacityDemoTimeline.anchor),
+               let step = TourCatalog.settings.steps.first(where: { $0.anchor == OpacityDemoTimeline.anchor }) {
+                let wasPersisting = UIOpacityStore.shared.persists
+                UIOpacityStore.shared.persists = false   // the demo restores this; never written
+                anchor.scrollToVisible(anchor.bounds)
+                let tag = TagOverlayController()
+                tag.show(step: step, body: step.body, number: 9, total: TourCatalog.settings.steps.count,
+                         anchor: anchor, host: settings)
+                let demo = OpacityTourDemo()
+                demo.start { tag.updateBody(step.body + " " + $0) }
+                var elapsed = 0.0
+                for (t, name) in [(1.0, "falling"), (2.4, "transparent"), (4.3, "rising"), (5.8, "opaque")] {
+                    capture(settings.frame.union(tag.tagPanel.frame), "tour-opacity-\(name)-\(label)",
+                            after: t - elapsed)
+                    elapsed = t + 0.05
+                }
+                demo.stop()
+                tag.hide()
+                UIOpacityStore.shared.persists = wasPersisting
+            }
             settings.orderOut(nil)
 
             let welcome = WelcomeWindow(coordinator: coordinator)
@@ -130,6 +151,16 @@ enum UIPreviewRunner {
                     capture(hud, "hud-\(stateName)-\(label)-t2", after: 1.5)
                     capture(hud, "hud-\(stateName)-\(label)-t5", after: 3)
                 }
+            }
+            // The Recording tour's tag on the recording pill: the outline must hug the capsule.
+            hud.update(state: .recording, theme: theme)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            if let anchor = hud.view(forTourAnchor: "pill.controls"),
+               let step = TourCatalog.recordingPill.steps.first {
+                let tag = TagOverlayController()
+                tag.show(step: step, body: step.body, number: 1, total: 1, anchor: anchor, host: hud)
+                capture(hud.frame.union(tag.tagPanel.frame), "tour-pill-\(label)")
+                tag.hide()
             }
             // Half-way through the transcribing → Pasted morph (`HUDLayout.morph`, 0.3 s).
             hud.update(state: .transcribing, theme: theme)

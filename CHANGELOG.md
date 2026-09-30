@@ -9,6 +9,12 @@ All notable changes to JVoice — a free, open-source macOS menu-bar voice-dicta
 ### Added
 
 - **Opacity setting.** Settings → **Appearance** → **Opacity**: a slider from *Transparent* to *Opaque* that sets how much of what's behind JVoice shows through its windows, tour tags and the recording pill. It applies instantly; **Default** puts it back. The same setting exists in MacStats and BetterScreenshot.
+- **The Settings tour shows the Opacity slider in action.** A new "Opacity" step glides the real slider down to *Transparent*, up to *Opaque* and back to your value while the window follows it live, with a readout in the tour tag ("Watch: 37 % ↓"). It never changes your saved setting, and touching the slider hands it back to you.
+
+### Fixed
+
+- **The recording tour's outline now hugs the pill.** It was a square-cornered box around the round capsule; it's now a capsule of its own, running parallel to the pill's edge.
+- **Windows open on the display you're using.** Settings, the Welcome window and the recording pill appear on the screen with your mouse pointer, not always on the main display.
 
 ### Changed
 

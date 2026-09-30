@@ -49,6 +49,7 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
         // window front — without this the window opens behind whatever app
         // currently owns the foreground.
         NSApp.activate(ignoringOtherApps: true)
+        centerOnActiveScreen()   // on the display the user is on, not always the primary one
         makeKeyAndOrderFront(nil)
         // The Settings tour's first time; a no-op unless tours are on and it hasn't been seen.
         TourEvents.surfaceShown(.settings, in: self)

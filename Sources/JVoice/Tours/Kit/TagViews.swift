@@ -2,9 +2,12 @@ import AppKit
 import SwiftUI
 
 /// A continuous-corner (squircle) rounded rect, as a `CGPath` — `NSBezierPath(roundedRect:)` and
-/// `CGPath(roundedRect:)` are circular arcs, which the native look avoids.
+/// `CGPath(roundedRect:)` are circular arcs, which the native look avoids. A radius of half the short
+/// side is a capsule: drawn as SwiftUI's `Capsule()` (circular ends), the shape of the HUD pill, so an
+/// outline around the pill runs exactly parallel to it.
 func continuousRoundedPath(_ rect: CGRect, radius: CGFloat) -> CGPath {
-    RoundedRectangle(cornerRadius: max(0, radius), style: .continuous).path(in: rect).cgPath
+    if radius >= min(rect.width, rect.height) / 2 - 0.5 { return Capsule().path(in: rect).cgPath }
+    return RoundedRectangle(cornerRadius: max(0, radius), style: .continuous).path(in: rect).cgPath
 }
 
 /// The overlay's windows: borderless, transparent, never key or main, never activate the app.
@@ -40,6 +43,8 @@ final class TagDecorView: NSView {
     /// Outline's inner edge (anchor + padding) and outer edge (inner + stroke).
     var box: CGRect = .zero
     var outer: CGRect = .zero
+    /// The outline's inner-edge corner radius (`TagLayout.boxRadius` — a capsule for the pill).
+    var boxRadius = TagStyle.boxRadius
     var leader: (from: CGPoint, to: CGPoint)?
 
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
@@ -52,7 +57,7 @@ final class TagDecorView: NSView {
             cg.addPath(windowShape)
             cg.clip()   // the part of the hole outside the window must stay clear, not flip to dim
             cg.addPath(windowShape)
-            cg.addPath(continuousRoundedPath(outer, radius: TagStyle.boxRadius + TagStyle.boxStroke))
+            cg.addPath(continuousRoundedPath(outer, radius: boxRadius + TagStyle.boxStroke))
             cg.setFillColor(NSColor.black.withAlphaComponent(dimAlpha).cgColor)
             cg.fillPath(using: .evenOdd)
             cg.restoreGState()
@@ -61,7 +66,7 @@ final class TagDecorView: NSView {
         // `NSAppearance.current` is this view's during `draw`, so the accent resolves for the host.
         cg.setStrokeColor(TagStyle.accentColour.cgColor)
         let half = TagStyle.outlineWidth / 2
-        cg.addPath(continuousRoundedPath(box.insetBy(dx: -half, dy: -half), radius: TagStyle.boxRadius + half))
+        cg.addPath(continuousRoundedPath(box.insetBy(dx: -half, dy: -half), radius: boxRadius + half))
         cg.setLineWidth(TagStyle.outlineWidth)
         cg.strokePath()
 

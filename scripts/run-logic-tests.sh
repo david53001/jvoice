@@ -1990,6 +1990,61 @@ do {
     expect(tagBodyHeight(long, maxLines: 0) > tagBodyHeight(long, maxLines: TagStyle.bodyMaxLines), "the fit check bites (20× “Something” doesn't fit)")
 }
 
+// MARK: - Outline shape (2026-09-30: the pill's box is a capsule, not a rectangle around it)
+
+print("Outline shape — the box follows the control's own corner radius")
+do {
+    let plain = CGRect(x: 100, y: 100, width: 200, height: 30)
+    expectEqual(TagLayout.boxRadius(box: plain, anchorRadius: nil), TagStyle.boxRadius, "no declared shape → the default box radius")
+    // The recording pill: 240 × 56 capsule (radius 28) → box 248 × 64 → radius 32 = half its height.
+    let pill = CGRect(x: 600, y: 64, width: 240, height: 56)
+    let box = pill.insetBy(dx: -TagStyle.boxPadding, dy: -TagStyle.boxPadding)
+    expectEqual(TagLayout.boxRadius(box: box, anchorRadius: 28), box.height / 2, "capsule pill → a capsule box, concentric (28 + padding)")
+    expectEqual(TagLayout.boxRadius(box: box, anchorRadius: .infinity), box.height / 2, "radius is capped at half the short side")
+    let p = TagLayout.place(anchor: pill, tagSize: CGSize(width: 240, height: 90),
+                            visible: CGRect(x: 0, y: 0, width: 1440, height: 875),
+                            order: TagLayout.order(verticalFirst: true), anchorRadius: 28)
+    if let leader = p.leader {
+        expect(leader.to.x >= p.box.minX + box.height / 2 && leader.to.x <= p.box.maxX - box.height / 2,
+               "the leader meets the capsule on its straight edge, not a rounded end")
+    } else {
+        expect(false, "a tag beside the pill has a leader")
+    }
+}
+
+// MARK: - Opacity step demo (2026-09-30)
+
+print("Opacity demo — slider down to Transparent, up to Opaque, back to yours")
+do {
+    let T = OpacityDemoTimeline.self
+    expect(TourCatalog.settings.steps.contains { $0.anchor == T.anchor }, "the Settings tour has the Opacity step")
+    expectEqual(T.frame(at: 0, from: 0.5).value, 0.5, "starts at the user's value")
+    expectEqual(T.frame(at: 2.0, from: 0.5), .init(value: 0, readout: "Watch: 0 % Transparent"), "reaches Transparent after 2 s")
+    expectEqual(T.frame(at: 5.6, from: 0.5), .init(value: 1, readout: "Watch: 100 % Opaque"), "reaches Opaque after the rise")
+    expectEqual(T.frame(at: T.loopDuration - 0.1, from: 0.3), .init(value: 0.3, readout: "Yours: 30 %"), "ends back on the user's value")
+    expect(T.frame(at: 1, from: 0.5).readout.hasSuffix("↓") && T.frame(at: 4, from: 0.5).readout.hasSuffix("↑"), "arrows show the direction")
+    var down = true, inRange = true, previous = 2.0
+    for i in 0...200 {
+        let v = T.frame(at: Double(i) * 0.01, from: 0.7).value
+        if v > previous + 1e-9 { down = false }
+        previous = v
+    }
+    for i in 0...Int(T.loopDuration * 20) {
+        let v = T.frame(at: Double(i) * 0.05, from: 0.62).value
+        if v < 0 || v > 1 { inRange = false }
+    }
+    expect(down, "the first move only goes down")
+    expect(inRange, "every value stays in 0…1")
+    let once = T.frame(at: 1.3, from: 0.5), again = T.frame(at: 1.3 + T.loopDuration, from: 0.5)
+    expect(abs(once.value - again.value) < 1e-9 && once.readout == again.readout, "it loops")
+    let body = TourCatalog.settings.steps.first { $0.anchor == T.anchor }!.body
+    for readout in ["Watch: 0 % Transparent", "Watch: 100 % Opaque", "Watch: 100 % ↑", "Yours: 100 %"] {
+        let text = body + " " + readout
+        expect(tagBodyHeight(text, maxLines: 0) <= tagBodyHeight(text, maxLines: TagStyle.bodyMaxLines),
+               "Opacity body + “\(readout)” fits two lines")
+    }
+}
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S) in tours")
     exit(1)
@@ -2006,6 +2061,8 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Tours/Kit/TagLayout.swift" \
     "$REPO_ROOT/Sources/JVoice/Tours/Kit/TagKeys.swift" \
     "$REPO_ROOT/Sources/JVoice/Tours/TourCatalog.swift" \
+    "$REPO_ROOT/Sources/JVoice/Tours/OpacityDemoTimeline.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/UIOpacity.swift" \
     "$TMP_DIR/tours/main.swift" \
     -o "$TMP_DIR/tour-tests"
 

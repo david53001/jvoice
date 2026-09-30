@@ -70,7 +70,16 @@ enum TagLayout {
         return visible.width >= f * host.width && visible.height >= f * host.height
     }
 
+    /// The outline's inner-edge corner radius: `TagStyle.boxRadius`, or — for a control that declares
+    /// its own shape (`anchorRadius`, e.g. the capsule pill) — that radius grown by the padding, so the
+    /// box runs parallel to the control's edge. Never more than half the box's short side.
+    static func boxRadius(box: CGRect, anchorRadius: CGFloat?) -> CGFloat {
+        guard let anchorRadius else { return TagStyle.boxRadius }
+        return max(0, min(anchorRadius + TagStyle.boxPadding, box.width / 2, box.height / 2))
+    }
+
     /// - Parameters:
+    ///   - anchorRadius: the control's own corner radius, if it declared one (`boxRadius(box:anchorRadius:)`).
     ///   - preferred: the step's `TourStep.placement`.
     ///   - host: the host window's frame (the visible body, for a panel bigger than what it shows); nil
     ///     for no big-control rule (the menu-bar icon).
@@ -79,7 +88,7 @@ enum TagLayout {
                       order: [Side] = order(verticalFirst: false),
                       keepOut: CGRect? = nil, screen: CGRect? = nil,
                       preferred: TourStep.Placement = .automatic, host: CGRect? = nil,
-                      obstacles: [CGRect] = []) -> Placement {
+                      obstacles: [CGRect] = [], anchorRadius: CGFloat? = nil) -> Placement {
         var box = anchor.insetBy(dx: -TagStyle.boxPadding, dy: -TagStyle.boxPadding)
         if let screen {
             // A menu-bar icon fills the bar's height: keep the whole outline on the screen.
@@ -87,10 +96,11 @@ enum TagLayout {
             if box.intersects(limit) { box = box.intersection(limit) }
         }
         let outer = box.insetBy(dx: -TagStyle.boxStroke, dy: -TagStyle.boxStroke)
+        let radius = boxRadius(box: box, anchorRadius: anchorRadius)
         let area = visible.insetBy(dx: TagStyle.screenMargin, dy: TagStyle.screenMargin)
         func fit(_ sides: [Side], clear: CGRect) -> Placement? {
             firstFit(sides, clear: clear, box: box, outer: outer, size: tagSize, area: area, within: host,
-                     obstacles: obstacles)
+                     obstacles: obstacles, radius: radius)
         }
         func corner() -> Placement? {
             insideCorner(anchor: anchor, host: host, box: box, outer: outer, size: tagSize, area: area)
@@ -146,7 +156,7 @@ enum TagLayout {
     /// the box's span.
     private static func firstFit(_ order: [Side], clear: CGRect, box: CGRect, outer: CGRect,
                                  size: CGSize, area: CGRect, within host: CGRect?,
-                                 obstacles: [CGRect]) -> Placement? {
+                                 obstacles: [CGRect], radius: CGFloat) -> Placement? {
         let w = size.width, h = size.height, gap = TagStyle.leaderLength
         /// Where the tag's origin may slide on one axis: the screen, narrowed to the host when it fits.
         func slide(_ lo: CGFloat, _ hi: CGFloat, _ hostLo: CGFloat?, _ hostHi: CGFloat?, _ len: CGFloat)
@@ -179,7 +189,8 @@ enum TagLayout {
             }
             tag.origin = CGPoint(x: tag.origin.x.rounded(), y: tag.origin.y.rounded())   // whole points
             return Placement(side: side, box: box, outer: outer, tag: tag,
-                             leader: leader(side: side, tag: tag, box: box, outer: outer, obstacles: obstacles))
+                             leader: leader(side: side, tag: tag, box: box, outer: outer, obstacles: obstacles,
+                                            radius: radius))
         }
         return nil
     }
@@ -212,10 +223,11 @@ enum TagLayout {
     }
 
     /// Straight across when the tag and box overlap enough — at the point nearest the box's middle that
-    /// crosses the fewest `obstacles` — and kept off both shapes' rounded corners; else diagonal.
+    /// crosses the fewest `obstacles` — and kept off both shapes' rounded corners (`radius` = the box's);
+    /// else diagonal.
     static func leader(side: Side, tag: CGRect, box: CGRect, outer: CGRect,
-                       obstacles: [CGRect] = []) -> (CGPoint, CGPoint) {
-        let tr = TagStyle.tagRadius, br = TagStyle.boxRadius
+                       obstacles: [CGRect] = [], radius: CGFloat = TagStyle.boxRadius) -> (CGPoint, CGPoint) {
+        let tr = TagStyle.tagRadius, br = radius
         switch side {
         case .left, .right:
             let x1 = side == .left ? tag.maxX : tag.minX
