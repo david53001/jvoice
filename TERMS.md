@@ -1,32 +1,35 @@
 # Terms of Use
 
-**Effective date:** 7 July 2026 · Applies to JVoice for macOS and Windows.
+**Effective date:** 7 July 2026 (licence section updated 30 September 2026) · Applies to JVoice for macOS and Windows.
 
 > **In one sentence:** JVoice is free, source-available software provided **as-is, with no
-> warranty** — you may use it free of charge for noncommercial purposes, read the source,
-> and build it yourself, but you may not sell or commercially redistribute it, and you use
-> it at your own risk.
+> warranty** — you may use it free of charge for noncommercial purposes and read the source,
+> but you may not share copies, modify it, or sell it, and you use it at your own risk.
 
 These Terms explain the expectations for using the official JVoice builds. They are
 written in plain language. Where anything here appears to conflict with the software
-license below, **the PolyForm Noncommercial License wins.**
+license below, **the PolyForm Strict License wins.**
 
 ---
 
 ## 1. Your licence to use JVoice
 
-JVoice is licensed under the **[PolyForm Noncommercial License 1.0.0](LICENSE)** — a
+JVoice is licensed under the **[PolyForm Strict License 1.0.0](LICENSE)** — a
 source-available license. The full, controlling text is in [`LICENSE`](LICENSE); this
 section is a plain-language guide, and the license itself governs. In short, it lets you:
 
 - **use JVoice free of charge for any noncommercial purpose** — personal use, study,
   hobby and amateur projects, and use by nonprofits, schools, and government bodies;
-- **read the source, build it yourself, and make changes** for those purposes;
-- **share copies**, as long as you pass along this license and the copyright notice.
+- **read the source** and build it yourself for your own use.
 
-What it does **not** permit: **selling JVoice, or using or redistributing it for a
-commercial purpose**, without a separate license from the copyright holder. If you'd like
-to use JVoice commercially, ask — a commercial licence can be arranged.
+What it does **not** permit: **sharing or redistributing copies, making changes or new
+works based on JVoice, or selling it or using it for a commercial purpose**, without
+separate permission from the copyright holder. To get the app, download it from the
+official GitHub repository. If you'd like to use JVoice in a way the license doesn't
+cover, ask.
+
+Versions published before 30 September 2026 were licensed under the PolyForm
+Noncommercial License 1.0.0; the PolyForm Strict License applies from that date on.
 
 ## 2. No warranty
 
