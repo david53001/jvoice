@@ -18,7 +18,7 @@
     <!-- Assembly metadata mirroring Resources/Info.plist (Phase 5 Task 2). -->
     <Description>JVoice — free, on-device voice dictation for Windows (Whisper, no cloud).</Description>
     <Company>JVoice</Company>
-    <Copyright>© 2026 David Gherman Steinberg — PolyForm Noncommercial License 1.0.0</Copyright>
+    <Copyright>© 2026 David Gherman Steinberg — PolyForm Strict License 1.0.0</Copyright>
     <!-- Single source of truth for the app version. Both the in-app updater
          (UpdateConfig.CurrentVersion reads AssemblyVersion) and the installer's ARP
          DisplayVersion (install.ps1 reads the exe's ProductVersion, which mirrors <Version>)
