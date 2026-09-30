@@ -15,7 +15,9 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 
 **Verified:** `swift build -c release`, `swift build --build-tests` (compile only; new CI file `Tests/JVoiceTests/TourOpacityAndShapeTests.swift`); `./scripts/run-logic-tests.sh` 1027/1027 (18 new, Tours section); `./scripts/verify-tour-scroll.sh` PASS; `--settings-smoke` OK (700×592); `--ui-preview` looked at: `tour-pill-*` (capsule hugging the pill), `tour-opacity-{falling,transparent,rising,opaque}-*` (thumb + readout correct); `jvoice.app.uiOpacity` still 0.5 after the preview (nothing written).
 
-**NOT verified:** the active-display behaviour on a real second monitor (only one display was connected here — logic is `NSEvent.mouseLocation` → screen); the Opacity demo interrupted by a live slider drag was reasoned, not clicked; CI result — see the push below.
+**NOT verified:** the active-display behaviour on a real second monitor (only one display was connected here — logic is `NSEvent.mouseLocation` → screen); the Opacity demo interrupted by a live slider drag was reasoned, not clicked.
+
+**Pushed + CI:** branch `feat/tour-opacity` pushed (after merging `origin/main`'s README/license commit `f1bf056`, clean); CI run `36742433368` green — swift-testing 510 authored = 510 executed, logic scripts 1027/1027. Installed via `./scripts/dev-install.sh` (signed "JVoice Self-Signed"). Next, only with David's go-ahead: fast-forward `main` and/or release v1.1.5.
 
 
 ## 2026-09-30 session — Opacity setting + "a touch more transparent" (branch `feat/opacity-setting`, off `feat/native-look`; NOT merged / pushed / installed)
