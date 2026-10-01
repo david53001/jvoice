@@ -13,8 +13,10 @@ public static class TextProcessor
         ["app kit"] = "AppKit",
         ["appkit"] = "AppKit",
         ["j voice"] = "JVoice",
+        ["j-voice"] = "JVoice", // whisper hyphenates it under a cased prompt (Mac 000a8b0)
         ["jvoice"] = "JVoice",
-        ["keyboard shortcuts"] = "KeyboardShortcuts",
+        // NOT "keyboard shortcuts": that is everyday English ("my favourite keyboard shortcuts") and
+        // this dictionary is always on (Mac b0bb390).
         ["keyboardshortcuts"] = "KeyboardShortcuts",
         ["mac os"] = "macOS",
         ["whisper kit"] = "WhisperKit",
@@ -109,7 +111,15 @@ public static class TextProcessor
         variants.Add(camel.ToString());
         variants.Add(camel.ToString().Replace(" ", ""));
 
-        return variants.Where(v => v.Length > 0 && v != word).ToList();
+        // Drop any variant that is a PROPER substring of the canonical word (case-insensitive): ".NET"
+        // would otherwise register "net", whose pattern re-matches inside the inserted ".NET" and turns
+        // it into "..NET" (Mac TRX-01). The plain lower-cased word is always kept — it fixes casing
+        // drift ("claude" → "Claude") and can't self-overlap. Trim first: "." → " " makes " net".
+        return variants
+            .Select(v => v.Trim())
+            .Where(v => v.Length > 0 && v != word && (v == lower || !lower.Contains(v, StringComparison.Ordinal)))
+            .Distinct()
+            .ToList();
     }
 
     public static string Format(string text, ToneStyle mode)
@@ -156,7 +166,12 @@ public static class TextProcessor
 
     public static string RemoveDisfluencies(string text)
     {
-        string stripped = Regex.Replace(text, @"\b(um+h?|uh+|er+|a+h+|hmm+)\b[,.]?\s*", "", RegexOptions.IgnoreCase);
+        // Case-aware (Mac b0bb390): a filler is lower-case or sentence-capitalised ("um", "Um"), never
+        // ALL CAPS ("ER", "UM" are acronyms). "er" but never "err" — a verb ("to err is human"); a
+        // drawn-out "errr" is still a filler. The lookarounds refuse a filler glued to a word by a
+        // hyphen or apostrophe, so "Uh-oh", "Uh-huh" and "Mm-hmm" are words, not a filler plus debris.
+        string stripped = Regex.Replace(text,
+            @"(?<![\w'’-])(?:[Uu]m+h?|[Uu]hm+|[Uu]h+|[Ee]rm+|[Ee]r(?:rr+)?|[Aa]a*h+|[Hh]mm+)(?![\w'’-])[,.]?\s*", "");
         string result = NormalizeWhitespace(stripped.Trim());
         if (result.EndsWith(",")) result = result[..^1];
         return result;
@@ -208,7 +223,9 @@ public static class TextProcessor
     {
         var components = phrase.Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Select(Regex.Escape);
-        return @"\b" + string.Join(@"\s+", components) + @"\b";
+        // "Not glued to a word character" on both sides: exactly \b for letter/digit edges, and a
+        // punctuated custom word (".NET", "C#") also matches standalone (Mac b0bb390).
+        return @"(?<!\w)" + string.Join(@"\s+", components) + @"(?!\w)";
     }
 
     private static string RemoveTerminalPunctuation(string text)
@@ -224,15 +241,26 @@ public static class TextProcessor
         return char.ToUpperInvariant(text[0]) + text[1..];
     }
 
+    /// Closing quotes/brackets that may follow a sentence's own terminal mark.
+    private const string ClosingMarks = "\"'”’»)]}";
+
     private static string EnsureTerminalPeriod(string text)
     {
         if (text.Length == 0) return text;
-        char last = text[^1];
-        return ".!?".Contains(last) ? text : text + ".";
+        // Look past closing quotes/brackets (`He said "hello."` already ends); a colon, semicolon or
+        // ellipsis is a deliberate ending too ("steps:").
+        for (int i = text.Length - 1; i >= 0; i--)
+        {
+            if (ClosingMarks.Contains(text[i])) continue;
+            return ".!?…:;".Contains(text[i]) ? text : text + ".";
+        }
+        return text + ".";
     }
 
+    /// Collapses comma runs into ", " — but a lone comma between two digits is a thousands separator
+    /// ("$1,000,000"), not a clause break, and is left alone (Mac b0bb390).
     private static string CollapseRepeatedCommas(string text)
-        => Regex.Replace(text, @"\s*,(?:\s*,)*\s*", ", ");
+        => Regex.Replace(text, @"(?!(?<=\d),\d)\s*,(?:\s*,)*\s*", ", ");
 
     private static string EnsureTerminalDotOrQuestion(string text)
     {

@@ -238,7 +238,9 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
                     $"Engine decode prompt={(usePrompt ? "on" : "off")} chars={outcome.Text.Length} " +
                     $"segs={outcome.SegmentCount} lastEnd={outcome.LastSegmentEndSeconds:0.00}s " +
                     $"audio={audioSeconds:0.00}s rawRms={rawRms:0.0000}");
-                return outcome.Text;
+                // Mac cleanRawDecode (000a8b0): a stock-phrase / bare "you" decode reads as empty HERE, so
+                // it triggers RegurgitationRecovery's unprompted re-decode instead of a no-speech verdict.
+                return TextProcessor.RemoveWhisperHallucinations(NonSpeechAnnotation.Reduce(outcome.Text));
             }).ConfigureAwait(false));
 
         // §7 #38 silence-hallucination gate: on a NEAR-SILENT clip the prompted decode can

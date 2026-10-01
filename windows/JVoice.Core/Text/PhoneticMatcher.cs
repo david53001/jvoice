@@ -33,6 +33,14 @@ public static class PhoneticMatcher
             for (int window = 1; window <= upperWindow; window++)
             {
                 var slice = tokens.GetRange(i, window);
+                if (window > 1)
+                {
+                    // A word never continues across clause punctuation or a possessive
+                    // ("Hey Jay, voice memos", "Jay's voice"); every larger window holds the same break.
+                    if (slice.Take(window - 1).Any(t => t.EndsClause)) goto afterWindowSearch;
+                    // A run of 1–2-letter tokens is ordinary words ("a is b"), not a mis-split word.
+                    if (slice.All(t => t.CoreLetters.Length <= 2)) continue;
+                }
                 string candidate = string.Concat(slice.Select(t => t.CoreLetters));
                 if (candidate.Length < 3) continue;
                 foreach (var entry in entries)
@@ -40,12 +48,28 @@ public static class PhoneticMatcher
                     if (window > entry.MaxWindow) continue;
                     if (!Matches(candidate, entry)) continue;
                     string renderedCore = string.Join(" ", slice.Select(t => t.Core));
-                    if (renderedCore == entry.Word)
+                    string renderedFull = string.Join(" ", slice.Select(t => t.Rendered));
+                    if (renderedCore == entry.Word || renderedFull == entry.Word)
                     {
-                        // Already exact (single- or multi-token) — stop probing here.
+                        // Already exact — the cores spell the word, or the full token already reads as
+                        // the word including its own punctuation (".NET" must never become "..NET").
                         goto afterWindowSearch;
                     }
-                    var replacement = new Token(slice[0].Leading, entry.Word, slice[^1].Trailing);
+                    if (window > 1)
+                    {
+                        // The first token isn't part of the word when the rest already matches on its
+                        // own ("2 Vercel", "six sub agents", "of Ollama"): leave it for the next position.
+                        string tail = string.Concat(slice.Skip(1).Select(t => t.CoreLetters));
+                        if (tail.Length >= 3 && Matches(tail, entry)) goto afterWindowSearch;
+                    }
+                    // The entry's own edge punctuation replaces, never doubles, the token's (".nett" → ".NET").
+                    string leading = slice[0].Leading;
+                    if (entry.LeadingMarks.Length > 0 && leading.EndsWith(entry.LeadingMarks, StringComparison.Ordinal))
+                        leading = leading[..^entry.LeadingMarks.Length];
+                    string trailing = slice[^1].Trailing;
+                    if (entry.TrailingMarks.Length > 0 && trailing.StartsWith(entry.TrailingMarks, StringComparison.Ordinal))
+                        trailing = trailing[entry.TrailingMarks.Length..];
+                    var replacement = new Token(leading, entry.Word, trailing);
                     tokens.RemoveRange(i, window);
                     tokens.Insert(i, replacement);
                     i += 1;
@@ -66,6 +90,9 @@ public static class PhoneticMatcher
     {
         if (candidate == entry.Letters) return true; // spacing/casing drift only
 
+        // Singular vs plural is what was said, not a mishearing ("sub agent" ≠ "sub agents").
+        if (candidate + "s" == entry.Letters || candidate == entry.Letters + "s") return false;
+
         if (Math.Abs(candidate.Length - entry.Letters.Length) > 2 + entry.Letters.Length / 3)
             return false;
 
@@ -79,8 +106,11 @@ public static class PhoneticMatcher
             return true;
         if (entry.Letters.Length >= 6)
         {
+            // A different sound key AND two edits is a different word ("verse"/"vessel"/"verbal" ≠
+            // Vercel, "Obama" ≠ Ollama, "such agents" ≠ sub agents) — bigger mishearings are the
+            // decoder prompt's job (Mac b0bb390).
             int keyDistance = Levenshtein(candidateKey, entry.Key, limit: 1);
-            if (keyDistance <= 1 && letterDistance <= 2) return true;
+            if (keyDistance <= 1 && letterDistance <= 1) return true;
         }
         return false;
     }
@@ -193,12 +223,18 @@ public static class PhoneticMatcher
         public string Letters { get; }
         public string Key { get; }
         public int MaxWindow { get; }
+        /// The word's own edge punctuation (".NET" → "."), so a replacement never doubles it.
+        public string LeadingMarks { get; }
+        public string TrailingMarks { get; }
 
         public Entry(string word)
         {
             Word = word;
             Letters = new string(word.ToLowerInvariant().Where(char.IsLetter).ToArray());
             Key = PhoneticKey(Letters);
+            var edges = new Token(word);
+            LeadingMarks = edges.Leading;
+            TrailingMarks = edges.Trailing;
             int spokenWords = 0;
             foreach (var part in word.Split(' ', StringSplitOptions.RemoveEmptyEntries))
             {
@@ -227,6 +263,9 @@ public static class PhoneticMatcher
             int start = 0, end = raw.Length;
             while (start < end && !char.IsLetter(raw[start]) && !char.IsNumber(raw[start])) start++;
             while (end > start && !char.IsLetter(raw[end - 1]) && !char.IsNumber(raw[end - 1])) end--;
+            // A possessive "'s" is trailing punctuation: it survives a replacement ("Vercel's").
+            if (end - start > 2 && (raw[end - 1] == 's' || raw[end - 1] == 'S') && (raw[end - 2] == '\'' || raw[end - 2] == '’'))
+                end -= 2;
             Leading = raw[..start];
             Core = raw[start..end];
             Trailing = raw[end..];
@@ -234,5 +273,11 @@ public static class PhoneticMatcher
 
         public string CoreLetters => new(Core.ToLowerInvariant().Where(char.IsLetter).ToArray());
         public string Rendered => Leading + Core + Trailing;
+
+        /// Punctuation after this token that ends a clause or marks a possessive/contraction. A lone
+        /// letter's "." is an initial ("J. Voice"), not an ending.
+        public bool EndsClause =>
+            Trailing.IndexOfAny(new[] { ',', ';', ':', '!', '?', '"', '\'', '’', '”', ')' }) >= 0
+            || (Trailing.Contains('.') && CoreLetters.Length > 1);
     }
 }

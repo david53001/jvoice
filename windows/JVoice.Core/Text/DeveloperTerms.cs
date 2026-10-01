@@ -74,7 +74,6 @@ public static class DeveloperTerms
         ["web assembly"] = "WebAssembly",
         ["local host"] = "localhost",
         ["rest api"] = "REST API",
-        ["restful"] = "RESTful",
 
         // ---- Python ecosystem ----
         ["num py"] = "NumPy",
@@ -85,7 +84,6 @@ public static class DeveloperTerms
         ["pytorch"] = "PyTorch",
         ["tensor flow"] = "TensorFlow",
         ["tensorflow"] = "TensorFlow",
-        ["fast api"] = "FastAPI",
         ["fastapi"] = "FastAPI",
         ["py pi"] = "PyPI",
         ["pypi"] = "PyPI",
@@ -108,9 +106,7 @@ public static class DeveloperTerms
         ["postgres"] = "Postgres",
         ["postgre sql"] = "PostgreSQL",
         ["postgresql"] = "PostgreSQL",
-        ["my sql"] = "MySQL",
         ["mysql"] = "MySQL",
-        ["no sql"] = "NoSQL",
         ["nosql"] = "NoSQL",
         ["sqlite"] = "SQLite",
         ["mongo db"] = "MongoDB",
@@ -145,7 +141,6 @@ public static class DeveloperTerms
         ["apis"] = "APIs",
         ["url"] = "URL",
         ["urls"] = "URLs",
-        ["uri"] = "URI",
         ["sdk"] = "SDK",
         ["cli"] = "CLI",
         ["gui"] = "GUI",
