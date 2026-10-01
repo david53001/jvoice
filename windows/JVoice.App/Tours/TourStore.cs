@@ -11,8 +11,7 @@ namespace JVoice.App.Tours;
 /// </summary>
 internal static class TourStore
 {
-    private static string DataDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JVoice");
+    private static string DataDirectory => JVoice.App.Platform.PlatformPaths.AppDataDirectory;
 
     public static string FilePath => Path.Combine(DataDirectory, TourAudience.TourFileName);
 

@@ -7,15 +7,19 @@ namespace JVoice.App.Platform;
 /// the same temp pattern.
 public static class PlatformPaths
 {
+    /// Env var that relocates the whole profile folder (settings, tours.json, stats, log) — set
+    /// only by `--ui-preview` for its render children, so a preview never touches the real one.
+    public const string ProfileOverrideVariable = "JVOICE_PROFILE_DIR";
+
     /// %APPDATA%\JVoice — settings.json, stats.json, last-transcript.txt,
     /// transcript-history.json live here.
     public static string AppDataDirectory
     {
         get
         {
-            string dir = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                "JVoice");
+            string dir = Environment.GetEnvironmentVariable(ProfileOverrideVariable) is { Length: > 0 } overridden
+                ? overridden
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "JVoice");
             Directory.CreateDirectory(dir);
             return dir;
         }
