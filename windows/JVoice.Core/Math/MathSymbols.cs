@@ -63,6 +63,16 @@ public static class MathSymbols
     /// design note). It still renders inside a run something else activated ("x = -5").
     public static readonly IReadOnlySet<string> WeakPrefixes = new HashSet<string> { "-" };
 
+    /// Operators that do NOT count as evidence of mathematics: "per" ("/") joins two numbers in
+    /// ordinary speech far more often than in an equation ("5 per 100,000", "3 per 1000 births").
+    /// It still renders inside a run something else activated ("v = 5m / s²").
+    public static readonly IReadOnlySet<string> WeakOperators = new HashSet<string> { "/" };
+
+    /// Postfixes that DO count as evidence of mathematics, because their spoken form is never
+    /// ordinary English: "5 factorial" → "5!" on its own (Mac 2026-09-29). Every other postfix
+    /// ("percent", "degrees", "prime", "inverse") stays weak.
+    public static readonly IReadOnlySet<string> ActivatingPostfixes = new HashSet<string> { "!", "!!" };
+
     /// Prefixes whose body follows after a SPACE ("∑ᵢ₌₁ⁿ i²") rather than binding tight ("√x").
     public static readonly IReadOnlySet<string> BigOperators =
         new HashSet<string> { "∑", "∏", "∫", "∬", "∭", "∮", "⋃", "⋂", "⨁", "lim" };
@@ -79,11 +89,13 @@ public static class MathSymbols
         "over", "from", "to", "of", "point",
         // big-operator openers (bare "sum"/"product" are ordinary English — the engine only
         // accepts them with bounds, e.g. "sum from n equals 1 to infinity")
-        "sum", "sums", "summation", "product", "products",
+        "sum", "sums", "summation", "product", "products", "sigma",
         // structural constructs
         "absolute value of", "absolute value", "derivative of", "partial derivative of",
         "with respect to", "limit", "limit as", "as", "approaches", "tends to", "goes to",
         "to the", "base", "choose", "the",
+        // grouping words ("all over", "the quantity") — Mac 2026-09-29
+        "all over", "the quantity",
         // explicit span markers
         "start equation", "begin equation", "end equation", "end of equation",
     };
@@ -145,7 +157,10 @@ public static class MathSymbols
             "not equal to", "is not equal to", "does not equal", "not equals", "isn't equal to",
             "is unequal to", "≠", "!=");
         Add("<", MathKind.Relation, "less than", "is less than", "is smaller than", "is fewer than", "<");
-        Add(">", MathKind.Relation, "greater than", "is greater than", "more than", "is more than",
+        // NOT "more than" / "is more than": "y is 5 more than x" means y = x + 5, and "we got
+        // 20 more than 15 last year" is a sentence. "no more than" (≤) stays — "no" rules out
+        // the comparative reading.
+        Add(">", MathKind.Relation, "greater than", "is greater than",
             "is bigger than", "is larger than", ">");
         Add("≤", MathKind.Relation, "less than or equal to", "is less than or equal to",
             "less than or equal", "at most", "is at most", "no more than", "<=", "≤");
@@ -185,10 +200,10 @@ public static class MathSymbols
         Add("∥", MathKind.Relation, "is parallel to", "parallel to", "∥");
 
         // divisibility, conditioning, set-builder — all print the vertical bar.
-        // KNOWN RESIDUAL: "given" needs an operand on both sides, which "for a given day" and
-        // "he was given 5 dollars" never supply — but "for a given n" does, and comes out as
-        // "for a ∣ n". Kept because conditional probability has no other spoken form; delete
-        // the one word from this line if it ever bites.
+        // KNOWN RESIDUAL: "given" needs an operand on both sides, which "for a given day"
+        // and "he was given 5 dollars" never supply — but "for a given n" does, and comes
+        // out as "for a ∣ n". Kept because conditional probability has no other spoken
+        // form; delete the one word from this line if it ever bites.
         Add("∣", MathKind.Relation, "divides", "is a divisor of", "is a factor of",
             "given", "given that", "such that", "conditional on", "conditioned on");
         Add("∤", MathKind.Relation, "does not divide", "doesn't divide");
@@ -199,15 +214,17 @@ public static class MathSymbols
         // arithmetic
         Add("+", MathKind.Operator, "plus", "added to", "+");
         Add("-", MathKind.Operator, "minus", "take away");
-        // Multiplication prints the MIDDLE DOT, not "×" (David, 2026-08-30): "3 · 4" is how a
-        // multiplication is written once the operands are symbols, and "×" stays what it is
-        // uniquely — the cross product. A resolution ("1600 times 1080") therefore also comes
-        // out with a dot; consistency beats a special case here.
-        Add("·", MathKind.Operator, "times", "multiplied by", "dot product", "dot",
-            "inner product", "scalar product", "·");
+        // A spoken "times" is laid out by the engine once both sides are known
+        // (docs/math-notation-format.md, 2026-09-29): "×" between numbers ("6 × 7"),
+        // juxtaposition between letter terms ("2ab", "(n - 1)d"). "*" is only its internal
+        // marker and never printed. The MIDDLE DOT is the dot product alone ("a · b").
+        Add("*", MathKind.Operator, "times", "multiplied by");
+        Add("·", MathKind.Operator, "dot product", "dot", "inner product", "scalar product", "·");
         Add("×", MathKind.Operator, "cross product", "cartesian product", "×");
         Add("÷", MathKind.Operator, "divided by", "÷");
-        Add("/", MathKind.Operator, "per");                 // "m per s" → "m / s"
+        // WEAK (see `weakOperators`): "m per s" → "m / s" inside an equation, but "the
+        // infection rate is 5 per 100,000" is a sentence.
+        Add("/", MathKind.Operator, "per");
         Add("±", MathKind.Operator, "plus or minus", "plus minus", "±");
         Add("∓", MathKind.Operator, "minus or plus");
 
@@ -240,11 +257,11 @@ public static class MathSymbols
             "double arrow", "⇔", "<=>");
 
         // inference — the SPELLED-OUT connectives are deliberately absent. "because" as an
-        // Operator was measured firing on real dictation ("…contradict genesis one because i
-        // feel like…" → "genesis 1 ∵ i feel like"): a chapter number on the left and a bare
-        // pronoun on the right satisfy an infix operator perfectly well, and "therefore /
-        // thus / hence / because" are among the most common words in ordinary speech. Only
-        // the glyphs stay, for a transcript that already contains them.
+        // Operator was measured firing on real dictation ("…contradict genesis one because
+        // i feel like…" → "genesis 1 ∵ i feel like"): a chapter number on the left and a
+        // bare pronoun on the right satisfy an infix operator perfectly well, and
+        // "therefore / thus / hence / because" are among the most common words in ordinary
+        // speech. Only the glyphs stay, for a transcript that already contains them.
         Add("∴", MathKind.Operator, "∴");
         Add("∵", MathKind.Operator, "∵");
 
@@ -252,9 +269,9 @@ public static class MathSymbols
         // "n choose k" renders as the real binomial "C(n, k)".
 
         // ════════════════════════════ prefixes ════════════════════════════
-        // ACTIVATING on a SINGLE operand after them — the easiest kind to trigger by accident,
-        // so every entry here is either a symbol name or ends in "of" (which forces the next
-        // word to be an operand, not an article).
+        // ACTIVATING on a SINGLE operand after them — the easiest kind to trigger by
+        // accident, so every entry here is either a symbol name or ends in "of" (which
+        // forces the next word to be an operand, not an article).
 
         Add("-", MathKind.Prefix, "negative", "negative of", "the negative of");
         Add("√", MathKind.Prefix, "radical", "√");
@@ -276,8 +293,7 @@ public static class MathSymbols
         Add("¬", MathKind.Prefix, "logical not", "negation of", "¬");
 
         // indexed set / algebra operators (big operators). "union over" is NOT here: "the
-        // union over 200 workers voted" is ordinary English about a labour union, and a big
-        // operator with a body would have rewritten it as "⋃ 200 workers voted".
+        // union over 200 workers voted" is ordinary English about a labour union.
         Add("⋃", MathKind.Prefix, "big union");
         Add("⋂", MathKind.Prefix, "big intersection", "intersection over", "the intersection over");
         Add("⨁", MathKind.Prefix, "big direct sum", "direct sum over");
@@ -306,10 +322,9 @@ public static class MathSymbols
         // Weak values. Generous by design — they only render inside an activated run.
 
         // quantifiers. Weak on PURPOSE, even though "∀x" would read better than "∀ x": a
-        // Prefix needs only one operand after it, and "for all three of us" / "for every one
-        // of you" put a NUMBER right there — "∀3 of us" is exactly the bleed this feature
-        // must never produce. As operands they still render inside a run that a relation
-        // opened ("for all x greater than 0" → "∀ x > 0") and stay words everywhere else.
+        // Prefix needs only one operand after it, and "for all three of us" / "for every
+        // one of you" put a NUMBER right there — "∀3 of us" is exactly the bleed this
+        // feature must never produce.
         Add("∀", MathKind.Operand, "for all", "for every");
         Add("∃", MathKind.Operand, "there exists", "there exist", "there is some");
         Add("∃!", MathKind.Operand, "there exists a unique", "there is a unique",
@@ -360,7 +375,12 @@ public static class MathSymbols
         Greek("ο", "Ο", "omicron");
         Greek("π", "Π", "pi");
         Greek("ρ", "Ρ", "rho", "varrho");
+        // Bare "sigma" is the SUM SIGN ∑ (David, 2026-09-29) — the engine parses it like "sum",
+        // so it is reserved, not a key here. The letter is "lowercase/small sigma"; the capital
+        // letter Σ keeps "capital/big/uppercase sigma".
         Greek("σ", "Σ", "sigma");
+        d.Remove("sigma");
+        Add("σ", MathKind.Operand, "lowercase sigma", "small sigma", "lower case sigma");
         Greek("τ", "Τ", "tau");
         Greek("υ", "Υ", "upsilon");
         Greek("φ", "Φ", "phi", "varphi");
@@ -420,10 +440,9 @@ public static class MathSymbols
         Add("arctanh", MathKind.Function, "inverse hyperbolic tangent", "artanh");
 
         // logs & exponentials
-        // "log base <n>" is NOT spelled out here: the engine parses "base" structurally, so a
-        // vocabulary key like "log base 2" would win the longest-match and quietly bypass the
-        // construct — printing the same "log₂" but never ACTIVATING the run, which is why
-        // "log base 2 of 8" used to stay words. Only the named logarithms live here.
+        // "log base <n>" is NOT spelled out here: the engine parses "base" structurally, so
+        // a vocabulary key like "log base 2" would win the longest-match and quietly bypass
+        // the construct — printing the same "log₂" but never ACTIVATING the run.
         Add("log", MathKind.Function, "log", "logarithm", "logarithm of", "log of");
         Add("log₁₀", MathKind.Function, "common logarithm");
         Add("log₂", MathKind.Function, "binary logarithm");
@@ -477,13 +496,13 @@ public static class MathSymbols
         // "of <thing>" takes ONE operand (a Function); "that <clause>" takes a whole
         // proposition, so it opens a bracket the run closes for us:
         //   "the probability of x equals 0.5"        → "P(x) = 0.5"
-        //   "the probability that x is more than 5"  → "P(x > 5)"
+        //   "the probability that x is greater than 5"  → "P(x > 5)"
         Add("P(", MathKind.Open, "probability that", "the probability that",
             "conditional probability of", "the conditional probability of");
 
-        // Both word orders: David dictates "parentheses open" as readily as "open parentheses"
-        // (measured — "5000 parentheses open, 1 plus 1.03 over 100" came out with the words
-        // still in it because only one order was listed).
+        // Both word orders: David dictates "parentheses open" as readily as "open
+        // parentheses" (measured — "5000 parentheses open, 1 plus 1.03 over 100" came out
+        // with the words still in it because only one order was listed).
         Add("(", MathKind.Open, "open parenthesis", "open parentheses", "open paren",
             "open bracket", "left parenthesis", "left paren", "left bracket", "open round bracket",
             "parenthesis open", "parentheses open", "paren open", "bracket open");

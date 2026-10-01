@@ -260,7 +260,7 @@ public class SpokenNumbersTests
     [InlineData("two point five plus one point five equals four", "2.5 + 1.5 = 4")]
     [InlineData("n is greater than a thousand", "n > 1000")]
     [InlineData("x equals two point five million", "x = 2500000")]
-    [InlineData("three point one four times r squared", "3.14 · r²")]
+    [InlineData("three point one four times r squared", "3.14r²")]
     [InlineData("x subscript twenty", "x₂₀")]
     [InlineData("the fifth root of 32", "the ⁵√32")]
     [InlineData("the twenty first root of x", "the ²¹√x")]
