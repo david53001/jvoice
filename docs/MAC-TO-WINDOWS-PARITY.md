@@ -93,11 +93,11 @@ equivalent), **N/A** (Mac-only problem). Priority: **P1** = user-visible / corre
 | # | Change (Mac version) | Mac commit(s) | Windows today | Prio | § |
 |---|---|---|---|---|---|
 | 1 | Zero-latency HUD, faster paste, poll 1 s→250 ms | 5daf1b0 | **DONE** (it was ported *from* Windows §7 #49) | — | 5.1 |
-| 2 | Streaming poll 250 → **100 ms** + stat-before-read | ab0b846 | PARTIAL (250 ms) | P2 | 5.2 |
-| 3 | **Speculative tail decode** | ab0b846, 2026-09-23 validity fix | MISSING | P1 | 5.3 |
-| 4 | In-flight chunk decode survives the stop press | ab0b846 | Check (§5.4) | P1 | 5.4 |
+| 2 | Streaming poll 250 → **100 ms** + stat-before-read | ab0b846 | **DONE** 919880b | P2 | 5.2 |
+| 3 | **Speculative tail decode** | ab0b846, 2026-09-23 validity fix | **DONE** 919880b | P1 | 5.3 |
+| 4 | In-flight chunk decode survives the stop press | ab0b846 | **DONE** 919880b | P1 | 5.4 |
 | 5 | Pre-prepared spare recorder | ab0b846, 65b63ae | PARTIAL (Windows prewarms differently) | P3 | 5.5 |
-| 6 | **Local recovery** of a failed/empty chunk (no whole-file re-decode) | ffbca8a | MISSING (Windows falls back to whole-file) | P1 | 5.6 |
+| 6 | **Local recovery** of a failed/empty chunk (no whole-file re-decode) | ffbca8a | **DONE** 919880b | P1 | 5.6 |
 | 7 | Soft-audio robustness in chunking | ffbca8a | Check | P2 | 5.6 |
 | 8 | **Maths is not a loop** (RepetitionGuard math-token exemption + trailing phrase loop) | ffbca8a | **DONE** 24c336d | P1 | 6.1 |
 | 9 | Witness guards (phrase loop anywhere, sparse, silence gate, vocab recital, caption-only) | d6d7a63 | **DONE/origin** (Mac ported them *from* Windows); small deltas in §6.2 | P3 | 6.2 |
