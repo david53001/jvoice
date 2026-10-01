@@ -9,6 +9,10 @@ keep `namespace JVoice.Core`.)
   `VoiceCoordinator` should do for a given state) without touching the OS.
 - `HotkeyGate.cs` — decides whether a hotkey press is honored or swallowed (the game-suppression
   gate). Pairs with `GameDetectionPolicy`.
+- `ShortcutCapturePolicy.cs` — the Settings shortcut recorder's rules (parity row 18, Mac port):
+  Esc/Tab cancel, Delete clears, bare keys (except F1–F24) and Shift-alone rejected; refusals for
+  the other action's chord, Windows shell chords, Ctrl+C/V/X/Z/… edit chords, and a failed
+  RegisterHotKey probe — each with a one-line reason.
 - `GameDetectionPolicy.cs` — turns the raw game signals (gathered by
   `JVoice.App/Platform/System/GameDetector`) into an Off/Balanced/Aggressive verdict.
   **Anti-cheat-safe by construction: read-only OS signals only.** Balanced (default) excludes

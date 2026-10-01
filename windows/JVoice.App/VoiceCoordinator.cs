@@ -607,6 +607,31 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         if (LaunchAtLogin.IsEnabled) LaunchAtLogin.SetEnabled(true);
     }
 
+    /// While a Settings recorder listens, both global hooks pass every key through (parity row 18),
+    /// so the chord being recorded reaches the recorder instead of firing a dictation or an undo.
+    public void SuspendHotkeys(bool suspended)
+    {
+        _hotkey.Suspended = suspended;
+        _undoHotkeyReg.Suspended = suspended;
+    }
+
+    /// Why <paramref name="chord"/> can't be the record (or, <paramref name="forUndo"/>, the undo)
+    /// shortcut, or null when it is free: the other action's chord, a Windows shell chord, a common
+    /// edit chord, or one RegisterHotKey reports as taken (ShortcutCapturePolicy, row 18).
+    public string? ShortcutRefusal(HotkeyChord chord, bool forUndo)
+    {
+        var others = new List<(string, HotkeyChord)>();
+        if (forUndo) others.Add(("Toggle Recording", _hotkeyChord));
+        else if (_undoHotkey is { } u) others.Add(("Undo Last Paste", u));
+        // Re-recording the chord this action already has is always fine (it is ours, not taken).
+        bool own = forUndo ? _undoHotkey is { } mine && Same(mine, chord) : Same(_hotkeyChord, chord);
+        var refusal = ShortcutCapturePolicy.RefusalFor(chord, others,
+            registrationFails: !own && HotkeyAvailability.IsTaken(chord));
+        return refusal?.Message(chord.Format());
+
+        static bool Same(HotkeyChord a, HotkeyChord b) => a.Modifiers == b.Modifiers && a.VirtualKey == b.VirtualKey;
+    }
+
     public void SetHotkey(HotkeyChord chord)
     {
         _hotkeyChord = chord;

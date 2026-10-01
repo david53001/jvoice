@@ -580,6 +580,9 @@
                                                    Background="{StaticResource Settings.InputBg}"
                                                    Foreground="{StaticResource Text.W75}" />
                             </StackPanel>
+                            <TextBlock x:Name="RecorderNotice" Visibility="Collapsed" FontSize="10" TextWrapping="Wrap"
+                                       Foreground="{StaticResource Text.W75}" Margin="0,6,0,0"
+                                       AutomationProperties.LiveSetting="Assertive" />
                             <TextBlock Text="Default: Ctrl + Shift + Space" FontSize="10"
                                        Foreground="{StaticResource Text.W35}" Margin="0,8,0,0" />
 
@@ -597,6 +600,9 @@
                                         Click="OnClearUndoHotkey"
                                         Visibility="{Binding HasUndoHotkey, Converter={StaticResource BoolToVis}}" />
                             </StackPanel>
+                            <TextBlock x:Name="UndoRecorderNotice" Visibility="Collapsed" FontSize="10" TextWrapping="Wrap"
+                                       Foreground="{StaticResource Text.W75}" Margin="0,6,0,0"
+                                       AutomationProperties.LiveSetting="Assertive" />
                             <TextBlock Text="Optional — sends the app's Undo (Ctrl+Z) to reverse the last paste." FontSize="10"
                                        Foreground="{StaticResource Text.W35}" TextWrapping="Wrap" Margin="0,8,0,0" />
                         </StackPanel>

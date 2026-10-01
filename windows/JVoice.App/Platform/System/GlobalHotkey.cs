@@ -23,6 +23,16 @@ public sealed class GlobalHotkey : IDisposable
     /// means no suppression; false means the normal trigger + swallow path runs.
     public Func<bool>? SuppressPredicate { get; set; }
 
+    /// True while the Settings shortcut recorder is listening (parity row 18): the hook passes
+    /// every key straight through — no trigger, no swallow — so the chord being recorded reaches
+    /// the recorder instead of starting a dictation. Read on the hook thread.
+    public bool Suspended
+    {
+        get => _suspended;
+        set => _suspended = value;
+    }
+    private volatile bool _suspended;
+
     private const int WH_KEYBOARD_LL = 13;
     private const int WM_KEYDOWN = 0x0100;
     private const int WM_KEYUP = 0x0101;
@@ -187,7 +197,7 @@ public sealed class GlobalHotkey : IDisposable
                 if (_testStallMs > 0 && !_didTestStall) { _didTestStall = true; Thread.Sleep(_testStallMs); }
 
                 var data = Marshal.PtrToStructure<KBDLLHOOKSTRUCT>(lParam);
-                if (MatchesChord((int)data.vkCode))
+                if (!_suspended && MatchesChord((int)data.vkCode))
                 {
                     // Game-detection passthrough: a game owns the foreground -> stay fully transparent.
                     // Don't trigger, don't debounce, and crucially DON'T swallow, so the chord reaches

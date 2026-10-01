@@ -10,6 +10,9 @@ contract-locked by the root `CLAUDE.md`; preserve the invariants below.**
   chord key** so no stray space leaks into the focused app (root `CLAUDE.md` §7 #25), and it
   fires **once per physical press** — auto-repeat keydowns of the held chord key are swallowed
   WITHOUT triggering (down-transition gate, §7 #44; pure half in `Core/Policy/HotkeyGate`).
+  `Suspended` passes every key through while a Settings recorder listens (parity row 18).
+- `HotkeyAvailability.cs` — RegisterHotKey/UnregisterHotKey probe: ERROR_HOTKEY_ALREADY_REGISTERED
+  means Windows or another app owns the chord, so the recorder refuses it (row 18).
 - `Paster.cs` — pastes transcribed text into the foreground app (clipboard + synthetic input);
   `PasteOutcome` reports success/failure.
 - `Elevation.cs` / `ElevatedAutostart.cs` — opt-in "run elevated" so the hotkey works in admin

@@ -32,6 +32,18 @@ public partial class SettingsView : UserControl
             UndoRecorder.ChordChanged += chord => Vm.SetUndoHotkey(chord);
             UndoRecorder.Cleared += () => Vm.ClearUndoHotkey();
 
+            // Parity row 18: refuse bare / system / edit / duplicate chords with a reason shown
+            // under the row, and park both global hooks while a recorder listens.
+            Recorder.Validate = chord => Vm.ShortcutRefusal(chord, forUndo: false);
+            UndoRecorder.Validate = chord => Vm.ShortcutRefusal(chord, forUndo: true);
+            Recorder.NoticeChanged += text => ShowNotice(RecorderNotice, text);
+            UndoRecorder.NoticeChanged += text => ShowNotice(UndoRecorderNotice, text);
+            foreach (var r in new[] { Recorder, UndoRecorder })
+            {
+                r.CaptureStarted += () => Vm.SuspendHotkeys(true);
+                r.CaptureEnded += () => Vm.SuspendHotkeys(false);
+            }
+
             // App-rule mode chip: seed its label from the default add-mode.
             AppRuleModeButton.Content = _appRuleMode.DisplayName();
 
@@ -46,6 +58,12 @@ public partial class SettingsView : UserControl
                 else if (e.PropertyName == nameof(VoiceCoordinator.UndoHotkey)) SyncUndoRecorder();
             };
         };
+    }
+
+    private static void ShowNotice(TextBlock notice, string? text)
+    {
+        notice.Text = text ?? "";
+        notice.Visibility = string.IsNullOrEmpty(text) ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private void SyncUndoRecorder()
