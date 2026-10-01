@@ -2294,6 +2294,14 @@ Parity row 19 (doc §6.6, Mac 22694e2 `SettingsEntryPolicy`). Before, a refused 
 
 `VoiceCoordinator.AddCustomWord/AddAppRule/AddCorrection` now return the reason (null = added, "" = blank). The fix-last-transcript path only counts words actually added. Tests: `SettingsEntryPolicyTests` (1946/1946).
 
+## §7 #63 — Soft-audio robustness in chunking — already in 919880b (row 7) (2026-10-02)
+
+Parity row 7 ('Check'; doc §5.6 'Also (soft audio, same commit)', Mac ffbca8a). Checked line by line against the Mac `StreamingTranscriptionSession.swift`. Both behaviours were already ported in the streaming-latency commit `919880b` (§7 #53) and are tested:
+1. **A breath flickering around the threshold doesn't throw away a speculation decoded during a pause.** The speculation stays valid while the re-measured speech end is at or before its decoded end (the Mac `absSpeechEnd <= spec.end` rule). Windows also judges the pause against the audio's own speech level (`ChunkPlanner.AdaptivePauseFloor`, divergence #4). Tests: `StreamingLatencyTests.Speculation_Kept_WhenOnlyRoomToneFollows`, `Speculation_Dropped_OnSoftSpeechBelowTheAbsoluteFloor`.
+2. **A chunk may not skip soft audio between that decode and the next cut.** A speculation is reused for a chunk only if the cut lies inside the decoded audio, or if what lies between the decoded end and the cut is the room's silence. The Mac uses `ChunkPlanner.isSilent`; Windows is stricter with `RemainderIsQuiet`, which requires the absolute floor AND nothing louder than the pause's room tone (divergence #3). Tests: `ChunkCut_InsideThePause_ReusesTheSpeculation`, `ChunkCut_NotReused_WhenSoftSpeechSitsBetween`.
+
+No code change. Also refreshed the HANDOFF quick-start note on replaying first run, now the Welcome window from §7 #59.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`

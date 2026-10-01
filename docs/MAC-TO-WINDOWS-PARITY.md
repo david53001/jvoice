@@ -98,7 +98,7 @@ equivalent), **N/A** (Mac-only problem). Priority: **P1** = user-visible / corre
 | 4 | In-flight chunk decode survives the stop press | ab0b846 | **DONE** 919880b | P1 | 5.4 |
 | 5 | Pre-prepared spare recorder | ab0b846, 65b63ae | PARTIAL (Windows prewarms differently) | P3 | 5.5 |
 | 6 | **Local recovery** of a failed/empty chunk (no whole-file re-decode) | ffbca8a | **DONE** 919880b | P1 | 5.6 |
-| 7 | Soft-audio robustness in chunking | ffbca8a | Check | P2 | 5.6 |
+| 7 | Soft-audio robustness in chunking | ffbca8a | DONE 919880b | P2 | 5.6 |
 | 8 | **Maths is not a loop** (RepetitionGuard math-token exemption + trailing phrase loop) | ffbca8a | **DONE** 24c336d | P1 | 6.1 |
 | 9 | Witness guards (phrase loop anywhere, sparse, silence gate, vocab recital, caption-only) | d6d7a63 | **DONE/origin** (Mac ported them *from* Windows); small deltas in §6.2 | P3 | 6.2 |
 | 10 | Custom words: keep neighbour & possessive, no joins across commas, edit distance ≤ 1 | b0bb390 | **DONE** 8d51918 | P1 | 6.3 |
