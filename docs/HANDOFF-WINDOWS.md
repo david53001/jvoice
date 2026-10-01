@@ -2285,6 +2285,15 @@ Parity row 33 (doc §10.8) shipped inside the rows 31/32 commit 8a5b32a, so no e
 
 Parity row 34 (doc §11, Mac a45598e). Settings and the Welcome window centre on **the monitor with the mouse pointer** every time they open from hidden. They are placed with `SetWindowPos` in physical pixels at that monitor's DPI BEFORE `Show()`, so nothing flashes on the old monitor. A window that is already open is only brought forward. The pill picks the pointer's monitor when it appears (hidden → visible), sits bottom-centre with its capsule 64 DIPs above that monitor's work-area bottom, and keeps that monitor while up, so a morph never jumps monitors. Pure maths: `JVoice.Core/Policy/ScreenPlacement` (`Center` keeps a too-big window's title bar on screen; `Pill`), tested by `ScreenPlacementTests` (incl. a 150 % monitor to the right and a negative-x monitor to the left). Win32 lives in `Platform/System/ActiveScreen` (GetCursorPos → MonitorFromPoint → GetMonitorInfo + GetDpiForMonitor; it falls back to the old placement if any call fails). Before first show, a SizeToContent window's outer size is estimated as content + caption + frame; after that its real size is used. Latency probe: pill first frame 52.8 ms cold / 1.6–1.9 ms warm, the same as before. Not seen on screen: David has one display, and no screen drives were allowed.
 
+## §7 #62 — A refused custom word / app rule / correction keeps its text and says why (row 19) (2026-10-02)
+
+Parity row 19 (doc §6.6, Mac 22694e2 `SettingsEntryPolicy`). Before, a refused Custom Words entry was silently CLEARED, and a refused app rule or correction did nothing. Now the typed text stays in the field and a one-line reason appears under it, in the same style as the shortcut recorder's notices, and typing again clears the reason. Pure `JVoice.Core/Policy/SettingsEntryPolicy`:
+- **Custom words:** the Mac guards — at most 60 characters, at least one letter or number, no case-insensitive duplicate ("“VS Code” is already in your list.").
+- **App rules:** a duplicate ("… already has a mode. Remove it first to change it.") or no letters. Windows rules match the exe by substring, so the Mac's 'not found in Applications' has no equivalent, and a partial name stays valid.
+- **Corrections** (Windows-only, same treatment): a blank side, identical sides, or an existing heard phrase.
+
+`VoiceCoordinator.AddCustomWord/AddAppRule/AddCorrection` now return the reason (null = added, "" = blank). The fix-last-transcript path only counts words actually added. Tests: `SettingsEntryPolicyTests` (1946/1946).
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
