@@ -2211,6 +2211,13 @@ Commit `8d51918`. Port of the Mac text bug-hunt `b0bb390` (parity doc §6.3) and
 **Row 14:** "j-voice" → JVoice; the whole-file raw decode is now cleaned like the Mac's `cleanRawDecode` (`WhisperNetTranscriptionEngine`), so a stock phrase / bare lowercase "you" reads as empty inside `RegurgitationRecovery` and triggers the unprompted re-decode (the chunk path already did this, §7 #49).
 **Tests:** new `TextParity20260923Tests` (45 cases translated from the Mac test files). `dotnet test` 1580/1580. Not bench-verified on device (pure text logic + one cleanup call).
 
+## §7 #52 — A second press never discards a dictation; a refused paste keeps the text (parity rows 15–16) (2026-10-02)
+
+Commit `5c8cf04`. Port of Mac `8ea5088` (parity doc §6.5 items 1–4).
+**Row 15:** new pure `CoordinatorDecisions.PressAction(isRecording, isStartingRecording, isStoppingRecording, isTranscribing)` → `Start | Stop | StopOnceOpened | Ignore` drives `VoiceCoordinator.ToggleRecording` for every press (hotkey, tray item, pill). A press while the previous dictation is still being transcribed/pasted is **ignored and logged** (the §7 #44 guard, now for every press kind); a stop press while the mic is still opening used to be dropped — now it sets `_stopOnceOpened` and the recording ends the moment the mic opens.
+**Row 16:** a paste that doesn't land (`AccessDenied` admin window / `TargetRejected` / `ClipboardLocked`) no longer loses the dictation: `Paster.Stage` puts it on the clipboard (and cancels the failed paste's pending restore), `KeepTranscript` adds it to Last Transcript + Recent Transcripts + stats, and the pill says where it is (`CoordinatorDecisions.UnpastedMessage`). The clipboard restore is skipped when the user copied something during the restore window (`GetClipboardSequenceNumber` recorded after our SetText). Clipboard-only mode now shows a **"Copied"** pill (new `HudStateKind.Copied`, copy glyph) instead of vanishing silently.
+**Verify:** `dotnet test` 1593/1593 (PressAction table, unpasted messages, Copied invariants); `JVoice.exe --hud-render <png> copied|unpasted` renders both new pills (checked). Not live-driven (no screen driving while David may be at the PC).
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
