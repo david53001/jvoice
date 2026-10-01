@@ -113,10 +113,10 @@ equivalent), **N/A** (Mac-only problem). Priority: **P1** = user-visible / corre
 | 19 | Rejected custom word / app rule stays in the field with the reason | 22694e2 | MISSING | P2 | 6.6 |
 | 20 | Hidden pill stops animating while hidden (2–5 % CPU idle) | 22694e2 | Check (Windows has a generated wave) | P1 | 6.7 |
 | 21 | Settings crash (KeyboardShortcuts `Bundle.module`) | 0c46d53 | **N/A** (Mac-only) | — | 6.8 |
-| 22 | **Maths engine package** (grouping, "to the", ordinals, "x" for times, article pair, leaks) | 563bf4f | MISSING | P1 | 7.3 |
-| 23 | **Shared math-notation format** (Unicode, `/` fractions, `×` vs juxtaposition, `√(…)`, `sin θ`) | 6bcd031 | MISSING | P1 | 7.2 |
-| 24 | "root of … Kx … sigma of" dictation fix; glued variables | 382da82 | MISSING | P1 | 7.4 |
-| 25 | "sigma" = ∑ (σ is "lowercase sigma") | ede7a2d | MISSING | P1 | 7.5 |
+| 22 | **Maths engine package** (grouping, "to the", ordinals, "x" for times, article pair, leaks) | 563bf4f | DONE 1cecc0e | P1 | 7.3 |
+| 23 | **Shared math-notation format** (Unicode, `/` fractions, `×` vs juxtaposition, `√(…)`, `sin θ`) | 6bcd031 | DONE 1cecc0e | P1 | 7.2 |
+| 24 | "root of … Kx … sigma of" dictation fix; glued variables | 382da82 | DONE 1cecc0e | P1 | 7.4 |
+| 25 | "sigma" = ∑ (σ is "lowercase sigma") | ede7a2d | DONE 1cecc0e | P1 | 7.5 |
 | 26 | Math Notation off must be measurably faster | spec §5 | Check | P3 | 7.6 |
 | 27 | Bench: `--repeat N --idle S`, prompt-token count, `--no-math`, `--stream --realtime` | 26bb896, fdacf33 | PARTIAL | P3 | 5.7 |
 | 28 | **Native look** (System/Light/Dark, translucent Settings, cards, native controls) | a3bfff0 | MISSING (Windows is pure-black monochrome) | P1 | 8 |
