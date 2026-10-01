@@ -196,6 +196,13 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
         // Read the PCM once (also validates the WAV). The recorder guarantees 16 kHz
         // mono 16-bit — exactly what both ChunkPlanner and whisper.cpp expect.
         short[] pcm = ReadWavPcm(audioPath);
+        return await TranscribePcmAsync(pcm, ct).ConfigureAwait(false);
+    }
+
+    /// The whole-file decode of a 16 kHz mono PCM buffer — the whole recording, or (parity row 6)
+    /// the region a streaming session re-covers locally after a failed chunk. Same guards either way.
+    private async Task<string> TranscribePcmAsync(short[] pcm, CancellationToken ct)
+    {
 
         // No-speech is decided by the MODEL, not by the signal level. whisper.cpp decodes
         // even very quiet speech correctly (verified on-device down to rawRMS ≈ 0.001 —
@@ -537,13 +544,17 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     /// outlives the session (the coordinator owns both and tears the session down on
     /// stop). The session itself catches decode exceptions and fails losslessly
     /// (Core StreamingTranscriptionSession.AppendPiece/PollOnce).
-    internal StreamingTranscriptionSession? MakeStreamingSession(int pollMilliseconds)
+    internal StreamingTranscriptionSession? MakeStreamingSession(int pollMilliseconds, Action<string>? log = null)
     {
         if (_factory is null) return null;
         return new StreamingTranscriptionSession(
-            transcribe: samples => TranscribeChunkSamplesAsync(samples, CancellationToken.None),
+            // The token is only ever cancelled for a dropped speculative tail decode (row 3).
+            transcribe: (samples, ct) => TranscribeChunkSamplesAsync(samples, ct),
+            // Local recovery of a failed chunk: whole-file semantics over the region (row 6).
+            recover: pcm => TranscribePcmAsync(pcm, CancellationToken.None),
             config: new ChunkPlanner.Config(),
             pollMilliseconds: pollMilliseconds,
-            log: DiagnosticLog.Write);
+            speculateAfterSeconds: JVoice.Core.AppTimings.SpeculativeTailPauseMs / 1000.0,
+            log: log ?? DiagnosticLog.Write);
     }
 }

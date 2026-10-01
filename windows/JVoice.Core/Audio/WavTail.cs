@@ -87,6 +87,20 @@ public sealed class WavTailReader
         catch (UnauthorizedAccessException) { return null; }
     }
 
+    /// The file's current byte length, read from an open handle (accurate while the recorder is
+    /// still appending, unlike the directory entry); null = gone/unreadable. A cheap "has it grown?"
+    /// probe so a fast poll can skip the full read (Mac stat-before-read, parity §5.2).
+    public long? ByteLength()
+    {
+        try
+        {
+            using var fs = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+            return fs.Length;
+        }
+        catch (IOException) { return null; }
+        catch (UnauthorizedAccessException) { return null; }
+    }
+
     /// All samples from `sampleOffset` to EOF. `[]` = no new data; `null` = gone/unreadable.
     public short[]? Samples(int sampleOffset)
     {

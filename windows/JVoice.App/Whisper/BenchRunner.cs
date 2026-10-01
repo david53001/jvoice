@@ -32,7 +32,7 @@ internal static class BenchRunner
         {
             Console.Error.WriteLine(
                 "usage: JVoice --bench <audio.wav> [--model tiny|base|small|large] [--lang en|ro] " +
-                "[--vocab \"Word1,Word2\"] [--stream] [--no-prompt] " +
+                "[--vocab \"Word1,Word2\"] [--stream [--realtime]] [--no-prompt] " +
                 "[--iters N] [--flash on|off] [--threads N] [--audio-ctx off|auto|N] " +
                 "[--runtime auto|cuda|cuda12|cuda-any|vulkan|cpu] [--log-runtime]");
             return 64;
@@ -176,7 +176,7 @@ internal static class BenchRunner
         }
 
         if (arguments.Contains("--stream"))
-            return await RunStreamAsync(audioPath, engine, vocabulary);
+            return await RunStreamAsync(audioPath, engine, vocabulary, realtime: arguments.Contains("--realtime"));
 
         try
         {
@@ -226,7 +226,7 @@ internal static class BenchRunner
     /// WAV at ~10× real time while a real StreamingTranscriptionSession consumes it,
     /// then compares against the whole-file transcript. Port of BenchRunner.runStream.
     private static async Task<int> RunStreamAsync(
-        string audioPath, WhisperNetTranscriptionEngine engine, IReadOnlyList<string> vocabulary)
+        string audioPath, WhisperNetTranscriptionEngine engine, IReadOnlyList<string> vocabulary, bool realtime = false)
     {
         byte[] sourceBytes;
         try { sourceBytes = await File.ReadAllBytesAsync(audioPath); }
@@ -244,7 +244,11 @@ internal static class BenchRunner
             return 65;
         }
 
-        var session = engine.MakeStreamingSession(pollMilliseconds: 100);
+        // --realtime: replay at 1× with the app's own poll cadence, so the speculative tail decode
+        // (which needs a real pause in wall time) behaves as it does live; session events print here.
+        var session = engine.MakeStreamingSession(
+            pollMilliseconds: realtime ? JVoice.Core.AppTimings.StreamingPollMs : 100,
+            log: m => Console.WriteLine($"  [{DateTime.Now:HH:mm:ss.fff}] {m}"));
         if (session is null)
         {
             Console.Error.WriteLine("engine has no loaded model");
@@ -271,7 +275,7 @@ internal static class BenchRunner
                     await handle.WriteAsync(sourceBytes.AsMemory(offset, end - offset));
                     await handle.FlushAsync();
                     offset = end;
-                    await Task.Delay(50); // …every 50 ms ⇒ ~10× real time
+                    await Task.Delay(realtime ? 500 : 50); // 0.5 s of audio every 500 ms (1×) or 50 ms (~10×)
                 }
             });
 

@@ -57,6 +57,52 @@ public static class ChunkPlanner
         return peak < config.SilenceRmsFloor;
     }
 
+    /// How many samples at the END of `samples` are silence: walk back in `probeSeconds` windows and
+    /// stop at the first whose RMS reaches the silence floor (Mac trailingSilenceSamples, parity §5.3).
+    public static int TrailingSilenceSamples(ReadOnlySpan<short> samples, Config config, double probeSeconds = 0.1, float? floor = null)
+    {
+        int step = Math.Max(1, (int)(probeSeconds * config.SampleRate));
+        float threshold = floor ?? config.SilenceRmsFloor;
+        int end = samples.Length;
+        while (end > 0)
+        {
+            int start = Math.Max(0, end - step);
+            if (Rms(samples[start..end]) >= threshold) break;
+            end = start;
+        }
+        return samples.Length - end;
+    }
+
+    /// WINDOWS DIVERGENCE (speculation only): the pause floor relative to this audio's own speech
+    /// level — 15 % of its 90th-percentile 0.1 s window RMS, kept within [0.0004, SilenceRmsFloor].
+    /// Measured on David's recent captures (2026-10-02): his speech's median window RMS is
+    /// 0.001–0.003 and only 5–30 % of windows reach the absolute 0.005 floor, while his room reads
+    /// ≈ 0.0000–0.0001 — so the absolute floor calls most of his speech a pause, and this doesn't.
+    public static float AdaptivePauseFloor(ReadOnlySpan<short> samples, Config config, double probeSeconds = 0.1)
+    {
+        int step = Math.Max(1, (int)(probeSeconds * config.SampleRate));
+        var rms = new List<float>();
+        for (int i = 0; i < samples.Length; i += step)
+            rms.Add(Rms(samples.Slice(i, Math.Min(step, samples.Length - i))));
+        if (rms.Count == 0) return config.SilenceRmsFloor;
+        rms.Sort();
+        float p90 = rms[(int)(0.9 * (rms.Count - 1))];
+        return Math.Clamp(0.15f * p90, 0.0004f, config.SilenceRmsFloor);
+    }
+
+    /// RMS of a span (16-bit PCM → −1…1).
+    public static float Rms(ReadOnlySpan<short> samples)
+    {
+        if (samples.Length == 0) return 0;
+        double sum = 0;
+        foreach (short v in samples)
+        {
+            double f = v / 32768.0;
+            sum += f * f;
+        }
+        return (float)Math.Sqrt(sum / samples.Length);
+    }
+
     private static Decision MakeCut(ReadOnlySpan<short> unconsumed, int sample, Config config)
         => Decision.Cut(sample, IsSilent(unconsumed[..sample], config));
 
