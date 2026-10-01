@@ -282,7 +282,7 @@ public partial class App : Application
 
         // Args after the flag: an optional output path and an optional state token, told apart by
         // the known state names (mirrors --settings-render's path/state disambiguation).
-        var known = new[] { "recording", "transcribing", "preparing", "downloading", "error", "copied", "unpasted" };
+        var known = new[] { "recording", "transcribing", "preparing", "downloading", "error", "copied", "unpasted", "done" };
         var rest = idx >= 0 ? args.Skip(idx + 1).ToArray() : Array.Empty<string>();
         string? stateArg = rest.FirstOrDefault(a => known.Contains(a.ToLowerInvariant()));
         string? pathArg = rest.FirstOrDefault(a => !known.Contains(a.ToLowerInvariant()));
@@ -293,6 +293,14 @@ public partial class App : Application
             view.Apply(HudState.Error("No speech detected."));  // static error pose (no loop)
         else if (string.Equals(stateArg, "copied", StringComparison.OrdinalIgnoreCase))
             view.Apply(HudState.Copied("x"));
+        else if (string.Equals(stateArg, "done", StringComparison.OrdinalIgnoreCase))
+            view.Apply(HudState.Done("x"));
+        else if (string.Equals(stateArg, "transcribing", StringComparison.OrdinalIgnoreCase))
+            view.Apply(HudState.Transcribing);
+        else if (string.Equals(stateArg, "preparing", StringComparison.OrdinalIgnoreCase))
+            view.Apply(HudState.PreparingModel);
+        else if (string.Equals(stateArg, "downloading", StringComparison.OrdinalIgnoreCase))
+            view.Apply(HudState.DownloadingModel(0.42));
         else if (string.Equals(stateArg, "unpasted", StringComparison.OrdinalIgnoreCase))
             view.Apply(HudState.Error(CoordinatorDecisions.UnpastedMessage(PasteFailure.TargetRejected)));
         else

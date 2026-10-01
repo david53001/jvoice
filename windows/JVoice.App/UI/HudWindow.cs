@@ -1,6 +1,7 @@
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
+using JVoice.App.Platform;
 using JVoice.Core.Models;
 
 namespace JVoice.App.UI;
@@ -12,10 +13,10 @@ public sealed class HudWindow : Window
     private readonly HudView _view = new();
     private IntPtr _hwnd;
 
-    /// Unused since the HUD became text/affordance-free (the bars-only pill has no stop
-    /// button — stop with the hotkey or the tray menu). Kept so existing wiring compiles
-    /// and a stop affordance could be re-added without re-threading the callback.
+    /// The pill's red stop control (row 29): wired by App to ToggleRecording.
     public Action? OnStop { get; set; }
+
+    private HudState _state = HudState.Idle;
 
     /// Dev/probe seam: when true the pill is positioned far off-screen instead of bottom-center,
     /// so a headless measurement (`--latency-probe`) can realize and animate the real layered
@@ -38,6 +39,7 @@ public sealed class HudWindow : Window
         ShowInTaskbar = false;
         Topmost = true;
         ShowActivated = false;
+        _view.StopRequested += () => { if (_state.Kind == HudStateKind.Recording) OnStop?.Invoke(); };
         SizeToContent = SizeToContent.WidthAndHeight;
         Content = _view;
         SourceInitialized += OnSourceInitialized;
@@ -105,12 +107,16 @@ public sealed class HudWindow : Window
     public void Update(HudState state)
     {
         CancelPrewarmFrame();
-        _view.Apply(state);
+        // Morph only when a visible pill replaces a visible pill; the first show and the hide stay
+        // instant (latency contract, §7 #49).
+        bool animate = IsVisible && _state.IsVisible && state.IsVisible && state.Kind != _state.Kind;
+        _state = state;
+        _view.Apply(state, animate);
 
-        // Always click-through now: the bars-only HUD has no interactive affordances, so it
-        // should never intercept a click (the old design dropped click-through while recording
-        // only to make its stop button clickable).
-        ApplyClickThrough(clickThrough: true);
+        // Click-through except while recording, when the red stop control must take a click. The
+        // transparent margin around the capsule still passes clicks through (per-pixel hit testing
+        // of the layered window).
+        ApplyClickThrough(clickThrough: state.Kind != HudStateKind.Recording);
 
         if (state.IsVisible)
         {
@@ -143,8 +149,9 @@ public sealed class HudWindow : Window
 
         var wa = SystemParameters.WorkArea; // DIPs, primary screen
         Left = wa.Left + (wa.Width - ActualWidth) / 2;
-        // 24px above the bottom of the work area (Swift visibleFrame.minY + 24).
-        Top = wa.Bottom - ActualHeight - 24;
+        // The capsule sits 64 above the bottom of the work area (Mac HUDLayout.bottomGap — above the
+        // taskbar); the panel's bottom 22 (× HudScale) is the shadow margin below the capsule.
+        Top = wa.Bottom - ActualHeight + 22 * DisplayMetrics.HudScale - 64;
     }
 
     private void ApplyClickThrough(bool clickThrough)

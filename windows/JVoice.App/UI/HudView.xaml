@@ -4,81 +4,102 @@
              Background="Transparent"
              UseLayoutRounding="True" SnapsToDevicePixels="True"
              TextOptions.TextFormattingMode="Display"
-             TextOptions.TextRenderingMode="ClearType"
-             RenderOptions.BitmapScalingMode="HighQuality"
-             RenderOptions.ClearTypeHint="Enabled">
-    <!-- ===== Voice-bars HUD (black & white) =====
-         A deliberately minimal, text-free pill: a black rounded rectangle holding a row
-         of slim white rounded lines that form a continuous, mic-independent wave while recording
-         (David preferred a constant up/down flow over mic-reactive bars, which stuttered on his
-         words — the live-level wiring is kept but UNUSED; see HudView.xaml.cs InputLevelProvider)
-         (an indeterminate shimmer while transcribing/preparing/downloading). There is no
-         "Recording"/"Listening…" copy and no paste confirmation — only the error state
-         carries text. Solid bars also sidestep the layered-window blur that softened the
-         old glowy text: WPF renders ClearType-less grayscale AA inside an AllowsTransparency
-         window, so small text read as low-resolution; flat rectangles don't.
+             RenderOptions.BitmapScalingMode="HighQuality">
+    <!-- ===== The glass pill (parity row 29; Mac HUDView.swift + HUDLayout.swift) =====
+         ONE capsule (height 56, radius 28) wraps whichever pill is showing and hugs it: the
+         recording/transcribing row is at least 240 wide, a status pill is as wide as its text
+         (wrapping to two lines beyond 360). A visible pill replacing a visible pill MORPHS — the
+         capsule's width eases (300 ms, no bounce) while the contents cross-fade; the first show and
+         the hide never animate (latency contract, §7 #49).
 
-         HudRootScale (LayoutTransform) enlarges the whole pill so it stays crisp: 1.0 at
-         native resolution, more when the desktop runs below native (the monitor's scaler
-         interpolates the framebuffer — see DisplayMetrics.HudScale, applied in the
-         constructor). LayoutTransform re-runs layout at the larger size, so shapes/text
-         stay vector-crisp rather than bitmap-blurred. -->
+         Surface: the Pill.Backing brush (a dark backing at the Opacity setting's pill alpha — the
+         pill keeps a dark appearance in both themes, like the Mac's) with a 1 px 10 % hairline, and
+         ONE soft shadow drawn OUTSIDE the capsule only (its Clip cuts the capsule out), so nothing
+         shadows through the translucent body. No glow. A layered window has no blur behind it, so
+         the backing carries the contrast (UiOpacity's Windows pill anchors).
+
+         The panel is a fixed 404×100 (the widest capsule + a 22 margin for the shadow); the capsule
+         is bottom-anchored and centred, so a morph never moves its bottom edge or centre.
+         HudRootScale (LayoutTransform) enlarges everything by DisplayMetrics.HudScale so it stays crisp
+         when the desktop runs below native resolution. -->
     <Grid>
         <Grid.LayoutTransform>
             <ScaleTransform x:Name="HudRootScale" ScaleX="1.0" ScaleY="1.0" />
         </Grid.LayoutTransform>
-        <!-- 16px margin all around = breathing room for the pill's drop shadow. -->
-        <Grid Margin="16">
-            <!-- ===== the pill body: pure black, squeezed (shorter & a touch longer) ===== -->
-            <Border x:Name="PillBody" CornerRadius="19" Background="#FF000000"
-                    MinWidth="152" MinHeight="38" BorderThickness="1">
-                <Border.BorderBrush>
-                    <!-- a hairline so the black pill's edge reads against a dark desktop -->
-                    <SolidColorBrush Color="#FFFFFFFF" Opacity="0.10" />
-                </Border.BorderBrush>
+        <Grid Width="404" Height="100">
+            <!-- the one soft shadow (radius 10, 4 down), clipped to outside the capsule -->
+            <Border x:Name="Shadow" CornerRadius="28" Background="#FF000000"
+                    HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="22"
+                    Width="{Binding ActualWidth, ElementName=Capsule}" Height="{Binding ActualHeight, ElementName=Capsule}"
+                    IsHitTestVisible="False">
                 <Border.Effect>
-                    <!-- a real (black) drop shadow to float the pill — not a colored glow -->
-                    <DropShadowEffect BlurRadius="16" ShadowDepth="4" Direction="270"
-                                      Color="#000000" Opacity="0.55" />
+                    <DropShadowEffect BlurRadius="20" ShadowDepth="4" Direction="270" Color="#000000" Opacity="0.22" />
                 </Border.Effect>
+            </Border>
 
-                <!-- tall lines: only a hair of vertical padding so the round-capped lines run
-                     from near the top to near the bottom of the pill -->
-                <Grid Margin="13,3">
-                    <!-- ===== voice-activity bars (recording / transcribing / preparing) =====
-                         Rectangles are added in code so the count/size is tunable in one
-                         place; each bar's Height is driven per frame from the render loop.
-                         Fixed Height + vertically-centered bars makes them grow symmetrically
-                         about the mid-line (a mirrored visualizer). -->
-                    <StackPanel x:Name="Bars" Orientation="Horizontal"
-                                Height="32" HorizontalAlignment="Center" VerticalAlignment="Center" />
+            <Border x:Name="Capsule" CornerRadius="28" MinHeight="56" MinWidth="56"
+                    HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="22"
+                    Background="{DynamicResource Pill.Backing}" BorderBrush="#1AFFFFFF" BorderThickness="1"
+                    AutomationProperties.AutomationId="pill.controls">
+                <Grid x:Name="Contents">
 
-                    <!-- ===== error layout (the only state with text) =====
-                         Font sizes are deliberately large. Two things soften this text and only
-                         a bigger glyph fixes both (you can't get ClearType here — WPF renders
-                         grayscale AA inside the AllowsTransparency window, and no app can exempt
-                         its window from a below-native monitor's hardware stretch):
-                           • grayscale AA blurs small glyphs even at native resolution — the pill
-                             historically carried a 1.1× enlargement JUST for text legibility,
-                             which the bars-only redesign dropped (HudBaseScale → 1.0) because
-                             solid bars don't need it. The error text still does, so it's restored
-                             here at the font level (15px vs the old, too-small 11.5px).
-                           • below native (e.g. 1600×1080 on a 1920×1080 panel) the monitor
-                             interpolates the framebuffer; bigger glyphs get proportionally more
-                             device pixels and survive the smear far more legibly.
-                         The per-resolution part is automatic: the whole pill is multiplied by
-                         DisplayMetrics.HudScale (the stretch ratio) via HudRootScale, so these
-                         base sizes scale up further the more the desktop runs below native — the
-                         text stays crisp at EVERY resolution without a fixed per-res table.
-                         MaxWidth scaled up in step so a typical one-line error doesn't wrap. -->
-                    <StackPanel x:Name="ErrorPanel" Orientation="Horizontal" Visibility="Collapsed"
-                                HorizontalAlignment="Center" VerticalAlignment="Center">
-                        <TextBlock x:Name="ErrorGlyph" FontFamily="Segoe MDL2 Assets" FontSize="15"
-                                   Foreground="#FFFFFFFF" VerticalAlignment="Center" Text="&#xE7BA;" />
-                        <TextBlock x:Name="ErrorText" FontSize="15" FontWeight="SemiBold"
-                                   Foreground="#FFFFFFFF" VerticalAlignment="Center"
-                                   Margin="9,0,0,0" MaxWidth="300" TextWrapping="Wrap"
-                                   Text="Something went wrong" />
+                    <!-- Recording / transcribing: J mark · waveform bars · red stop (recording only) -->
+                    <StackPanel x:Name="LivePanel" Orientation="Horizontal" HorizontalAlignment="Center"
+                                VerticalAlignment="Center" Margin="16,0">
+                        <TextBlock Text="J" FontFamily="Segoe UI Variable Display, Segoe UI" FontSize="19" FontWeight="Black"
+                                   Foreground="#FFFFFFFF" Width="18" TextAlignment="Center" VerticalAlignment="Center" />
+                        <!-- 15 thin capsules (added in code) resting as a calm flat line (2 px), never dots -->
+                        <StackPanel x:Name="Bars" Orientation="Horizontal" Height="26" Margin="14,0"
+                                    VerticalAlignment="Center" />
+                        <Grid Width="22" Height="22" VerticalAlignment="Center">
+                            <Button x:Name="StopButton" Cursor="Hand" ToolTip="Stop recording" Focusable="False"
+                                    AutomationProperties.Name="Stop recording" Click="OnStopClick">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Grid x:Name="Root">
+                                            <Border CornerRadius="6" Background="#FFE5484D" />
+                                            <Border Width="8" Height="8" CornerRadius="2" Background="#FFFFFFFF" />
+                                        </Grid>
+                                        <ControlTemplate.Triggers>
+                                            <Trigger Property="IsMouseOver" Value="True">
+                                                <Setter TargetName="Root" Property="Opacity" Value="0.88" />
+                                            </Trigger>
+                                            <Trigger Property="IsPressed" Value="True">
+                                                <Setter TargetName="Root" Property="Opacity" Value="0.7" />
+                                            </Trigger>
+                                        </ControlTemplate.Triggers>
+                                    </ControlTemplate>
+                                </Button.Template>
+                            </Button>
+                        </Grid>
+                    </StackPanel>
+
+                    <!-- Status (Pasted / Copied / an error): the symbol in its meaning colour + callout text -->
+                    <StackPanel x:Name="StatusPanel" Orientation="Horizontal" Visibility="Collapsed" Opacity="0"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16,8,20,8">
+                        <TextBlock x:Name="StatusIcon" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                                   Width="20" TextAlignment="Center" VerticalAlignment="Center" Text="&#xE73E;" />
+                        <TextBlock x:Name="StatusText" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="14" FontWeight="Medium"
+                                   Foreground="#FFFFFFFF" Margin="10,0,0,0" VerticalAlignment="Center"
+                                   MaxWidth="294" MaxHeight="40" TextWrapping="Wrap" TextTrimming="CharacterEllipsis"
+                                   Text="Pasted" />
+                    </StackPanel>
+
+                    <!-- Model work (preparing / downloading): blue icon · title · detail · progress -->
+                    <StackPanel x:Name="ModelPanel" Orientation="Horizontal" Visibility="Collapsed" Opacity="0"
+                                HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16,6,20,6">
+                        <TextBlock x:Name="ModelIcon" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="16"
+                                   Foreground="#FF60CDFF" Width="20" TextAlignment="Center" VerticalAlignment="Center" Text="&#xE713;" />
+                        <StackPanel Margin="12,0,0,0" VerticalAlignment="Center">
+                            <TextBlock x:Name="ModelTitle" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="13" FontWeight="SemiBold"
+                                       Foreground="#FFFFFFFF" Text="Preparing Model" />
+                            <TextBlock x:Name="ModelDetail" FontFamily="Segoe UI Variable Text, Segoe UI" FontSize="12"
+                                       Foreground="#C5FFFFFF" Typography.NumeralAlignment="Tabular" Text="One-time setup — keep JVoice open" />
+                            <Border x:Name="ModelTrack" Width="150" Height="4" CornerRadius="2" Background="#1AFFFFFF"
+                                    HorizontalAlignment="Left" Margin="0,4,0,0" ClipToBounds="True">
+                                <Border x:Name="ModelFill" HorizontalAlignment="Left" Width="0" CornerRadius="2" Background="#FF60CDFF" />
+                            </Border>
+                        </StackPanel>
                     </StackPanel>
                 </Grid>
             </Border>

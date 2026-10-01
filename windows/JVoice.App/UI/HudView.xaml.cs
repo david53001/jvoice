@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Shapes;
 using JVoice.App.Platform;
 using JVoice.Core.Models;
@@ -10,68 +12,63 @@ namespace JVoice.App.UI;
 
 public partial class HudView : UserControl
 {
-    // The HUD lives in an AllowsTransparency (layered) window. Storyboards started while
-    // that window is hidden don't reliably drive it, so we animate from
-    // CompositionTarget.Rendering — the WPF per-frame render loop (the analog of macOS
-    // TimelineView(.animation)): subscribing keeps it ticking and writing the bars each
-    // frame forces the layered window to repaint. A single free-running clock keeps the
-    // phase continuous across states.
-    private enum BarMode { Hidden, Live, Indeterminate }
+    // The bars animate from CompositionTarget.Rendering — the WPF per-frame loop (the analog of the
+    // Mac's TimelineView): a storyboard started while the layered window is hidden doesn't reliably
+    // drive it, and writing the bars each frame forces the layered window to repaint. The loop runs
+    // ONLY while a live pill is showing; a hidden or prewarmed pill draws nothing (row 20).
+    private enum BarMode { Hidden, Live, Shimmer }
 
-    // ---- voice-bar visualizer config (all pre-scale; HudRootScale enlarges the whole pill) ----
-    // A slim, compact pill holding a mirrored row of thin, fully round-capped lines (a
-    // waveform). Each bar is a vertical capsule: width BarWidth, corner radius BarWidth/2,
-    // and its HEIGHT is animated directly (see SetBarHeight) — NOT a ScaleTransform, which
-    // would squash the Y corner radius at low levels and make the caps read as sharp/cubic.
-    // MinBarHeight == BarWidth, so a resting bar is a perfect round dot.
-    private const int BarCount = 21;
+    // ---- shared bar geometry (Mac HUDView.Bars): thin capsules that rest as a flat line ----
+    private const int BarCount = 15;
     private const double BarWidth = 3;
-    private const double BarGap = 3;           // applied as Margin = BarGap/2 each side
-    private const double MaxBarHeight = 32;    // == Bars.Height; tall lines that nearly fill the (shorter) pill
-    private const double MinBarHeight = 3;     // == BarWidth → resting bar is a round dot
+    private const double BarSpacing = 2;
+    private const double BarMinHeight = 2;
+    private const double LiveMaxHeight = 26;
+    private const double ShimmerMaxHeight = 10;
+
+    // ---- capsule geometry (Mac HUDLayout) ----
+    private const double PillMinWidth = 240;     // the recording / transcribing row
+    private static readonly Duration Morph = TimeSpan.FromMilliseconds(300);
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
     private double _lastAppliedFrame = -1; // FramePacer: last frame we actually wrote the bars for
     private bool _animating;
     private BarMode _mode = BarMode.Hidden;
+    private Rectangle[] _bars = [];
+    private double[] _barLevel = [];
+    private double[] _phase = [];
+    private double[] _speed = [];
+    private double[] _weight = [];
+    private FrameworkElement? _shown;
+    private System.Windows.Threading.DispatcherTimer? _elapsedTimer;
+    private DateTime _preparingSince;
 
-    /// Frames the pill actually drew, process-wide — the --latency-probe reads it to prove the
-    /// hidden / prewarmed pill draws NOTHING (parity row 20: the Mac's hidden pill kept animating
-    /// at 30 Hz from launch to the first dictation). A global render-tick count can't show that:
-    /// the probe's own CompositionTarget.Rendering subscription keeps WPF ticking.
+    /// Frames the pill actually drew, process-wide — the --latency-probe reads it to prove the hidden
+    /// / prewarmed pill draws NOTHING (row 20). A global render-tick count can't show that: the
+    /// probe's own CompositionTarget.Rendering subscription keeps WPF ticking.
     internal static long FramesDrawn;
 
     /// True while this pill is subscribed to the render loop.
     internal bool IsAnimating => _animating;
 
-    private Rectangle[] _bars = [];
-    private double[] _barLevel = [];           // current (smoothed) 0..1 height of each bar
-    private double[] _phase = [];
-    private double[] _speed = [];
-    private double[] _weight = [];             // centre-weighted bell (tallest in the middle)
+    /// The red stop control was clicked (recording only).
+    public event Action? StopRequested;
 
-    /// Supplies the live mic level (0..1 peak). Set by App via HudWindow. Currently UNUSED:
-    /// the recording bars are a continuous, mic-independent animation (David preferred a
-    /// constant up/down flow over mic-reactive bars, which stuttered on his words). Kept —
-    /// like HudWindow.OnStop — so the existing wiring compiles and a mic-reactive mode could
-    /// be re-enabled without re-threading the callback.
+    /// Supplies the live mic level (0..1). UNUSED: the recording bars are a continuous,
+    /// mic-independent wave (David preferred a steady flow over mic-reactive bars, which stuttered on
+    /// his words — §7 #23). Kept so a mic-reactive mode could be re-enabled without re-threading it.
     public Func<float>? InputLevelProvider { get; set; }
 
     public HudView()
     {
         InitializeComponent();
-        // Enlarge the pill to stay crisp: 1.0 at native resolution; more when the desktop
-        // runs below native (the monitor's scaler interpolates the framebuffer). The new
-        // bars are solid shapes, so they survive that interpolation far better than the old
-        // glowy text did. See DisplayMetrics.
         HudRootScale.ScaleX = HudRootScale.ScaleY = DisplayMetrics.HudScale;
         BuildBars();
+        Capsule.SizeChanged += (_, _) => ClipShadow();
+        LivePanel.Visibility = Visibility.Collapsed;
+        LivePanel.Opacity = 0;
     }
 
-    /// Create the bar Rectangles once. Each is a round-capped vertical capsule whose Height
-    /// is animated per frame (VerticalAlignment.Center → it grows/shrinks symmetrically about
-    /// the mid-line). The parent StackPanel has a fixed Height and the bars never change Width,
-    /// so re-measuring a child's height never resizes the panel or the pill while recording.
     private void BuildBars()
     {
         _bars = new Rectangle[BarCount];
@@ -79,107 +76,212 @@ public partial class HudView : UserControl
         _phase = new double[BarCount];
         _speed = new double[BarCount];
         _weight = new double[BarCount];
-
-        var fill = new SolidColorBrush(Color.FromRgb(0xFF, 0xFF, 0xFF));
+        var fill = new SolidColorBrush(Colors.White);
         fill.Freeze();
-
         for (int i = 0; i < BarCount; i++)
         {
             double bell = Math.Sin(Math.PI * (i + 0.5) / BarCount); // 0..1, peak at centre
-            _weight[i] = 0.62 + 0.38 * bell;  // raised floor so edge bars also pump up, not just the centre
+            _weight[i] = 0.62 + 0.38 * bell;
             _phase[i] = i * 0.7;
-            _speed[i] = 6.5 + (i % 3) * 2.3;    // varied speeds so the bars swerve independently
-            _barLevel[i] = 0;
-
+            _speed[i] = 6.5 + (i % 3) * 2.3;
             var bar = new Rectangle
             {
                 Width = BarWidth,
-                Height = MinBarHeight,
-                RadiusX = BarWidth / 2,          // == half width → caps are true semicircles at
-                RadiusY = BarWidth / 2,          //    every height (a vertical capsule / rounded line)
+                Height = BarMinHeight,
+                RadiusX = BarWidth / 2,
+                RadiusY = BarWidth / 2,
                 Fill = fill,
                 VerticalAlignment = VerticalAlignment.Center,
-                Margin = new Thickness(BarGap / 2, 0, BarGap / 2, 0),
-                Opacity = 0.55 + 0.45 * bell,    // brightest in the centre, fading to the edges
+                Margin = new Thickness(i == 0 ? 0 : BarSpacing, 0, 0, 0),
+                Opacity = 0.45,
             };
             _bars[i] = bar;
             Bars.Children.Add(bar);
         }
     }
 
-    /// Map a 0..1 level to a bar's pixel height (MinBarHeight..MaxBarHeight). Driving Height
-    /// (not a ScaleTransform) keeps the corner radius — and therefore the round caps —
-    /// undistorted at every height, which a non-uniform scale would flatten into sharp edges.
-    private void SetBarHeight(int i, double level) =>
-        _bars[i].Height = MinBarHeight + (MaxBarHeight - MinBarHeight) * Math.Clamp(level, 0, 1);
-
-    /// Apply a HUD state: pick the layout (bars / error / hidden) and start or stop the loop.
-    public void Apply(HudState state)
+    /// The shadow is a black capsule's drop shadow with the capsule itself cut away, so it never
+    /// darkens the translucent body; re-cut whenever the capsule's size changes (every morph frame).
+    private void ClipShadow()
     {
-        switch (state.Kind)
+        double w = Capsule.ActualWidth, h = Capsule.ActualHeight;
+        if (w <= 0 || h <= 0) return;
+        var outside = new RectangleGeometry(new Rect(-40, -40, w + 80, h + 80));
+        var body = new RectangleGeometry(new Rect(0, 0, w, h), h / 2, h / 2);
+        var clip = new CombinedGeometry(GeometryCombineMode.Exclude, outside, body);
+        clip.Freeze();
+        Shadow.Clip = clip;
+    }
+
+    /// Apply a HUD state instantly (the first show, a hide, a headless render).
+    public void Apply(HudState state) => Apply(state, animate: false);
+
+    /// Apply a HUD state; <paramref name="animate"/> morphs the capsule from the pill on screen (only
+    /// when a visible pill replaces another — the caller decides).
+    public void Apply(HudState state, bool animate)
+    {
+        FrameworkElement? next = state.Kind switch
         {
-            case HudStateKind.Recording:
-                SetMode(BarMode.Live);
-                break;
+            HudStateKind.Recording => ShowLive(stop: true),
+            HudStateKind.Transcribing => ShowLive(stop: false),
+            HudStateKind.PreparingModel => ShowModel(downloading: false, 0),
+            HudStateKind.DownloadingModel => ShowModel(downloading: true, state.Progress ?? 0),
+            HudStateKind.Done => ShowStatus("", Accent.Green, "Pasted"),
+            HudStateKind.Copied => ShowStatus("", Accent.Green, "Copied"),
+            HudStateKind.Error => ShowStatus("", Accent.Red,
+                string.IsNullOrEmpty(state.Payload) ? "Something went wrong" : state.Payload!),
+            _ => null,
+        };
 
-            case HudStateKind.Transcribing:
-            case HudStateKind.PreparingModel:
-            case HudStateKind.DownloadingModel:
-                SetMode(BarMode.Indeterminate);
-                break;
+        SetBarMode(state.Kind switch
+        {
+            HudStateKind.Recording => BarMode.Live,
+            HudStateKind.Transcribing => BarMode.Shimmer,
+            _ => BarMode.Hidden,
+        });
+        SetElapsedTimer(state.Kind == HudStateKind.PreparingModel);
 
-            case HudStateKind.Error:
-                // The only state with text. Show the specific message ("No speech detected.",
-                // a paste failure, …) so the user knows what happened; fall back to a generic
-                // line if there's no payload.
-                ShowError(state.Subtitle ?? "Something went wrong");
-                break;
+        if (next is null) SwapInstant(null);
+        else if (animate && _shown is not null && _shown != next && Capsule.ActualWidth > 0) MorphTo(next);
+        else if (!(animate && _shown == next)) SwapInstant(next); // same pill, new content: no motion
+    }
 
-            case HudStateKind.Copied:
-                // Clipboard-only mode: say "Copied" (never "Pasted"), with the copy glyph.
-                ShowError("Copied", glyph: "");
-                break;
+    private FrameworkElement ShowLive(bool stop)
+    {
+        StopButton.Visibility = stop ? Visibility.Visible : Visibility.Hidden; // keeps the bars centred
+        return LivePanel;
+    }
 
-            default: // Idle / Done — nothing to draw; the window hides the HUD entirely.
-                SetMode(BarMode.Hidden);
-                break;
+    private enum Accent { Green, Red }
+
+    private static Brush AccentBrush(Accent a) => Frozen(a == Accent.Green
+        ? Color.FromRgb(0x6C, 0xCB, 0x5F)
+        : Color.FromRgb(0xFF, 0x99, 0xA4));
+
+    private static SolidColorBrush Frozen(Color c)
+    {
+        var b = new SolidColorBrush(c);
+        b.Freeze();
+        return b;
+    }
+
+    private FrameworkElement ShowStatus(string glyph, Accent accent, string text)
+    {
+        StatusIcon.Text = glyph;
+        StatusIcon.Foreground = AccentBrush(accent);
+        StatusText.Text = text;
+        AutomationProperties.SetName(StatusPanel, text);
+        return StatusPanel;
+    }
+
+    private FrameworkElement ShowModel(bool downloading, double progress)
+    {
+        ModelIcon.Text = downloading ? "" : "";
+        ModelTitle.Text = downloading ? "Downloading Model" : "Preparing Model";
+        double p = Math.Clamp(double.IsFinite(progress) ? progress : 0, 0, 1);
+        ModelDetail.Text = downloading ? $"{p * 100:0}%" : PreparingDetail();
+        ModelTrack.Visibility = downloading ? Visibility.Visible : Visibility.Collapsed;
+        ModelFill.Width = ModelTrack.Width * p;
+        return ModelPanel;
+    }
+
+    private string PreparingDetail()
+    {
+        int s = Math.Max(0, (int)(DateTime.UtcNow - _preparingSince).TotalSeconds);
+        return $"One-time setup — keep JVoice open · {s / 60}:{s % 60:00}";
+    }
+
+    /// The preparing pill's ticking counter proves the app is alive (a static pill reads as a hang).
+    private void SetElapsedTimer(bool on)
+    {
+        if (on)
+        {
+            if (_elapsedTimer is not null) return;
+            _preparingSince = DateTime.UtcNow;
+            ModelDetail.Text = PreparingDetail();
+            _elapsedTimer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromSeconds(1) };
+            _elapsedTimer.Tick += (_, _) => ModelDetail.Text = PreparingDetail();
+            _elapsedTimer.Start();
+        }
+        else
+        {
+            _elapsedTimer?.Stop();
+            _elapsedTimer = null;
         }
     }
 
-    /// Pose the bars in a representative static recording frame (centre-weighted bell) for a
-    /// headless still capture — see App.RenderHudToFile. No animation loop is started, so a
-    /// single off-screen render shows real bar heights rather than the resting floor.
+    private void SwapInstant(FrameworkElement? next)
+    {
+        Capsule.BeginAnimation(WidthProperty, null);
+        Capsule.Width = double.NaN;
+        foreach (var panel in new FrameworkElement[] { LivePanel, StatusPanel, ModelPanel })
+        {
+            panel.BeginAnimation(OpacityProperty, null);
+            bool on = panel == next;
+            panel.Opacity = on ? 1 : 0;
+            panel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
+        }
+        Capsule.MinWidth = next == LivePanel ? PillMinWidth : 56;
+        _shown = next;
+    }
+
+    /// One capsule turns into the next: its width eases to the new pill's natural width while the old
+    /// contents fade out and the new fade in (Mac `.snappy(duration: 0.3)` ≈ 300 ms ease-out).
+    private void MorphTo(FrameworkElement next)
+    {
+        var old = _shown!;
+        double from = Capsule.ActualWidth;
+
+        next.BeginAnimation(OpacityProperty, null);
+        next.Opacity = 0;
+        next.Visibility = Visibility.Visible;
+        next.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        double min = next == LivePanel ? PillMinWidth : 56;
+        double to = Math.Max(min, next.DesiredSize.Width + 2); // + the 1 px hairline each side
+
+        Capsule.MinWidth = 0;
+        var width = new DoubleAnimation(from, to, Morph) { EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut } };
+        width.Completed += (_, _) =>
+        {
+            if (_shown != next) return; // another morph took over
+            Capsule.BeginAnimation(WidthProperty, null);
+            Capsule.Width = double.NaN;
+            Capsule.MinWidth = min;
+        };
+        Capsule.BeginAnimation(WidthProperty, width);
+
+        var fadeOut = new DoubleAnimation(0, TimeSpan.FromMilliseconds(150));
+        fadeOut.Completed += (_, _) => { if (_shown != old) old.Visibility = Visibility.Collapsed; };
+        old.BeginAnimation(OpacityProperty, fadeOut);
+        next.BeginAnimation(OpacityProperty, new DoubleAnimation(1, TimeSpan.FromMilliseconds(200))
+        {
+            BeginTime = TimeSpan.FromMilliseconds(100),
+        });
+        _shown = next;
+    }
+
+    private void OnStopClick(object sender, RoutedEventArgs e) => StopRequested?.Invoke();
+
+    /// Pose the recording pill in a representative static frame for a headless still capture (see
+    /// App.RenderHudToFile). No animation loop is started.
     internal void PrepareStaticCapture()
     {
-        SetMode(BarMode.Hidden);          // tear down any rendering subscription
-        Bars.Visibility = Visibility.Visible;
-        ErrorPanel.Visibility = Visibility.Collapsed;
+        Apply(HudState.Recording);
+        SetBarMode(BarMode.Hidden);
         for (int i = 0; i < _bars.Length; i++)
         {
             double bell = Math.Sin(Math.PI * (i + 0.5) / BarCount);
-            double level = 0.30 + 0.65 * bell; // a believable mid-level frame
-            SetBarHeight(i, level);
+            SetBar(i, 0.2 + 0.65 * bell * (0.6 + 0.4 * Math.Sin(i * 1.3)), LiveMaxHeight);
         }
     }
 
-    private void SetMode(BarMode mode)
+    // ---- the bars ----
+
+    private void SetBarMode(BarMode mode)
     {
         _mode = mode;
-        bool barsVisible = mode is BarMode.Live or BarMode.Indeterminate;
-        Bars.Visibility = barsVisible ? Visibility.Visible : Visibility.Collapsed;
-        ErrorPanel.Visibility = Visibility.Collapsed;
-        if (barsVisible) StartAnimations();
-        else StopAnimations();
-    }
-
-    private void ShowError(string message, string glyph = "")
-    {
-        ErrorGlyph.Text = glyph;
-        _mode = BarMode.Hidden;
-        StopAnimations();
-        Bars.Visibility = Visibility.Collapsed;
-        ErrorText.Text = message;
-        ErrorPanel.Visibility = Visibility.Visible;
+        if (mode == BarMode.Hidden) StopAnimations();
+        else StartAnimations();
     }
 
     private void StartAnimations()
@@ -198,50 +300,47 @@ public partial class HudView : UserControl
         for (int i = 0; i < _bars.Length; i++)
         {
             _barLevel[i] = 0;
-            SetBarHeight(i, 0);
+            SetBar(i, 0, LiveMaxHeight);
         }
     }
 
-    /// Per-frame tick: drive every bar's height from its time-based wave (no mic input).
     private void OnRendering(object? sender, EventArgs e)
     {
         double t = _clock.Elapsed.TotalSeconds;
-        // Rendering ticks at the display refresh rate (240 Hz here); the pill only needs ~60 fps.
-        // Skipping the extra ticks leaves the layered window clean (nothing dirtied → no
-        // re-composite), which is what actually saves the UI thread the work (FramePacer).
+        // Rendering ticks at the display refresh rate; the pill only needs ~60 fps (FramePacer).
         if (!JVoice.Core.FramePacer.ShouldApply(t, _lastAppliedFrame)) return;
         _lastAppliedFrame = t;
         FramesDrawn++;
 
+        double max = _mode == BarMode.Live ? LiveMaxHeight : ShimmerMaxHeight;
         for (int i = 0; i < _bars.Length; i++)
         {
-            double target01 = _mode == BarMode.Live ? LiveBar(i, t) : IndeterminateBar(i, t);
-            _barLevel[i] += (Math.Clamp(target01, 0, 1) - _barLevel[i]) * 0.5; // per-bar smoothing
-            SetBarHeight(i, _barLevel[i]);
+            double target = _mode == BarMode.Live ? LiveBar(i, t) : ShimmerBar(i, t);
+            _barLevel[i] += (Math.Clamp(target, 0, 1) - _barLevel[i]) * 0.5; // per-bar smoothing
+            SetBar(i, _barLevel[i], max, _mode == BarMode.Shimmer ? 0.85 : 1);
         }
     }
 
+    /// Height from a 0..1 level; quiet bars sit at a secondary opacity and rise to full white with
+    /// their height (Mac Bars.opacity).
+    private void SetBar(int i, double level, double maxHeight, double opacityScale = 1)
+    {
+        double h = BarMinHeight + (maxHeight - BarMinHeight) * Math.Clamp(level, 0, 1);
+        _bars[i].Height = h;
+        double t = Math.Clamp((h - BarMinHeight) / Math.Max(1, maxHeight - BarMinHeight), 0, 1);
+        _bars[i].Opacity = (0.45 + 0.55 * t) * opacityScale;
+    }
+
     /// Recording: a continuous, mic-INDEPENDENT waveform — every bar rises and falls on its own
-    /// phase/speed so the whole row is always flowing up and down. David preferred this constant
-    /// motion over mic-reactive bars, which stuttered on his words. Two summed sines at different
-    /// rates give an organic, non-repetitive swell; the per-bar phase gradient (_phase = i*0.7)
-    /// makes the motion travel across the row like a wave; _weight keeps the centre tallest.
+    /// phase/speed so the row is always flowing (David's preference over mic-reactive bars).
     private double LiveBar(int i, double t)
     {
         double w1 = Math.Sin(t * _speed[i] + _phase[i]);
         double w2 = Math.Sin(t * _speed[i] * 0.41 - _phase[i] * 1.3);
-        double v = 0.5 + 0.5 * (0.62 * w1 + 0.38 * w2);   // smooth 0..1 swell
-        return (0.28 + 0.72 * v) * _weight[i];            // tall, always moving, never flat
+        double v = 0.5 + 0.5 * (0.62 * w1 + 0.38 * w2);
+        return (0.18 + 0.82 * v) * _weight[i];
     }
 
-    /// Transcribing / preparing / downloading (no live mic): a soft pulse that sweeps back
-    /// and forth across the row — a quiet "working" shimmer, still text-free.
-    private double IndeterminateBar(int i, double t)
-    {
-        double pos = 0.5 + 0.5 * Math.Sin(t * 1.7);              // sweep centre, ping-pong
-        double d = (double)i / (BarCount - 1) - pos;
-        double bump = Math.Exp(-(d * d) / (2 * 0.05));
-        double flicker = 0.05 * Math.Sin(t * 9 + _phase[i]);
-        return 0.12 + 0.72 * bump * _weight[i] + flicker;
-    }
+    /// Transcribing: a gentle, low-amplitude shimmer (Mac ShimmerBars).
+    private static double ShimmerBar(int i, double t) => 0.5 + 0.5 * Math.Sin(t * 3 + i * 0.6);
 }

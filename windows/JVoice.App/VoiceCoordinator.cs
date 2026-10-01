@@ -1273,17 +1273,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             long pastedMs = _pressStopwatch?.ElapsedMilliseconds ?? -1;
             await _dispatcher.InvokeAsync(() =>
             {
-                // Silent success: the text is already in the user's app, so the HUD just
-                // disappears — no "Pasted" confirmation pill (per the bars-only redesign). In
-                // clipboard-only mode the pill says "Copied" (never "Pasted", Mac 8ea5088).
-                // §7 #49: hide it FIRST; the bookkeeping below (three file writes + history)
-                // used to run before the pill vanished.
-                if (_copyToClipboardOnly)
-                {
-                    UpdateHud(HudState.Copied(processed));
-                    ScheduleHudReset(AppTimings.HudResetDelay);
-                }
-                else UpdateHud(HudState.Idle);
+                // The pill morphs into a "Pasted" confirmation (Mac parity, row 29 — the June
+                // bars-only design pasted silently; the parity doc says follow the Mac), or
+                // "Copied" in clipboard-only mode (never "Pasted", Mac 8ea5088), then hides.
+                // §7 #49: update the HUD FIRST; the bookkeeping below (three file writes +
+                // history) used to run before the pill changed.
+                UpdateHud(_copyToClipboardOnly ? HudState.Copied(processed) : HudState.Done(processed));
+                ScheduleHudReset(AppTimings.HudResetDelay);
                 DiagnosticLog.Write($"Timing  stop->transcript={transcribedMs}ms  stop->pasted={pastedMs}ms  " +
                     $"stop->idle={_pressStopwatch?.ElapsedMilliseconds ?? -1}ms  recSecs={_lastRecordingSeconds:0.00}");
                 KeepTranscript(processed, wordCount);
