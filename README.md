@@ -27,6 +27,16 @@ Needs Windows 10 or 11 (64-bit). Download and run the installer:
 
 It installs for your user only (no admin needed) and starts in the system tray. To update, open Settings, go to Updates and click Check Now, then Update Now (JVoice also checks once a day unless you turn that off). Running a newer installer over the old one works too. Your settings are kept.
 
+## Uninstall
+
+On macOS, paste this into Terminal:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/uninstall.sh | bash
+```
+
+It quits JVoice and removes the app, its settings (including custom words, stats and recent transcripts), the downloaded Whisper model, its caches, and its Microphone and Accessibility permissions. You can read the script first: [`scripts/uninstall.sh`](scripts/uninstall.sh).
+
 ## First launch
 
 JVoice is free and not signed with a paid developer certificate, so your system warns you once:
