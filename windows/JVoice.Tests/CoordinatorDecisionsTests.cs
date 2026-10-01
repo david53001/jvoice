@@ -114,4 +114,47 @@ public class CoordinatorDecisionsTests
     [Fact]
     public void CanStartRecording_BothBusy_False()
         => Assert.False(CoordinatorDecisions.CanStartRecording(isStartingRecording: true, isTranscribing: true));
+
+    // ---- Mac 8ea5088: one press decision; a second press never discards a dictation (parity row 15)
+
+    [Theory]
+    //          recording starting stopping transcribing  expected
+    [InlineData(false, false, false, false, PressAction.Start)]
+    [InlineData(true,  false, false, false, PressAction.Stop)]
+    [InlineData(true,  false, true,  false, PressAction.Ignore)]          // a stop is already running
+    [InlineData(true,  true,  false, false, PressAction.Stop)]            // recording wins over starting
+    [InlineData(false, true,  false, false, PressAction.StopOnceOpened)]  // mic still opening
+    [InlineData(false, false, false, true,  PressAction.Ignore)]          // previous dictation in flight
+    [InlineData(false, true,  false, true,  PressAction.StopOnceOpened)]
+    [InlineData(true,  false, false, true,  PressAction.Stop)]
+    public void PressAction_Table(bool recording, bool starting, bool stopping, bool transcribing, PressAction expected)
+        => Assert.Equal(expected, CoordinatorDecisions.PressAction(recording, starting, stopping, transcribing));
+
+    [Fact]
+    public void PressAction_WhileTranscribing_NeverStarts()
+    {
+        foreach (bool stopping in new[] { false, true })
+            Assert.NotEqual(PressAction.Start, CoordinatorDecisions.PressAction(false, false, stopping, isTranscribing: true));
+    }
+
+    // ---- Refused paste keeps the text (parity row 16)
+
+    [Theory]
+    [InlineData(PasteFailure.AccessDenied, "clipboard")]
+    [InlineData(PasteFailure.TargetRejected, "clipboard")]
+    [InlineData(PasteFailure.ClipboardLocked, "Recent Transcripts")]
+    public void UnpastedMessage_SaysWhereTheTextIs(PasteFailure failure, string where)
+        => Assert.Contains(where, CoordinatorDecisions.UnpastedMessage(failure));
+
+    [Fact]
+    public void CopiedState_NeverSaysPasted()
+    {
+        var copied = HudState.Copied("hello");
+        Assert.Equal("Copied", copied.Headline);
+        Assert.True(copied.IsVisible);
+        Assert.True(copied.IsTerminal);
+        Assert.False(copied.IsBusy);
+        Assert.Equal(TrayIconActivity.Idle, CoordinatorDecisions.HudToTray(copied.Kind));
+        Assert.Equal(1000, CoordinatorDecisions.HudResetDelayMs(copied.Kind));
+    }
 }

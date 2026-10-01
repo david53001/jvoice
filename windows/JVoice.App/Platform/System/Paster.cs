@@ -21,9 +21,17 @@ public sealed class Paster : IDisposable
 {
     private readonly object _gate = new();
     private CancellationTokenSource? _restoreCts;
+    /// The clipboard's sequence number right after we put our text on it: if it changed before the
+    /// restore runs, the user copied something meanwhile and the restore is skipped (Mac 8ea5088).
+    private uint _ourClipboardSequence;
 
-    /// Set the clipboard to `text` only (no paste). Returns true on success.
-    public bool Stage(string text) => TrySetClipboardText(text);
+    /// Set the clipboard to `text` only (no paste) and cancel any pending restore, so a failed paste's
+    /// restore can't overwrite it moments later (Mac 8ea5088 copyOnly). Returns true on success.
+    public bool Stage(string text)
+    {
+        lock (_gate) { _restoreCts?.Cancel(); _restoreCts?.Dispose(); _restoreCts = null; }
+        return TrySetClipboardText(text);
+    }
 
     public PasteOutcome Paste(string text, IntPtr targetHwnd)
     {
@@ -39,6 +47,7 @@ public sealed class Paster : IDisposable
         // 2. Put our text on the clipboard.
         if (!TrySetClipboardText(text))
             return PasteOutcome.ClipboardLocked;
+        _ourClipboardSequence = GetClipboardSequenceNumber();
 
         // 3. Focus the target window so Ctrl+V lands there.
         bool focused = FocusTarget(targetHwnd, out bool switched);
@@ -130,6 +139,7 @@ public sealed class Paster : IDisposable
             try { await Task.Delay(delayMs, token); }
             catch (OperationCanceledException) { return; }
             if (token.IsCancellationRequested) return;
+            if (GetClipboardSequenceNumber() != _ourClipboardSequence) return; // the user copied meanwhile
             // Restore must run on an STA thread for the WPF clipboard.
             RunOnSta(() =>
             {
@@ -343,6 +353,9 @@ public sealed class Paster : IDisposable
         public uint time;
         public IntPtr dwExtraInfo;
     }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetClipboardSequenceNumber();
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);

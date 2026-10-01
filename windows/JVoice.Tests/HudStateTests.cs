@@ -13,6 +13,7 @@ public class HudStateTests
         HudStateKind.DownloadingModel => HudState.DownloadingModel(0.5),
         HudStateKind.Transcribing => HudState.Transcribing,
         HudStateKind.Done => HudState.Done("x"),
+        HudStateKind.Copied => HudState.Copied("x"),
         HudStateKind.Error => HudState.Error("e"),
         _ => HudState.Idle,
     };

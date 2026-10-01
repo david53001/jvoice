@@ -8,6 +8,8 @@ public enum HudStateKind
     DownloadingModel,
     Transcribing,
     Done,
+    /// Clipboard-only mode finished: the transcript is on the clipboard, not in an app — never "Pasted".
+    Copied,
     Error,
 }
 
@@ -19,6 +21,7 @@ public readonly record struct HudState(HudStateKind Kind, string? Payload = null
     public static HudState DownloadingModel(double progress) => new(HudStateKind.DownloadingModel, Progress: progress);
     public static readonly HudState Transcribing = new(HudStateKind.Transcribing);
     public static HudState Done(string text) => new(HudStateKind.Done, text);
+    public static HudState Copied(string text) => new(HudStateKind.Copied, text);
     public static HudState Error(string message) => new(HudStateKind.Error, message);
 
     public string Headline => Kind switch
@@ -29,6 +32,7 @@ public readonly record struct HudState(HudStateKind Kind, string? Payload = null
         HudStateKind.DownloadingModel => "Downloading Model",
         HudStateKind.Transcribing => "Transcribing",
         HudStateKind.Done => "Pasted",
+        HudStateKind.Copied => "Copied",
         HudStateKind.Error => "Something Went Wrong",
         _ => "Ready",
     };
@@ -41,6 +45,7 @@ public readonly record struct HudState(HudStateKind Kind, string? Payload = null
         HudStateKind.DownloadingModel => "Downloading the speech model…",
         HudStateKind.Transcribing => "Processing…",
         HudStateKind.Done => null,
+        HudStateKind.Copied => "On your clipboard",
         HudStateKind.Error => string.IsNullOrEmpty(Payload) ? "Something went wrong" : Payload,
         _ => null,
     };
@@ -50,5 +55,5 @@ public readonly record struct HudState(HudStateKind Kind, string? Payload = null
     public bool IsBusy => Kind is HudStateKind.Recording or HudStateKind.PreparingModel
         or HudStateKind.DownloadingModel or HudStateKind.Transcribing;
 
-    public bool IsTerminal => Kind is HudStateKind.Done or HudStateKind.Error;
+    public bool IsTerminal => Kind is HudStateKind.Done or HudStateKind.Copied or HudStateKind.Error;
 }

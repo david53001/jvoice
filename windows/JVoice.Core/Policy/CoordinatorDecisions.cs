@@ -7,6 +7,23 @@ namespace JVoice.Core;
 /// net9.0-windows JVoice.App). The WPF coordinator calls these.
 public enum TrayIconActivity { Idle, Recording, Transcribing }
 
+/// What a hotkey / tray / pill press does (Mac 8ea5088 <c>PressAction</c>).
+public enum PressAction
+{
+    /// Idle: open the microphone.
+    Start,
+    /// Recording: stop and transcribe.
+    Stop,
+    /// The microphone is still opening (the pill is already up): end the recording as soon as it
+    /// opens instead of dropping the press.
+    StopOnceOpened,
+    /// A stop is already running, or the previous dictation is still being transcribed/pasted.
+    Ignore,
+}
+
+/// Why a paste didn't land (mirrors the app's PasteOutcome failures).
+public enum PasteFailure { AccessDenied, ClipboardLocked, TargetRejected }
+
 public static class CoordinatorDecisions
 {
     /// Ports VoiceCoordinator.stopRecordingAndTranscribe's target resolution:
@@ -57,4 +74,24 @@ public static class CoordinatorDecisions
     /// the guard can never be dropped again.
     public static bool CanStartRecording(bool isStartingRecording, bool isTranscribing)
         => !isStartingRecording && !isTranscribing;
+
+    /// The single decision behind ToggleRecording (Mac 8ea5088 <c>pressAction</c>). Recording wins over
+    /// starting (both are briefly true at the end of a start), so a press right after the mic opened is
+    /// a stop; a press while the mic is still opening stops it once it opens; any press while the
+    /// previous dictation is being transcribed/pasted is ignored — it never cancels it.
+    public static PressAction PressAction(bool isRecording, bool isStartingRecording, bool isStoppingRecording, bool isTranscribing)
+    {
+        if (isRecording) return isStoppingRecording ? Core.PressAction.Ignore : Core.PressAction.Stop;
+        if (isStartingRecording) return Core.PressAction.StopOnceOpened;
+        return CanStartRecording(false, isTranscribing) ? Core.PressAction.Start : Core.PressAction.Ignore;
+    }
+
+    /// A paste that didn't land never loses the dictation (Mac 8ea5088): the text goes to the clipboard
+    /// (when it's free) and to Recent Transcripts, and the pill says where it is.
+    public static string UnpastedMessage(PasteFailure failure) => failure switch
+    {
+        PasteFailure.AccessDenied => "Can't paste into an admin window — the text is on your clipboard (Ctrl+V).",
+        PasteFailure.ClipboardLocked => "Clipboard was busy — the text is in Recent Transcripts.",
+        _ => "Couldn't paste into this app — the text is on your clipboard (Ctrl+V).",
+    };
 }

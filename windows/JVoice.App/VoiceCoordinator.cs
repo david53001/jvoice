@@ -49,6 +49,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private int _recordingGeneration;
     private bool _isStartingRecording;
     private bool _isStoppingRecording;
+    /// A stop press arrived while the mic was still opening: end the recording as soon as it opens.
+    private bool _stopOnceOpened;
     // True from StopRecordingAndTranscribe launching FinishTranscriptionAsync until that flight
     // fully settles (paste/error/no-speech). Read only on the dispatcher thread. Ports the Swift
     // start-branch guard `!transcriptionManager.isTranscribing` — see ToggleRecording (§7 #44).
@@ -855,6 +857,19 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     public void ClearRevertBuffer() { _pendingRevertWords = []; CanRevert = false; }
 
+    /// Record a finished transcript: last transcript, Recent Transcripts, stats (UI thread).
+    private void KeepTranscript(string processed, int wordCount)
+    {
+        _lastTranscriptStore.Transcript = processed;
+        LastTranscript = processed;
+        EditedTranscript = processed;
+        AddRecentTranscript(processed);
+        _statsStore.Record(wordCount, _lastRecordingSeconds);
+        TotalWordsSpoken = _statsStore.TotalWords;
+        AverageWpm = _statsStore.AverageWpm;
+        TimeSavedMinutes = StatsMath.EstimatedMinutesSaved(_statsStore.TotalWords, _statsStore.TotalSeconds);
+    }
+
     // ---- HUD + tray mirror (updateHUD analog) ----
 
     private void UpdateHud(HudState state)
@@ -887,29 +902,32 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     /// Ports toggleRecording: synchronous reentrancy guards on the UI thread.
     public void ToggleRecording()
     {
-        if (IsRecording)
+        // One pure decision for every press — hotkey, tray menu, pill (Mac 8ea5088 pressAction).
+        // §7 #44: a pending transcription outranks a new start request — a key auto-repeat /
+        // double-press ~300 ms after the stop press used to cancel the in-flight decode, silently
+        // destroying the finished dictation (2026-07-23: a 165 s dictation vanished).
+        var action = CoordinatorDecisions.PressAction(IsRecording, _isStartingRecording, _isStoppingRecording, _isTranscribing);
+        if (action == PressAction.Stop)
         {
-            if (_isStoppingRecording) return;
             _isStoppingRecording = true;
             try { StopRecordingAndTranscribe(); }
             finally { _isStoppingRecording = false; }
         }
+        else if (action == PressAction.StopOnceOpened)
+        {
+            _stopOnceOpened = true;
+            DiagnosticLog.Write("ToggleRecording stop while the mic is opening - stopping once it opens");
+        }
+        else if (action == PressAction.Ignore)
+        {
+            DiagnosticLog.Write(_isTranscribing ? "ToggleRecording press IGNORED - transcription in flight" : "ToggleRecording press IGNORED - stop in progress");
+            return;
+        }
         else
         {
-            if (!IsRecording && _gameDetector?.ShouldSuppress == true) return;
-            // §7 #44: a pending transcription outranks a new start request (Swift's
-            // `guard !transcriptionManager.isTranscribing`, dropped in the original port).
-            // Without this, a key auto-repeat / double-press ~300 ms after the stop press
-            // cancelled the in-flight decode below — silently destroying the finished
-            // dictation (2026-07-23: a 165 s dictation vanished and its accidental 3.7 s
-            // re-recording pasted "*referred*" instead).
-            if (!CoordinatorDecisions.CanStartRecording(_isStartingRecording, _isTranscribing))
-            {
-                if (_isTranscribing)
-                    DiagnosticLog.Write("ToggleRecording start IGNORED - transcription in flight");
-                return;
-            }
+            if (_gameDetector?.ShouldSuppress == true) return;
             _isStartingRecording = true;
+            _stopOnceOpened = false;
             _transcriptionCts?.Cancel();
             _transcriptionCts = null;
             // §7 #49: show the HUD NOW, synchronously on the press, BEFORE any microphone work.
@@ -943,6 +961,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         {
             if (!started)
             {
+                _stopOnceOpened = false;
                 if (_recorder.LastStartWasPermissionDenied)
                     PermissionError.Microphone().SurfaceAndOpenSettings();
                 else
@@ -961,6 +980,15 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             {
                 int generation = _recordingGeneration;
                 _ = StartStreamingAsync(path, generation);
+            }
+
+            if (_stopOnceOpened)
+            {
+                // The user pressed stop while the mic was opening: end it now that it's open.
+                _stopOnceOpened = false;
+                _isStoppingRecording = true;
+                try { StopRecordingAndTranscribe(); }
+                finally { _isStoppingRecording = false; }
             }
         });
     }
@@ -1119,7 +1147,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 // nothing in an app to reverse, so _lastPastedText (the undo record) is left unset.
                 if (!_paster.Stage(processed))
                 {
-                    await _dispatcher.InvokeAsync(() => { ShowError("Clipboard is busy — try again."); ScheduleHudReset(AppTimings.HudResetDelay); });
+                    // Never lose the dictation: it still goes to Recent Transcripts (Mac 8ea5088).
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        KeepTranscript(processed, processed.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
+                        ShowError(CoordinatorDecisions.UnpastedMessage(PasteFailure.ClipboardLocked));
+                    });
                     return;
                 }
             }
@@ -1136,19 +1169,26 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 }
                 PasteOutcome outcome = _paster.Paste(processed, target);
 
-                switch (outcome)
+                if (outcome != PasteOutcome.Ok)
                 {
-                    case PasteOutcome.Ok:
-                        break;
-                    case PasteOutcome.AccessDenied:
-                        await _dispatcher.InvokeAsync(() => { ShowError("Can't paste into an elevated (admin) window. Run that app non-elevated, or focus a normal window."); ScheduleHudReset(AppTimings.HudResetDelay); });
-                        return;
-                    case PasteOutcome.ClipboardLocked:
-                        await _dispatcher.InvokeAsync(() => { ShowError("Clipboard is busy — try again."); ScheduleHudReset(AppTimings.HudResetDelay); });
-                        return;
-                    case PasteOutcome.TargetRejected:
-                        await _dispatcher.InvokeAsync(() => { ShowError("Unable to paste into the active app."); ScheduleHudReset(AppTimings.HudResetDelay); });
-                        return;
+                    // A refused paste never loses the dictation (Mac 8ea5088): the text goes to the
+                    // clipboard (cancelling the paste's pending restore) and Recent Transcripts, and
+                    // the pill says where it is.
+                    var failure = outcome switch
+                    {
+                        PasteOutcome.AccessDenied => PasteFailure.AccessDenied,
+                        PasteOutcome.ClipboardLocked => PasteFailure.ClipboardLocked,
+                        _ => PasteFailure.TargetRejected,
+                    };
+                    bool onClipboard = failure != PasteFailure.ClipboardLocked && _paster.Stage(processed);
+                    if (!onClipboard) failure = PasteFailure.ClipboardLocked;
+                    DiagnosticLog.Write($"Paste {outcome} -> kept (clipboard={onClipboard})");
+                    await _dispatcher.InvokeAsync(() =>
+                    {
+                        KeepTranscript(processed, processed.Split(' ', StringSplitOptions.RemoveEmptyEntries).Length);
+                        ShowError(CoordinatorDecisions.UnpastedMessage(failure));
+                    });
+                    return;
                 }
                 // Paste succeeded — remember it (and where it landed) so the opt-in undo hotkey can
                 // reverse it, but only while that same window is still foreground.
@@ -1161,20 +1201,19 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             await _dispatcher.InvokeAsync(() =>
             {
                 // Silent success: the text is already in the user's app, so the HUD just
-                // disappears — no "Pasted" confirmation pill (per the bars-only redesign).
+                // disappears — no "Pasted" confirmation pill (per the bars-only redesign). In
+                // clipboard-only mode the pill says "Copied" (never "Pasted", Mac 8ea5088).
                 // §7 #49: hide it FIRST; the bookkeeping below (three file writes + history)
                 // used to run before the pill vanished.
-                UpdateHud(HudState.Idle);
+                if (_copyToClipboardOnly)
+                {
+                    UpdateHud(HudState.Copied(processed));
+                    ScheduleHudReset(AppTimings.HudResetDelay);
+                }
+                else UpdateHud(HudState.Idle);
                 DiagnosticLog.Write($"Timing  stop->transcript={transcribedMs}ms  stop->pasted={pastedMs}ms  " +
                     $"stop->idle={_pressStopwatch?.ElapsedMilliseconds ?? -1}ms  recSecs={_lastRecordingSeconds:0.00}");
-                _lastTranscriptStore.Transcript = processed;
-                LastTranscript = processed;
-                EditedTranscript = processed;
-                AddRecentTranscript(processed);
-                _statsStore.Record(wordCount, _lastRecordingSeconds);
-                TotalWordsSpoken = _statsStore.TotalWords;
-                AverageWpm = _statsStore.AverageWpm;
-                TimeSavedMinutes = StatsMath.EstimatedMinutesSaved(_statsStore.TotalWords, _statsStore.TotalSeconds);
+                KeepTranscript(processed, wordCount);
             });
         }
         catch (TranscriptionException tex)

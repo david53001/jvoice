@@ -126,6 +126,11 @@ public partial class HudView : UserControl
                 ShowError(state.Subtitle ?? "Something went wrong");
                 break;
 
+            case HudStateKind.Copied:
+                // Clipboard-only mode: say "Copied" (never "Pasted"), with the copy glyph.
+                ShowError("Copied", glyph: "");
+                break;
+
             default: // Idle / Done — nothing to draw; the window hides the HUD entirely.
                 SetMode(BarMode.Hidden);
                 break;
@@ -158,8 +163,9 @@ public partial class HudView : UserControl
         else StopAnimations();
     }
 
-    private void ShowError(string message)
+    private void ShowError(string message, string glyph = "")
     {
+        ErrorGlyph.Text = glyph;
         _mode = BarMode.Hidden;
         StopAnimations();
         Bars.Visibility = Visibility.Collapsed;
