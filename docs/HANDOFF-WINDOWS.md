@@ -2195,6 +2195,12 @@ smaller model, reduced audio_ctx) trades accuracy. David: *"thats alright, its g
 lines in `diagnostic.log` after a few dictations (expected: `MicStarted +20–40ms`, `stop->pasted`
 ≈ 400–500 ms for a streamed dictation).
 
+## §7 #50 — Spoken maths is not a repetition loop (parity row 8) (2026-10-02)
+
+Commit `24c336d`. Port of the Mac `RepetitionGuard` (ffbca8a, parity doc §6.1). **Why:** "26 times 26 times 26 times 10 times 10 times 10" / "minus 3 minus 3 minus 3" were judged decoder loops — cut from the paste and re-decoded; an all-maths chunk came back empty and forced the whole-file fallback.
+**What:** `JVoice.Core/Text/RepetitionGuard.cs` — `IsMathToken` (number, single letter, number word, spoken operator; `MathWords` verbatim) counts as a loop token on repetition alone only with **8 occurrences in the last 24 tokens** (`MathRepeatWindow`/`MathMinRepeatCount`); new `TrailingPhraseLoop` net — a transcript ending in one exact phrase of ≤ 12 tokens repeated ≥ 6× is a loop whatever its tokens; the vocabulary split is now acronym-aware like the Mac ("VS Code" keeps "vs"). `PhraseLoopGuard`'s pure-maths exemption is unchanged.
+**Tests:** `RepetitionGuardTests` +17 (the six Mac maths examples kept verbatim, long combinatorics dictation not loopy, sustained numeric loops still stripped, "page 1 of 10" ×6/×40 and cut-off cycles stripped, a dictated power ×5 kept, 40× "the" and "okay" loops still caught, `IsMathToken` cases). `dotnet test` 1535/1535.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
