@@ -84,11 +84,14 @@ public partial class SettingsView : UserControl
     private void OnNewWordKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter) { SubmitWord(); e.Handled = true; }
+        else ShowNotice(WordNotice, null); // editing the entry retires the old reason
     }
+    /// Row 19: a refused word stays in the field with the reason under it; an accepted one clears it.
     private void SubmitWord()
     {
-        Vm.AddCustomWord(NewWordBox.Text);
-        NewWordBox.Clear();
+        var reason = Vm.AddCustomWord(NewWordBox.Text);
+        if (reason is null) NewWordBox.Clear();
+        ShowNotice(WordNotice, reason);
     }
 
     private void OnRemoveWord(object sender, RoutedEventArgs e)
@@ -101,11 +104,14 @@ public partial class SettingsView : UserControl
     private void OnCorrectionKeyDown(object sender, KeyEventArgs e)
     {
         if (e.Key == Key.Enter) { SubmitCorrection(); e.Handled = true; }
+        else ShowNotice(CorrectionNotice, null);
     }
     private void SubmitCorrection()
     {
-        // Clear only on a successful add (AddCorrection ignores blank/duplicate input).
-        if (Vm.AddCorrection(CorrectionFromBox.Text, CorrectionToBox.Text))
+        // Clear only on a successful add; a refused one keeps both fields and says why (row 19).
+        var reason = Vm.AddCorrection(CorrectionFromBox.Text, CorrectionToBox.Text);
+        ShowNotice(CorrectionNotice, reason);
+        if (reason is null)
         {
             CorrectionFromBox.Clear();
             CorrectionToBox.Clear();
@@ -202,12 +208,15 @@ public partial class SettingsView : UserControl
     {
         if (e.Key == Key.Enter) { AppPickerPopup.IsOpen = false; SubmitAppRule(); e.Handled = true; }
         else if (e.Key == Key.Escape) { AppPickerPopup.IsOpen = false; e.Handled = true; }
+        else ShowNotice(AppRuleNotice, null);
     }
     private void SubmitAppRule()
     {
-        // Clear only on a successful add (AddAppRule ignores blank/duplicate matches). A typed
+        // Clear only on a successful add; a refused one keeps the text and says why (row 19). A typed
         // partial name is fine — AppModeResolver matches on substring, so "chr" still catches chrome.
-        if (Vm.AddAppRule(AppRuleBox.Text, _appRuleMode))
+        var reason = Vm.AddAppRule(AppRuleBox.Text, _appRuleMode);
+        ShowNotice(AppRuleNotice, reason);
+        if (reason is null)
         {
             AppRuleBox.Clear();
             AppPickerPopup.IsOpen = false;

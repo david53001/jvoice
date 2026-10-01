@@ -450,17 +450,18 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     public ObservableCollection<AppModeRule> AppModeRules { get; }
     public bool HasAppModeRules => AppModeRules.Count > 0;
 
-    /// Add a per-app rule. Returns false (no-op) when the match is blank or a rule with the same
-    /// match (case-insensitive) already exists. Post-processing only — no engine reload.
-    public bool AddAppRule(string appMatch, ToneStyle mode)
+    /// Add a per-app rule. Returns null when added; otherwise the one-line reason it was turned away
+    /// (<see cref="SettingsEntryPolicy.AppRuleRejection"/>, shown under the field, which keeps the text — row 19), or
+    /// "" for blank input (nothing to say). Post-processing only — no engine reload.
+    public string? AddAppRule(string appMatch, ToneStyle mode)
     {
         var m = appMatch.Trim();
-        if (m.Length == 0) return false;
-        if (AppModeRules.Any(r => string.Equals(r.AppMatch.Trim(), m, StringComparison.OrdinalIgnoreCase))) return false;
+        if (m.Length == 0) return "";
+        if (SettingsEntryPolicy.AppRuleRejection(m, AppModeRules.Select(r => r.AppMatch)) is { } reason) return reason;
         AppModeRules.Add(new AppModeRule(m, mode));
         Raise(nameof(HasAppModeRules));
         PersistSettings();
-        return true;
+        return null;
     }
 
     public void RemoveAppRule(AppModeRule rule)
@@ -861,14 +862,18 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     // ---- custom words / fix-revert (ports the Swift methods 1:1) ----
 
-    public void AddCustomWord(string word)
+    /// Returns null when added; otherwise why it was turned away (the Mac guards: at most 60 characters, a letter or
+    /// number, no case-insensitive duplicate — row 19), or "" for blank input.
+    public string? AddCustomWord(string word)
     {
         var trimmed = word.Trim();
-        if (trimmed.Length == 0 || CustomWords.Contains(trimmed)) return;
+        if (trimmed.Length == 0) return "";
+        if (SettingsEntryPolicy.CustomWordRejection(trimmed, CustomWords) is { } reason) return reason;
         CustomWords.Add(trimmed);
         Raise(nameof(HasCustomWords));
         PersistSettings();
         _ = _engine.UpdateVocabularyAsync(CustomWords.ToList());
+        return null;
     }
 
     public void RemoveCustomWord(string word)
@@ -879,20 +884,19 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _ = _engine.UpdateVocabularyAsync(CustomWords.ToList());
     }
 
-    /// Adds a correction rule. Returns false (no-op) when either field is blank or a
-    /// rule with the same heard phrase (case-insensitive) already exists.
-    public bool AddCorrection(string from, string to)
+    /// Adds a correction rule. Returns null when added; otherwise why not (a blank side, the same text on both sides,
+    /// or a rule for that heard phrase already — case-insensitive, the merge key), or "" when both are blank.
+    public string? AddCorrection(string from, string to)
     {
         var f = from.Trim();
         var t = to.Trim();
-        if (f.Length == 0 || t.Length == 0) return false;
-        // Dedupe on the heard phrase (case-insensitive) — same key as the merge.
-        if (Corrections.Any(c => string.Equals(c.From.Trim(), f, StringComparison.OrdinalIgnoreCase))) return false;
+        if (f.Length == 0 && t.Length == 0) return "";
+        if (SettingsEntryPolicy.CorrectionRejection(f, t, Corrections.Select(c => c.From)) is { } reason) return reason;
         Corrections.Add(new CorrectionRule(f, t));
         Raise(nameof(HasCorrections));
         PersistSettings();
         // Post-processing only: no engine/vocabulary reload needed.
-        return true;
+        return null;
     }
 
     public void RemoveCorrection(CorrectionRule rule)
@@ -945,8 +949,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         {
             var t = w.Trim();
             if (t.Length == 0 || CustomWords.Contains(t)) continue;
-            AddCustomWord(t);
-            inserted.Add(t);
+            if (AddCustomWord(t) is null) inserted.Add(t);
         }
         _pendingRevertWords = inserted.ToArray();
         CanRevert = inserted.Count > 0;
