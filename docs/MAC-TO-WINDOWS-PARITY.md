@@ -119,9 +119,9 @@ equivalent), **N/A** (Mac-only problem). Priority: **P1** = user-visible / corre
 | 25 | "sigma" = ∑ (σ is "lowercase sigma") | ede7a2d | DONE 1cecc0e | P1 | 7.5 |
 | 26 | Math Notation off must be measurably faster | spec §5 | Check | P3 | 7.6 |
 | 27 | Bench: `--repeat N --idle S`, prompt-token count, `--no-math`, `--stream --realtime` | 26bb896, fdacf33 | PARTIAL | P3 | 5.7 |
-| 28 | **Native look** (System/Light/Dark, translucent Settings, cards, native controls) | a3bfff0 | MISSING (Windows is pure-black monochrome) | P1 | 8 |
-| 29 | **Glass pill that hugs its content and morphs between states** | a3bfff0, 33d8a21 | MISSING | P1 | 8.4 |
-| 30 | **Opacity setting** (Settings → Appearance) | d060a72 | MISSING | P1 | 9 |
+| 28 | **Native look** (System/Light/Dark, translucent Settings, cards, native controls) | a3bfff0 | DONE bd2155d (+0ed7dda) | P1 | 8 |
+| 29 | **Glass pill that hugs its content and morphs between states** | a3bfff0, 33d8a21 | DONE e7481eb | P1 | 8.4 |
+| 30 | **Opacity setting** (Settings → Appearance) | d060a72 | DONE bd2155d (+0ed7dda) | P1 | 9 |
 | 31 | **First-run Welcome window + guided tours** (new users only) | 124c42c…157698d | MISSING | P1 | 10 |
 | 32 | ⓘ on every window (Replay Tour, Show Me list), Help & Tours menu, Tours & Tips card | 99abe37, 5069c8c | MISSING | P1 | 10.6 |
 | 33 | Tour polish: capsule outline on the pill, animated Opacity step | a45598e | MISSING | P2 | 10.8 |
