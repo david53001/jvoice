@@ -2277,6 +2277,10 @@ Parity rows 31/32 (doc §10): the Mac's first-run Welcome window + guided tours 
   - No mic "Test" button: page 2's Try-it step is the test.
 - **Verify:** `dotnet test` 1933/1933 (TourTests 38, TourCoordinatorTests 15, HudState Notice). Off-screen: `JVoice.exe --welcome-render <png> [allset] [question] [light|dark]`, `--tour-render <png> [light|dark]`, `--settings-render` (1080×945 with the new card). **Not seen on screen yet:** the live overlay over real windows, the tray-icon rect, and the first-run flow. Try them on a clean Windows profile or VM, never by wiping David's settings.
 
+## §7 #60 — Tour polish: capsule outline on the pill + animated Opacity step (row 33) (2026-10-02)
+
+Parity row 33 (doc §10.8) shipped inside the rows 31/32 commit 8a5b32a, so no extra code. **Capsule outline:** `TagStyle.OutlineRadius` = the anchor's declared radius + 4 padding, capped at half the box's short side. `PillTourHost` declares the capsule's on-screen radius (its height / 2, so HudScale is included), so the outline around the pill is a concentric capsule; the dim covers only the capsule. Locked by `TourTests.OutlineIsConcentricAroundTheCapsulePill` and seen in `--tour-render`. **Animated Opacity step:** `OpacityTourDemo` drives the REAL Opacity along the exact `OpacityDemoTimeline` port (~9.5 s loop, smoothstep). It appends the live readout to the tag ('Watch: 37 % ↓', 'Watch: 0 % Transparent', 'Yours: 50 %') and never saves: `VoiceCoordinator.BeginOpacityHold` makes settings writes carry the held value. Stopping restores the user's value, and a slider/Default change by the user ends the demo and is kept and saved. The demo starts after the tag shows and stops whenever the step leaves; the coordinator owns this, tested in `TourCoordinatorTests.TheOpacityStepPlaysItsDemoOnlyWhileOnScreen`. Readouts fit the tag's two lines (`OpacityReadoutsFitTheTagToo`).
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
