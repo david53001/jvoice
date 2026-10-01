@@ -110,13 +110,15 @@ internal static class LatencyProbe
         Line("");
         Line("== HUD animation load (2 s each) ==");
         var idleGap = await MeasureDispatcherAsync(TimeSpan.FromSeconds(2));
-        Line($"hidden:       render ticks/s={idleGap.RenderHz:0}  process CPU={idleGap.CpuPercent:0.0}% of one core  hop(Send) avg={idleGap.HopAvgMs:0.00} max={idleGap.HopMaxMs:0.00} ms");
+        // "render ticks/s" counts WPF's loop, which the probe's own subscription keeps running;
+        // "pill frames/s" is what the pill itself drew — it must be 0 while hidden (row 20).
+        Line($"hidden:       pill frames/s={idleGap.PillHz:0}  render ticks/s={idleGap.RenderHz:0}  process CPU={idleGap.CpuPercent:0.0}% of one core  hop(Send) avg={idleGap.HopAvgMs:0.00} max={idleGap.HopMaxMs:0.00} ms");
         hud.Update(HudState.Recording);
         var recGap = await MeasureDispatcherAsync(TimeSpan.FromSeconds(2));
-        Line($"recording:    render ticks/s={recGap.RenderHz:0}  process CPU={recGap.CpuPercent:0.0}% of one core  hop(Send) avg={recGap.HopAvgMs:0.00} max={recGap.HopMaxMs:0.00} ms");
+        Line($"recording:    pill frames/s={recGap.PillHz:0}  render ticks/s={recGap.RenderHz:0}  process CPU={recGap.CpuPercent:0.0}% of one core  hop(Send) avg={recGap.HopAvgMs:0.00} max={recGap.HopMaxMs:0.00} ms");
         hud.Update(HudState.Transcribing);
         var txGap = await MeasureDispatcherAsync(TimeSpan.FromSeconds(2));
-        Line($"transcribing: render ticks/s={txGap.RenderHz:0}  process CPU={txGap.CpuPercent:0.0}% of one core  hop(Send) avg={txGap.HopAvgMs:0.00} max={txGap.HopMaxMs:0.00} ms");
+        Line($"transcribing: pill frames/s={txGap.PillHz:0}  render ticks/s={txGap.RenderHz:0}  process CPU={txGap.CpuPercent:0.0}% of one core  hop(Send) avg={txGap.HopAvgMs:0.00} max={txGap.HopMaxMs:0.00} ms");
         hud.Update(HudState.Idle);
 
         // ---------------------------------------------------------------- 2. microphone path
@@ -282,7 +284,7 @@ internal static class LatencyProbe
         return tcs.Task;
     }
 
-    private readonly record struct GapStats(double RenderHz, double CpuPercent, double HopAvgMs, double HopMaxMs);
+    private readonly record struct GapStats(double RenderHz, double PillHz, double CpuPercent, double HopAvgMs, double HopMaxMs);
 
     /// For `duration`: counts CompositionTarget.Rendering ticks, measures this process's CPU
     /// time (all threads) as a % of one core, and, from a background thread, how long a
@@ -292,6 +294,7 @@ internal static class LatencyProbe
     {
         var proc = Process.GetCurrentProcess();
         var cpu0 = proc.TotalProcessorTime;
+        long pill0 = JVoice.App.UI.HudView.FramesDrawn;
         var sw = Stopwatch.StartNew();
         int renders = 0;
         EventHandler onRender = (_, _) => renders++;
@@ -316,7 +319,8 @@ internal static class LatencyProbe
         double total = sw.Elapsed.TotalMilliseconds;
         proc.Refresh();
         double cpuMs = (proc.TotalProcessorTime - cpu0).TotalMilliseconds;
-        return new GapStats(renders / (total / 1000.0), 100.0 * cpuMs / total, hops > 0 ? hopSum / hops : 0, hopMax);
+        double pillHz = (JVoice.App.UI.HudView.FramesDrawn - pill0) / (total / 1000.0);
+        return new GapStats(renders / (total / 1000.0), pillHz, 100.0 * cpuMs / total, hops > 0 ? hopSum / hops : 0, hopMax);
     }
 
     /// A Highest-priority thread sleeping 1 ms at a time, recording the worst overshoot — a proxy

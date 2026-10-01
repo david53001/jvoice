@@ -35,6 +35,15 @@ public partial class HudView : UserControl
     private bool _animating;
     private BarMode _mode = BarMode.Hidden;
 
+    /// Frames the pill actually drew, process-wide — the --latency-probe reads it to prove the
+    /// hidden / prewarmed pill draws NOTHING (parity row 20: the Mac's hidden pill kept animating
+    /// at 30 Hz from launch to the first dictation). A global render-tick count can't show that:
+    /// the probe's own CompositionTarget.Rendering subscription keeps WPF ticking.
+    internal static long FramesDrawn;
+
+    /// True while this pill is subscribed to the render loop.
+    internal bool IsAnimating => _animating;
+
     private Rectangle[] _bars = [];
     private double[] _barLevel = [];           // current (smoothed) 0..1 height of each bar
     private double[] _phase = [];
@@ -202,6 +211,7 @@ public partial class HudView : UserControl
         // re-composite), which is what actually saves the UI thread the work (FramePacer).
         if (!JVoice.Core.FramePacer.ShouldApply(t, _lastAppliedFrame)) return;
         _lastAppliedFrame = t;
+        FramesDrawn++;
 
         for (int i = 0; i < _bars.Length; i++)
         {

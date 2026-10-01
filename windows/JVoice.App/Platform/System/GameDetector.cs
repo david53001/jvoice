@@ -123,7 +123,7 @@ public sealed class GameDetector : IDisposable
         {
             Interval = TimeSpan.FromSeconds(1.5),
         };
-        _timer.Tick += (_, _) => { try { Recompute(); } catch { } };
+        _timer.Tick += (_, _) => { try { BackstopTick(); } catch { } };
         _timer.Start();
     }
 
@@ -159,6 +159,28 @@ public sealed class GameDetector : IDisposable
 
     // ---- Internal ----
 
+    // What the last full Recompute saw. The backstop exists for ONE case — a game going
+    // fullscreen in place (alt-enter: same hwnd, new extent) — so a tick whose foreground hwnd
+    // AND window rect are unchanged has nothing new to find and skips the process query, the
+    // notification-state call and the class/monitor lookups (idle CPU, parity row 20). A full
+    // recompute still runs at least every FullRecomputeEvery as a safety net.
+    private IntPtr _lastHwnd;
+    private RECT _lastRect;
+    private long _lastFullRecomputeMs;
+    private const long FullRecomputeEveryMs = 15_000;
+
+    private void BackstopTick()
+    {
+        if (_mode == GameDetectionMode.Off) return;
+        IntPtr hwnd = ForegroundWindowTracker.GetForegroundWindowNow();
+        RECT rect = default;
+        bool haveRect = hwnd != IntPtr.Zero && GetWindowRect(hwnd, out rect);
+        if (haveRect && hwnd == _lastHwnd && rect.Equals(_lastRect)
+            && Environment.TickCount64 - _lastFullRecomputeMs < FullRecomputeEveryMs)
+            return;
+        Recompute();
+    }
+
     private void OnForegroundChanged(IntPtr hwnd)
     {
         try { Recompute(); } catch { }
@@ -177,6 +199,9 @@ public sealed class GameDetector : IDisposable
         try
         {
             IntPtr hwnd = ForegroundWindowTracker.GetForegroundWindowNow();
+            _lastHwnd = hwnd;
+            if (hwnd == IntPtr.Zero || !GetWindowRect(hwnd, out _lastRect)) _lastRect = default;
+            _lastFullRecomputeMs = Environment.TickCount64;
             var (signals, _, _) = GatherSignals(hwnd);
             _suppress = GameDetectionPolicy.ShouldSuppress(signals, _mode);
         }
