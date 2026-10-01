@@ -128,6 +128,7 @@ public partial class HudView : UserControl
             HudStateKind.DownloadingModel => ShowModel(downloading: true, state.Progress ?? 0),
             HudStateKind.Done => ShowStatus("", Accent.Green, "Pasted"),
             HudStateKind.Copied => ShowStatus("", Accent.Green, "Copied"),
+            HudStateKind.Notice => ShowStatus("", Accent.Neutral, state.Payload ?? ""),
             HudStateKind.Error => ShowStatus("", Accent.Red,
                 string.IsNullOrEmpty(state.Payload) ? "Something went wrong" : state.Payload!),
             _ => null,
@@ -152,11 +153,14 @@ public partial class HudView : UserControl
         return LivePanel;
     }
 
-    private enum Accent { Green, Red }
+    private enum Accent { Green, Red, Neutral }
 
-    private static Brush AccentBrush(Accent a) => Frozen(a == Accent.Green
-        ? Color.FromRgb(0x6C, 0xCB, 0x5F)
-        : Color.FromRgb(0xFF, 0x99, 0xA4));
+    private static Brush AccentBrush(Accent a) => Frozen(a switch
+    {
+        Accent.Green => Color.FromRgb(0x6C, 0xCB, 0x5F),
+        Accent.Red => Color.FromRgb(0xFF, 0x99, 0xA4),
+        _ => Color.FromArgb(0xC5, 0xFF, 0xFF, 0xFF), // a notice: no meaning colour, the secondary text white
+    });
 
     private static SolidColorBrush Frozen(Color c)
     {

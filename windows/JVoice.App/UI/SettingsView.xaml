@@ -34,8 +34,9 @@
                     <TextBlock Text="JVoice" FontFamily="{StaticResource DisplayFont}" FontSize="20" FontWeight="SemiBold" />
                     <TextBlock Text="Voice dictation controls" Style="{StaticResource Note}" Margin="0,1,0,0" />
                 </StackPanel>
-                <Border Style="{StaticResource SegmentTrack}" HorizontalAlignment="Right" VerticalAlignment="Center"
-                        AutomationProperties.AutomationId="settings.appearance" AutomationProperties.Name="Appearance">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                <Border Style="{StaticResource SegmentTrack}" VerticalAlignment="Center"
+                        AutomationProperties.AutomationId="settings.theme" AutomationProperties.Name="Appearance">
                     <StackPanel Orientation="Horizontal">
                         <RadioButton GroupName="Appearance" Style="{StaticResource IconSegment}" Content="&#xE770;"
                                      ToolTip="System" AutomationProperties.Name="System"
@@ -48,6 +49,10 @@
                                      IsChecked="{Binding IsAppearanceDark, Mode=TwoWay}" />
                     </StackPanel>
                 </Border>
+                <!-- ⓘ: Replay Tour · Show Me ▸ · Keyboard Shortcuts (the InfoButton is set in code) -->
+                <ContentControl x:Name="InfoHost" Margin="8,0,0,0" VerticalAlignment="Center" Focusable="False"
+                                AutomationProperties.AutomationId="settings.help" />
+                </StackPanel>
             </Grid>
 
 
@@ -176,7 +181,7 @@
 
                     <!-- APPEARANCE — the Opacity setting shared by MacStats, JVoice and BetterScreenshot
                          (row 30); live: every window and the pill follow the slider. -->
-                    <ui:SettingsCard HeaderText="Appearance" AutomationProperties.AutomationId="settings.opacity">
+                    <ui:SettingsCard HeaderText="Appearance" AutomationProperties.AutomationId="settings.appearance">
                         <StackPanel>
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -585,8 +590,24 @@
                         </StackPanel>
                     </ui:SettingsCard>
 
-
-
+                    <!-- TOURS & TIPS (parity §10.6) — the opt-in switch + replay/reset, for every user -->
+                    <ui:SettingsCard HeaderText="Tours &amp; Tips" AutomationProperties.AutomationId="settings.tours">
+                        <StackPanel>
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel Margin="0,0,12,0">
+                                    <TextBlock Text="Show Me Around" Style="{StaticResource RowTitle}" />
+                                    <TextBlock Text="Point out each part the first time you use it." Style="{StaticResource Note}" />
+                                </StackPanel>
+                                <CheckBox Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource MonoSwitch}"
+                                          AutomationProperties.Name="Show Me Around" IsChecked="{Binding ShowMeAroundEnabled, Mode=TwoWay}" />
+                            </Grid>
+                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                                <Button Content="Replay Welcome Tour" Style="{StaticResource SubtleButton}" Click="OnReplayWelcomeTour" />
+                                <Button Content="Reset All Tours" Style="{StaticResource SubtleButton}" Margin="8,0,0,0" Click="OnResetAllTours" />
+                            </StackPanel>
+                        </StackPanel>
+                    </ui:SettingsCard>
                 </StackPanel>
             </Grid>
 

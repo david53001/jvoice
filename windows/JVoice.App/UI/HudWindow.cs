@@ -18,6 +18,12 @@ public sealed class HudWindow : Window
 
     private HudState _state = HudState.Idle;
 
+    /// The capsule (tour anchor <c>pill.controls</c>): the tag dims only it and outlines it as a concentric capsule.
+    internal FrameworkElement CapsuleElement => _view.Capsule;
+
+    /// A pill is on screen (not the off-screen prewarm, not a hidden window).
+    internal bool IsShowingPill => _state.IsVisible && !_parkedOffscreen && !Offscreen;
+
     /// Dev/probe seam: when true the pill is positioned far off-screen instead of bottom-center,
     /// so a headless measurement (`--latency-probe`) can realize and animate the real layered
     /// window without anything appearing on the user's desktop. Never set by the app itself.

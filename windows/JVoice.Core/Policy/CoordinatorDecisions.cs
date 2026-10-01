@@ -59,6 +59,7 @@ public static class CoordinatorDecisions
     public static int HudResetDelayMs(HudStateKind kind) => kind switch
     {
         HudStateKind.Error => 3000,
+        HudStateKind.Notice => 3000, // Mac showTourNotice: 3 s
         _ => 1000,
     };
 

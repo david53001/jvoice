@@ -17,9 +17,17 @@ public partial class SettingsView : UserControl
     // The mode a new app-rule will be added with; cycled by the chip button in the add row.
     private ToneStyle _appRuleMode = ToneStyle.Code;
 
+    /// <summary>A shortcut recorder is listening: it keeps Enter/Esc (the tour tag's keys pass to it).</summary>
+    public bool IsCapturingShortcut { get; private set; }
+
     public SettingsView()
     {
         InitializeComponent();
+        DataContextChanged += (_, _) =>
+        {
+            if (DataContext is VoiceCoordinator vm)
+                InfoHost.Content = new JVoice.App.Tours.InfoButton(JVoice.Core.Tours.TourId.Settings, () => WelcomeWindow.Shortcuts(vm));
+        };
         Loaded += (_, _) =>
         {
             Recorder.Chord = Vm.Hotkey;
@@ -40,8 +48,8 @@ public partial class SettingsView : UserControl
             UndoRecorder.NoticeChanged += text => ShowNotice(UndoRecorderNotice, text);
             foreach (var r in new[] { Recorder, UndoRecorder })
             {
-                r.CaptureStarted += () => Vm.SuspendHotkeys(true);
-                r.CaptureEnded += () => Vm.SuspendHotkeys(false);
+                r.CaptureStarted += () => { IsCapturingShortcut = true; Vm.SuspendHotkeys(true); };
+                r.CaptureEnded += () => { IsCapturingShortcut = false; Vm.SuspendHotkeys(false); };
             }
 
             // App-rule mode chip: seed its label from the default add-mode.
@@ -239,4 +247,8 @@ public partial class SettingsView : UserControl
     private void OnOpacityDefault(object sender, RoutedEventArgs e) => Vm.ResetOpacity();
 
     private void OnQuit(object sender, RoutedEventArgs e) => Vm.QuitApp();
+
+    private void OnReplayWelcomeTour(object sender, RoutedEventArgs e) => Vm.ReplayWelcomeTour();
+
+    private void OnResetAllTours(object sender, RoutedEventArgs e) => Vm.ResetAllTours();
 }

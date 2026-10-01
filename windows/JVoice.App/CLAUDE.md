@@ -16,6 +16,10 @@ slow back in front of `UpdateHud(HudState.Recording)`.
   hotkey→HUD→mic→stop→paste stages and decode-time UI stalls, headless (off-screen HUD, seconds-short
   mic use, clipboard read-only). Run it BEFORE changing anything for a latency report.
 - `Whisper/` — the real Whisper.net engine + model store (the ONE network call).
+- `Tours/` — the guided tours' WPF side (parity rows 31/32): `TourStore` (tours.json + the read-only audience
+  probes, run in `App.Main` BEFORE anything writes settings), `TourService` (wiring), `TourHosts` (window / pill /
+  tray-icon hosts), `TagOverlay` (the tag), `InfoButton` (ⓘ), `OpacityTourDemo`, `TourRenders` (dev renders).
+  Never show the Welcome window to an existing user; test the new-user path only off-screen.
 - `UI/` — WPF HUD, Settings, tray (the monochrome black-&-white redesign).
 - `Platform/` — OS integration, split into `Capture/`, `Persistence/`, `System/`.
 
@@ -32,5 +36,5 @@ the tray app, or build to a throwaway dir:
 
 ## Verify
 `dotnet build windows/JVoice.App/JVoice.App.csproj -c Release` (0 errors) ·
-`dotnet test windows/JVoice.Tests` (1516 green) · `JVoice.exe --latency-probe` for timing ·
+`dotnet test windows/JVoice.Tests` (1933 green) · `JVoice.exe --latency-probe` for timing ·
 `JVoice.exe --hud-preview <state>` / `--settings-render <png>` / `--hud-render <png>` for visuals.

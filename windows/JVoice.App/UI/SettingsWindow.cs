@@ -27,6 +27,8 @@ public sealed class SettingsWindow : Window
         SetResourceReference(TextElement.ForegroundProperty, "Text.Primary");
         _view.DataContext = coordinator;
         Content = _view;
+        // The tour tag's Enter/Esc go to a shortcut recorder while it listens ("claims keys").
+        JVoice.App.Tours.WindowTourHost.For(this).KeysClaimed = () => _view.IsCapturingShortcut;
         // Don't destroy on close — hide so a re-open is instant and state persists.
         Closing += (s, e) => { e.Cancel = true; Hide(); };
     }

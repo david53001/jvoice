@@ -11,6 +11,9 @@ public enum HudStateKind
     /// Clipboard-only mode finished: the transcript is on the clipboard, not in an app — never "Pasted".
     Copied,
     Error,
+    /// A neutral note from the app itself (tour confirmations: "Tours reset", "The recording tour starts at your
+    /// next dictation") — Mac `HUDState.notice`. Never shown over a recording or transcription.
+    Notice,
 }
 
 public readonly record struct HudState(HudStateKind Kind, string? Payload = null, double? Progress = null)
@@ -23,6 +26,7 @@ public readonly record struct HudState(HudStateKind Kind, string? Payload = null
     public static HudState Done(string text) => new(HudStateKind.Done, text);
     public static HudState Copied(string text) => new(HudStateKind.Copied, text);
     public static HudState Error(string message) => new(HudStateKind.Error, message);
+    public static HudState Notice(string message) => new(HudStateKind.Notice, message);
 
     public string Headline => Kind switch
     {
@@ -34,6 +38,7 @@ public readonly record struct HudState(HudStateKind Kind, string? Payload = null
         HudStateKind.Done => "Pasted",
         HudStateKind.Copied => "Copied",
         HudStateKind.Error => "Something Went Wrong",
+        HudStateKind.Notice => Payload ?? "",
         _ => "Ready",
     };
 
@@ -55,5 +60,5 @@ public readonly record struct HudState(HudStateKind Kind, string? Payload = null
     public bool IsBusy => Kind is HudStateKind.Recording or HudStateKind.PreparingModel
         or HudStateKind.DownloadingModel or HudStateKind.Transcribing;
 
-    public bool IsTerminal => Kind is HudStateKind.Done or HudStateKind.Copied or HudStateKind.Error;
+    public bool IsTerminal => Kind is HudStateKind.Done or HudStateKind.Copied or HudStateKind.Error or HudStateKind.Notice;
 }

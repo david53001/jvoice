@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.CompilerServices;
 using System.Windows.Threading;
 using JVoice.App.Platform;
+using JVoice.App.Tours;
 using JVoice.App.UI;
 using JVoice.App.Update;
 using JVoice.App.Whisper;
@@ -12,6 +13,7 @@ using JVoice.Core.Audio;
 using JVoice.Core.Models;
 using JVoice.Core.Text;
 using JVoice.Core.Transcription;
+using JVoice.Core.Tours;
 
 namespace JVoice.App;
 
@@ -43,6 +45,24 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     // UI surfaces (set by App in Task 9).
     public HudWindow? Hud { get; set; }
     public TrayIcon? Tray { get; set; }
+    /// The guided tours (parity rows 31/32), set by App; null in previews/renders.
+    public TourService? TourService { get; set; }
+
+    /// Settings → Tours &amp; Tips → "Show Me Around" (= firstUseToursEnabled; absent = off).
+    public bool ShowMeAroundEnabled
+    {
+        get => TourService?.FirstUseToursEnabled ?? false;
+        set
+        {
+            if (TourService is null || TourService.FirstUseToursEnabled == value) return;
+            TourService.FirstUseToursEnabled = value;
+            Raise();
+        }
+    }
+
+    public void ReplayWelcomeTour() => TourEvents.Replay(TourId.Welcome, null);
+
+    public void ResetAllTours() => TourEvents.ResetAll();
     private SettingsWindow? _settingsWindow;
 
     // ---- coordinator state (mirrors the Swift @Published / private fields) ----
@@ -207,9 +227,24 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             if (Math.Abs(v - _uiOpacity) < 1e-9) return;
             _uiOpacity = v;
             JVoice.App.UI.Theme.SetOpacity(v);
-            PersistSettings();
+            if (_opacityHold is null) PersistSettings();
             Raise(); Raise(nameof(IsOpacityDefault)); Raise(nameof(CanResetOpacity));
         }
+    }
+
+    /// While the Settings tour's Opacity demo plays (parity §10.8) the value moves live but is NEVER saved: settings
+    /// writes carry this held value instead, so quitting mid-demo leaves the stored setting untouched.
+    private double? _opacityHold;
+
+    /// The demo starts: from now until <see cref="EndOpacityHold"/>, Opacity changes don't persist.
+    public void BeginOpacityHold() => _opacityHold ??= _uiOpacity;
+
+    /// The demo ends; whatever Opacity is now (the user's value, restored or newly chosen) is saved.
+    public void EndOpacityHold()
+    {
+        if (_opacityHold is null) return;
+        _opacityHold = null;
+        PersistSettings();
     }
     public bool IsOpacityDefault => Math.Abs(_uiOpacity - JVoice.Core.UiOpacity.Default) < 0.001;
     public bool CanResetOpacity => !IsOpacityDefault;
@@ -691,6 +726,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         RefreshInputDevices();
         _settingsWindow ??= new SettingsWindow(this);
         _settingsWindow.ShowOrActivate();
+        // The Settings tour (first Settings window, a replay, a paused run) — once the window is laid out.
+        var shown = _settingsWindow;
+        _dispatcher.BeginInvoke(DispatcherPriority.Loaded, () => TourEvents.SurfaceShown(TourSurface.Settings, shown));
     }
 
     // ---- engine construction / swap (TranscriptionManager analog) ----
@@ -760,7 +798,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             InputDeviceName = _inputDeviceName,
             MathNotation = _mathNotationEnabled,
             Appearance = _appearance,
-            UiOpacity = _uiOpacity,
+            UiOpacity = _opacityHold ?? _uiOpacity,
         });
     }
 
@@ -962,6 +1000,15 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         ScheduleHudReset(AppTimings.HudErrorResetDelay);
     }
 
+    /// A short tour confirmation in the pill ("Tours reset", "The recording tour starts at your next dictation"),
+    /// 3 s then back to idle (Mac showTourNotice). Never over a recording or transcription in progress.
+    public void ShowTourNotice(string message)
+    {
+        if (HudState.IsBusy) return;
+        UpdateHud(HudState.Notice(message));
+        ScheduleHudReset(TimeSpan.FromMilliseconds(CoordinatorDecisions.HudResetDelayMs(HudStateKind.Notice)));
+    }
+
     private void ScheduleHudReset(TimeSpan delay)
     {
         _hudResetTimer?.Stop();
@@ -1048,6 +1095,18 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             if (HudState.Kind != HudStateKind.Recording) UpdateHud(HudState.Recording);
             DiagnosticLog.Write($"MicStarted  +{_pressStopwatch?.ElapsedMilliseconds ?? -1}ms after press");
 
+            // Tours (parity §10.4): "recording.started" only once the pill is up AND the mic actually opened, on the
+            // next UI turn — never between the press and the pill/mic (§7 #49) — and the pill's tour only if this
+            // same recording is still on screen. A failed open posts nothing (no tag over a permission prompt).
+            int tourGeneration = _recordingGeneration;
+            _dispatcher.BeginInvoke(DispatcherPriority.Background, () =>
+            {
+                if (!IsRecording || _recordingGeneration != tourGeneration) return;
+                TourEvents.PostAction(TourEventName.RecordingStarted);
+                if (IsRecording && _recordingGeneration == tourGeneration && Hud is { } pill)
+                    TourEvents.SurfaceShown(TourSurface.RecordingPill, pill);
+            });
+
             var path = _recorder.CurrentPath;
             if (path is not null)
             {
@@ -1084,6 +1143,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private void StopRecordingAndTranscribe()
     {
         if (!IsRecording) return;
+        // Tours: posted before the pill leaves the recording state (the recording tour's Try step).
+        TourEvents.PostAction(TourEventName.RecordingStopped);
 
         IsRecording = false;
         _lastRecordingSeconds = _recordingStartUtc is { } t ? (DateTime.UtcNow - t).TotalSeconds : 0;
@@ -1279,6 +1340,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 // §7 #49: update the HUD FIRST; the bookkeeping below (three file writes +
                 // history) used to run before the pill changed.
                 UpdateHud(_copyToClipboardOnly ? HudState.Copied(processed) : HudState.Done(processed));
+                TourEvents.PostAction(TourEventName.DictationPasted);
                 ScheduleHudReset(AppTimings.HudResetDelay);
                 DiagnosticLog.Write($"Timing  stop->transcript={transcribedMs}ms  stop->pasted={pastedMs}ms  " +
                     $"stop->idle={_pressStopwatch?.ElapsedMilliseconds ?? -1}ms  recSecs={_lastRecordingSeconds:0.00}");
@@ -1381,6 +1443,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     /// Ports quitApp(): cancel streaming, delete in-flight WAV, idle HUD, shut down.
     public void QuitApp()
     {
+        WelcomeWindow.AppIsQuitting = true; // closing it now isn't "No Thanks" — it asks again next launch
         _hudResetTimer?.Stop();
         FlushSettings();
 

@@ -5,11 +5,12 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
-using Microsoft.Win32;
 using JVoice.App.Platform;
+using JVoice.App.Tours;
 using JVoice.App.UI;
 using JVoice.App.Whisper;
 using JVoice.Core.Models;
+using JVoice.Core.Tours;
 
 namespace JVoice.App;
 
@@ -18,6 +19,9 @@ public partial class App : Application
     private VoiceCoordinator? _coordinator;
     private TrayIcon? _tray;
     private HudWindow? _hud;
+
+    /// tours.json, read (and the audience classified) in Main before anything writes a setting.
+    private static TourPrefs? s_tourPrefs;
 
     /// JVoice's stable Application User Model ID (matches the macOS bundle id).
     /// Windows uses it to group taskbar buttons and route toast notifications.
@@ -55,6 +59,8 @@ public partial class App : Application
               || string.Equals(a, "--settings-preview", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--settings-render", StringComparison.OrdinalIgnoreCase)
               || string.Equals(a, "--update-preview", StringComparison.OrdinalIgnoreCase)
+              || string.Equals(a, "--welcome-render", StringComparison.OrdinalIgnoreCase)
+              || string.Equals(a, "--tour-render", StringComparison.OrdinalIgnoreCase)
               || Diagnostics.LatencyProbe.ShouldRun(args));
 
         // A logon launch (the Run-key entry carries --autostart) steps aside when the elevated
@@ -74,6 +80,17 @@ public partial class App : Application
             int acquireTimeoutMs = Elevation.IsRelaunch(args) ? 5000 : 0;
             if (!SingleInstance.TryAcquire(acquireTimeoutMs))
                 return 0;
+        }
+
+        if (!preview)
+        {
+            // Tours (parity §10.1): decide new vs existing ONCE, before anything writes to %APPDATA%\JVoice —
+            // SettingsStore writes settings.json on construction and DiagnosticLog appends there, so classifying
+            // any later would call every fresh install "existing". Read-only probes; only tours.json is written.
+            var prefs = TourStore.Load();
+            var audience = TourCoordinator.ClassifyAudienceIfNeeded(prefs, TourStore.GatherSignals, () => TourStore.Save(prefs));
+            s_tourPrefs = prefs;
+            DiagnosticLog.Write($"Tours: audience={TourAudience.Store(audience)}");
         }
 
         if (!preview)
@@ -127,6 +144,20 @@ public partial class App : Application
             previewSettings.Topmost = true;
             return;
         }
+        if (Array.Exists(e.Args, a => string.Equals(a, "--welcome-render", StringComparison.OrdinalIgnoreCase)))
+        {
+            try { TourRenders.Welcome(e.Args, new VoiceCoordinator()); }
+            catch (Exception ex) { File.WriteAllText(Path.Combine(Path.GetTempPath(), "jvoice-render-error.txt"), ex.ToString()); }
+            Shutdown();
+            return;
+        }
+        if (Array.Exists(e.Args, a => string.Equals(a, "--tour-render", StringComparison.OrdinalIgnoreCase)))
+        {
+            try { TourRenders.Tags(e.Args); }
+            catch (Exception ex) { File.WriteAllText(Path.Combine(Path.GetTempPath(), "jvoice-render-error.txt"), ex.ToString()); }
+            Shutdown();
+            return;
+        }
         if (Array.Exists(e.Args, a => string.Equals(a, "--hud-render", StringComparison.OrdinalIgnoreCase)))
         {
             RenderHudToFile(e.Args);
@@ -167,6 +198,8 @@ public partial class App : Application
             OnRestartAsAdministrator = () => _coordinator.RestartAsAdministrator(),
             OnToggleRunAsAdminAtLogin = () => _coordinator.ToggleRunAsAdminAtLogin(),
             OnQuit = () => _coordinator.QuitApp(),
+            OnTour = id => TourEvents.Replay(id, null),
+            OnResetTours = TourEvents.ResetAll,
         };
         _coordinator.Tray = _tray;
         _tray.RebuildMenu();
@@ -179,15 +212,12 @@ public partial class App : Application
         //     logon task, apply that now (we are guaranteed elevated on this path).
         _coordinator.ApplyElevationStartupIntent(e.Args);
 
-        // 5) First-run: show Settings once so the app isn't invisible.
-        if (IsFirstRun())
-        {
-            _coordinator.ShowSettings();
-            MarkFirstRunDone();
-            MessageBox.Show(
-                "JVoice is running in your system tray — press Ctrl + Shift + Space to dictate.",
-                "JVoice", MessageBoxButton.OK, MessageBoxImage.Information);
-        }
+        // 5) Guided tours (parity rows 31/32): a NEW user who hasn't answered gets the Welcome window ("Want a quick
+        //    tour?"); an existing user (every upgrade, David's PC) never sees it. Replaces the old first-run
+        //    Settings + MessageBox.
+        var tours = new TourService(_coordinator, s_tourPrefs ?? TourStore.Load(), _tray);
+        _coordinator.TourService = tours;
+        tours.ShowWelcomeIfNeeded();
     }
 
     /// Show a single static HUD pill for visual inspection (`--hud-preview [state]`).
@@ -330,19 +360,5 @@ public partial class App : Application
         _coordinator?.FlushSettings();
         _tray?.Dispose();
         base.OnExit(e);
-    }
-
-    // First-run flag in HKCU\Software\JVoice\UiFirstRunShown (separate from the
-    // launch-at-login init flag so the two concerns don't entangle).
-    private static bool IsFirstRun()
-    {
-        using var key = Registry.CurrentUser.OpenSubKey(@"Software\JVoice");
-        return key?.GetValue("UiFirstRunShown") is null;
-    }
-
-    private static void MarkFirstRunDone()
-    {
-        using var key = Registry.CurrentUser.CreateSubKey(@"Software\JVoice");
-        key.SetValue("UiFirstRunShown", 1, RegistryValueKind.DWord);
     }
 }

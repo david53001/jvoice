@@ -16,11 +16,12 @@ unless that's the explicit task, and update the matching test in the same commit
 - `Transcription/` — the `ITranscriptionEngine` seam the platform plugs a real Whisper engine into.
 - `Models/` — domain types, enums, and the JSON DTOs persisted to disk.
 - `Policy/` — pure cross-cutting decision logic (coordinator decisions, hotkey/game gating, stats, timings).
+- `Tours/` — the first-run guided tours (parity rows 31/32): audience, engine, catalog, coordinator. New users only.
 - `Math/` — spoken mathematics → real notation (Windows-only, §7 #47). Its own brief explains the
   run/activation rules that keep ordinary speech byte-identical.
 
 ## Verify changes
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 1516 tests, must stay green.
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 1933 tests, must stay green.
 - `dotnet build windows/JVoice.sln -c Release` — 0 errors.
 
 ## Layout note

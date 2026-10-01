@@ -1,3 +1,4 @@
+using JVoice.Core;
 using JVoice.Core.Models;
 using Xunit;
 
@@ -15,6 +16,7 @@ public class HudStateTests
         HudStateKind.Done => HudState.Done("x"),
         HudStateKind.Copied => HudState.Copied("x"),
         HudStateKind.Error => HudState.Error("e"),
+        HudStateKind.Notice => HudState.Notice("Tours reset"),
         _ => HudState.Idle,
     };
 
@@ -120,5 +122,17 @@ public class HudStateTests
             Assert.False(s.IsBusy && s.IsTerminal);
             Assert.Equal(s.IsBusy || s.IsTerminal, s.IsVisible);
         }
+    }
+
+    // Tour confirmations (parity §10.4): a neutral, terminal pill that resets after 3 s like an error.
+    [Fact]
+    public void Notice_IsATerminalNeutralPill()
+    {
+        var n = HudState.Notice("Tours reset");
+        Assert.Equal("Tours reset", n.Headline);
+        Assert.True(n.IsTerminal);
+        Assert.False(n.IsBusy);
+        Assert.Equal(3000, CoordinatorDecisions.HudResetDelayMs(HudStateKind.Notice));
+        Assert.Equal(TrayIconActivity.Idle, CoordinatorDecisions.HudToTray(HudStateKind.Notice));
     }
 }

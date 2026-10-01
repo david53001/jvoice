@@ -34,6 +34,24 @@ public sealed class TrayIcon : IDisposable
     public Action OnRestartAsAdministrator { get; set; } = () => { };
     public Action OnToggleRunAsAdminAtLogin { get; set; } = () => { };
     public Action OnQuit { get; set; } = () => { };
+    /// Help &amp; Tours ▸ a tour (Welcome opens the Welcome window on its last page and runs it).
+    public Action<JVoice.Core.Tours.TourId> OnTour { get; set; } = _ => { };
+    public Action OnResetTours { get; set; } = () => { };
+
+    /// The icon's Shell_NotifyIcon identity (its message window + GUID) — the Welcome tour's first step finds the
+    /// icon on screen with Shell_NotifyIconGetRect. Null if H.NotifyIcon hasn't created it.
+    public (IntPtr Hwnd, Guid Id)? Identity
+    {
+        get
+        {
+            try
+            {
+                var tray = _icon.TrayIcon;
+                return tray.WindowHandle == IntPtr.Zero ? null : (tray.WindowHandle, tray.Id);
+            }
+            catch (Exception) { return null; }
+        }
+    }
 
     public TrayIcon()
     {
@@ -126,6 +144,23 @@ public sealed class TrayIcon : IDisposable
         var adminLogin = new MenuItem { Header = "Run as Administrator at Login", IsChecked = RunAsAdminAtLoginEnabled() };
         adminLogin.Click += (_, _) => OnToggleRunAsAdminAtLogin();
         menu.Items.Add(adminLogin);
+
+        menu.Items.Add(new Separator());
+
+        // Help & Tours ▸ (parity §10.6) — for every user, any time.
+        var help = new MenuItem { Header = "Help & Tours" };
+        foreach (var tour in JVoice.Core.Tours.TourCatalog.All)
+        {
+            var id = tour.Id;
+            var item = new MenuItem { Header = JVoice.Core.Tours.TourIds.MenuTitle(id) };
+            item.Click += (_, _) => OnTour(id);
+            help.Items.Add(item);
+        }
+        help.Items.Add(new Separator());
+        var reset = new MenuItem { Header = "Reset All Tours" };
+        reset.Click += (_, _) => OnResetTours();
+        help.Items.Add(reset);
+        menu.Items.Add(help);
 
         menu.Items.Add(new Separator());
 

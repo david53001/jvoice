@@ -78,6 +78,10 @@ public static class Theme
         catch { return true; }
     }
 
+    /// The accent as drawn on a dark or a light surface (the tour tag's outline, leader and Next capsule follow
+    /// their HOST's light/dark — the pill is always dark).
+    public static Color AccentFor(bool dark) => dark ? Lighten(AccentColor(), 0.45) : AccentColor();
+
     /// The Windows accent colour (DWM AccentColor is 0xAABBGGRR), or Windows' default blue.
     private static Color AccentColor()
     {

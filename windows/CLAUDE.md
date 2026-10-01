@@ -13,13 +13,13 @@ Full as-built state, pinned versions, and every deviation live in
   `Transcription/`, `Models/`, `Policy/`, `Math/`.
 - `JVoice.App/` — the WPF Windows shell. Sub-areas: `Whisper/`, `UI/`,
   `Platform/{Capture,Persistence,System}/`. Orchestrator: `VoiceCoordinator.cs`.
-- `JVoice.Tests/` — xUnit suite (1516 tests) translated from the Swift tests; locks the brain.
+- `JVoice.Tests/` — xUnit suite (1933 tests) translated from the Swift tests; locks the brain.
 - `tools/` — standalone probe/utility CLIs (whisper-smoke, hotkey-probe, nospeech-probe,
   capture-stop-probe, generate-icon).
 
 ## Build / test
 - `dotnet build windows/JVoice.sln -c Release` — 0 errors.
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 1516 green.
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 1933 green.
 - `JVoice.exe --latency-probe [--load 12] [--wav <clip>]` — measures the press→HUD→mic→stop→paste
   stages + decode-time UI stalls on this machine, headless (HANDOFF §7 #49). Run it first for any
   "it lags" report.

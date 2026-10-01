@@ -37,7 +37,11 @@ gives a window Mica + rounded corners + a themed title bar. The HUD bars stay a 
   Model** card carries a monochrome "keep on Large" warning callout (Segoe MDL2 `E7BA` triangle);
   its extra caution line is bound to `IsLarge` via `InverseBoolToVis` and shows only when a smaller
   model is selected (root `CLAUDE.md` §7 #35).
-- `TrayIcon.cs` — monochrome status item (idle / recording / transcribing).
+- `TrayIcon.cs` — monochrome status item (idle / recording / transcribing) + Help & Tours ▸.
+- `WelcomeView.xaml` / `WelcomeWindow.cs` — the first-run Welcome window (rows 31/32): NEW users only, two pages,
+  "Want a quick tour?"; closing it unanswered = No Thanks (quitting is not an answer). Settings carries the ⓘ
+  (`settings.help`) and a Tours & Tips card; the Appearance card's anchor is `settings.appearance` (the tour's
+  Opacity step), the header picker's is `settings.theme`.
 - `Converters.cs`, `SettingsCard.cs`, `Theme.cs`, `HotkeyRecorder.cs`, `TranscriptRow.cs`,
   `Styles/JVoicePalette.xaml` — support + palette.
 
@@ -47,5 +51,6 @@ flow over reactive bars that stuttered on his words (root `CLAUDE.md` §7 #23). 
 live mic RMS.
 
 ## Verify
-`JVoice.exe --hud-preview <state>` · `--hud-render <png>` · `--settings-render <png>` to screenshot
-any UI state.
+`JVoice.exe --hud-preview <state>` · `--hud-render <png>` · `--settings-render <png>` ·
+`--welcome-render <png> [allset] [question] [light|dark]` · `--tour-render <png> [light|dark]` to screenshot any UI
+state (renders never write a setting or tours.json).
