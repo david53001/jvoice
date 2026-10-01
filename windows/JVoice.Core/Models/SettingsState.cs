@@ -45,7 +45,13 @@ public sealed record SettingsState(
     // no macOS counterpart. Default ON like DeveloperTerms: MathSpeech only rewrites a run of words
     // when an activating construct found its operands, so ordinary speech comes back byte-identical
     // and the feature is invisible until someone actually dictates mathematics.
-    bool MathNotation = true)
+    bool MathNotation = true,
+    // ── appearance (parity rows 28/30) — NEW keys, schema version unchanged so an older build still
+    // reads the file and ignores them (the Mac did the same). ──
+    // System / Light / Dark; System follows Windows' app mode.
+    AppAppearance Appearance = AppAppearance.System,
+    // Settings → Appearance → Opacity, 0…1 (UiOpacity), default 0.5.
+    double UiOpacity = 0.5)
 {
     public const int CurrentSchemaVersion = 6;
 
@@ -83,5 +89,7 @@ public sealed record SettingsState(
         InputDeviceId: null,
         InputDeviceName: null,
         // Spoken-mathematics notation ON by default (v6) — opt-out, like DeveloperTerms.
-        MathNotation: true);
+        MathNotation: true,
+        Appearance: AppAppearance.System,
+        UiOpacity: JVoice.Core.UiOpacity.Default);
 }

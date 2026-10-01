@@ -76,6 +76,10 @@ public static class SettingsStateJson
             // ── v6 key (Windows-only) ── Opt-out spoken-mathematics notation. Absent in older /
             // macOS files; Deserialize falls back to true (default ON).
             mathNotation = state.MathNotation,
+            // Appearance (parity rows 28/30): new keys without a schema bump — older builds ignore
+            // them. Absent / unknown => System and 0.5.
+            appearance = state.Appearance.ToString().ToLowerInvariant(),
+            uiOpacity = JVoice.Core.UiOpacity.Clamp(state.UiOpacity),
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -117,7 +121,16 @@ public static class SettingsStateJson
             InputDeviceId: NullIfBlank(TryGetString(root, "inputDeviceId")),
             InputDeviceName: NullIfBlank(TryGetString(root, "inputDeviceName")),
             // v6: absent (a pre-v6 / macOS file) or wrong-typed => true = spoken maths ON.
-            MathNotation: TryGetBool(root, "mathNotation") ?? true);
+            MathNotation: TryGetBool(root, "mathNotation") ?? true,
+            Appearance: ParseAppearance(TryGetString(root, "appearance")),
+            UiOpacity: JVoice.Core.UiOpacity.Clamp(TryGetDouble(root, "uiOpacity") ?? JVoice.Core.UiOpacity.Default));
+    }
+
+    private static AppAppearance ParseAppearance(string? raw)
+    {
+        if (raw is not null && Enum.TryParse<AppAppearance>(raw, ignoreCase: true, out var v)
+            && Enum.IsDefined(v)) return v;
+        return AppAppearance.System;
     }
 
     // field parsers (each falls back to the field default)
@@ -261,6 +274,10 @@ public static class SettingsStateJson
 
     private static string? NullIfBlank(string? value)
         => string.IsNullOrWhiteSpace(value) ? null : value;
+
+    private static double? TryGetDouble(JsonElement root, string name)
+        => root.TryGetProperty(name, out var e) && e.ValueKind == JsonValueKind.Number && e.TryGetDouble(out double v)
+            ? v : null;
 
     private static bool? TryGetBool(JsonElement root, string name)
         => root.TryGetProperty(name, out var e) && e.ValueKind is JsonValueKind.True or JsonValueKind.False

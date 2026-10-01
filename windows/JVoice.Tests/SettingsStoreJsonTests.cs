@@ -126,12 +126,12 @@ public class SettingsStoreJsonTests
     // keys. Older builds / the macOS app ignore the unknown keys on read; Deserialize tolerates
     // their absence (each falls back to its default).
     [Fact]
-    public void Serialize_EmitsExactlyTheNineteenKeys()
+    public void Serialize_EmitsExactlyTheExpectedKeys()
     {
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "appAwareModes", "appModeRules", "checkForUpdates", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "inputDeviceId", "inputDeviceName", "language", "mathNotation", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "undoHotkey" },
+            new[] { "appAwareModes", "appearance", "appModeRules", "checkForUpdates", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "inputDeviceId", "inputDeviceName", "language", "mathNotation", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "uiOpacity", "undoHotkey" },
             keys);
     }
 
