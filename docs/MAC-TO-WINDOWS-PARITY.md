@@ -125,7 +125,7 @@ equivalent), **N/A** (Mac-only problem). Priority: **P1** = user-visible / corre
 | 31 | **First-run Welcome window + guided tours** (new users only) | 124c42c…157698d | DONE 8a5b32a | P1 | 10 |
 | 32 | ⓘ on every window (Replay Tour, Show Me list), Help & Tours menu, Tours & Tips card | 99abe37, 5069c8c | DONE 8a5b32a | P1 | 10.6 |
 | 33 | Tour polish: capsule outline on the pill, animated Opacity step | a45598e | DONE 8a5b32a | P2 | 10.8 |
-| 34 | Windows open on the display with the mouse pointer | a45598e | MISSING | P2 | 11 |
+| 34 | Windows open on the display with the mouse pointer | a45598e | DONE 3816409 | P2 | 11 |
 | 35 | `--ui-preview` screenshot mode, `--settings-smoke` | b034f9d, 0c46d53 | PARTIAL (`--settings-render` exists) | P3 | 12 |
 | 36 | HUD: model download vs compile shown separately; compile wait once per model | 767a1f4, ab8063e | N/A (Neural-Engine compile) — see §6.9 | — | 6.9 |
 | 37 | One-line terminal install/update + stable signing | 83c21fb | N/A — Windows has its own installer + updater | — | 6.10 |
