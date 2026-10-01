@@ -100,11 +100,13 @@ dotnet test windows/JVoice.Tests/JVoice.Tests.csproj  # expect: Passed! 434/434
 
 # Run the actual app (tray + first-run Settings window):
 dotnet run --project windows/JVoice.App
-#   - First run only: the dark 640x846 two-column Settings window opens + a one-time info dialog.
+#   - First run (new users only): the Welcome window (see below).
 #   - Tray "J" icon → right-click for: Start/Stop Dictation, Settings…, Launch at Login, Quit.
 #   - Press Ctrl+Shift+Space to dictate (first dictation downloads the Tiny model ~74 MB once).
 #   - Quit via the tray menu (the app has no main window; it lives in the tray).
-#   - To replay the first-run experience: delete HKCU\Software\JVoice\UiFirstRunShown.
+#   - First run (NEW users only, §7 #59): the Welcome window + "Want a quick tour?". Any sign of prior use
+#     (settings, stats, a model, mic consent, HKCU\Software\JVoice, a bin\ build) = existing = no window.
+#     To see it use a clean Windows user profile / VM, never wipe David's settings; off-screen: --welcome-render.
 
 # Transcribe a WAV with NO GUI (fastest engine check):
 dotnet run --project windows/tools/whisper-smoke -- <file.wav> --model tiny
