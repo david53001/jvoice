@@ -2304,6 +2304,22 @@ Parity row 7 ('Check'; doc §5.6 'Also (soft audio, same commit)', Mac ffbca8a).
 
 No code change. Also refreshed the HANDOFF quick-start note on replaying first run, now the Welcome window from §7 #59.
 
+## §7 #64 — Mic/device fixes checked one by one (row 17) (2026-10-02)
+
+Parity row 17 ("check each"; doc §6.5 item 5, Mac 8ea5088). Each sub-item checked against the Windows code:
+1. **Bluetooth redirect targets only physical inputs — FIXED.** `BluetoothDevicePolicy` took the first non-Bluetooth endpoint, which on David's PC can be Voicemod (a digital-silence source, §7 #46) or an Elgato mix. New pure `JVoice.Core/Audio/CaptureEndpointKind.IsVirtual` flags an endpoint as virtual when either holds:
+   - its PnP enumerator is ROOT/SWD;
+   - its name is a virtual/loopback name (Voicemod, VB-Audio/VoiceMeeter/CABLE, "Virtual", Stereo Mix, NVIDIA Broadcast, Krisp, OBS…).
+
+   Elgato's mixes enumerate as `TUSBAUDIO_ENUM`, so only the name catches them; that was measured with `tools/audio-input-probe` on this PC. Virtual endpoints are never redirect targets. The user's explicit Settings pick still outranks the heuristic.
+2. **Digital silence names the device — already done** (§7 #46, `CaptureSignal` + `SilentCaptureDetector`).
+3. **"Recording was interrupted" — FIXED.** On a mid-recording failure, `NAudioRecorder` already deleted the partial WAV, but the coordinator only showed the raw error, twice (Failed + ReportError) and left `IsRecording` true, so the next press took the stop path. `VoiceCoordinator.OnRecorderFailed` now ends the recording state, cancels the streaming session and shows `CoordinatorDecisions.RecordingInterruptedMessage` once ("Recording was interrupted — Microphone (Yeti Classic) stopped.").
+4. **Stop during open — already done** (row 15, `PressAction.StopOnceOpened`).
+5. **Quitting mid-transcription deletes that dictation's audio — FIXED.** `_inFlightAudioPath` covers the stop → paste window. `QuitApp` cancels the decode and deletes the file (before, only the orphan sweep at the next launch removed it).
+6. **Settings load warnings reach the user — FIXED.** `SettingsStore` reports an unreadable or newer-version file from the coordinator's constructor, before `Start()` wires `SystemActions.ErrorHandler`, so the message was dropped. `SystemActions` now holds up to 8 early messages and delivers them when the handler is set.
+
+Tests: `DeviceFixesTests` (real endpoint names from this PC + the common virtual devices, the redirect table, the message). 1963/1963. Not exercised live: unplugging a mic mid-recording (no screen/hardware drives).
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`

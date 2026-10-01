@@ -108,7 +108,7 @@ equivalent), **N/A** (Mac-only problem). Priority: **P1** = user-visible / corre
 | 14 | "J-Voice" → "JVoice"; bare lowercase "you" on <1 s hum dropped | 000a8b0 | **DONE** 8d51918 | P2 | 6.4 |
 | 15 | Second press during transcription is ignored (never discards) | 8ea5088 | **DONE** 5c8cf04 | P1 | 6.5 |
 | 16 | Refused paste → clipboard + history; per-item clipboard restore, skipped if user copied | 8ea5088 | **DONE** 5c8cf04 | P1 | 6.5 |
-| 17 | Mic/device fixes (virtual-device redirect, silent device named, "Recording was interrupted", stop during open, quit deletes audio) | 8ea5088 | Check each | P2 | 6.5 |
+| 17 | Mic/device fixes (virtual-device redirect, silent device named, "Recording was interrupted", stop during open, quit deletes audio) | 8ea5088 | DONE 7a581d6 | P2 | 6.5 |
 | 18 | Shortcut recorder refuses bare / system / app-menu / duplicate chords, with a reason | 22694e2 | DONE 0b88006 | P1 | 6.6 |
 | 19 | Rejected custom word / app rule stays in the field with the reason | 22694e2 | DONE f657b5e | P2 | 6.6 |
 | 20 | Hidden pill stops animating while hidden (2–5 % CPU idle) | 22694e2 | DONE dc3fcd4 | P1 | 6.7 |
