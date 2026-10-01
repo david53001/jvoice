@@ -55,6 +55,14 @@ public static class CoordinatorDecisions
         _ => TrayIconActivity.Idle, // Idle, Done, Error
     };
 
+    /// Parity row 17 (Mac 8ea5088 onRecordingFailed): the microphone failed mid-recording — the partial
+    /// audio is already gone, so the recording ends and the pill says what happened (naming the device
+    /// when it is known) instead of staying on "recording" until the next press.
+    public static string RecordingInterruptedMessage(string? deviceName) =>
+        string.IsNullOrWhiteSpace(deviceName)
+            ? "Recording was interrupted — the microphone stopped."
+            : $"Recording was interrupted — {deviceName.Trim()} stopped.";
+
     /// Ports scheduleHUDReset default delays.
     public static int HudResetDelayMs(HudStateKind kind) => kind switch
     {

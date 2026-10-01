@@ -270,8 +270,9 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
             StartedAt = null;
         }
         DisposeDetached(detached);
+        // The coordinator ends its recording state and tells the user (Failed); no second ReportError,
+        // which showed the same error twice.
         Failed?.Invoke(message);
-        SystemActions.ReportError(message);
     }
 
     // writer pumping
@@ -305,7 +306,6 @@ public sealed class NAudioRecorder : IAudioRecorder, IDisposable
                 IsRecording = false;
                 StartedAt = null;
                 Failed?.Invoke(message);
-                SystemActions.ReportError(message);
             }
         }
         }

@@ -1,7 +1,8 @@
 namespace JVoice.Core.Audio;
 
 /// A capture endpoint, classified. Id is the platform device id (opaque here).
-public readonly record struct CaptureEndpointInfo(string Id, bool IsBluetooth, bool IsBuiltIn);
+/// IsVirtual: a virtual cable / voice changer / loopback input (CaptureEndpointKind) — never a redirect target.
+public readonly record struct CaptureEndpointInfo(string Id, bool IsBluetooth, bool IsBuiltIn, bool IsVirtual = false);
 
 /// Pure policy for choosing a non-Bluetooth capture endpoint to record from when
 /// the system default is a Bluetooth device. Faithful port of
@@ -15,7 +16,9 @@ public static class BluetoothDevicePolicy
     {
         if (!defaultIsBluetooth) return null; // default isn't BT → record from default
 
-        var nonBluetooth = endpoints.Where(e => !e.IsBluetooth).ToList();
+        // Physical inputs only (parity row 17, Mac 8ea5088): a virtual device (Voicemod, VB-Cable, Elgato's
+        // mixes) is "not Bluetooth" too, but redirecting to it records silence or someone else's mix.
+        var nonBluetooth = endpoints.Where(e => !e.IsBluetooth && !e.IsVirtual).ToList();
         if (nonBluetooth.Count == 0) return null; // no safe fallback → accept the default
 
         var builtIn = nonBluetooth.FirstOrDefault(e => e.IsBuiltIn);

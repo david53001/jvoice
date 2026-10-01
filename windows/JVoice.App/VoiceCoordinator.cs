@@ -64,6 +64,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     public void ResetAllTours() => TourEvents.ResetAll();
     private SettingsWindow? _settingsWindow;
+    /// The WAV of the dictation being transcribed right now (between stop and paste), or null.
+    private volatile string? _inFlightAudioPath;
 
     // ---- coordinator state (mirrors the Swift @Published / private fields) ----
     private int _recordingGeneration;
@@ -535,7 +537,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
         SystemActions.ErrorHandler = msg => _dispatcher.InvokeAsync(() => ShowError(msg));
         _settingsStore.Changed += _ => _dispatcher.InvokeAsync(() => { /* UI binds live props */ });
-        _recorder.Failed += msg => _dispatcher.InvokeAsync(() => ShowError(msg));
+        _recorder.Failed += msg => _dispatcher.InvokeAsync(() => OnRecorderFailed(msg));
         // §7 #49: the hotkey hop runs at Send priority (ahead of any queued binding/render
         // work on the UI thread) — it's the first link of the press → HUD chain.
         _hotkey.Triggered += () => _dispatcher.InvokeAsync(ToggleRecording, DispatcherPriority.Send);
@@ -1003,6 +1005,24 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         ScheduleHudReset(AppTimings.HudErrorResetDelay);
     }
 
+    /// Row 17: the recorder failed mid-recording (device unplugged, driver error). The partial WAV is
+    /// already deleted; end the recording here too — cancel the streaming session, leave the recording
+    /// state — and say so, instead of leaving the pill on "recording" until the next press.
+    private void OnRecorderFailed(string detail)
+    {
+        DiagnosticLog.Write($"Recorder failed mid-recording: {detail}");
+        if (IsRecording)
+        {
+            IsRecording = false;
+            _recordingStartUtc = null;
+            var session = _streamingSession;
+            _streamingSession = null;
+            if (session is not null) _ = session.Cancel();
+            Tray?.RebuildMenu();
+        }
+        ShowError(CoordinatorDecisions.RecordingInterruptedMessage(AudioInputRouter.ResolveDeviceName(_inputDeviceId)));
+    }
+
     /// A short tour confirmation in the pill ("Tours reset", "The recording tour starts at your next dictation"),
     /// 3 s then back to idle (Mac showTourNotice). Never over a recording or transcription in progress.
     public void ShowTourNotice(string message)
@@ -1196,6 +1216,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         // thread, 8–38 ms) AFTER the pill has already switched to "transcribing"; the session's
         // Finish() below reads the WAV tail only once this has flushed and closed the file.
         string? audioPath = await Task.Run(() => _recorder.Stop());
+        _inFlightAudioPath = audioPath; // row 17: QuitApp deletes it if JVoice quits mid-transcription
         DiagnosticLog.Write($"Recorder stopped  audioPath={(audioPath ?? "<null>")}  " +
             $"bytes={(audioPath is not null && File.Exists(audioPath) ? new FileInfo(audioPath).Length : -1)}  " +
             $"+{_pressStopwatch?.ElapsedMilliseconds ?? -1}ms after press");
@@ -1380,6 +1401,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         finally
         {
             TryDelete(audioPath); // privacy: always delete the WAV
+            if (ReferenceEquals(_inFlightAudioPath, audioPath)) _inFlightAudioPath = null;
             // Re-open the hotkey's start branch on EVERY exit path (paste, no-speech, error,
             // cancellation, throw) — a stuck flag would dead-key the hotkey for the session.
             _ = _dispatcher.InvokeAsync(() => _isTranscribing = false);
@@ -1458,6 +1480,15 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             var abandoned = _recorder.Stop();
             if (abandoned is not null) TryDelete(abandoned);
             IsRecording = false;
+        }
+
+        // Row 17 (Mac 8ea5088): quitting while a dictation is still being transcribed deletes that
+        // dictation's audio too (privacy) — the decode is cancelled; nothing will paste.
+        if (_inFlightAudioPath is { } inFlight)
+        {
+            _transcriptionCts?.Cancel();
+            TryDelete(inFlight);
+            _inFlightAudioPath = null;
         }
 
         UpdateHud(HudState.Idle);

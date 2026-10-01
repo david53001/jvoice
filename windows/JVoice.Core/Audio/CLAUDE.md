@@ -24,7 +24,9 @@ Decides how a growing recording is cut into chunks and decoded live, with a hard
 - `HighPassSilence.cs` — Windows-only, now **metrics-only** (the no-speech decision moved to
   `Core/Text/NonSpeechAnnotation`).
 - `BluetoothDevicePolicy.cs` — pure policy for keeping Bluetooth mics on A2DP (record from the
-  built-in input instead). The device-side action lives in `Platform/Capture/AudioInputRouter`.
+  built-in input instead). Redirects only to PHYSICAL inputs (row 17): `CaptureEndpointKind.IsVirtual`
+  (ROOT/SWD enumerator, or a virtual/loopback name — Voicemod, VB-Cable, Elgato mixes, Stereo Mix)
+  are never targets. The device-side action lives in `Platform/Capture/AudioInputRouter`.
 
 ## Invariant (do not break)
 The streaming path must never lose speech. Empty non-silent chunk ⇒ local recovery of the last

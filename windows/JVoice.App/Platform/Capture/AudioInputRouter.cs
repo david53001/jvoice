@@ -48,7 +48,8 @@ public static class AudioInputRouter
                 endpoints.Add(new CaptureEndpointInfo(
                     Id: dev.ID,
                     IsBluetooth: IsBluetooth(dev),
-                    IsBuiltIn: IsBuiltIn(dev)));
+                    IsBuiltIn: IsBuiltIn(dev),
+                    IsVirtual: IsVirtual(dev)));
             }
 
             string? pick = CaptureDeviceSelection.Resolve(userChoiceId, defaultIsBluetooth, endpoints);
@@ -145,6 +146,19 @@ public static class AudioInputRouter
         catch { /* ignore */ }
 
         return false;
+    }
+
+    private static bool IsVirtual(MMDevice device)
+    {
+        string? enumName = null, name = null;
+        try
+        {
+            if (device.Properties.Contains(PkeyEnumeratorName))
+                enumName = device.Properties[PkeyEnumeratorName].Value?.ToString();
+        }
+        catch { /* odd driver — judge by name */ }
+        try { name = device.FriendlyName; } catch { /* ignore */ }
+        return CaptureEndpointKind.IsVirtual(enumName, name);
     }
 
     private static bool IsBuiltIn(MMDevice device)
