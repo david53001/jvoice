@@ -142,6 +142,8 @@ public partial class App : Application
 
         // 1) Coordinator (must be created on the UI thread — captures the dispatcher).
         _coordinator = new VoiceCoordinator();
+        // The native look: stored System/Light/Dark + Opacity, before any window exists (row 28/30).
+        Theme.Initialize(_coordinator.Appearance, _coordinator.UiOpacity);
 
         // 2) HUD overlay window. The live mic level is still wired up below but is currently
         //    UNUSED: the recording bars are a continuous, mic-independent wave (David preferred a
@@ -221,7 +223,7 @@ public partial class App : Application
         // Args after the flag: an optional output path and an optional Updates-card state token
         // (so `--settings-render out.png available` screenshots the card mid-update). Tell them
         // apart by the known state names rather than position.
-        var known = new[] { "checking", "available", "downloading", "uptodate", "error" };
+        var known = new[] { "checking", "available", "downloading", "uptodate", "error", "light", "dark" };
         var rest = idx >= 0 ? args.Skip(idx + 1).ToArray() : Array.Empty<string>();
         string? updateState = rest.FirstOrDefault(a => known.Contains(a.ToLowerInvariant()));
         string? pathArg = rest.FirstOrDefault(a => !known.Contains(a.ToLowerInvariant()));
@@ -229,7 +231,14 @@ public partial class App : Application
 
         var coordinator = new VoiceCoordinator();
         if (updateState is not null) coordinator.Updates.EnterPreviewState(updateState);
+        // `light` / `dark` force an appearance for the shot (default: the stored one); Mica can't be
+        // captured off-screen, so the panel is rendered over the solid window colour.
+        var forced = rest.Any(a => a.Equals("light", StringComparison.OrdinalIgnoreCase)) ? AppAppearance.Light
+            : rest.Any(a => a.Equals("dark", StringComparison.OrdinalIgnoreCase)) ? AppAppearance.Dark
+            : coordinator.Appearance;
+        Theme.Initialize(forced, coordinator.UiOpacity);
         var view = new SettingsView { DataContext = coordinator };
+        view.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "Window.Solid");
 
         const double scale = 2.0;
         // The view declares a fixed Width but sizes its Height to content (SettingsView.xaml has

@@ -226,12 +226,17 @@ public partial class SettingsView : UserControl
 
     private void OnRestoreDefaults(object sender, RoutedEventArgs e)
     {
-        var r = MessageBox.Show(
-            "Your custom words, corrections, recent transcripts, model choice, and language will be restored to defaults — your recent transcripts will be cleared. Recording statistics will not be affected.",
-            "Reset all JVoice settings to defaults?",
-            MessageBoxButton.OKCancel, MessageBoxImage.Warning);
-        if (r == MessageBoxResult.OK) Vm.ResetSettings();
+        // Native warning alert; Enter must not wipe settings, so the default button is No (Cancel).
+        var owner = Window.GetWindow(this);
+        const string text = "Your custom words, corrections, model choice, language and appearance will be restored to defaults, and your recent transcripts will be cleared. Recording statistics will not be affected.";
+        const string caption = "Reset all JVoice settings to defaults?";
+        var r = owner is not null
+            ? MessageBox.Show(owner, text, caption, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No)
+            : MessageBox.Show(text, caption, MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No);
+        if (r == MessageBoxResult.Yes) Vm.ResetSettings();
     }
+
+    private void OnOpacityDefault(object sender, RoutedEventArgs e) => Vm.ResetOpacity();
 
     private void OnQuit(object sender, RoutedEventArgs e) => Vm.QuitApp();
 }

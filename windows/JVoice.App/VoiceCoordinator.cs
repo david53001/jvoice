@@ -87,6 +87,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _removeFillerWords = s.RemoveFillerWords;
         _developerTermsEnabled = s.DeveloperTerms;
         _mathNotationEnabled = s.MathNotation;
+        _appearance = s.Appearance;
+        _uiOpacity = s.UiOpacity;
         _hotkeyChord = s.Hotkey;
         _gameMode = s.GameMode;
         // v3 dictation features
@@ -174,6 +176,44 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     }
 
     private bool _mathNotationEnabled;
+
+    // ---- Appearance (parity rows 28/30): System / Light / Dark + Opacity, applied live by UI.Theme ----
+    private AppAppearance _appearance;
+    public AppAppearance Appearance
+    {
+        get => _appearance;
+        set
+        {
+            if (_appearance == value) return;
+            _appearance = value;
+            JVoice.App.UI.Theme.SetAppearance(value);
+            PersistSettings();
+            Raise(); Raise(nameof(IsAppearanceSystem)); Raise(nameof(IsAppearanceLight)); Raise(nameof(IsAppearanceDark));
+        }
+    }
+    public bool IsAppearanceSystem { get => _appearance == AppAppearance.System; set { if (value) Appearance = AppAppearance.System; } }
+    public bool IsAppearanceLight { get => _appearance == AppAppearance.Light; set { if (value) Appearance = AppAppearance.Light; } }
+    public bool IsAppearanceDark { get => _appearance == AppAppearance.Dark; set { if (value) Appearance = AppAppearance.Dark; } }
+
+    private double _uiOpacity = JVoice.Core.UiOpacity.Default;
+    /// Settings → Appearance → Opacity, 0 (Transparent) … 1 (Opaque); every window and the pill follow
+    /// it live while the slider moves.
+    public double UiOpacity
+    {
+        get => _uiOpacity;
+        set
+        {
+            double v = JVoice.Core.UiOpacity.Clamp(value);
+            if (Math.Abs(v - _uiOpacity) < 1e-9) return;
+            _uiOpacity = v;
+            JVoice.App.UI.Theme.SetOpacity(v);
+            PersistSettings();
+            Raise(); Raise(nameof(IsOpacityDefault)); Raise(nameof(CanResetOpacity));
+        }
+    }
+    public bool IsOpacityDefault => Math.Abs(_uiOpacity - JVoice.Core.UiOpacity.Default) < 0.001;
+    public bool CanResetOpacity => !IsOpacityDefault;
+    public void ResetOpacity() => UiOpacity = JVoice.Core.UiOpacity.Default;
     /// Opt-out toggle for spoken-mathematics notation (<see cref="MathSpeech"/>):
     /// "a subscript n equals 1 plus 7n" → "aₙ = 1 + 7n". Like DeveloperTermsEnabled this
     /// only persists — it's read fresh in the transcription path (ProcessAndPaste), so no
@@ -719,6 +759,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             InputDeviceId = _inputDeviceId,
             InputDeviceName = _inputDeviceName,
             MathNotation = _mathNotationEnabled,
+            Appearance = _appearance,
+            UiOpacity = _uiOpacity,
         });
     }
 
@@ -762,8 +804,14 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         // user action). Recording statistics (_statsStore) are deliberately NOT reset.
         _historyStore.Clear();
         RecentTranscripts.Clear();
+        // Appearance back to System; Opacity is deliberately KEPT (the Mac's Restore Defaults leaves
+        // it too — the Appearance card's own Default button resets it).
+        _appearance = s.Appearance;
+        JVoice.App.UI.Theme.SetAppearance(_appearance);
         _isInitializing = false;
+        _settingsStore.Update(prev => prev with { UiOpacity = _uiOpacity });
         _settingsStore.Flush();
+        Raise(nameof(Appearance)); Raise(nameof(IsAppearanceSystem)); Raise(nameof(IsAppearanceLight)); Raise(nameof(IsAppearanceDark));
         RaiseToneFlags(); RaiseLanguageFlags(); RaiseModelFlags(); RaiseGameModeFlags(); RaiseUndoHotkeyFlags();
         Raise(nameof(RemoveFillerWords)); Raise(nameof(DeveloperTermsEnabled)); Raise(nameof(MathNotationEnabled)); Raise(nameof(Hotkey)); Raise(nameof(HasCustomWords)); Raise(nameof(HasCorrections)); Raise(nameof(HasRecentTranscripts)); Raise(nameof(ModelGuidance));
         Raise(nameof(CopyToClipboardOnly)); Raise(nameof(TranslateToEnglish)); Raise(nameof(AppAwareModes)); Raise(nameof(HasAppModeRules));

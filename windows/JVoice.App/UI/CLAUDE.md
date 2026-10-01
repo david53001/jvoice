@@ -1,9 +1,14 @@
-# App / UI — WPF (monochrome HUD, Settings, tray)
+# App / UI — WPF (native look: Settings, HUD pill, tray)
 
-The black-&-white redesign (2026-06-23). Text-free HUD; a **continuous voice-activity wave** while
-recording (mic-independent — a generated wave, NOT a mic meter), indeterminate shimmer while
-transcribing; a successful paste is **silent**; errors are the only text. Settings + tray are fully
-monochrome.
+**The native look (2026-10-02, parity rows 28–30) replaced the 2026-06-23 monochrome redesign.**
+Windows 11 Fluent following the Mac's design language: Mica behind the content, surfaces as TINTS of
+the text colour (card 4 %, hairline 8 %, input 6 %, row hover 7 %), Segoe UI Variable text styles, no
+decorative dots/glows, colour only where it means something (accent, red = destructive, orange =
+warning). `Theme.cs` owns System/Light/Dark (follows Windows' app mode live) and the Opacity setting:
+every brush is a **DynamicResource** it rewrites (`Text.*`, `Card.*`, `Input.Fill`, `Row.Hover`,
+`Button.*`, `Accent`, `Danger`, `Window.Backing`, `Pill.Backing` …) — never hard-code a colour in XAML;
+add a key to `Theme.Refresh` + the dark default in `Styles/JVoicePalette.xaml`. `Theme.Attach(window)`
+gives a window Mica + rounded corners + a themed title bar. The HUD bars stay a generated wave.
 
 ## Key files
 - `HudView.xaml` / `.cs`, `HudWindow.cs` — the recording/transcribing pill. Solid bar shapes (not
@@ -11,7 +16,10 @@ monochrome.
   by the stretch ratio. **Fix blur IN-APP — never tell David to change his resolution** (memory
   `dev-monitor-native-1920x1080`).
 - `SettingsView.xaml` / `.cs`, `SettingsWindow.cs` — settings, plus the Windows-only Recent
-  Transcripts history (root `CLAUDE.md` §7 #26). **Layout is a wide three-column "masonry"**
+  Transcripts history (root `CLAUDE.md` §7 #26). **Since rows 28–30: 1080 wide, ~940 tall, header
+  (title + System/Light/Dark) over three columns of `SettingsCard`s (Stats heads the right column so
+  the panel fits a 1080-tall desktop); keep every column ending near the same height.** History of
+  the old layout: it was a wide three-column "masonry"
   (Width=960, height sized to content ≈ 757: full-width header, 11 cards split across three
   independent vertical-StackPanel columns, full-width footer; root `CLAUDE.md` §7 #33). Went from
   two columns (640×1080) to three because a ~1080-tall window pushed the title-bar close (X) off
@@ -30,7 +38,7 @@ monochrome.
   its extra caution line is bound to `IsLarge` via `InverseBoolToVis` and shows only when a smaller
   model is selected (root `CLAUDE.md` §7 #35).
 - `TrayIcon.cs` — monochrome status item (idle / recording / transcribing).
-- `Converters.cs`, `DarkSection.cs`, `HotkeyRecorder.cs`, `TranscriptRow.cs`,
+- `Converters.cs`, `SettingsCard.cs`, `Theme.cs`, `HotkeyRecorder.cs`, `TranscriptRow.cs`,
   `Styles/JVoicePalette.xaml` — support + palette.
 
 ## Trap

@@ -1,5 +1,5 @@
 using System.Windows;
-using System.Windows.Media;
+using System.Windows.Documents;
 
 namespace JVoice.App.UI;
 
@@ -22,7 +22,9 @@ public sealed class SettingsWindow : Window
         MaxHeight = SystemParameters.WorkArea.Height - 16;
         ResizeMode = ResizeMode.NoResize;
         ShowInTaskbar = true; // a real app window while open
-        Background = (Brush)Application.Current.Resources["Settings.PanelBg"];
+        // The native look: Mica behind a Window.Backing layer (Opacity), title bar follows the theme.
+        Theme.Attach(this);
+        SetResourceReference(TextElement.ForegroundProperty, "Text.Primary");
         _view.DataContext = coordinator;
         Content = _view;
         // Don't destroy on close — hide so a re-open is instant and state persists.
