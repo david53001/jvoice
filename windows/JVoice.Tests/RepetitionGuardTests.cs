@@ -199,11 +199,8 @@ public class RepetitionGuardTests
     }
 
     // White-box parity: VocabularyCores splits spoken parts (cf. Swift vocabularyCoresSplitsSpokenParts).
-    // NOTE: the Swift test also asserts cores.contains("vs"), but the Swift *algorithm* (faithfully
-    // ported here) does NOT produce "vs" for "VS Code": the part "VS" camelCase-splits at the uppercase
-    // 'S' into "V"/"S", each <2 chars, so neither is kept — only the whole "vscode" survives. C# matches
-    // the Swift algorithm exactly; that one Swift assertion is inconsistent with its own algorithm (a
-    // swift-testing #expect failure doesn't abort, so it goes unnoticed). We lock the REAL behaviour.
+    // The Mac's split is now acronym-aware (ffbca8a): it splits camelCase / an acronym running into a word,
+    // never inside an acronym, so "VS Code" keeps "vs" (the old algorithm shredded it into V/S).
     [Fact]
     public void VocabularyCores_SplitsSpokenParts()
     {
@@ -216,7 +213,7 @@ public class RepetitionGuardTests
         Assert.Contains("li", cores);
         Assert.Contains("fraumeni", cores);
         Assert.Contains("lifraumeni", cores);
-        Assert.DoesNotContain("vs", cores); // "VS" camelCase-splits to V/S (each <2 chars)
+        Assert.Contains("vs", cores);       // the Mac's acronym-aware split (ffbca8a) keeps "VS" whole
     }
 
     // Contrast: lowercase "vs code" has no camelCase boundary, so "vs" IS kept as a 2-char part.
@@ -251,4 +248,74 @@ public class RepetitionGuardTests
             if (!r.RemovedRegurgitation) Assert.Equal(input, r.Text);
         }
     }
+
+    // ===== Spoken mathematics is NOT a loop (Mac ffbca8a, parity row 8) =====
+
+    [Theory]
+    [InlineData("and then it's 26 x 26 x 26 x 10 x 10 x 10")]
+    [InlineData("and then it's 26 times 26 times 26 times 10 times 10 times 10")]
+    [InlineData("So the answer is minus 3 minus 3 minus 3 minus 3")]
+    [InlineData("1 over 2 plus 1 over 4 plus 1 over 8 plus 1 over 16")]
+    [InlineData("2 x 2 x 2 x 2 x 2 x 2 x 2 x 2 is 256")]
+    [InlineData("ten times ten times ten times ten is ten thousand")]
+    public void MathsRepetition_IsNotALoop(string maths)
+    {
+        var r = RepetitionGuard.Scrub(maths, Vocab);
+        Assert.False(r.RemovedRegurgitation);
+        Assert.Equal(maths, r.Text);
+    }
+
+    [Fact]
+    public void MathsCounts_DoNotAccumulateAcrossALongDictation()
+    {
+        string longText = string.Concat(Enumerable.Repeat("so we have 5 choose 3 which is 10 and 10 choose 3 which is 120 times 3 factorial. ", 6))
+            + "so the total is 26 choose 3 times 3 factorial times 10 choose 3 times 3 factorial";
+        Assert.False(RepetitionGuard.Scrub(longText, Vocab).RemovedRegurgitation);
+    }
+
+    [Fact]
+    public void SustainedNumericDecoderLoop_IsStillStripped()
+    {
+        Assert.Equal("and then it's", RepetitionGuard.Strip("and then it's " + string.Concat(Enumerable.Repeat("26 x ", 20)), Array.Empty<string>()));
+        Assert.Equal("the total is", RepetitionGuard.Strip("the total is " + string.Concat(Enumerable.Repeat("10, ", 20)), Array.Empty<string>()));
+        Assert.Equal("so it's", RepetitionGuard.Strip("so it's " + string.Concat(Enumerable.Repeat("times 10 plus ", 12)), Array.Empty<string>()));
+    }
+
+    [Fact]
+    public void LongCycleLoop_IsCaughtByTheTrailingPhraseNet()
+    {
+        Assert.Equal("see", RepetitionGuard.Strip("see " + string.Concat(Enumerable.Repeat("page 1 of 10, ", 40)), Array.Empty<string>()));
+        Assert.Equal("counting", RepetitionGuard.Strip("counting " + string.Concat(Enumerable.Repeat("1, 2, 3, 4, ", 50)), Array.Empty<string>()));
+        Assert.Equal("cut off", RepetitionGuard.Strip("cut off " + string.Concat(Enumerable.Repeat("page 1 of 10, ", 7)) + "page 1", Array.Empty<string>()));
+        // "page 1 of 10" ×6 at the very end is a loop…
+        Assert.True(RepetitionGuard.Scrub("the report says " + string.Concat(Enumerable.Repeat("page 1 of 10 ", 6)).Trim(), Array.Empty<string>()).RemovedRegurgitation);
+        // …while a dictated power (5 repeats of "26 times") stays.
+        Assert.False(RepetitionGuard.Scrub("five letters so 26 times 26 times 26 times 26 times 26 times 26", Array.Empty<string>()).RemovedRegurgitation);
+    }
+
+    [Fact]
+    public void RealWordLoop_IsStillALoop()
+        => Assert.Equal("so I said", RepetitionGuard.Strip("so I said " + string.Concat(Enumerable.Repeat("okay ", 40)).Trim(), Array.Empty<string>()));
+
+    [Fact]
+    public void TheTheThe_FortyTimes_IsStillALoop()
+        => Assert.True(RepetitionGuard.Scrub("and then " + string.Concat(Enumerable.Repeat("the ", 40)).Trim(), Array.Empty<string>()).RemovedRegurgitation);
+
+    [Fact]
+    public void VocabularyCores_KeepAcronymsWhole()
+    {
+        var cores = RepetitionGuard.VocabularyCores(new[] { "sub agents", "VS Code", "li-fraumeni", "JVoice", "WhisperKit" });
+        foreach (var c in new[] { "sub", "agents", "vs", "code", "fraumeni", "lifraumeni", "voice", "whisper", "kit" })
+            Assert.Contains(c, cores);
+    }
+
+    [Theory]
+    [InlineData("26", true)]
+    [InlineData("x", true)]
+    [InlineData("times", true)]
+    [InlineData("thousand", true)]
+    [InlineData("½", true)]
+    [InlineData("page", false)]
+    [InlineData("okay", false)]
+    public void IsMathToken(string core, bool expected) => Assert.Equal(expected, RepetitionGuard.IsMathToken(core));
 }

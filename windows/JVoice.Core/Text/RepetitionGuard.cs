@@ -10,6 +10,20 @@ public static class RepetitionGuard
     public const double DensityThreshold = 0.7;
     public const int MinRepeatCount = 3;
     public const int NonLoopyTolerance = 1;
+    /// Spoken maths repeats its operands and operators legitimately ("26 times 26 times 26 …",
+    /// "minus 3 minus 3 minus 3"), so a maths token (<see cref="IsMathToken"/>) only counts as a
+    /// loop token on repetition alone when it occurs <see cref="MathMinRepeatCount"/> times within
+    /// the last <see cref="MathRepeatWindow"/> tokens — a stuck decoder repeats far past that, and
+    /// counting only recent tokens stops a long maths dictation accumulating "3"/"times" counts
+    /// (Mac 2026-09-23, ffbca8a).
+    public const int MathRepeatWindow = 24;
+    public const int MathMinRepeatCount = 8;
+    /// The net under that exemption: a transcript ENDING in one exact phrase of ≤
+    /// <see cref="MaxLoopPhraseTokens"/> tokens repeated ≥ <see cref="MinPhraseRepeats"/> times is a
+    /// loop whatever its tokens ("page 1 of 10, page 1 of 10, …"); 6 leaves a dictated power
+    /// ("26 times" ×5) alone.
+    public const int MinPhraseRepeats = 6;
+    public const int MaxLoopPhraseTokens = 12;
 
     public readonly record struct ScrubResult(string Text, bool RemovedRegurgitation);
 
@@ -25,19 +39,26 @@ public static class RepetitionGuard
         var cores = tokens.Select(Core).ToArray();
         var counts = new Dictionary<string, int>();
         foreach (var c in cores) if (c.Length > 0) counts[c] = counts.GetValueOrDefault(c) + 1;
+        var recentCounts = new Dictionary<string, int>();
+        foreach (var c in cores.Skip(Math.Max(0, n - MathRepeatWindow))) if (c.Length > 0) recentCounts[c] = recentCounts.GetValueOrDefault(c) + 1;
 
         var vocabCores = VocabularyCores(vocabulary);
         var vocabKeys = new HashSet<string>(
             vocabCores.Select(PhoneticMatcher.PhoneticKey).Where(k => k.Length > 0));
+        var phraseLoopCores = TrailingPhraseLoop(cores.Where(c => c.Length > 0).ToArray());
 
         bool Loopy(int i)
         {
             string c = cores[i];
             if (c.Length == 0) return false;
-            if (vocabCores.Contains(c)) return true;
+            if (vocabCores.Contains(c) || phraseLoopCores.Contains(c)) return true;
             string key = PhoneticMatcher.PhoneticKey(c);
             if (key.Length > 0 && vocabKeys.Contains(key)) return true;
-            return counts.GetValueOrDefault(c) >= MinRepeatCount && !Stopwords.Contains(c);
+            // A word repeated ≥3× is a loop too — but stopwords repeat naturally in prose, and maths
+            // tokens need a sustained run near the end (MathMinRepeatCount in MathRepeatWindow).
+            if (Stopwords.Contains(c)) return false;
+            if (IsMathToken(c)) return recentCounts.GetValueOrDefault(c) >= MathMinRepeatCount;
+            return counts.GetValueOrDefault(c) >= MinRepeatCount;
         }
 
         // 1. Quick gate: does the END look loopy at all (dense in loop tokens)?
@@ -64,6 +85,40 @@ public static class RepetitionGuard
     }
 
     // MARK: Internals
+
+    /// The cores of the phrase the transcript ends by repeating ≥ <see cref="MinPhraseRepeats"/> times
+    /// (a trailing partial cycle counts — a loop cut off by the token budget stops mid-phrase); empty otherwise.
+    internal static HashSet<string> TrailingPhraseLoop(string[] cores)
+    {
+        int n = cores.Length;
+        for (int period = 1; period <= MaxLoopPhraseTokens && period * MinPhraseRepeats <= n; period++)
+        {
+            int i = n - 1;
+            while (i - period >= 0 && cores[i] == cores[i - period]) i--;
+            // cores[(i + 1 - period)..] is periodic with this period.
+            if (n - (i + 1 - period) >= period * MinPhraseRepeats) return new HashSet<string>(cores[(n - period)..]);
+        }
+        return new HashSet<string>();
+    }
+
+    /// A number ("26", "14950" — <see cref="Core"/> drops the separators), a single letter (a variable,
+    /// or the "x" Whisper writes for "times"), a number word, or a spoken operator.
+    internal static bool IsMathToken(string core)
+    {
+        if (core.Length == 0) return false;
+        if (core.EnumerateRunes().Count() == 1) return true;
+        if (core.EnumerateRunes().All(System.Text.Rune.IsNumber)) return true;
+        return MathWords.Contains(core);
+    }
+
+    internal static readonly HashSet<string> MathWords = new()
+    {
+        "plus", "minus", "times", "over", "equals", "equal", "divided", "multiplied", "squared", "cubed",
+        "factorial", "choose", "power", "root", "point", "negative", "mod", "sub",
+        "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
+        "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen",
+        "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "million",
+    };
 
     private static bool IsDegenerate(int start, int end, string[] cores, Func<int, bool> loopy, bool requireRepeat = true)
     {
@@ -120,7 +175,10 @@ public static class RepetitionGuard
                 for (int idx = 0; idx < part.Length; idx++)
                 {
                     char ch = part[idx];
-                    if (idx > 0 && char.IsUpper(ch) && current.Length > 0)
+                    // Split at a word boundary only: camelCase ("WhisperKit") or an acronym running into a
+                    // word ("JVoice") — never inside an acronym, which would shred "VS" into single letters.
+                    if (idx > 0 && char.IsUpper(ch) && current.Length > 0
+                        && (char.IsLower(part[idx - 1]) || (idx + 1 < part.Length && char.IsLower(part[idx + 1]))))
                     {
                         string c = Core(current.ToString());
                         if (c.Length >= 2) result.Add(c);
