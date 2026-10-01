@@ -2254,6 +2254,29 @@ Commit `919880b`. Port of the Mac streaming latency layer (ab0b846 + ffbca8a; pa
 **What:** `HudView`/`HudWindow` rebuilt to the Mac's HUDLayout: one capsule (56 tall, radius 28, `Pill.Backing`, 10 % hairline, ONE soft shadow clipped to outside the body) wrapping J mark · 15 flat-resting bars (the generated wave is kept, §7 #23) · red stop (recording), J · shimmer (transcribing), icon + text status pills (Pasted green ✓, Copied, errors in red), and the model pills (blue icon, % bar / elapsed counter). Visible → visible morphs the capsule width (300 ms cubic ease-out) with a cross-fade; first show and hide stay instant (§7 #49 contract). Stop is clickable while recording (click-through otherwise; transparent margins still pass clicks). Capsule sits 64 DIP above the work area. **Decision logged:** a successful paste now shows "Pasted" for 1 s — the parity doc says to ask David whether to keep the June silent paste and, if unsure, follow the Mac (one-line revert in `VoiceCoordinator` paste success: back to `UpdateHud(HudState.Idle)`).
 **Verified:** `--hud-render <png> recording|transcribing|done|copied|unpasted|downloading|preparing` rendered over white and dark pages; `--latency-probe`: first rendered frame 57 ms cold / 2 ms warm, hidden pill 0 frames/s, recording 40 frames/s. The morph itself was not filmed (no on-screen drives this session).
 
+## §7 #59 — First-run Welcome window + guided tours + ⓘ, new users only (rows 31, 32) (2026-10-02)
+
+Parity rows 31/32 (doc §10): the Mac's first-run Welcome window + guided tours + ⓘ, ported. **New users only — David's PC never sees it.**
+
+- **Who gets tours:** `App.Main` classifies the audience ONCE, before anything writes `%APPDATA%\JVoice` (SettingsStore and DiagnosticLog both write there), and stores it in the new `%APPDATA%\JVoice\tours.json` (the five Mac keys only). `existing` if ANY of: a data-folder entry other than tours.json, a downloaded model, mic consent "Allow" for this exe, `HKCU\Software\JVoice` exists, or a `bin\` build path. Every probe is read-only; a failing probe counts as existing. Upgrades are existing, so no installed copy changes behaviour; existing users get no window and no automatic tour, ever.
+- **Core (`JVoice.Core/Tours/`, pure, tested):** model, engine + tag layout (the same C# as BetterScreenshot's port), rules, `TourPrefs`, the catalog (Mac copy with Windows wording), `OpacityDemoTimeline` (exact port), and a UI-free `TourCoordinator` (triggers, pause/resume, hand-overs, Show Me parts, Reset All) over `ITourHost` / `ITourTagPresenter` / `ITourClock`.
+- **App:** `UI/WelcomeWindow` (page 1 permissions: mic privacy status + "typing needs no permission on Windows"; page 2 the live shortcut sheet + "Want a quick tour?"). Closing it unanswered counts as No Thanks; quitting doesn't. `Tours/TagOverlay` is two no-activate windows: a click-through dim/outline/leader and the bubble. It follows the host's light/dark, draws the accent outline, follows `ScrollChanged` in the same frame, and draws a concentric capsule around the pill (PillTourHost dims only the capsule). The tray icon anchor comes from `Shell_NotifyIconGetRect`; that step is skipped if the icon is hidden. Also added:
+  - the ⓘ on Settings and Welcome (Replay Tour · Show Me ▸ · Keyboard Shortcuts);
+  - tray **Help & Tours ▸**;
+  - a Settings **Tours & Tips** card (Show Me Around switch · Replay Welcome Tour · Reset All Tours);
+  - the events `recording.started` (after the pill and mic, next UI turn) / `recording.stopped` / `dictation.pasted`;
+  - a neutral `HudState.Notice` pill for tour confirmations;
+  - the Opacity demo, which never saves: the coordinator holds the stored value while it plays.
+
+  The old first-run Settings + MessageBox (`HKCU\Software\JVoice\UiFirstRunShown`) is gone.
+- **Decisions:**
+  - The pill step drops "again"/"for you" so its body fits 2 lines at 260 with "Ctrl+Alt+Shift+Win+F12" (lint-measured with WPF FormattedText; the test project is now `net9.0-windows` + UseWPF).
+  - The Appearance card's anchor is `settings.appearance` (the Mac's Opacity step); the header picker is `settings.theme`.
+  - The tag bubble is a solid flyout colour, not translucent: a layered window has no blur.
+  - The tray-rect DIPs use system DPI.
+  - No mic "Test" button: page 2's Try-it step is the test.
+- **Verify:** `dotnet test` 1933/1933 (TourTests 38, TourCoordinatorTests 15, HudState Notice). Off-screen: `JVoice.exe --welcome-render <png> [allset] [question] [light|dark]`, `--tour-render <png> [light|dark]`, `--settings-render` (1080×945 with the new card). **Not seen on screen yet:** the live overlay over real windows, the tray-icon rect, and the first-run flow. Try them on a clean Windows profile or VM, never by wiping David's settings.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`

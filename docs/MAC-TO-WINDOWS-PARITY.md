@@ -122,8 +122,8 @@ equivalent), **N/A** (Mac-only problem). Priority: **P1** = user-visible / corre
 | 28 | **Native look** (System/Light/Dark, translucent Settings, cards, native controls) | a3bfff0 | DONE bd2155d (+0ed7dda) | P1 | 8 |
 | 29 | **Glass pill that hugs its content and morphs between states** | a3bfff0, 33d8a21 | DONE e7481eb | P1 | 8.4 |
 | 30 | **Opacity setting** (Settings → Appearance) | d060a72 | DONE bd2155d (+0ed7dda) | P1 | 9 |
-| 31 | **First-run Welcome window + guided tours** (new users only) | 124c42c…157698d | MISSING | P1 | 10 |
-| 32 | ⓘ on every window (Replay Tour, Show Me list), Help & Tours menu, Tours & Tips card | 99abe37, 5069c8c | MISSING | P1 | 10.6 |
+| 31 | **First-run Welcome window + guided tours** (new users only) | 124c42c…157698d | DONE 8a5b32a | P1 | 10 |
+| 32 | ⓘ on every window (Replay Tour, Show Me list), Help & Tours menu, Tours & Tips card | 99abe37, 5069c8c | DONE 8a5b32a | P1 | 10.6 |
 | 33 | Tour polish: capsule outline on the pill, animated Opacity step | a45598e | MISSING | P2 | 10.8 |
 | 34 | Windows open on the display with the mouse pointer | a45598e | MISSING | P2 | 11 |
 | 35 | `--ui-preview` screenshot mode, `--settings-smoke` | b034f9d, 0c46d53 | PARTIAL (`--settings-render` exists) | P3 | 12 |
