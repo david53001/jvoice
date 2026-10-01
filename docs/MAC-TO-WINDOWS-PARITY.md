@@ -101,11 +101,11 @@ equivalent), **N/A** (Mac-only problem). Priority: **P1** = user-visible / corre
 | 7 | Soft-audio robustness in chunking | ffbca8a | Check | P2 | 5.6 |
 | 8 | **Maths is not a loop** (RepetitionGuard math-token exemption + trailing phrase loop) | ffbca8a | **DONE** 24c336d | P1 | 6.1 |
 | 9 | Witness guards (phrase loop anywhere, sparse, silence gate, vocab recital, caption-only) | d6d7a63 | **DONE/origin** (Mac ported them *from* Windows); small deltas in §6.2 | P3 | 6.2 |
-| 10 | Custom words: keep neighbour & possessive, no joins across commas, edit distance ≤ 1 | b0bb390 | MISSING (Windows still distance 2 etc.) | P1 | 6.3 |
-| 11 | Filler removal no longer eats "ER", "err", "Uh-oh", "Mm-hmm" | b0bb390 | MISSING (`er+` regex) | P1 | 6.3 |
-| 12 | Everyday-English keys removed from Developer Terms | b0bb390 | MISSING | P2 | 6.3 |
-| 13 | ".NET"/".env" custom words keep dots once; Very Casual keeps "$1,000,000"; Formal period rules | b0bb390 | Check | P3 | 6.3 |
-| 14 | "J-Voice" → "JVoice"; bare lowercase "you" on <1 s hum dropped | 000a8b0 | Check | P2 | 6.4 |
+| 10 | Custom words: keep neighbour & possessive, no joins across commas, edit distance ≤ 1 | b0bb390 | **DONE** 8d51918 | P1 | 6.3 |
+| 11 | Filler removal no longer eats "ER", "err", "Uh-oh", "Mm-hmm" | b0bb390 | **DONE** 8d51918 | P1 | 6.3 |
+| 12 | Everyday-English keys removed from Developer Terms | b0bb390 | **DONE** 8d51918 | P2 | 6.3 |
+| 13 | ".NET"/".env" custom words keep dots once; Very Casual keeps "$1,000,000"; Formal period rules | b0bb390 | **DONE** 8d51918 | P3 | 6.3 |
+| 14 | "J-Voice" → "JVoice"; bare lowercase "you" on <1 s hum dropped | 000a8b0 | **DONE** 8d51918 | P2 | 6.4 |
 | 15 | Second press during transcription is ignored (never discards) | 8ea5088 | PARTIAL (§7 #44 covers auto-repeat) | P1 | 6.5 |
 | 16 | Refused paste → clipboard + history; per-item clipboard restore, skipped if user copied | 8ea5088 | PARTIAL | P1 | 6.5 |
 | 17 | Mic/device fixes (virtual-device redirect, silent device named, "Recording was interrupted", stop during open, quit deletes audio) | 8ea5088 | Check each | P2 | 6.5 |

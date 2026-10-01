@@ -2201,6 +2201,16 @@ Commit `24c336d`. Port of the Mac `RepetitionGuard` (ffbca8a, parity doc §6.1).
 **What:** `JVoice.Core/Text/RepetitionGuard.cs` — `IsMathToken` (number, single letter, number word, spoken operator; `MathWords` verbatim) counts as a loop token on repetition alone only with **8 occurrences in the last 24 tokens** (`MathRepeatWindow`/`MathMinRepeatCount`); new `TrailingPhraseLoop` net — a transcript ending in one exact phrase of ≤ 12 tokens repeated ≥ 6× is a loop whatever its tokens; the vocabulary split is now acronym-aware like the Mac ("VS Code" keeps "vs"). `PhraseLoopGuard`'s pure-maths exemption is unchanged.
 **Tests:** `RepetitionGuardTests` +17 (the six Mac maths examples kept verbatim, long combinatorics dictation not loopy, sustained numeric loops still stripped, "page 1 of 10" ×6/×40 and cut-off cycles stripped, a dictated power ×5 kept, 40× "the" and "okay" loops still caught, `IsMathToken` cases). `dotnet test` 1535/1535.
 
+## §7 #51 — Custom words keep their neighbours, fillers keep real words, everyday English left alone (parity rows 10–14) (2026-10-02)
+
+Commit `8d51918`. Port of the Mac text bug-hunt `b0bb390` (parity doc §6.3) and `000a8b0` (§6.4).
+**Custom words (row 10):** `JVoice.Core/Text/PhoneticMatcher.cs` — the multi-token window no longer swallows the word in front ("I deployed 2 Vercel apps" kept "Vercel" but lost "2"), never continues across clause punctuation or a possessive, keeps `Vercel's`, treats singular/plural as what was said, needs edit distance ≤ 1 when the sound key differs ("verse"/"vessel"/"Obama" were false corrections), and never doubles the word's own edge marks (".nett" → ".NET"). The plain lowercase key stays in the user dictionary.
+**Fillers (row 11):** `TextProcessor.RemoveDisfluencies` uses the Mac's case-aware pattern — keeps "ER", "UM", "err", "Uh-oh", "Uh-huh", "Mm-hmm"; still removes um/uh/er/erm/errr/ah/hmm.
+**Everyday English (row 12):** DeveloperTerms dropped "my sql", "no sql", "fast api", "restful", "uri"; the built-in dictionary dropped "keyboard shortcuts" (joined spellings stay).
+**Formatting (row 13, P3 — done while here):** `SpokenVariants` drops proper substrings (".NET"/".env" never gain dots), punctuated keys match standalone (`(?<!\w)…(?!\w)`), Very Casual keeps "$1,000,000", Formal adds no period after a closing quote/colon/ellipsis.
+**Row 14:** "j-voice" → JVoice; the whole-file raw decode is now cleaned like the Mac's `cleanRawDecode` (`WhisperNetTranscriptionEngine`), so a stock phrase / bare lowercase "you" reads as empty inside `RegurgitationRecovery` and triggers the unprompted re-decode (the chunk path already did this, §7 #49).
+**Tests:** new `TextParity20260923Tests` (45 cases translated from the Mac test files). `dotnet test` 1580/1580. Not bench-verified on device (pure text logic + one cleanup call).
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
