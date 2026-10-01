@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Documents;
+using JVoice.App.Platform;
 
 namespace JVoice.App.UI;
 
@@ -35,10 +36,24 @@ public sealed class SettingsWindow : Window
 
     public void ShowOrActivate()
     {
+        // Parity row 34: opening from hidden centres it on the monitor with the mouse pointer, placed BEFORE it
+        // shows (no flash on the old monitor). Already open → just brought forward.
+        if (!IsVisible) ActiveScreen.CenterBeforeShow(this, OuterSizeEstimate(this, _view));
         Show();
         WindowState = WindowState.Normal;
         Activate();
         Topmost = true; Topmost = false; // bring to front then release topmost
         Focus();
+    }
+
+    /// <summary>A window's outer size in DIPs before it shows: its last size once it has been shown, else its content's
+    /// desired size plus the title bar and frame (SizeToContent sizes the HWND only on the first show).</summary>
+    internal static Size OuterSizeEstimate(Window window, FrameworkElement content)
+    {
+        if (window.ActualWidth > 0 && window.ActualHeight > 0) return new Size(window.ActualWidth, window.ActualHeight);
+        content.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var frame = SystemParameters.WindowResizeBorderThickness;
+        double h = Math.Min(content.DesiredSize.Height + SystemParameters.WindowCaptionHeight + frame.Top + frame.Bottom, window.MaxHeight);
+        return new Size(content.DesiredSize.Width + frame.Left + frame.Right, h);
     }
 }

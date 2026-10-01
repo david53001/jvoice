@@ -2,6 +2,7 @@ using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
 using JVoice.App.Platform;
+using JVoice.Core;
 using JVoice.Core.Models;
 
 namespace JVoice.App.UI;
@@ -17,6 +18,9 @@ public sealed class HudWindow : Window
     public Action? OnStop { get; set; }
 
     private HudState _state = HudState.Idle;
+
+    /// The monitor the pill appeared on (the pointer's), kept while it's up.
+    private (JVoice.Core.PxRect Work, double Scale)? _screen;
 
     /// The capsule (tour anchor <c>pill.controls</c>): the tag dims only it and outlines it as a concentric capsule.
     internal FrameworkElement CapsuleElement => _view.Capsule;
@@ -126,6 +130,9 @@ public sealed class HudWindow : Window
 
         if (state.IsVisible)
         {
+            // Parity row 34: a pill appearing picks the monitor with the mouse pointer and keeps it while it's up
+            // (a morph never jumps monitors). A few µs of Win32 — fine on the press → pill path (§7 #49).
+            if (!IsVisible) _screen = ActiveScreen.UnderPointer();
             // Lay out first so ActualWidth/Height are valid, then position.
             UpdateLayout();
             PositionBottomCenter();
@@ -153,7 +160,14 @@ public sealed class HudWindow : Window
 
         if (Offscreen || _parkedOffscreen) { Left = -20000; Top = -20000; return; }
 
-        var wa = SystemParameters.WorkArea; // DIPs, primary screen
+        if (_screen is { } screen && _hwnd != IntPtr.Zero)
+        {
+            var (x, y) = ScreenPlacement.Pill(screen.Work, ActualWidth, ActualHeight, 22 * DisplayMetrics.HudScale, screen.Scale);
+            ActiveScreen.MoveTo(_hwnd, x, y);
+            return;
+        }
+
+        var wa = SystemParameters.WorkArea; // DIPs, primary screen (fallback: no monitor info)
         Left = wa.Left + (wa.Width - ActualWidth) / 2;
         // The capsule sits 64 above the bottom of the work area (Mac HUDLayout.bottomGap — above the
         // taskbar); the panel's bottom 22 (× HudScale) is the shadow margin below the capsule.

@@ -63,6 +63,7 @@ public sealed class TourService
             OnTourAnswer = (yes, window) => Tours.AnswerQuestion(yes, WindowTourHost.For(window)),
         };
         _welcome.Closed += (_, _) => _welcome = null;
+        ActiveScreen.CenterBeforeShow(_welcome, SettingsWindow.OuterSizeEstimate(_welcome, (FrameworkElement)_welcome.Content));
         _welcome.Show();
         _welcome.Activate();
     }

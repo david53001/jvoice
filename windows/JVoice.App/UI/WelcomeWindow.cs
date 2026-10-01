@@ -77,7 +77,11 @@ public sealed class WelcomeWindow : Window
     public void ShowAllSet()
     {
         _model.IsPermissionsPage = false;
-        if (!IsVisible) Show();
+        if (!IsVisible)
+        {
+            JVoice.App.Platform.ActiveScreen.CenterBeforeShow(this, SettingsWindow.OuterSizeEstimate(this, _view));
+            Show();
+        }
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
     }
