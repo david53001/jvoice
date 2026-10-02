@@ -20,17 +20,29 @@ internal static class TourStore
         // Any failure (unreadable, or JSON the lenient parser still rejects — e.g. duplicate keys) starts from empty
         // prefs: the audience is then re-classified, and the existing settings.json makes that "existing". A bad
         // tours.json must never crash every launch (review round 1 JV #12b).
-        try { return File.Exists(FilePath) ? TourPrefs.FromJson(File.ReadAllText(FilePath)) : new TourPrefs(); }
-        catch (Exception ex)
+        if (!File.Exists(FilePath)) return new TourPrefs();
+        Exception? error = null;
+        for (int attempt = 0; attempt < 2; attempt++)
         {
-            DiagnosticLog.Write($"Tours load failed, starting fresh: {ex.GetType().Name}: {ex.Message}");
-            return new TourPrefs();
+            try { return TourPrefs.FromJson(File.ReadAllText(FilePath)); }
+            catch (Exception ex) { error = ex; if (attempt == 0) Thread.Sleep(150); } // a brief AV lock: one retry
         }
+        // Still unreadable: this session runs as an existing user in memory and never writes tours.json, so a new
+        // user's answer and progress aren't overwritten by one bad read (review round 2 JV #3). A copy is kept.
+        _readOnly = true;
+        string kept = FilePath + ".bad-" + DateTime.Now.ToString("yyyyMMdd-HHmmss");
+        try { File.Copy(FilePath, kept, overwrite: true); }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { kept = "(not copied: " + ex.Message + ")"; }
+        DiagnosticLog.Write($"Tours load failed ({error?.GetType().Name}: {error?.Message}); existing user for this session, file kept as {kept}");
+        return new TourPrefs { Audience = TourAudience.Store(TourAudienceKind.Existing) };
     }
+
+    private static bool _readOnly;
 
     /// <summary>Atomic write (temp file + replace) so a crash mid-save never leaves a half file.</summary>
     public static void Save(TourPrefs prefs)
     {
+        if (_readOnly) return; // tours.json couldn't be read this session — leave it as it is
         try
         {
             Directory.CreateDirectory(DataDirectory);
