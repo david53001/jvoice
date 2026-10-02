@@ -76,6 +76,9 @@ public sealed class TourCoordinator
     public Func<IEnumerable<ITourHost>> ExtraAnchorHosts { get; set; } = () => Array.Empty<ITourHost>();
     /// <summary>What a step plays while it's on screen; null for most steps.</summary>
     public Func<TourStep, ITourStepDemo?> MakeDemo { get; set; } = _ => null;
+    /// <summary>Raised when <see cref="FirstUseToursEnabled"/> changes — by the Welcome answer as well as the
+    /// toggle — so a Settings page bound to it never goes stale (review round 1 JV #5).</summary>
+    public event Action? FirstUseToursChanged;
     /// <summary>How long a completed Try step shows its "Done" state before the next step.</summary>
     public TimeSpan CompletedDelay { get; set; } = TimeSpan.FromSeconds(0.8);
 
@@ -142,9 +145,11 @@ public sealed class TourCoordinator
     /// the Welcome tour in <paramref name="host"/> (the Welcome window) right away.</summary>
     public void AnswerQuestion(bool showMeAround, ITourHost? host)
     {
+        bool was = FirstUseToursEnabled;
         _prefs.FirstUseToursEnabled = showMeAround;
         _prefs.QuestionAnswered = true;
         _save();
+        if (was != showMeAround) FirstUseToursChanged?.Invoke();
         if (!showMeAround) return;
         if (host is not null)
         {
@@ -160,7 +165,13 @@ public sealed class TourCoordinator
     public bool FirstUseToursEnabled
     {
         get => _prefs.FirstUseToursEnabled == true;
-        set { _prefs.FirstUseToursEnabled = value; _save(); }
+        set
+        {
+            bool was = FirstUseToursEnabled;
+            _prefs.FirstUseToursEnabled = value;
+            _save();
+            if (was != value) FirstUseToursChanged?.Invoke();
+        }
     }
 
     /// <summary>Clears seen + paused only — never the audience or the answer.</summary>

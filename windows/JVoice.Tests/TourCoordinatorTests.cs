@@ -142,6 +142,20 @@ public class TourCoordinatorTests
     }
 
     [Fact]
+    public void TheWelcomeAnswerAndTheToggleBothRaiseFirstUseToursChanged()
+    {
+        var c = Make("new");
+        int raised = 0;
+        c.FirstUseToursChanged += () => raised++;
+        c.AnswerQuestion(true, Welcome());
+        Assert.Equal(1, raised);
+        c.FirstUseToursEnabled = true; // unchanged → no event
+        Assert.Equal(1, raised);
+        c.FirstUseToursEnabled = false;
+        Assert.Equal(2, raised);
+    }
+
+    [Fact]
     public void ShowMeAroundRunsTheWelcomeTourThenFirstUseTours()
     {
         var c = Make("new");

@@ -46,7 +46,18 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     public HudWindow? Hud { get; set; }
     public TrayIcon? Tray { get; set; }
     /// The guided tours (parity rows 31/32), set by App; null in previews/renders.
-    public TourService? TourService { get; set; }
+    public TourService? TourService
+    {
+        get => _tourService;
+        set
+        {
+            if (_tourService is not null) _tourService.Tours.FirstUseToursChanged -= OnFirstUseToursChanged;
+            _tourService = value;
+            if (value is not null) value.Tours.FirstUseToursChanged += OnFirstUseToursChanged;
+        }
+    }
+    private TourService? _tourService;
+    private void OnFirstUseToursChanged() => Raise(nameof(ShowMeAroundEnabled));
 
     /// Settings → Tours &amp; Tips → "Show Me Around" (= firstUseToursEnabled; absent = off).
     public bool ShowMeAroundEnabled
@@ -55,8 +66,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         set
         {
             if (TourService is null || TourService.FirstUseToursEnabled == value) return;
-            TourService.FirstUseToursEnabled = value;
-            Raise();
+            TourService.FirstUseToursEnabled = value; // raises FirstUseToursChanged → OnFirstUseToursChanged
         }
     }
 
@@ -1216,6 +1226,13 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         // thread, 8–38 ms) AFTER the pill has already switched to "transcribing"; the session's
         // Finish() below reads the WAV tail only once this has flushed and closed the file.
         string? audioPath = await Task.Run(() => _recorder.Stop());
+        if (ct.IsCancellationRequested && audioPath is not null)
+        {
+            TryDelete(audioPath); // quit while the recorder was stopping (row 17 privacy)
+            if (session is not null) _ = session.Cancel();
+            _dispatcher.BeginInvoke(() => _isTranscribing = false); // this path returns before the try/finally below
+            return;
+        }
         _inFlightAudioPath = audioPath; // row 17: QuitApp deletes it if JVoice quits mid-transcription
         DiagnosticLog.Write($"Recorder stopped  audioPath={(audioPath ?? "<null>")}  " +
             $"bytes={(audioPath is not null && File.Exists(audioPath) ? new FileInfo(audioPath).Length : -1)}  " +
@@ -1484,9 +1501,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
         // Row 17 (Mac 8ea5088): quitting while a dictation is still being transcribed deletes that
         // dictation's audio too (privacy) — the decode is cancelled; nothing will paste.
+        // Cancelled unconditionally: a quit in the 8–38 ms before _recorder.Stop() returns has no
+        // _inFlightAudioPath yet, and FinishTranscriptionAsync deletes that WAV itself on seeing the
+        // cancellation (review round 1 JV #4).
+        _transcriptionCts?.Cancel();
         if (_inFlightAudioPath is { } inFlight)
         {
-            _transcriptionCts?.Cancel();
             TryDelete(inFlight);
             _inFlightAudioPath = null;
         }
