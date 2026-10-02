@@ -237,6 +237,8 @@ public partial class App : Application
             "preparing"    => HudState.PreparingModel,
             "downloading"  => HudState.DownloadingModel(0.42),
             "error"        => HudState.Error("Something went wrong"),
+            "done"         => HudState.Done("Pasted"),
+            "copied"       => HudState.Copied("Copied"),
             _              => HudState.Recording,
         };
         _hud = new HudWindow { OnStop = () => { } };
