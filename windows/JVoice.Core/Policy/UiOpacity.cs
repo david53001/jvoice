@@ -10,7 +10,8 @@ namespace JVoice.Core;
 /// default and ≥ 3:1 at 0. The window anchors are the Mac's (Settings/Welcome sit on Mica, which is
 /// effectively opaque). The pill anchors are RAISED for Windows: the pill is a layered window with no
 /// blur behind it, so over a white page the backing alone carries the contrast — the Mac's 0.45/0.62
-/// would give white text 2.9:1 at 0; 0.50/0.66 give 3.4:1 and 5.0:1 (locked by UiOpacityTests).
+/// would give white text 2.9:1 at 0. Raised again to 0.70/0.88 after David's dogfood (2026-10-02: "the pill is too
+/// transparent" at the default): the pill reads as a solid dark capsule with only a hint of what's behind it.
 public static class UiOpacity
 {
     public const double Default = 0.5;
@@ -26,7 +27,7 @@ public static class UiOpacity
     /// The backing alpha at 0 / 0.5 / 1.
     public static (double Transparent, double Standard, double Opaque) Anchors(Surface surface) => surface switch
     {
-        Surface.Pill => (0.50, 0.66, 1.0),
+        Surface.Pill => (0.70, 0.88, 1.0),
         _ => (0.0, 0.35, 1.0),
     };
 

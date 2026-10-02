@@ -66,7 +66,32 @@ public class WindowTourHost : IOverlayHost
     public virtual Rect? KeepOut => null;
     public virtual bool IsDark => Theme.IsDark;
     public bool ClaimsKeys => KeysClaimed?.Invoke() ?? false;
-    public virtual double? AnchorRadius(string anchor) => null;
+    /// The anchored control's own corner radius, so the outline is concentric with it (a Settings card: 10 + 4).
+    /// Without it every outline used the square-control radius and pinched in at a card's rounder corners (David,
+    /// 2026-10-02: "the tour UI isn't engulfing the cards").
+    public virtual double? AnchorRadius(string anchor) => Find(anchor) is { } e ? CornerRadiusOf(e) : null;
+
+    /// A Border's radius, or that of a same-size Border right inside the element (a templated card); null = square.
+    internal static double? CornerRadiusOf(FrameworkElement element)
+    {
+        var border = element as Border ?? FirstBorder(element, 3);
+        if (border is null || Math.Abs(border.ActualWidth - element.ActualWidth) >= 2
+            || Math.Abs(border.ActualHeight - element.ActualHeight) >= 2) return null;
+        double r = border.CornerRadius.TopLeft;
+        return r > 0 ? r : null;
+    }
+
+    private static Border? FirstBorder(DependencyObject node, int depth)
+    {
+        if (depth == 0) return null;
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(node); i++)
+        {
+            var child = VisualTreeHelper.GetChild(node, i);
+            if (child is Border b) return b;
+            if (FirstBorder(child, depth - 1) is { } deeper) return deeper;
+        }
+        return null;
+    }
 
     public Rect? AnchorRect(string anchor)
     {
@@ -166,7 +191,7 @@ public sealed class PillTourHost : WindowTourHost
     public override bool IsDark => true;
 
     public override double? AnchorRadius(string anchor) =>
-        anchor == "pill.controls" && Capsule is { } c ? c.Height / 2 : null;
+        anchor == "pill.controls" && Capsule is { } c ? c.Height / 2 : base.AnchorRadius(anchor);
 }
 
 /// <summary>

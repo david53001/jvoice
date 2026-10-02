@@ -10,7 +10,7 @@ namespace JVoice.App.Tours;
 
 /// <summary>
 /// The ⓘ on Settings and the Welcome window (parity §10.6; Mac <c>InfoButton</c>): a borderless info glyph whose menu
-/// has <b>Replay Tour</b> (this window's tour from step 1, for every user), <b>Show Me ▸</b> (one item per step title —
+/// has <b>Replay Tour</b> (this window's tour from step 1, for every user), <b>Show Me</b> (one item per step title, listed in the menu itself —
 /// explains just that part) and <b>Keyboard Shortcuts</b> (the live chords). Colours are the theme's DynamicResources.
 /// </summary>
 public sealed class InfoButton : Border
@@ -58,19 +58,22 @@ public sealed class InfoButton : Border
         replay.Click += (_, _) => TourEvents.Replay(_tour, Window.GetWindow(this));
         menu.Items.Add(replay);
 
-        var showMe = new MenuItem { Header = "Show Me", Icon = Icon("") };
+        // "Show Me" is a labelled group in the menu itself, not a hover submenu: the submenu closed as the pointer
+        // crossed the items below it on the way in (David, 2026-10-02), so its parts were hard to reach.
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem { Header = "Show Me", Icon = Icon(""), IsEnabled = false });
         var steps = TourCatalog.Get(_tour).Steps;
         for (int i = 0; i < steps.Count; i++)
         {
             int step = i;
             var item = new MenuItem { Header = steps[i].Title };
             item.Click += (_, _) => TourEvents.ReplayPart(_tour, step, Window.GetWindow(this));
-            showMe.Items.Add(item);
+            menu.Items.Add(item);
         }
-        menu.Items.Add(showMe);
 
         if (_shortcuts().Count > 0)
         {
+            menu.Items.Add(new Separator());
             var keys = new MenuItem { Header = "Keyboard Shortcuts", Icon = Icon("") };
             keys.Click += (_, _) => ShowShortcuts();
             menu.Items.Add(keys);

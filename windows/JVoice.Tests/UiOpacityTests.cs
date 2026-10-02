@@ -18,9 +18,9 @@ public class UiOpacityTests
         => Assert.Equal(alpha, BackingAlpha(value, Surface.Window), 6);
 
     [Theory]
-    [InlineData(0.0, 0.50)]
-    [InlineData(0.5, 0.66)]
-    [InlineData(0.75, 0.83)]
+    [InlineData(0.0, 0.70)]
+    [InlineData(0.5, 0.88)]
+    [InlineData(0.75, 0.94)]
     [InlineData(1.0, 1.0)]
     public void Pill_UsesTheWindowsCalibratedAnchors(double value, double alpha)
         => Assert.Equal(alpha, BackingAlpha(value, Surface.Pill), 6);
