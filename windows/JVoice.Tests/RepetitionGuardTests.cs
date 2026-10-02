@@ -18,6 +18,17 @@ public class RepetitionGuardTests
         Assert.Equal("so the thing about money is that", r.Text);
     }
 
+    [Theory]
+    [InlineData("so the answer is 2 times 2 times 2 times 2 times 2 times 2 times 2")]
+    [InlineData("2 times 2 times 2 times 2 times 2 times 2 times 2")]
+    [InlineData("I told him no no no no no no no no")]
+    public void Scrub_KeepsARepeatedMathsOrStopwordPhrase(string input)
+    {
+        var r = RepetitionGuard.Scrub(input, Vocab);
+        Assert.False(r.RemovedRegurgitation);
+        Assert.Equal(input, r.Text);
+    }
+
     [Fact]
     public void Scrub_LeavesCoherentSpeechUntouched()
     {

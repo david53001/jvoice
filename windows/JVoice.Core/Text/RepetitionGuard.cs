@@ -24,6 +24,8 @@ public static class RepetitionGuard
     /// ("26 times" ×5) alone.
     public const int MinPhraseRepeats = 6;
     public const int MaxLoopPhraseTokens = 12;
+    /// The repeats a phrase made only of maths / stopword tokens needs before the phrase net strips it.
+    public const int MathPhraseRepeats = 12;
 
     public readonly record struct ScrubResult(string Text, bool RemovedRegurgitation);
 
@@ -96,7 +98,16 @@ public static class RepetitionGuard
             int i = n - 1;
             while (i - period >= 0 && cores[i] == cores[i - period]) i--;
             // cores[(i + 1 - period)..] is periodic with this period.
-            if (n - (i + 1 - period) >= period * MinPhraseRepeats) return new HashSet<string>(cores[(n - period)..]);
+            int run = n - (i + 1 - period);
+            if (run < period * MinPhraseRepeats) continue;
+            var phrase = cores[(n - period)..];
+            // A phrase of only maths / stopword tokens is often dictation ("2 times 2 times …" ×6,
+            // "no no no …" ×8): it needs twice the repeats before it counts as a loop — a stuck
+            // decoder runs far past that ("the" ×40, "1, 2, 3, 4" ×50). Stripping it at 6 deleted
+            // whole dictations (review round 1 JV #3).
+            if (run < period * MathPhraseRepeats && phrase.All(c => IsMathToken(c) || Stopwords.Contains(c)))
+                return new HashSet<string>();
+            return new HashSet<string>(phrase);
         }
         return new HashSet<string>();
     }
