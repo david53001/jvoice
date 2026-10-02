@@ -3,7 +3,8 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              Background="Transparent"
              UseLayoutRounding="True" SnapsToDevicePixels="True"
-             TextOptions.TextFormattingMode="Display"
+             TextOptions.TextFormattingMode="Ideal"
+             TextOptions.TextRenderingMode="Grayscale"
              RenderOptions.BitmapScalingMode="HighQuality">
     <!-- ===== The glass pill (parity row 29; Mac HUDView.swift + HUDLayout.swift) =====
          ONE capsule (height 56, radius 28) wraps whichever pill is showing and hugs it: the
@@ -21,7 +22,9 @@
          The panel is a fixed 404×100 (the widest capsule + a 22 margin for the shadow); the capsule
          is bottom-anchored and centred, so a morph never moves its bottom edge or centre.
          HudRootScale (LayoutTransform) enlarges everything by DisplayMetrics.HudScale so it stays crisp
-         when the desktop runs below native resolution. -->
+         when the desktop runs below native resolution. Text uses Ideal formatting: Display-mode glyphs
+         are hinted at the untransformed size and go stair-stepped under that scale (review round 1
+         JV #1); Ideal outlines scale cleanly, and Grayscale is what a layered window renders anyway. -->
     <Grid>
         <Grid.LayoutTransform>
             <ScaleTransform x:Name="HudRootScale" ScaleX="1.0" ScaleY="1.0" />

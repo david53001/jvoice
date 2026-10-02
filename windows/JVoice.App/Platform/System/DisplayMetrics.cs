@@ -24,10 +24,11 @@ namespace JVoice.App.Platform;
 /// would fool a naive max-enumerated-mode probe into over-scaling.
 public static class DisplayMetrics
 {
-    /// Baseline scale for the HUD pill at native resolution. The bars-only redesign is a
-    /// solid-shape visual that no longer needs the old text-legibility enlargement, so this
-    /// is trimmed to 1.0 (the pill was "too big" at 1.1×); the stretch-ratio multiply below
-    /// still enlarges it when the desktop runs below native so it survives interpolation.
+    /// Baseline scale for the HUD pill at native resolution: 1.0, because the pill was "too big"
+    /// at 1.1×. The pill shows text again (status pills, parity row 29), so its legibility comes
+    /// from Ideal text formatting in HudView.xaml (crisp under the LayoutTransform) rather than
+    /// from enlarging; the stretch-ratio multiply below still enlarges it when the desktop runs
+    /// below native so it survives the monitor's interpolation.
     public const double HudBaseScale = 1.0;
 
     /// Upper bound so an extreme downscale (e.g. 1024×768 on a 4K panel) can't inflate
