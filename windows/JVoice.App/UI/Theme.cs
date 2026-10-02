@@ -45,7 +45,7 @@ public static class Theme
             {
                 if (e.Category is UserPreferenceCategory.General or UserPreferenceCategory.Color
                     or UserPreferenceCategory.VisualStyle)
-                    Application.Current?.Dispatcher.BeginInvoke(Refresh);
+                    Application.Current?.Dispatcher.BeginInvoke(RefreshIfChanged);
             };
         }
         Refresh();
@@ -95,9 +95,20 @@ public static class Theme
         return Color.FromRgb(0x00, 0x67, 0xC0);
     }
 
+    private static (bool Dark, Color Accent)? _applied;
+
+    /// <summary>Windows broadcasts General/Color/VisualStyle changes for many reasons (wallpaper, a setting elsewhere):
+    /// rebuild the brushes and re-theme the windows only when light/dark or the accent actually changed (round 2 JV #9).</summary>
+    private static void RefreshIfChanged()
+    {
+        if (_applied == (Appearance.IsDark(SystemUsesLightTheme()), AccentColor())) return;
+        Refresh();
+    }
+
     private static void Refresh()
     {
         IsDark = Appearance.IsDark(SystemUsesLightTheme());
+        _applied = (IsDark, AccentColor());
         var res = Application.Current?.Resources;
         if (res is null) return;
 

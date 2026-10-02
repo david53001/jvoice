@@ -150,9 +150,10 @@ public sealed class TagOverlay : ITourTagPresenter
             _keyHost.LocationChanged += HostMoved;
             _keyHost.SizeChanged += HostMoved;
             _keyHost.StateChanged += HostMoved;
-            Theme.Changed -= OnThemeChanged;
-            Theme.Changed += OnThemeChanged;
         }
+        // Every host, the tray one too (it has no owner window — round 2 JV #8).
+        Theme.Changed -= OnThemeChanged;
+        Theme.Changed += OnThemeChanged;
         if (_decor is null)
         {
             _decor = new DecorWindow();

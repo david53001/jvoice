@@ -389,17 +389,23 @@ public sealed class GameDetector : IDisposable
         // Past the TTL, re-read the ~100+ child keys only when the set of children changed (a game was
         // registered or removed): one key open + count instead of opening every child each 30 s — that
         // re-enumeration was the periodic idle-CPU spike (review round 1 JV #10).
+        // A remove-plus-add keeps the count, and a path can be written after its key appeared (round 2 JV #10): a full
+        // re-read every few minutes regardless.
         int count = GameConfigChildCount();
-        if (_gameConfigPaths == null || count != _gameConfigChildCount)
+        if (_gameConfigPaths == null || count != _gameConfigChildCount
+            || DateTime.UtcNow - _gameConfigFullLoadAt > GameConfigFullReloadEvery)
         {
             _gameConfigPaths = LoadGameConfigPaths();
             _gameConfigChildCount = count;
+            _gameConfigFullLoadAt = DateTime.UtcNow;
         }
         _gameConfigLoadedAt = DateTime.UtcNow;
         return _gameConfigPaths;
     }
 
     private int _gameConfigChildCount = -1;
+    private DateTime _gameConfigFullLoadAt;
+    private static readonly TimeSpan GameConfigFullReloadEvery = TimeSpan.FromMinutes(5);
 
     private static int GameConfigChildCount()
     {
