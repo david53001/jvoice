@@ -22,6 +22,9 @@ public class RepetitionGuardTests
     [InlineData("so the answer is 2 times 2 times 2 times 2 times 2 times 2 times 2")]
     [InlineData("2 times 2 times 2 times 2 times 2 times 2 times 2")]
     [InlineData("I told him no no no no no no no no")]
+    [InlineData("so the answer is 2 times 2 times 2 times 2 times 2 times 2 times 2 times 2 times 2")]   // 9 operands
+    [InlineData("2 times 2 times 2 times 2 times 2 times 2 times 2 times 2 times 2 times 2")]            // 10, no lead-in
+    [InlineData("x plus x plus x plus x plus x plus x plus x plus x plus x plus x plus x plus x")]      // 12 operands
     public void Scrub_KeepsARepeatedMathsOrStopwordPhrase(string input)
     {
         var r = RepetitionGuard.Scrub(input, Vocab);

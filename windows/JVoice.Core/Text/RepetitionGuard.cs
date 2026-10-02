@@ -81,6 +81,16 @@ public static class RepetitionGuard
         if (!(onset < n && IsDegenerate(onset, n, cores, Loopy)))
             return new ScrubResult(text, false);
 
+        // 4. Spoken arithmetic ("2 times 2 …" with 9-12 operands) or a run of stopwords ("no no no …") shorter than
+        //    MathRepeatWindow is dictation, not a stuck decoder — which runs far past that ("the" ×40). Stripping it
+        //    deleted the dictation, or all of it with no lead-in (review round 2 JV #2). A bare repeated number
+        //    ("½ ½ ½ …", "10, 10, …") has no operator and stays a loop, as on the Mac.
+        var run = cores[onset..].Where(c => c.Length > 0).ToArray();
+        bool arithmetic = run.Any(SpokenOperators.Contains) && run.All(c => IsMathToken(c) || Stopwords.Contains(c));
+        bool chatter = run.All(Stopwords.Contains);
+        if (run.Length < MathRepeatWindow && (arithmetic || chatter))
+            return new ScrubResult(text, false);
+
         if (onset == 0) return new ScrubResult("", true);
         string kept = string.Join(" ", tokens[..onset]);
         return new ScrubResult(kept.Trim(' ', ',', ';', ':'), true);
@@ -121,6 +131,12 @@ public static class RepetitionGuard
         if (core.EnumerateRunes().All(System.Text.Rune.IsNumber)) return true;
         return MathWords.Contains(core);
     }
+
+    /// <summary>The words that make a run of maths tokens spoken arithmetic rather than a repeated number.</summary>
+    internal static readonly HashSet<string> SpokenOperators = new()
+    {
+        "plus", "minus", "times", "x", "over", "equals", "equal", "divided", "multiplied", "mod",
+    };
 
     internal static readonly HashSet<string> MathWords = new()
     {
