@@ -149,10 +149,9 @@ public partial class HudView : UserControl
 
     private FrameworkElement ShowLive(bool stop)
     {
-        // Transcribing keeps the stop square, dimmed and inert, so the J-bars-stop row stays centred in the capsule and
-        // nothing moves between recording and transcribing (round 2 JV #6 — an empty slot read as off-centre).
+        // Transcribing keeps the stop slot, inert and grey (its template), so the J-bars-stop row stays centred in the
+        // capsule and nothing moves between recording and transcribing (round 2 JV #6, round 3 JV #6).
         StopButton.IsEnabled = stop;
-        StopButton.Opacity = stop ? 1.0 : 0.28;
         StopButton.ToolTip = stop ? "Stop recording" : null;
         return LivePanel;
     }

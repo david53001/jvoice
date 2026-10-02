@@ -85,10 +85,18 @@ public static class RepetitionGuard
         //    MathRepeatWindow is dictation, not a stuck decoder — which runs far past that ("the" ×40). Stripping it
         //    deleted the dictation, or all of it with no lead-in (review round 2 JV #2). A bare repeated number
         //    ("½ ½ ½ …", "10, 10, …") has no operator and stays a loop, as on the Mac.
+        //    Only when no trailing phrase loop was found: one that repeated MathPhraseRepeats (12) times is already
+        //    past what dictation does, so "you" ×20 (Whisper's classic short-clip silence loop) still goes (round 3
+        //    JV #2 — this rule had let 12-23 repeats through, against TrailingPhraseLoop's documented threshold).
         var run = cores[onset..].Where(c => c.Length > 0).ToArray();
         bool arithmetic = run.Any(SpokenOperators.Contains) && run.All(c => IsMathToken(c) || Stopwords.Contains(c));
         bool chatter = run.All(Stopwords.Contains);
-        if (run.Length < MathRepeatWindow && (arithmetic || chatter))
+        if (phraseLoopCores.Count == 0 && run.Length < MathRepeatWindow && (arithmetic || chatter))
+            return new ScrubResult(text, false);
+        // 5. Spoken arithmetic is never reduced to nothing: a long sum (13+ operands) with no lead-in is dictation,
+        //    and an empty paste would silently lose it all (round 3 JV #2). A phrase-loop of it is still stripped
+        //    back to whatever preceded it.
+        if (onset == 0 && arithmetic && phraseLoopCores.Count == 0)
             return new ScrubResult(text, false);
 
         if (onset == 0) return new ScrubResult("", true);

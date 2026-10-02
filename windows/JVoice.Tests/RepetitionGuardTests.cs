@@ -332,4 +332,35 @@ public class RepetitionGuardTests
     [InlineData("page", false)]
     [InlineData("okay", false)]
     public void IsMathToken(string core, bool expected) => Assert.Equal(expected, RepetitionGuard.IsMathToken(core));
+
+    // Round 3 JV #2: the stopword/arithmetic exemption must not cancel TrailingPhraseLoop's 12-repeat rule, and a long
+    // spoken sum must never come back empty.
+    private static string Repeat(string word, int times) => string.Join(" ", Enumerable.Repeat(word, times));
+
+    [Fact]
+    public void You_repeated_eleven_times_is_kept_but_twelve_or_twenty_is_a_loop()
+    {
+        Assert.False(RepetitionGuard.Scrub(Repeat("you", 11), Vocab).RemovedRegurgitation);
+        Assert.True(RepetitionGuard.Scrub(Repeat("you", 12), Vocab).RemovedRegurgitation);
+        var twenty = RepetitionGuard.Scrub("Thanks for watching. " + Repeat("you", 20), Vocab);
+        Assert.True(twenty.RemovedRegurgitation);
+        Assert.Equal("Thanks for watching.", twenty.Text);
+    }
+
+    [Fact]
+    public void A_thirteen_operand_sum_is_never_deleted()
+    {
+        string sum = string.Join(" plus ", Enumerable.Range(1, 13)); // 25 tokens, past MathRepeatWindow
+        Assert.Equal(sum, RepetitionGuard.Scrub(sum, Vocab).Text);
+        string withLeadIn = "Add these up " + sum;
+        Assert.Equal(withLeadIn, RepetitionGuard.Scrub(withLeadIn, Vocab).Text);
+    }
+
+    [Fact]
+    public void A_looping_arithmetic_phrase_is_still_stripped_back_to_its_lead_in()
+    {
+        var r = RepetitionGuard.Scrub("The answer is " + Repeat("2 times 2", 20), Vocab);
+        Assert.True(r.RemovedRegurgitation);
+        Assert.Equal("The answer is", r.Text);
+    }
 }

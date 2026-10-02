@@ -80,8 +80,8 @@
         <!-- Page 2 — all set (+ the tour question) -->
         <DockPanel x:Name="AllSetPage" Margin="0,20,0,0"
                    Visibility="{Binding IsPermissionsPage, Converter={StaticResource InverseBoolToVis}}">
-            <Grid DockPanel.Dock="Bottom" Height="118">
-                <StackPanel VerticalAlignment="Bottom" Visibility="{Binding PendingQuestion, Converter={StaticResource BoolToVis}}">
+            <Grid DockPanel.Dock="Bottom" Height="118" Visibility="{Binding PendingQuestion, Converter={StaticResource BoolToVis}}">
+                <StackPanel VerticalAlignment="Bottom">
                     <Border Height="1" Width="300" Background="{DynamicResource Card.Hairline}" />
                     <TextBlock Text="Want a quick tour?" FontSize="14" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,14,0,0" />
                     <TextBlock Text="We'll point out each part the first time you use it. You can skip any time."
@@ -93,11 +93,9 @@
                                 FontSize="13" Margin="12,0,0,0" Click="OnShowMeAround" />
                     </StackPanel>
                 </StackPanel>
-                <Button Content="Start Dictating" Style="{StaticResource AccentButton}" MinWidth="160" Padding="16,7" FontSize="13"
-                        HorizontalAlignment="Center" VerticalAlignment="Bottom" Click="OnStartDictating"
-                        Visibility="{Binding PendingQuestion, Converter={StaticResource InverseBoolToVis}}" />
             </Grid>
-            <StackPanel>
+            <!-- Centred in the fixed page height, so the spare room isn't one empty band above the button (round 3 JV #5). -->
+            <StackPanel VerticalAlignment="Center">
                 <!-- A vector check circle (a font glyph this large rendered stair-stepped — round 2 JV #7). -->
                 <Grid Width="44" Height="44" HorizontalAlignment="Center">
                     <Ellipse Stroke="{DynamicResource Success}" StrokeThickness="2.5" Margin="1.25" />
@@ -160,6 +158,10 @@
                         </Grid>
                     </StackPanel>
                 </Border>
+                <!-- Without the tour question the button follows the content, and the block centres in the page. -->
+                <Button Content="Start Dictating" Style="{StaticResource AccentButton}" MinWidth="160" Padding="16,7" FontSize="13"
+                        HorizontalAlignment="Center" Margin="0,26,0,0" Click="OnStartDictating"
+                        Visibility="{Binding PendingQuestion, Converter={StaticResource InverseBoolToVis}}" />
             </StackPanel>
         </DockPanel>
     </Grid>

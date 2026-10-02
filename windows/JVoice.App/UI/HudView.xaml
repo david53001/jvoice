@@ -60,10 +60,16 @@
                                 <Button.Template>
                                     <ControlTemplate TargetType="Button">
                                         <Grid x:Name="Root">
-                                            <Border CornerRadius="6" Background="#FFE5484D" />
-                                            <Border Width="8" Height="8" CornerRadius="2" Background="#FFFFFFFF" />
+                                            <Border x:Name="Fill" CornerRadius="6" Background="#FFE5484D" />
+                                            <Border x:Name="Square" Width="8" Height="8" CornerRadius="2" Background="#FFFFFFFF" />
                                         </Grid>
                                         <ControlTemplate.Triggers>
+                                            <!-- Transcribing: a quiet grey slot that reads as "busy", not a disabled
+                                                 red button (round 3 JV #6). -->
+                                            <Trigger Property="IsEnabled" Value="False">
+                                                <Setter TargetName="Fill" Property="Background" Value="#24FFFFFF" />
+                                                <Setter TargetName="Square" Property="Visibility" Value="Collapsed" />
+                                            </Trigger>
                                             <Trigger Property="IsMouseOver" Value="True">
                                                 <Setter TargetName="Root" Property="Opacity" Value="0.88" />
                                             </Trigger>

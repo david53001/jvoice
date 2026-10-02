@@ -1234,6 +1234,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         var stopTask = Task.Run(() => _recorder.Stop());
         _recorderStopTask = stopTask;
         string? audioPath = await stopTask;
+        if (ReferenceEquals(_recorderStopTask, stopTask)) _recorderStopTask = null; // done: nothing left for quit to wait on
         if (ct.IsCancellationRequested && audioPath is not null)
         {
             TryDelete(audioPath); // quit while the recorder was stopping (row 17 privacy)
