@@ -92,6 +92,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     private double _lastRecordingSeconds;
     private StreamingTranscriptionSession? _streamingSession;
     private CancellationTokenSource? _transcriptionCts;
+    private Task? _recorderStopTask;
     private DispatcherTimer? _hudResetTimer;
     // §7 #49 latency instrumentation: restarted on each press (start AND stop) so the log can
     // report press→mic-started and stop→transcript/pasted/idle in ms.
@@ -1217,6 +1218,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _transcriptionCts = new CancellationTokenSource();
         var ct = _transcriptionCts.Token;
         _isTranscribing = true; // cleared by FinishTranscriptionAsync's finally (§7 #44)
+        // Known now, on the UI thread: a quit while the recorder is still stopping can delete it (round 2 JV #1).
+        _inFlightAudioPath = _recorder.CurrentPath;
         _ = FinishTranscriptionAsync(target, session, ct);
         Tray?.RebuildMenu();
     }
@@ -1226,7 +1229,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         // §7 #49: the recorder is stopped off the UI thread (WASAPI teardown joins the capture
         // thread, 8–38 ms) AFTER the pill has already switched to "transcribing"; the session's
         // Finish() below reads the WAV tail only once this has flushed and closed the file.
-        string? audioPath = await Task.Run(() => _recorder.Stop());
+        var stopTask = Task.Run(() => _recorder.Stop());
+        _recorderStopTask = stopTask;
+        string? audioPath = await stopTask;
         if (ct.IsCancellationRequested && audioPath is not null)
         {
             TryDelete(audioPath); // quit while the recorder was stopping (row 17 privacy)
@@ -1502,10 +1507,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
         // Row 17 (Mac 8ea5088): quitting while a dictation is still being transcribed deletes that
         // dictation's audio too (privacy) — the decode is cancelled; nothing will paste.
-        // Cancelled unconditionally: a quit in the 8–38 ms before _recorder.Stop() returns has no
-        // _inFlightAudioPath yet, and FinishTranscriptionAsync deletes that WAV itself on seeing the
-        // cancellation (review round 1 JV #4).
+        // Cancelled unconditionally, and a recorder still stopping (8–38 ms) is waited for so its WAV is closed
+        // and can be deleted here: the continuation that would delete it never runs once Shutdown starts
+        // (review round 1 JV #4, round 2 JV #1).
         _transcriptionCts?.Cancel();
+        try { _recorderStopTask?.Wait(1000); }
+        catch (AggregateException ex) { DiagnosticLog.Write($"Quit: recorder stop failed: {ex.InnerException?.Message}"); }
         if (_inFlightAudioPath is { } inFlight)
         {
             TryDelete(inFlight);
