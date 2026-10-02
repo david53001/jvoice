@@ -51,7 +51,7 @@ public sealed class WelcomeWindow : Window
         Content = _view;
 
         // The microphone row follows a change made in Windows Settings while the window is up (once a second, only
-        // while it's open — new users only, so this never runs on an existing install).
+        // while it's open — at launch that is new users only; anyone can reopen it from Help & Tours).
         _poll = new DispatcherTimer(DispatcherPriority.Background) { Interval = TimeSpan.FromSeconds(1) };
         _poll.Tick += (_, _) => Refresh();
         IsVisibleChanged += (_, _) => { if (IsVisible) _poll.Start(); else _poll.Stop(); };

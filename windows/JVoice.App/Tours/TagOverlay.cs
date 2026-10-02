@@ -104,18 +104,37 @@ public sealed class TagOverlay : ITourTagPresenter
         LastPlacement = null;
         _lastLayoutKey = "";
         SetScroller(null);
+        Unhook(); // a hidden tag must not keep listening to its last host's keys and moves (review round 1 JV #13)
     }
 
-    private void Detach()
+    private void Unhook()
     {
-        Hide();
         if (_keyHost is not null)
         {
             _keyHost.PreviewKeyDown -= HostKeyDown;
             _keyHost.LocationChanged -= HostMoved;
             _keyHost.SizeChanged -= HostMoved;
             _keyHost.StateChanged -= HostMoved;
+            _keyHost = null;
         }
+        Theme.Changed -= OnThemeChanged;
+    }
+
+    /// <summary>The app switched light/dark while a tag is up: redraw it in the new look. (Changed also fires for
+    /// every opacity step — the Opacity tour demo animates it — which needs no rebuild.)</summary>
+    private void OnThemeChanged()
+    {
+        bool dark = _host?.IsDark ?? Theme.IsDark;
+        if (dark == _builtDark) return;
+        Rebuild();
+        Layout(force: true);
+    }
+
+    private bool _builtDark;
+
+    private void Detach()
+    {
+        Hide();
         try { _tag?.Close(); } catch (InvalidOperationException) { }
         try { _decor?.Close(); } catch (InvalidOperationException) { }
         (_tag, _decor, _keyHost, _host) = (null, null, null, null);
@@ -124,23 +143,30 @@ public sealed class TagOverlay : ITourTagPresenter
     private void Attach()
     {
         if (_host is null) return;
+        if (_keyHost is null && _host.Owner is { } owner)
+        {
+            _keyHost = owner;
+            _keyHost.PreviewKeyDown += HostKeyDown;
+            _keyHost.LocationChanged += HostMoved;
+            _keyHost.SizeChanged += HostMoved;
+            _keyHost.StateChanged += HostMoved;
+            Theme.Changed -= OnThemeChanged;
+            Theme.Changed += OnThemeChanged;
+        }
         if (_decor is null)
         {
-            _keyHost = _host.Owner;
-            if (_keyHost is not null)
-            {
-                _keyHost.PreviewKeyDown += HostKeyDown;
-                _keyHost.LocationChanged += HostMoved;
-                _keyHost.SizeChanged += HostMoved;
-                _keyHost.StateChanged += HostMoved;
-            }
             _decor = new DecorWindow();
             _tag = new TagWindow(this);
         }
         _follow.Start();
     }
 
-    private void Rebuild() => _tag?.Build(_step!, _body, _number, _total, _isLast, _done, _host?.IsDark ?? Theme.IsDark);
+    private void Rebuild()
+    {
+        if (_step is null) return;
+        _builtDark = _host?.IsDark ?? Theme.IsDark;
+        _tag?.Build(_step, _body, _number, _total, _isLast, _done, _builtDark);
+    }
 
     private void HostMoved(object? sender, EventArgs e) => Layout(force: true);
 

@@ -532,7 +532,7 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
     // ---- streaming session integration (Task 4) -----------------------------
 
     /// A streaming session bound to this engine, or null when no model is loaded.
-    /// Default cadence = AppTimings.StreamingPollMs (1000 ms), matching the app.
+    /// Default cadence = AppTimings.StreamingPollMs (100 ms), matching the app.
     public Task<StreamingTranscriptionSession?> MakeStreamingSessionAsync()
         => Task.FromResult(MakeStreamingSession(JVoice.Core.AppTimings.StreamingPollMs));
 

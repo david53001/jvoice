@@ -780,7 +780,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             }
             catch (Exception ex)
             {
-                _dispatcher.InvokeAsync(() => ShowError($"Couldn't prepare the model: {ex.Message}"));
+                _ = _dispatcher.InvokeAsync(() => ShowError($"Couldn't prepare the model: {ex.Message}"));
             }
         });
     }
@@ -1231,7 +1231,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         {
             TryDelete(audioPath); // quit while the recorder was stopping (row 17 privacy)
             if (session is not null) _ = session.Cancel();
-            _dispatcher.BeginInvoke(() => _isTranscribing = false); // this path returns before the try/finally below
+            _ = _dispatcher.InvokeAsync(() => _isTranscribing = false); // this path returns before the try/finally below
             return;
         }
         _inFlightAudioPath = audioPath; // row 17: QuitApp deletes it if JVoice quits mid-transcription

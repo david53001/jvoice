@@ -208,13 +208,13 @@ public sealed class UpdateCoordinator : INotifyPropertyChanged
                     Interlocked.Exchange(ref _received, recv);
                     Interlocked.Exchange(ref _total, total ?? -1);
                 }, ct);
-                _dispatcher.InvokeAsync(() => OnDownloadComplete(dest));
+                _ = _dispatcher.InvokeAsync(() => OnDownloadComplete(dest));
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 DiagnosticLog.Write($"Update download failed: {ex.Message}");
-                _dispatcher.InvokeAsync(OnDownloadError);
+                _ = _dispatcher.InvokeAsync(OnDownloadError);
             }
         });
     }
