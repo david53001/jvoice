@@ -586,7 +586,7 @@
                                 <Grid>
                                     <TextBox x:Name="CorrectionFromBox" Style="{StaticResource InputBox}" AutomationProperties.Name="Heard"
                                              KeyDown="OnCorrectionKeyDown" />
-                                    <TextBlock Text="heard (e.g. web api)" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
+                                    <TextBlock Text="heard" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
                                                Margin="10,0,0,0" IsHitTestVisible="False" VerticalAlignment="Center">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">
@@ -605,7 +605,7 @@
                                 <Grid Grid.Column="2">
                                     <TextBox x:Name="CorrectionToBox" Style="{StaticResource InputBox}" AutomationProperties.Name="Replace with"
                                              KeyDown="OnCorrectionKeyDown" />
-                                    <TextBlock Text="meant (e.g. web app)" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
+                                    <TextBlock Text="meant" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
                                                Margin="10,0,0,0" IsHitTestVisible="False" VerticalAlignment="Center">
                                         <TextBlock.Style>
                                             <Style TargetType="TextBlock">

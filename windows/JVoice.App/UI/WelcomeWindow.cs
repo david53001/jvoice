@@ -45,7 +45,7 @@ public sealed class WelcomeWindow : Window
         Refresh();
         _view.DataContext = _model;
         _view.SetInfoButton(new InfoButton(TourId.Welcome, () => Shortcuts(coordinator)));
-        _view.Continue += () => _model.IsPermissionsPage = false;
+        _view.Continue += () => { _model.IsPermissionsPage = false; _view.FocusTryBox(); };
         _view.Answer += Answer;
         _view.StartDictating += Close;
         Content = _view;
@@ -57,7 +57,11 @@ public sealed class WelcomeWindow : Window
         IsVisibleChanged += (_, _) => { if (IsVisible) _poll.Start(); else _poll.Stop(); };
         coordinator.PropertyChanged += OnCoordinatorChanged;
 
-        ContentRendered += (_, _) => TourEvents.SurfaceShown(TourSurface.Welcome, this);
+        ContentRendered += (_, _) =>
+        {
+            TourEvents.SurfaceShown(TourSurface.Welcome, this);
+            if (!_model.IsPermissionsPage) _view.FocusTryBox();
+        };
         Closing += OnClosing;
         s_open = this;
         Closed += (_, _) =>
@@ -86,6 +90,7 @@ public sealed class WelcomeWindow : Window
         }
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
+        _view.FocusTryBox();
     }
 
     private static WelcomeWindow? s_open;
@@ -114,6 +119,7 @@ public sealed class WelcomeWindow : Window
         if (!_model.PendingQuestion) return;
         _model.PendingQuestion = false;
         OnTourAnswer?.Invoke(showMeAround, this);
+        _view.FocusTryBox();
     }
 
     private void OnClosing(object? sender, CancelEventArgs e)

@@ -98,8 +98,12 @@
                         Visibility="{Binding PendingQuestion, Converter={StaticResource InverseBoolToVis}}" />
             </Grid>
             <StackPanel>
-                <TextBlock Text="&#xE930;" FontFamily="{StaticResource IconFont}" FontSize="44" Foreground="{DynamicResource Success}"
-                           HorizontalAlignment="Center" />
+                <!-- A vector check circle (a font glyph this large rendered stair-stepped — round 2 JV #7). -->
+                <Grid Width="44" Height="44" HorizontalAlignment="Center">
+                    <Ellipse Stroke="{DynamicResource Success}" StrokeThickness="2.5" Margin="1.25" />
+                    <Path Data="M 13.5,22.5 L 19.5,28.5 L 31,16.5" Stroke="{DynamicResource Success}" StrokeThickness="2.5"
+                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                </Grid>
                 <TextBlock Text="You're all set!" FontFamily="{StaticResource DisplayFont}" FontSize="22" FontWeight="SemiBold"
                            HorizontalAlignment="Center" Margin="0,12,0,0" />
                 <TextBlock Text="JVoice lives in your tray, by the clock. Your shortcuts:" Foreground="{DynamicResource Text.Secondary}"
@@ -138,7 +142,7 @@
                              has the keyboard — VoiceCoordinator asks WelcomeWindow.AcceptsDictation — instead of into the
                              last other app, and it fills the space above the buttons. -->
                         <Grid Width="300" Margin="0,10,0,0">
-                            <TextBox x:Name="TryBox" Style="{StaticResource InputBox}" Height="60" TextWrapping="Wrap"
+                            <TextBox x:Name="TryBox" Style="{StaticResource InputBox}" Height="84" TextWrapping="Wrap"
                                      AcceptsReturn="True" VerticalContentAlignment="Top" AutomationProperties.Name="Try dictating here" />
                             <TextBlock Text="Click here, then talk" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
                                        Margin="10,7,0,0" IsHitTestVisible="False" VerticalAlignment="Top">

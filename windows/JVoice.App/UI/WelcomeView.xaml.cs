@@ -100,6 +100,13 @@ public partial class WelcomeView : UserControl
     /// <summary>Puts the ⓘ in the top-right corner.</summary>
     public void SetInfoButton(FrameworkElement button) => InfoHost.Content = button;
 
+    /// <summary>Puts the keyboard in the try-it box (the "All set" page is showing): the invited Ctrl+Shift+Space then
+    /// pastes right here instead of into an app hidden behind Welcome (review round 2 JV #4).</summary>
+    public void FocusTryBox() => Dispatcher.BeginInvoke(() =>
+    {
+        if (TryBox.IsVisible) { TryBox.Focus(); System.Windows.Input.Keyboard.Focus(TryBox); }
+    }, System.Windows.Threading.DispatcherPriority.Input);
+
     /// <summary>The try-it box has the keyboard (so a dictation should land in it).</summary>
     public bool TryBoxHasKeyboard => TryBox.IsKeyboardFocused;
 
