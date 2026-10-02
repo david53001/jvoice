@@ -396,7 +396,7 @@ public sealed class TagOverlay : ITourTagPresenter
 
             var title = Text(step.Title, TagStyle.TitleSize, FontWeights.SemiBold, text);
             title.TextTrimming = TextTrimming.CharacterEllipsis;
-            var bodyText = Text(body, TagStyle.BodySize, FontWeights.Normal, text);
+            var bodyText = Text(TagStyle.KeepChordsTogether(body), TagStyle.BodySize, FontWeights.Normal, text);
             bodyText.Margin = new Thickness(0, 2, 0, 0);
 
             var footer = new DockPanel { Height = 20, Margin = new Thickness(0, 8, 0, 0), LastChildFill = false };
@@ -422,7 +422,7 @@ public sealed class TagOverlay : ITourTagPresenter
 
                 var right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
                 DockPanel.SetDock(right, Dock.Right);
-                if (TagStyle.ShowsSkipTour(isLast, isExplain: !step.IsTry))
+                if (TagStyle.ShowsSkipTour(isLast, isExplain: !step.IsTry, total))
                 {
                     var skipTour = Text("Skip Tour", 11, FontWeights.SemiBold, secondary);
                     skipTour.VerticalAlignment = VerticalAlignment.Center;

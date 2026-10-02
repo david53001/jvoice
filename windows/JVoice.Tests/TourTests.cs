@@ -468,6 +468,10 @@ public class TourTests
         Assert.False(TagStyle.ShowsSkipTour(isLast: true, isExplain: true));
         Assert.True(TagStyle.ShowsSkipTour(isLast: true, isExplain: false));
         Assert.True(TagStyle.ShowsSkipTour(isLast: false, isExplain: true));
+        Assert.False(TagStyle.ShowsSkipTour(isLast: true, isExplain: false, total: 1)); // "Skip Step" alone ends it
+        Assert.Equal("Press Ctrl+Shift+Space now.".Replace("+", $"{(char)0x2060}+{(char)0x2060}"), TagStyle.KeepChordsTogether("Press Ctrl+Shift+Space now."));
+        Assert.Equal("C++ stays", TagStyle.KeepChordsTogether("C++ stays"));
+        Assert.Equal("press Ctrl+Alt+Shift+Win+F12 now", TagStyle.KeepChordsTogether("press Ctrl+Alt+Shift+Win+F12 now"));
         Assert.Equal(0.35, TagStyle.DimAlphaFor(hostIsDark: true));
         Assert.Equal(0.2, TagStyle.DimAlphaFor(hostIsDark: false));
         Assert.Equal("Opacity. Body. Step 9 of 10.", TagStyle.Announcement("Opacity", "Body.", 9, 10));
@@ -597,9 +601,12 @@ public class TourTests
     {
         foreach (var s in TourCatalog.All.SelectMany(t => t.Steps))
         {
-            string body = TourText.Resolve(s.Body, _ => TourText.LongestShortcut);
+            // As the tag renders it: the chord's "+" joined, so it can't wrap between keys.
+            string body = TagStyle.KeepChordsTogether(TourText.Resolve(s.Body, _ => TourText.LongestShortcut));
             Assert.True(BodyFits(body), $"{s.Title}: \"{body}\"");
             Assert.True(BodyFits(body, 13), $"{s.Title} at 13: \"{body}\""); // parity §10.7's stricter size
+            string usual = TagStyle.KeepChordsTogether(TourText.Resolve(s.Body, _ => "Ctrl+Shift+Space")); // joined whole
+            Assert.True(BodyFits(usual, 13), $"{s.Title} at 13: \"{usual}\"");
         }
     }
 

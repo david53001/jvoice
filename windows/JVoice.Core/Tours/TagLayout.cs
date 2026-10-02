@@ -242,8 +242,18 @@ public static class TagStyle
     public static double OutlineRadius(TagRect box, double? anchorRadius) =>
         anchorRadius is not { } r ? BoxRadius : Math.Max(0, Math.Min(r + BoxPadding, Math.Min(box.Width / 2, box.Height / 2)));
 
-    /// <summary>"Skip Tour" is left out next to the last Explain step's "Done" (same result, one click).</summary>
-    public static bool ShowsSkipTour(bool isLast, bool isExplain) => !(isExplain && isLast);
+    /// <summary>"Skip Tour" is left out next to the last Explain step's "Done" (same result, one click), and on a
+    /// one-step tour, where "Skip Step" already ends it (review round 1 JV #9).</summary>
+    public static bool ShowsSkipTour(bool isLast, bool isExplain, int total = 2) => total > 1 && !(isExplain && isLast);
+
+    /// <summary>Joins each "+" of a shortcut chord of up to three keys to its keys with WORD JOINERs (U+2060), so a
+    /// tag body never breaks "Ctrl+Shift+Space" across lines (review round 1 JV #8). A longer chord
+    /// ("Ctrl+Alt+Shift+Win+F12") may still wrap — kept whole it would push the body to a third line.</summary>
+    public static string KeepChordsTogether(string body) =>
+        System.Text.RegularExpressions.Regex.Replace(body, @"(?<![\w+])\w+(?:\+\w+)+(?![\w+])",
+            m => m.Value.Count(c => c == '+') <= 2 ? m.Value.Replace("+", $"{WordJoiner}+{WordJoiner}") : m.Value);
+
+    private const char WordJoiner = (char)0x2060;
 
     public static string PrimaryTitle(bool isTry, bool isLast) => isTry ? "Skip Step" : isLast ? "Done" : "Next";
 
