@@ -201,6 +201,8 @@ public class MathSpeechTests
         "this is a subscript of the value",
         "the subscript was hard to read",
         "two times a day keeps the doctor away",
+        "I'm on Python 3 dot 11 now",
+        "upgrade to version 2 dot 1",
         "plus I think we should go now",
         "in less than a minute we were done",
         "he was over there by the tree",

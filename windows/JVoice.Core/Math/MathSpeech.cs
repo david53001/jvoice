@@ -1195,11 +1195,17 @@ public static class MathSpeech
                         && _items[i + 1].Kind == ItemKind.Number && rhs.Next == i + 2
                         && Expr.IsPlainNumber(rhs.Text);
 
+                    // "Python 3 dot 11", "version 2 dot 1": a dot between two bare numbers is a
+                    // version / decimal read aloud, not a dot product — it never activates a run
+                    // on its own (review round 1 JV #2).
+                    bool numberDot = sym.Text == "·" && expr.LastStandsAlone && Expr.IsPlainNumber(expr.LastText)
+                        && _items[i + 1].Kind == ItemKind.Number && rhs.Next == i + 2 && Expr.IsPlainNumber(rhs.Text);
+
                     if (sym.Text == TimesMarker) expr.GroupTrailingOne();
                     expr.PushInfix(sym.Text, relation: sym.Kind == MathKind.Relation);
                     expr.PushOperand(rhs.Text);
                     // A glued "Kx" on either side is no evidence of mathematics (lexer 5b).
-                    if (sym.Activates && !it.Weak && !articlePair && !_items[i + 1].Glued && !GluedBase(i))
+                    if (sym.Activates && !it.Weak && !articlePair && !numberDot && !_items[i + 1].Glued && !GluedBase(i))
                         _activated = true;
                     if (given) _relationsInPart = 0;
                     else if (budgeted) _relationsInPart++;
