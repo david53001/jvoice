@@ -2320,6 +2320,26 @@ Parity row 17 ("check each"; doc §6.5 item 5, Mac 8ea5088). Each sub-item check
 
 Tests: `DeviceFixesTests` (real endpoint names from this PC + the common virtual devices, the redirect table, the message). 1963/1963. Not exercised live: unplugging a mic mid-recording (no screen/hardware drives).
 
+## §7 #65 — Review rounds 3–4 fixes (2026-10-02)
+
+Overnight revamp review loop (`REVAMP-2026-10\review-round-3.md` / `-4.md`). Round 4 scored JVoice 8/10, 0 blockers, 0 majors.
+- **`diagnostic.log` privacy (round 3 #1, `ff9c209`).** Dictated text is logged as `<N chars>` unless `JVOICE_LOG_TEXT=1` (set it for the maths calibration sweeps).
+  - New `JVoice.Core/Diagnostics/RollingLog`: writes on a pool thread, capped at 1 MB with one `diagnostic.old.log`.
+  - A pre-cap log is parked once as `diagnostic.before-cap.log` (David's 3.7 MB one).
+  - Recent Transcripts "Clear all" and Restore Defaults delete all three files.
+- **RepetitionGuard rule 4 (`fed0f4a`).** The arithmetic/stopword exemption now applies only when no trailing phrase loop was found, so "you" ×12+ is stripped again. A spoken sum is never reduced to "".
+- **Other round 3 fixes (`fed0f4a`).** The Welcome "All set" block is centred (no empty band), the transcribing pill shows a grey slot instead of a dimmed red stop, and `_recorderStopTask` is cleared.
+- **GameDetector (`5fdf77c`).** GameConfigStore is re-read only on a `RegNotifyChangeKeyValue` signal (`Platform/System/RegistryChangeWatch`, read-only KEY_READ, thread-agnostic). This replaced the 30 s TTL and the 5-minute full reload. The log line "GameConfigStore change watch on" confirms it at start.
+- Tests 1981/1981. Idle CPU in the 15–75 s window is 94 ms (was 188).
+
+## §7 #66 — Dogfood fixes: ⓘ menu, tour outlines, pill opacity (2026-10-02, `4dba7ac`)
+
+From David's first look after the revamp:
+- **ⓘ "Show Me ▸" vanished while reaching for an item.** The hover submenu closed as the pointer crossed the items below it. The step titles are now listed in the ⓘ menu itself under a disabled "Show Me" heading (`Tours/InfoButton.cs`). This deliberately deviates from the Mac submenu.
+- **Tour outline didn't wrap rounded cards.** Every outline used the square-control radius (6), so it pinched in at a Settings card's corners (radius 10). `WindowTourHost.AnchorRadius` now reads the anchored control's own radius (a Border, or a same-size Border inside a templated card), so the outline is concentric: 10 + 4 = 14. The pill host falls back to the same rule.
+- **Pill too transparent at the default Opacity.** The pill backing anchors went from 0.50/0.66/1 to **0.70/0.88/1** (`Core/Policy/UiOpacity.cs`; `UiOpacityTests` updated). It reads as a solid dark capsule with a hint of the backdrop.
+- **BetterScreenshot was colour-matched to this app** (its §PROGRESS entry). Measured on screen: both apps' Settings are now #202020 window / #292929 cards.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
