@@ -386,9 +386,29 @@ public sealed class GameDetector : IDisposable
             DateTime.UtcNow - _gameConfigLoadedAt < GameConfigCacheTtl)
             return _gameConfigPaths;
 
-        _gameConfigPaths = LoadGameConfigPaths();
+        // Past the TTL, re-read the ~100+ child keys only when the set of children changed (a game was
+        // registered or removed): one key open + count instead of opening every child each 30 s — that
+        // re-enumeration was the periodic idle-CPU spike (review round 1 JV #10).
+        int count = GameConfigChildCount();
+        if (_gameConfigPaths == null || count != _gameConfigChildCount)
+        {
+            _gameConfigPaths = LoadGameConfigPaths();
+            _gameConfigChildCount = count;
+        }
         _gameConfigLoadedAt = DateTime.UtcNow;
         return _gameConfigPaths;
+    }
+
+    private int _gameConfigChildCount = -1;
+
+    private static int GameConfigChildCount()
+    {
+        try
+        {
+            using var root = Registry.CurrentUser.OpenSubKey(@"System\GameConfigStore\Children");
+            return root?.SubKeyCount ?? 0;
+        }
+        catch { return -1; }
     }
 
     private static HashSet<string> LoadGameConfigPaths()
