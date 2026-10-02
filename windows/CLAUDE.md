@@ -10,7 +10,7 @@ Full as-built state, pinned versions, and every deviation live in
 
 ## Projects & `@`-mentionable areas (each has its own `CLAUDE.md`)
 - `JVoice.Core/` — the portable brain (no Win32). Sub-areas: `Text/`, `Audio/`,
-  `Transcription/`, `Models/`, `Policy/`, `Math/`.
+  `Transcription/`, `Models/`, `Policy/`, `Math/`, `Diagnostics/`.
 - `JVoice.App/` — the WPF Windows shell. Sub-areas: `Whisper/`, `UI/`,
   `Platform/{Capture,Persistence,System}/`. Orchestrator: `VoiceCoordinator.cs`.
 - `JVoice.Tests/` — xUnit suite (1933 tests) translated from the Swift tests; locks the brain.

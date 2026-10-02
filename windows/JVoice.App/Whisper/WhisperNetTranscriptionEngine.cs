@@ -339,7 +339,7 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             string merged = TailCoverageGuard.Merge(guarded, tailText);
             DiagnosticLog.Write(
                 $"Engine tailGuard lastEnd={lastOutcome.LastSegmentEndSeconds:0.00}s audio={audioSeconds:0.00}s " +
-                $"uncovered={audioSeconds - lastOutcome.LastSegmentEndSeconds:0.00}s tail=\"{tailText}\" -> " +
+                $"uncovered={audioSeconds - lastOutcome.LastSegmentEndSeconds:0.00}s tail={DiagnosticLog.Text(tailText)} -> " +
                 (merged.Length > guarded.Length ? "RECOVERED" : "unchanged"));
             guarded = merged;
         }
@@ -523,7 +523,7 @@ internal sealed class WhisperNetTranscriptionEngine : ITranscriptionEngine
             string merged = TailCoverageGuard.Merge(text, tailText);
             DiagnosticLog.Write(
                 $"Engine chunk tailGuard lastEnd={chunkOutcome.LastSegmentEndSeconds:0.00}s audio={chunkSeconds:0.00}s " +
-                $"tail=\"{tailText}\" -> {(merged.Length > text.Length ? "RECOVERED" : "unchanged")}");
+                $"tail={DiagnosticLog.Text(tailText)} -> {(merged.Length > text.Length ? "RECOVERED" : "unchanged")}");
             text = merged;
         }
         return text;

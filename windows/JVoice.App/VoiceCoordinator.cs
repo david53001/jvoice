@@ -853,9 +853,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _hotkeyChord = s.Hotkey;
         _hotkey.Register(s.Hotkey);
         // Restore Defaults also clears the recent-transcripts history (an explicit
-        // user action). Recording statistics (_statsStore) are deliberately NOT reset.
+        // user action), and the diagnostic log with it. Recording statistics (_statsStore) are deliberately NOT reset.
         _historyStore.Clear();
         RecentTranscripts.Clear();
+        DiagnosticLog.Clear();
         // Appearance back to System; Opacity is deliberately KEPT (the Mac's Restore Defaults leaves
         // it too — the Appearance card's own Default button resets it).
         _appearance = s.Appearance;
@@ -946,6 +947,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
     {
         _historyStore.Clear();
         RecentTranscripts.Clear();
+        DiagnosticLog.Clear(); // "Clear all" means gone from disk, the diagnostic log included (round 3 #1)
         Raise(nameof(HasRecentTranscripts));
     }
 
@@ -1283,7 +1285,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
             long transcribedMs = _pressStopwatch?.ElapsedMilliseconds ?? -1;
             DiagnosticLog.Write($"Transcribed  source={(streamed is not null ? "stream" : "wholefile")}  " +
-                $"raw=\"{transcript}\"");
+                $"raw={DiagnosticLog.Text(transcript)}");
 
             if (ct.IsCancellationRequested) return;
 
