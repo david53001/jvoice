@@ -17,9 +17,15 @@ internal static class TourStore
 
     public static TourPrefs Load()
     {
+        // Any failure (unreadable, or JSON the lenient parser still rejects — e.g. duplicate keys) starts from empty
+        // prefs: the audience is then re-classified, and the existing settings.json makes that "existing". A bad
+        // tours.json must never crash every launch (review round 1 JV #12b).
         try { return File.Exists(FilePath) ? TourPrefs.FromJson(File.ReadAllText(FilePath)) : new TourPrefs(); }
-        catch (IOException) { return new TourPrefs(); }
-        catch (UnauthorizedAccessException) { return new TourPrefs(); }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write($"Tours load failed, starting fresh: {ex.GetType().Name}: {ex.Message}");
+            return new TourPrefs();
+        }
     }
 
     /// <summary>Atomic write (temp file + replace) so a crash mid-save never leaves a half file.</summary>

@@ -18,7 +18,8 @@ public sealed record AudienceSignals(
     bool ModelDownloaded,
     bool MicrophoneConsentAllowed,
     bool RegistryKeyExists,
-    bool IsDevBuild);
+    bool IsDevBuild,
+    bool LaunchedByJVoice = false);
 
 /// <summary>
 /// Who gets tours (Mac <c>TourAudience</c>) — new users only, decided once and stored. When in doubt: existing (a
@@ -33,6 +34,9 @@ public static class TourAudience
     public static TourAudienceKind Classify(AudienceSignals s)
     {
         if (s.IsDevBuild) return TourAudienceKind.Existing;
+        // An elevated relaunch or a logon (--autostart) launch: JVoice was already installed and running — even when
+        // this token's profile is empty (a relaunch into another admin account; review round 1 JV #12a).
+        if (s.LaunchedByJVoice) return TourAudienceKind.Existing;
         if (s.DataFolderEntries.Any(n => !string.Equals(n, TourFileName, StringComparison.OrdinalIgnoreCase)))
             return TourAudienceKind.Existing;
         if (s.ModelDownloaded) return TourAudienceKind.Existing;

@@ -39,6 +39,7 @@ public class TourTests
         Assert.Equal(TourAudienceKind.Existing, TourAudience.Classify(S(mic: true)));
         Assert.Equal(TourAudienceKind.Existing, TourAudience.Classify(S(reg: true)));
         Assert.Equal(TourAudienceKind.Existing, TourAudience.Classify(S(dev: true)));
+        Assert.Equal(TourAudienceKind.Existing, TourAudience.Classify(S() with { LaunchedByJVoice = true })); // relaunch/autostart
     }
 
     [Fact]

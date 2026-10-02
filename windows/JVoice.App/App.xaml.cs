@@ -91,7 +91,9 @@ public partial class App : Application
             // SettingsStore writes settings.json on construction and DiagnosticLog appends there, so classifying
             // any later would call every fresh install "existing". Read-only probes; only tours.json is written.
             var prefs = TourStore.Load();
-            var audience = TourCoordinator.ClassifyAudienceIfNeeded(prefs, TourStore.GatherSignals, () => TourStore.Save(prefs));
+            bool launchedByJVoice = Elevation.IsRelaunch(args) || args.Contains(Elevation.AutostartFlag, StringComparer.OrdinalIgnoreCase);
+            var audience = TourCoordinator.ClassifyAudienceIfNeeded(prefs,
+                () => TourStore.GatherSignals() with { LaunchedByJVoice = launchedByJVoice }, () => TourStore.Save(prefs));
             s_tourPrefs = prefs;
             DiagnosticLog.Write($"Tours: audience={TourAudience.Store(audience)}");
         }
