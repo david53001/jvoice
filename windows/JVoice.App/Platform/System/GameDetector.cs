@@ -115,6 +115,9 @@ public sealed class GameDetector : IDisposable
         try { Recompute(); } catch { /* _suppress stays false on first-seed failure */ }
 
         _tracker.ForegroundChanged += OnForegroundChanged;
+        // GameConfigStore is re-read only when Windows says it changed (round 3 JV #4); null keeps the timed re-read.
+        _configWatch = RegistryChangeWatch.TryCreate(GameConfigChildrenKey);
+        DiagnosticLog.Write($"GameDetector: GameConfigStore change watch {(_configWatch is null ? "unavailable (timed re-read)" : "on")}");
 
         // Backstop: a game going fullscreen via alt-enter often does so without raising
         // a foreground-change event (the same hwnd; only its extent changes). Poll every
@@ -133,6 +136,8 @@ public sealed class GameDetector : IDisposable
         _tracker.ForegroundChanged -= OnForegroundChanged;
         _timer?.Stop();
         _timer = null;
+        _configWatch?.Dispose();
+        _configWatch = null;
     }
 
     public void Dispose() => Stop();
@@ -382,6 +387,13 @@ public sealed class GameDetector : IDisposable
     /// empty set when the key is absent or on any registry access failure.
     private HashSet<string> GetOrRefreshGameConfigPaths()
     {
+        if (_configWatch is { } watch)
+        {
+            if (_gameConfigPaths == null || watch.ConsumeChanged()) _gameConfigPaths = LoadGameConfigPaths();
+            return _gameConfigPaths;
+        }
+
+        // No change notification (the key is absent, or --game-probe without Start): the timed re-read below.
         if (_gameConfigPaths != null &&
             DateTime.UtcNow - _gameConfigLoadedAt < GameConfigCacheTtl)
             return _gameConfigPaths;
@@ -403,6 +415,8 @@ public sealed class GameDetector : IDisposable
         return _gameConfigPaths;
     }
 
+    private const string GameConfigChildrenKey = @"System\GameConfigStore\Children";
+    private RegistryChangeWatch? _configWatch;
     private int _gameConfigChildCount = -1;
     private DateTime _gameConfigFullLoadAt;
     private static readonly TimeSpan GameConfigFullReloadEvery = TimeSpan.FromMinutes(5);
