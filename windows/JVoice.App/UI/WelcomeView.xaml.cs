@@ -100,6 +100,9 @@ public partial class WelcomeView : UserControl
     /// <summary>Puts the ⓘ in the top-right corner.</summary>
     public void SetInfoButton(FrameworkElement button) => InfoHost.Content = button;
 
+    /// <summary>The try-it box has the keyboard (so a dictation should land in it).</summary>
+    public bool TryBoxHasKeyboard => TryBox.IsKeyboardFocused;
+
     private void OnContinue(object sender, RoutedEventArgs e) => Continue?.Invoke();
     private void OnShowMeAround(object sender, RoutedEventArgs e) => Answer?.Invoke(true);
     private void OnNoThanks(object sender, RoutedEventArgs e) => Answer?.Invoke(false);

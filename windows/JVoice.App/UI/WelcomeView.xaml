@@ -132,7 +132,29 @@
 
                 <Border HorizontalAlignment="Center" Margin="0,16,0,0" Padding="10,6" Background="Transparent"
                         AutomationProperties.AutomationId="welcome.tryIt">
-                    <TextBlock Text="{Binding TryIt}" FontSize="13" FontWeight="Medium" TextWrapping="Wrap" TextAlignment="Center" />
+                    <StackPanel>
+                        <TextBlock Text="{Binding TryIt}" FontSize="13" FontWeight="Medium" TextWrapping="Wrap" TextAlignment="Center" />
+                        <!-- A box to try it in right here (review round 1 JV #6/#7): dictation pastes into it while it
+                             has the keyboard — VoiceCoordinator asks WelcomeWindow.AcceptsDictation — instead of into the
+                             last other app, and it fills the space above the buttons. -->
+                        <Grid Width="300" Margin="0,10,0,0">
+                            <TextBox x:Name="TryBox" Style="{StaticResource InputBox}" Height="60" TextWrapping="Wrap"
+                                     AcceptsReturn="True" VerticalContentAlignment="Top" AutomationProperties.Name="Try dictating here" />
+                            <TextBlock Text="Click here, then talk" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
+                                       Margin="10,7,0,0" IsHitTestVisible="False" VerticalAlignment="Top">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock">
+                                        <Setter Property="Visibility" Value="Collapsed" />
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding Text, ElementName=TryBox}" Value="">
+                                                <Setter Property="Visibility" Value="Visible" />
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Grid>
+                    </StackPanel>
                 </Border>
             </StackPanel>
         </DockPanel>

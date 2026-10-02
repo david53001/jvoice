@@ -1194,7 +1194,8 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         // This is what makes "click a window, then dictate" land where the user clicked,
         // including the terminal JVoice itself was launched from.
         IntPtr current = ForegroundWindowTracker.GetForegroundWindowNow();
-        bool currentIsSelf = ForegroundWindowTracker.IsOwnedByCurrentProcess(current);
+        bool currentIsSelf = ForegroundWindowTracker.IsOwnedByCurrentProcess(current)
+            && !WelcomeWindow.AcceptsDictation(current); // the Welcome page's try-it box is a real target
         IntPtr target = CoordinatorDecisions.ResolveTargetWindow(current, currentIsSelf, _foreground.LastForegroundWindow);
 
         DiagnosticLog.Write($"ResolveTarget  current={current}  currentIsSelf={currentIsSelf}  " +

@@ -59,8 +59,10 @@ public sealed class WelcomeWindow : Window
 
         ContentRendered += (_, _) => TourEvents.SurfaceShown(TourSurface.Welcome, this);
         Closing += OnClosing;
+        s_open = this;
         Closed += (_, _) =>
         {
+            if (s_open == this) s_open = null;
             _poll.Stop();
             coordinator.PropertyChanged -= OnCoordinatorChanged;
         };
@@ -85,6 +87,15 @@ public sealed class WelcomeWindow : Window
         if (WindowState == WindowState.Minimized) WindowState = WindowState.Normal;
         Activate();
     }
+
+    private static WelcomeWindow? s_open;
+
+    /// <summary>True when <paramref name="hwnd"/> is the open Welcome window and its try-it box has the keyboard:
+    /// a dictation stopped there pastes into the box (JVoice's own windows are otherwise never a paste target).
+    /// UI thread only.</summary>
+    public static bool AcceptsDictation(IntPtr hwnd) =>
+        s_open is { } w && hwnd != IntPtr.Zero && new System.Windows.Interop.WindowInteropHelper(w).Handle == hwnd
+        && w._view.TryBoxHasKeyboard;
 
     private void OnCoordinatorChanged(object? sender, PropertyChangedEventArgs e)
     {

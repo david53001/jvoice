@@ -583,12 +583,42 @@
                                     <ColumnDefinition Width="*" />
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
-                                <TextBox x:Name="CorrectionFromBox" Style="{StaticResource InputBox}" AutomationProperties.Name="Heard"
-                                         KeyDown="OnCorrectionKeyDown" />
+                                <Grid>
+                                    <TextBox x:Name="CorrectionFromBox" Style="{StaticResource InputBox}" AutomationProperties.Name="Heard"
+                                             KeyDown="OnCorrectionKeyDown" />
+                                    <TextBlock Text="heard (e.g. web api)" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
+                                               Margin="10,0,0,0" IsHitTestVisible="False" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=CorrectionFromBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
                                 <TextBlock Grid.Column="1" Text="&#x2192;" FontSize="13" Foreground="{DynamicResource Text.Secondary}"
                                            VerticalAlignment="Center" Margin="6,0,6,0" />
-                                <TextBox x:Name="CorrectionToBox" Grid.Column="2" Style="{StaticResource InputBox}" AutomationProperties.Name="Replace with"
-                                         KeyDown="OnCorrectionKeyDown" />
+                                <Grid Grid.Column="2">
+                                    <TextBox x:Name="CorrectionToBox" Style="{StaticResource InputBox}" AutomationProperties.Name="Replace with"
+                                             KeyDown="OnCorrectionKeyDown" />
+                                    <TextBlock Text="meant (e.g. web app)" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
+                                               Margin="10,0,0,0" IsHitTestVisible="False" VerticalAlignment="Center">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Text, ElementName=CorrectionToBox}" Value="">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </Grid>
                                 <Button Grid.Column="3" Content="Add" Style="{StaticResource SubtleButton}" Margin="6,0,0,0" Click="OnAddCorrection" />
                             </Grid>
                             <TextBlock x:Name="CorrectionNotice" Visibility="Collapsed" Style="{StaticResource Note}" TextWrapping="Wrap"
