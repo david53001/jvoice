@@ -2340,6 +2340,10 @@ From David's first look after the revamp:
 - **Pill too transparent at the default Opacity.** The pill backing anchors went from 0.50/0.66/1 to **0.70/0.88/1** (`Core/Policy/UiOpacity.cs`; `UiOpacityTests` updated). It reads as a solid dark capsule with a hint of the backdrop.
 - **BetterScreenshot was colour-matched to this app** (its §PROGRESS entry). Measured on screen: both apps' Settings are now #202020 window / #292929 cards.
 
+## §7 #67 — Pill near-solid to match the Mac's look (2026-10-03, `cc62df3` + `9523896`)
+
+David still saw too much background through the pill. Pill anchors are now **0.90/0.98/1** (from 0.70/0.88/1, with 0.80/0.94/1 as a step in between). The Mac's 0.62 default (`feat/tour-opacity`, `UIOpacity.swift`) sits on Liquid Glass / `.hudWindow` **blur**, so what shows through is a soft tint with no detail. The Windows pill is a layered window with no blur, so any see-through is a crisp ghost of the windows behind it, and near-solid is the visual match. David approved 0.98 at the default. Files: `Core/Policy/UiOpacity.cs`, `UiOpacityTests`, the `Pill.Backing` default in `JVoicePalette.xaml`. The change is deployed to the install. A real fix would be an actual backdrop blur behind the capsule; it was not attempted, because layered windows can't take Acrylic in a capsule shape.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
