@@ -33,7 +33,7 @@
     <SolidColorBrush x:Key="Warning"          Color="#FFFCE100" />
     <SolidColorBrush x:Key="Window.Backing"   Color="#59202020" />
     <SolidColorBrush x:Key="Window.Solid"     Color="#FF202020" />
-    <SolidColorBrush x:Key="Pill.Backing"     Color="#A81E1E1E" />
+    <SolidColorBrush x:Key="Pill.Backing"     Color="#F01E1E1E" />
 
     <FontFamily x:Key="UiFont">Segoe UI Variable Text, Segoe UI</FontFamily>
     <FontFamily x:Key="DisplayFont">Segoe UI Variable Display, Segoe UI</FontFamily>

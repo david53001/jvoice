@@ -27,7 +27,7 @@ public static class UiOpacity
     /// The backing alpha at 0 / 0.5 / 1.
     public static (double Transparent, double Standard, double Opaque) Anchors(Surface surface) => surface switch
     {
-        Surface.Pill => (0.70, 0.88, 1.0),
+        Surface.Pill => (0.80, 0.94, 1.0),
         _ => (0.0, 0.35, 1.0),
     };
 
