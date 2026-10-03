@@ -12,8 +12,8 @@ gives a window Mica + rounded corners + a themed title bar. The HUD bars stay a 
 
 ## Key files
 - `HudView.xaml` / `.cs`, `HudWindow.cs` — the recording/transcribing pill. Solid bar shapes (not
-  AA text) so it stays crisp at non-native gaming resolutions; `DisplayMetrics.HudScale` enlarges
-  by the stretch ratio. **Fix blur IN-APP — never tell David to change his resolution** (memory
+  AA text) so it stays crisp at non-native gaming resolutions; `DisplayMetrics.HudScale` sizes it
+  to the Mac's share of the screen area (HANDOFF §7 #68; 1.074× at 1500×1080). **Fix blur IN-APP — never tell David to change his resolution** (memory
   `dev-monitor-native-1920x1080`).
 - `SettingsView.xaml` / `.cs`, `SettingsWindow.cs` — settings, plus the Windows-only Recent
   Transcripts history (root `CLAUDE.md` §7 #26). **Since rows 28–30: 1080 wide, ~940 tall, header

@@ -47,4 +47,22 @@ public class ScreenPlacementTests
         Assert.True(Right4K.Contains(1920, 0));
         Assert.False(Right4K.Contains(1919, 0));
     }
+
+    [Fact]
+    public void PillTakesTheSameShareOfTheScreenAsOnTheMac()
+    {
+        // The Mac reference itself (MacBook Air 13", 1470 × 956 pt) → the Mac's own 240 × 56 capsule.
+        Assert.Equal(1.0, ScreenPlacement.PillScale(1470, 956), 6);
+        // David's desktop: 1500 × 1080 stretched on a 1920 × 1080 panel. Was 1.28 (the stretch ratio), which made
+        // the recording capsule 307 × 72 — 20.5 % of the screen's width vs the Mac's 16.3 %.
+        double s = ScreenPlacement.PillScale(1500, 1080);
+        Assert.Equal(1.074, s, 3);
+        Assert.Equal(240.0 * 56 / (1470 * 956), 240 * s * 56 * s / (1500 * 1080), 9); // same area share
+        // A 4K panel at 150 % (2560 × 1440 DIPs) grows with its screen…
+        Assert.Equal(Math.Sqrt(2560.0 * 1440 / (1470 * 956)), ScreenPlacement.PillScale(2560, 1440), 6);
+        // …but tiny or absurd screens stay within sane bounds.
+        Assert.Equal(ScreenPlacement.MinPillScale, ScreenPlacement.PillScale(1024, 600));
+        Assert.Equal(ScreenPlacement.MaxPillScale, ScreenPlacement.PillScale(7680, 4320));
+        Assert.Equal(1.0, ScreenPlacement.PillScale(0, 0)); // no screen info → the Mac's size
+    }
 }

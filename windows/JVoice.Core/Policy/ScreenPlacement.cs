@@ -19,6 +19,22 @@ public static class ScreenPlacement
     /// <summary>The capsule's gap above the bottom of the work area (Mac HUDLayout.bottomGap), in DIPs.</summary>
     public const double PillBottomGap = 64;
 
+    /// <summary>The Mac reference screen the pill was designed on: a MacBook Air 13" at its default 1470 × 956 pt,
+    /// where the 240 × 56 capsule takes ~16 % of the width (Mac HUDLayout.swift).</summary>
+    public const double MacScreenWidth = 1470, MacScreenHeight = 956;
+    public const double MinPillScale = 0.85, MaxPillScale = 1.8;
+
+    /// <summary>The pill's uniform scale so it takes the SAME share of the screen's area as on the Mac:
+    /// √(screen area / Mac screen area), from the screen in DIPs. Area, not width, so a 16:9 or a stretched non-native
+    /// desktop (1500 × 1080 on a 1920 × 1080 panel) gets the Mac's proportion too — DIP area fractions are physical
+    /// area fractions whatever the monitor's scaler does. Clamped so tiny/huge screens stay sane; no screen → 1.</summary>
+    public static double PillScale(double screenWidthDip, double screenHeightDip)
+    {
+        if (screenWidthDip <= 0 || screenHeightDip <= 0) return 1.0;
+        double scale = Math.Sqrt(screenWidthDip * screenHeightDip / (MacScreenWidth * MacScreenHeight));
+        return Math.Clamp(scale, MinPillScale, MaxPillScale);
+    }
+
     /// <summary>The top-left (px) that centres a <paramref name="widthDip"/> × <paramref name="heightDip"/> window in
     /// <paramref name="work"/> at <paramref name="scale"/>; a window taller/wider than the work area keeps its top-left
     /// corner (title bar, close button) inside it.</summary>
