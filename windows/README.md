@@ -10,6 +10,18 @@ elevated/admin windows too when run as administrator (tray → Restart / Run as 
 This is the Windows sibling of the macOS Swift app (under `../Sources/`), which remains the
 read-only reference for the accuracy "brain" and its invariants.
 
+## Install
+
+Users paste one line into PowerShell (installs, and later updates):
+
+```powershell
+irm https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.ps1 | iex
+```
+
+It runs the newest `windows-v*` release's installer (GPU build on NVIDIA PCs, CPU otherwise). Uninstall:
+`irm https://raw.githubusercontent.com/david53001/jvoice/main/scripts/uninstall.ps1 | iex`. How releases are
+built and shipped: `../docs/launch/windows-distribution.md`.
+
 ## Status
 
 All five port phases are implemented. `dotnet build windows/JVoice.sln -c Release` = **0 errors**,

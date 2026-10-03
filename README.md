@@ -20,12 +20,15 @@ Prefer a manual download? Get [`JVoice-1.1.4.dmg`](https://github.com/david53001
 
 ### Windows
 
-Needs Windows 10 or 11 (64-bit). Download and run the installer:
+Needs Windows 10 or 11 (64-bit). Paste this into PowerShell:
 
-- [`JVoice-Setup.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.0.0/JVoice-Setup.exe) (about 70 MB) for most PCs.
-- [`JVoice-Setup-GPU.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.0.0/JVoice-Setup-GPU.exe) (about 380 MB) only if you have an NVIDIA graphics card and want faster transcription. The text is the same either way.
+```powershell
+irm https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.ps1 | iex
+```
 
-It installs for your user only (no admin needed) and starts in the system tray. To update, open Settings, go to Updates and click Check Now, then Update Now (JVoice also checks once a day unless you turn that off). Running a newer installer over the old one works too. Your settings are kept.
+The same command installs JVoice and updates it to the newest version. It picks the faster GPU build if your PC has an NVIDIA graphics card, needs no admin rights, and starts JVoice in the system tray. Updating keeps your settings, custom words, stats and downloaded model. You can read the script first: [`scripts/install.ps1`](scripts/install.ps1). JVoice can also update itself from Settings > Updates.
+
+Prefer a manual download? Get [`JVoice-Setup.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.1.0/JVoice-Setup.exe) (70 MB), or [`JVoice-Setup-GPU.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.1.0/JVoice-Setup-GPU.exe) (380 MB) for NVIDIA graphics cards, and run it.
 
 ## Uninstall
 
@@ -35,13 +38,19 @@ On macOS, paste this into Terminal:
 curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/uninstall.sh | bash
 ```
 
-It quits JVoice and removes the app, its settings (including custom words, stats and recent transcripts), the downloaded Whisper model, its caches, and its Microphone and Accessibility permissions. You can read the script first: [`scripts/uninstall.sh`](scripts/uninstall.sh).
+On Windows, paste this into PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/david53001/jvoice/main/scripts/uninstall.ps1 | iex
+```
+
+Each quits JVoice and removes the app, its settings (including custom words, stats and recent transcripts), the downloaded Whisper model and its caches; on macOS also its Microphone and Accessibility permissions, on Windows also its shortcuts and launch at login. You can read the scripts first: [`scripts/uninstall.sh`](scripts/uninstall.sh), [`scripts/uninstall.ps1`](scripts/uninstall.ps1).
 
 ## First launch
 
-JVoice is free and not signed with a paid developer certificate, so your system warns you once:
+JVoice is free and not signed with a paid developer certificate. The install commands above handle this for you. If you downloaded it by hand, your system warns you once:
 
-- **macOS** (only if you used the DMG): click Done, then go to System Settings > Privacy & Security and click Open Anyway. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/JVoice.app`.
+- **macOS**: click Done, then go to System Settings > Privacy & Security and click Open Anyway. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/JVoice.app`.
 - **Windows**: on "Windows protected your PC", click More info > Run anyway.
 
 On macOS, JVoice asks for Microphone access (to hear you) and Accessibility access (to type the text into other apps). On both systems, the speech model downloads once on first use.

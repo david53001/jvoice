@@ -4,6 +4,43 @@ The Windows analog of the macOS Gatekeeper "Open Anyway" findings
 (`unsigned-distribution-findings.md`). $0 budget → **no paid code-signing certificate** →
 JVoice ships as an **unsigned** download. This documents what users see and how to ship.
 
+## The one-line install (the README's primary path, since 2026-10-03)
+
+```powershell
+irm https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.ps1 | iex
+```
+
+`scripts/install.ps1` is the Windows twin of the macOS `scripts/install.sh`: one paste installs AND updates.
+It lists the repo's releases (newest first), takes the first non-draft, non-prerelease one carrying the
+installer it wants, and runs that installer, so the IExpress setup below stays the only install code path
+(the in-app updater runs the same exe). The script itself only chooses, downloads and verifies:
+
+- **Build:** an existing install keeps its flavor (`runtimes\cuda` present = GPU); a new install gets the GPU
+  build when `Win32_VideoController` names an NVIDIA card, else CPU. `$env:JVOICE_FLAVOR='cpu'|'gpu'` overrides.
+- **Up to date:** compares the installed exe's ProductVersion with the release tag and stops there
+  (`$env:JVOICE_FORCE='1'` reinstalls).
+- **Download:** `curl.exe` (shows a progress bar; in Windows 10 1803+) or `Invoke-WebRequest`; the size must
+  match the asset's. A file downloaded by PowerShell carries **no Mark-of-the-Web**, so neither Edge's
+  "not commonly downloaded" nor SmartScreen's "Windows protected your PC" appears. That is what makes the
+  one-liner much easier than the manual download (about six clicks through two warnings).
+- **Elevated copy:** if the "JVoice Elevated Autostart" task exists it is stopped through the task, the
+  installer runs with `JVOICE_SKIP_LAUNCH=1`, and the task is started again afterwards; an elevated copy
+  started by hand can't be closed from a normal shell, so the script says to quit it from the tray.
+- **Safety:** everything sits in `& { ... }` and uses `return`, never `exit`, so an error can't close the
+  user's PowerShell window (`iex` runs in their session). Keep the scripts ASCII-only: Windows PowerShell 5.1
+  can mis-decode non-ASCII text fetched by `irm`.
+- **Measured (2026-10-03, this PC):** the CPU installer finishes in about 5 s and the GPU one in about 8 s
+  after the download (70 MB / 383 MB).
+
+`scripts/uninstall.ps1` mirrors `uninstall.sh`: quits JVoice, removes the Run value and the elevated task
+(the task needs an admin shell if it was created elevated; the script says so), the shortcuts, the ARP entry,
+the install folder, `%APPDATA%\JVoice` and `%LOCALAPPDATA%\JVoice` (models). Test it with the same sandbox
+overrides as the installer plus `JVOICE_APPDATA_DIR` / `JVOICE_DATA_DIR`.
+
+**Publishing a Windows release: never mark it Latest.** `gh release create windows-vX.Y.Z --latest=false`.
+The repo's Latest release must stay a macOS one; the Mac README links and other tooling assume it. Then
+update the two versioned manual-download links in `README.md`.
+
 ## What ships — two installers (CPU default, GPU optional)
 
 The user-facing download is a **one-click installer**: an IExpress self-extractor that wraps a
