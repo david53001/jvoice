@@ -134,4 +134,47 @@ private let reportedVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
     #expect(cores.contains("fraumeni"))
     #expect(cores.contains("lifraumeni"))
 }
+
+// MARK: - Spoken mathematics (2026-09-23): repetition that is NOT a loop
+
+@Test(arguments: [
+    "and then it's 26 x 26 x 26 x 10 x 10 x 10",
+    "and then it's 26 times 26 times 26 times 10 times 10 times 10",
+    "So the answer is minus 3 minus 3 minus 3 minus 3",
+    "1 over 2 plus 1 over 4 plus 1 over 8 plus 1 over 16",
+    "2 x 2 x 2 x 2 x 2 x 2 x 2 x 2 is 256",
+    "ten times ten times ten times ten is ten thousand",
+])
+func mathsRepetitionIsNotALoop(_ maths: String) {
+    // Before: flagged as a loop → deleted from the paste AND re-decoded
+    // without the prompt (the "slow on numbers" report).
+    let result = RepetitionGuard.scrub(maths, vocabulary: reportedVocab)
+    #expect(!result.removedRegurgitation)
+    #expect(result.text == maths)
+}
+
+@Test func mathsCountsDoNotAccumulateAcrossALongDictation() {
+    // Minutes of combinatorics repeat "3", "choose", "times", "factorial" far
+    // past 3× — the ending must still not read as a loop.
+    let long = String(repeating: "so we have 5 choose 3 which is 10 and 10 choose 3 which is 120 times 3 factorial. ", count: 6)
+        + "so the total is 26 choose 3 times 3 factorial times 10 choose 3 times 3 factorial"
+    #expect(!RepetitionGuard.scrub(long, vocabulary: reportedVocab).removedRegurgitation)
+}
+
+@Test func sustainedNumericDecoderLoopIsStillStripped() {
+    #expect(RepetitionGuard.strip("and then it's " + String(repeating: "26 x ", count: 20), vocabulary: []) == "and then it's")
+    #expect(RepetitionGuard.strip("the total is " + String(repeating: "10, ", count: 20), vocabulary: []) == "the total is")
+    #expect(RepetitionGuard.strip("so it's " + String(repeating: "times 10 plus ", count: 12), vocabulary: []) == "so it's")
+}
+
+@Test func longCycleLoopIsCaughtByTheTrailingPhraseNet() {
+    // A cycle of ≥ 4 tokens never reaches the maths repeat count in the window;
+    // an exact phrase repeated ≥ minPhraseRepeats times at the end is a loop anyway,
+    // including one the token budget cut off mid-phrase.
+    #expect(RepetitionGuard.strip("see " + String(repeating: "page 1 of 10, ", count: 40), vocabulary: []) == "see")
+    #expect(RepetitionGuard.strip("counting " + String(repeating: "1, 2, 3, 4, ", count: 50), vocabulary: []) == "counting")
+    #expect(RepetitionGuard.strip("cut off " + String(repeating: "page 1 of 10, ", count: 7) + "page 1", vocabulary: []) == "cut off")
+    // …while a dictated power (5 repeats of "26 times") stays.
+    #expect(!RepetitionGuard.scrub("five letters so 26 times 26 times 26 times 26 times 26 times 26", vocabulary: []).removedRegurgitation)
+}
 #endif

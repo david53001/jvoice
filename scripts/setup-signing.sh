@@ -24,7 +24,7 @@ LOGIN_KEYCHAIN="$HOME/Library/Keychains/login.keychain-db"
 
 if security find-identity -v -p codesigning login.keychain | grep -q "$CERT_NAME"; then
     echo "Code signing identity '$CERT_NAME' already exists in login keychain."
-    echo "Run scripts/install.sh to use it."
+    echo "Run scripts/dev-install.sh to use it."
     exit 0
 fi
 
@@ -85,4 +85,4 @@ security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "" "$LOGIN
 
 echo
 echo "Done. JVoice signing identity is now in your login keychain."
-echo "Run scripts/install.sh — future rebuilds will keep your TCC permissions intact."
+echo "Run scripts/dev-install.sh — future rebuilds will keep your TCC permissions intact."

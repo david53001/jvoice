@@ -11,10 +11,13 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
   the XCTest runner cannot execute); otherwise launches the SwiftUI `JVoiceApp`. The app is a
   **menu-bar accessory** (`.accessory` activation policy, no Dock icon). It declares no real SwiftUI
   scenes — windows are managed imperatively by `AppDelegate` / `SettingsWindow`; the empty `Settings`
-  scene is only the placeholder SwiftUI requires.
+  scene is only the placeholder SwiftUI requires. Right before launching the app it classifies the
+  user as new/existing for the first-run tour (`TourCoordinator.classifyAudienceIfNeeded`) — it MUST
+  stay before anything writes UserDefaults (see `Tours/CLAUDE.md`).
 - `AppDelegate.swift` (`@MainActor`) — owns the single `VoiceCoordinator`. On launch:
   `coordinator.start()` + `bootstrapLaunchAtLogin()`, and routes service-level failures to the HUD
-  (the heads-up status pill) via `SystemActions.errorHandler`. On terminate:
+  (the heads-up status pill) via `SystemActions.errorHandler`. Also owns the `TourCoordinator` and
+  the first-run `WelcomeWindow` (shown at launch to new users only). On terminate:
   `cleanUpForTermination()` + `flushSettings()`. The app stays alive with no windows open.
 - `VoiceCoordinator.swift` — the spine. Drives the hotkey → record → transcribe → post-process →
   paste flow, owns the HUD state (the menu bar mirrors it), and tracks stats. Its collaborators are
@@ -24,7 +27,9 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
 - `Services/Transcription/` — WhisperKit engine, streaming-while-recording, custom-word accuracy.
 - `Services/Audio/` — recording + microphone routing.
 - `Services/Orchestration/` — system glue: paste, hotkey, settings/stats/transcript stores.
-- `UI/` — the HUD, the Settings window, the menu-bar status item.
+- `UI/` — the HUD, the Settings window, the Welcome window, the menu-bar status item.
+- `Tours/` — the first-run guided tour (ported from BetterScreenshot): who gets it, the tour
+  catalog, the on-screen tag.
 - `Models/` — small shared enums/structs (tone styles, HUD state, model options, language, settings).
 
 ## Verifying changes (important, non-obvious)

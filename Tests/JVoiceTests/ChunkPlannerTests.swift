@@ -73,6 +73,19 @@ private func tone(seconds: Double, amplitude: Double) -> [Int16] {
     #expect(!ChunkPlanner.isSilent(tone(seconds: 3, amplitude: 0.05))) // quiet speech is NOT silence
 }
 
+@Test func trailingSilenceMeasuresOnlyTheSilentTail() {
+    #expect(ChunkPlanner.trailingSilenceSamples(tone(seconds: 1, amplitude: 0.5) + tone(seconds: 0.5, amplitude: 0)) == Int(0.5 * 16_000))
+    #expect(ChunkPlanner.trailingSilenceSamples(tone(seconds: 1, amplitude: 0.5)) == 0)
+    #expect(ChunkPlanner.trailingSilenceSamples(tone(seconds: 0.7, amplitude: 0)) == Int(0.7 * 16_000))
+    #expect(ChunkPlanner.trailingSilenceSamples([]) == 0)
+}
+
+@Test func trailingSilenceUsesTheAbsoluteFloor() {
+    // Below the floor counts as silence; quiet-but-audible does not.
+    #expect(ChunkPlanner.trailingSilenceSamples(tone(seconds: 1, amplitude: 0.5) + tone(seconds: 0.4, amplitude: 0.002)) == Int(0.4 * 16_000))
+    #expect(ChunkPlanner.trailingSilenceSamples(tone(seconds: 1, amplitude: 0.5) + tone(seconds: 0.4, amplitude: 0.02)) == 0)
+}
+
 @Test func windowRMSCoversPartialFinalWindow() {
     let energies = ChunkPlanner.windowRMS(tone(seconds: 0.5, amplitude: 0.5)[...], window: 4_800)
     #expect(energies.count == 2) // 0.3 s window over 0.5 s → full + partial

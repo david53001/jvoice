@@ -1,7 +1,7 @@
 import Foundation
 
 public struct SettingsState: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion: Int = 2
+    public static let currentSchemaVersion: Int = 4
     public var schemaVersion: Int = SettingsState.currentSchemaVersion
     public var mode: AppMode
     public var model: WhisperModelOption
@@ -9,6 +9,15 @@ public struct SettingsState: Codable, Equatable, Sendable {
     public var customWords: [String]
     public var removeFillerWords: Bool
     public var theme: AppTheme
+    /// v3 dictation-parity fields (mirror the Windows port's SettingsState v3).
+    public var developerTerms: Bool
+    public var translateToEnglish: Bool
+    public var copyToClipboardOnly: Bool
+    public var appAwareModes: Bool
+    public var appModeRules: [AppModeRule]
+    /// v4: spoken mathematics → real notation ("x squared equals 4" → "x² = 4").
+    /// Opt-out, like the Windows port's `MathNotation` (schema v6 there).
+    public var mathNotation: Bool
 
     public var whisperModel: WhisperModelOption {
         get { model }
@@ -21,7 +30,13 @@ public struct SettingsState: Codable, Equatable, Sendable {
         language: TranscriptionLanguage = .english,
         customWords: [String] = [],
         removeFillerWords: Bool = true,
-        theme: AppTheme = .dark
+        theme: AppTheme = .system,
+        developerTerms: Bool = true,
+        translateToEnglish: Bool = false,
+        copyToClipboardOnly: Bool = false,
+        appAwareModes: Bool = false,
+        appModeRules: [AppModeRule] = [],
+        mathNotation: Bool = true
     ) {
         self.mode = mode
         self.model = model
@@ -29,6 +44,12 @@ public struct SettingsState: Codable, Equatable, Sendable {
         self.customWords = customWords
         self.removeFillerWords = removeFillerWords
         self.theme = theme
+        self.developerTerms = developerTerms
+        self.translateToEnglish = translateToEnglish
+        self.copyToClipboardOnly = copyToClipboardOnly
+        self.appAwareModes = appAwareModes
+        self.appModeRules = appModeRules
+        self.mathNotation = mathNotation
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -39,6 +60,14 @@ public struct SettingsState: Codable, Equatable, Sendable {
         case customWords
         case removeFillerWords
         case theme
+        /// The appearance incl. `.system`, stored beside the legacy `theme` field (see `init(from:)`).
+        case appearance
+        case developerTerms
+        case translateToEnglish
+        case copyToClipboardOnly
+        case appAwareModes
+        case appModeRules
+        case mathNotation
     }
 
     public init(from decoder: Decoder) throws {
@@ -57,7 +86,25 @@ public struct SettingsState: Codable, Equatable, Sendable {
         language = try container.decodeIfPresent(TranscriptionLanguage.self, forKey: .language) ?? .english
         customWords = try container.decodeIfPresent([String].self, forKey: .customWords) ?? []
         removeFillerWords = try container.decodeIfPresent(Bool.self, forKey: .removeFillerWords) ?? true
-        theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .dark
+        // Appearance (2026-09-29, System / Light / Dark). Stored under a NEW key, `appearance`, so the
+        // schema stays v4 and older builds (which only know `theme` and ignore unknown keys) keep
+        // reading this blob instead of refusing it. Without `appearance` (a blob from an older build),
+        // the legacy `theme` decides: `.dark` was the old DEFAULT, not a choice, so it becomes
+        // `.system`; an explicit `.light` is kept.
+        if let appearance = try? container.decode(AppTheme.self, forKey: .appearance) {
+            theme = appearance
+        } else {
+            let legacy = try? container.decode(AppTheme.self, forKey: .theme)
+            theme = legacy == .light ? .light : .system
+        }
+        // v3 fields: absent in v1/v2 blobs → default (developerTerms ON, rest OFF).
+        developerTerms = try container.decodeIfPresent(Bool.self, forKey: .developerTerms) ?? true
+        translateToEnglish = try container.decodeIfPresent(Bool.self, forKey: .translateToEnglish) ?? false
+        copyToClipboardOnly = try container.decodeIfPresent(Bool.self, forKey: .copyToClipboardOnly) ?? false
+        appAwareModes = try container.decodeIfPresent(Bool.self, forKey: .appAwareModes) ?? false
+        appModeRules = try container.decodeIfPresent([AppModeRule].self, forKey: .appModeRules) ?? []
+        // v4 field: absent in v1–v3 blobs → default ON, so an upgrade gains the feature.
+        mathNotation = try container.decodeIfPresent(Bool.self, forKey: .mathNotation) ?? true
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -68,6 +115,14 @@ public struct SettingsState: Codable, Equatable, Sendable {
         try container.encode(language, forKey: .language)
         try container.encode(customWords, forKey: .customWords)
         try container.encode(removeFillerWords, forKey: .removeFillerWords)
-        try container.encode(theme, forKey: .theme)
+        try container.encode(theme, forKey: .appearance)
+        // What an older build reads (it has no `.system`): the explicit choice, or its old default.
+        try container.encode(theme == .light ? AppTheme.light : AppTheme.dark, forKey: .theme)
+        try container.encode(developerTerms, forKey: .developerTerms)
+        try container.encode(translateToEnglish, forKey: .translateToEnglish)
+        try container.encode(copyToClipboardOnly, forKey: .copyToClipboardOnly)
+        try container.encode(appAwareModes, forKey: .appAwareModes)
+        try container.encode(appModeRules, forKey: .appModeRules)
+        try container.encode(mathNotation, forKey: .mathNotation)
     }
 }

@@ -62,4 +62,38 @@ func statsStore_accumulatesAcrossTwoRecords() {
     #expect(store.totalWords == 30)
     #expect(store.averageWPM == 15)
 }
+
+@Test
+func statsStore_estimatedMinutesSavedIsZeroWithNoData() {
+    let suite = "jvoice.test.stats.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let store = StatsStore(defaults: defaults)
+    #expect(store.estimatedMinutesSaved == 0)
+}
+
+@Test
+func statsStore_estimatedMinutesSavedUses40WpmBaseline() {
+    let suite = "jvoice.test.stats.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let store = StatsStore(defaults: defaults)
+    // 40 words spoken in 6s: typing = 40/40 = 1 min; spoken = 6/60 = 0.1 min; saved = 0.9.
+    store.record(words: 40, durationSeconds: 6)
+    #expect(abs(store.estimatedMinutesSaved - 0.9) < 1e-9)
+}
+
+@Test
+func statsStore_estimatedMinutesSavedFloorsAtZero() {
+    let suite = "jvoice.test.stats.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defer { defaults.removePersistentDomain(forName: suite) }
+
+    let store = StatsStore(defaults: defaults)
+    // 10 words spoken in 60s: typing 0.25 min < spoken 1 min → floored at 0.
+    store.record(words: 10, durationSeconds: 60)
+    #expect(store.estimatedMinutesSaved == 0)
+}
 #endif

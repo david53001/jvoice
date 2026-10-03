@@ -173,13 +173,32 @@ func processAppliesPhoneticVocabularyCorrection() {
     #expect(result == "open JVoice now")
 }
 
+// MARK: - Code tone (per-app override): verbatim, whitespace-trim only
+
+@Test
+func codeToneTrimsWhitespaceOnly() {
+    #expect(TextProcessor.format("  const x = 5;  ", mode: .code) == "const x = 5;")
+}
+
+@Test
+func codeTonePreservesCasingAndSymbols() {
+    #expect(TextProcessor.process("MyClass.someMethod()", mode: .code) == "MyClass.someMethod()")
+}
+
+@Test
+func codeToneDoesNotCapitalizeOrAddPeriod() {
+    // Contrast with Formal ("Hello world.") and Casual: Code leaves it verbatim.
+    #expect(TextProcessor.process("hello world", mode: .code) == "hello world")
+}
+
 // MARK: - TRX-01: no double/triple custom-word substitution
 
 @Test func punctuatedCustomWordCorrectedOnce() {
     // ".NET" must be inserted exactly once; the old bug re-matched the bare
     // "net" inside the freshly-inserted ".NET", yielding "..NET"/"...NET".
     let dict = TextProcessor.buildUserDictionary(from: [".NET"])
-    #expect(TextProcessor.applyCorrections("use dot net daily", extraDictionary: dict) == "use dot .NET daily")
+    #expect(TextProcessor.applyCorrections("We use .NET daily.", extraDictionary: dict) == "We use .NET daily.")
+    #expect(TextProcessor.applyCorrections("use dot net daily", extraDictionary: DeveloperTerms.augment(dict)) == "use .NET daily")
 }
 
 @Test func builtInDictionaryStaysIdempotent() {
@@ -189,11 +208,11 @@ func processAppliesPhoneticVocabularyCorrection() {
 
 @Test func spokenVariantsDropSelfSubstrings() {
     // ".NET" must NOT register the bare "net" variant (substring of the word),
-    // which is what caused the re-match. The dotted/spaced variants remain so
-    // "dot net" still corrects.
+    // which is what caused the re-match. The plain lower-cased word is kept —
+    // it spans the whole word, so it cannot self-overlap.
     let variants = Set(TextProcessor.spokenVariants(for: ".NET"))
     #expect(!variants.contains("net"))
-    #expect(!variants.contains(".net"))
+    #expect(variants.contains(".net"))
 }
 
 // MARK: - TRX-06: preserve legitimate bracketed tokens
@@ -303,6 +322,73 @@ func processAppliesPhoneticVocabularyCorrection() {
     #expect(TextProcessor.removeWhisperHallucinations(input) == input)
 }
 
+// MARK: - 2026-09-23 text-processing fixes
+
+@Test func userDictionaryKeepsPlainLowercaseKey() {
+    // The plain lower-cased custom word is the key that fixes casing drift.
+    #expect(TextProcessor.buildUserDictionary(from: ["AISB"])["aisb"] == "AISB")
+    #expect(TextProcessor.process("the aisb meeting", mode: .casual,
+                                  extraDictionary: TextProcessor.buildUserDictionary(from: ["AISB"])) == "the AISB meeting")
+}
+
+@Test func dotPrefixedCustomWordsNeverGainDots() {
+    // The "." → " " variant (" net") used to escape the substring filter
+    // through its leading space and then match inside ".NET".
+    let variants = Set(TextProcessor.spokenVariants(for: ".NET"))
+    #expect(!variants.contains(" net"))
+    let net = DeveloperTerms.augment(TextProcessor.buildUserDictionary(from: [".NET"]))
+    #expect(TextProcessor.process("We use .NET daily.", mode: .formal, extraDictionary: net, vocabulary: [".NET"])
+        == "We use .NET daily.")
+    #expect(TextProcessor.process("We use dot net daily.", mode: .formal, extraDictionary: net, vocabulary: [".NET"])
+        == "We use .NET daily.")
+    #expect(TextProcessor.process("We use .NET daily.", mode: .veryCasual, extraDictionary: net, vocabulary: [".NET"])
+        == "we use .NET daily.")
+    let env = TextProcessor.buildUserDictionary(from: [".env"])
+    #expect(TextProcessor.process("Copy the .env file first.", mode: .formal, extraDictionary: env, vocabulary: [".env"])
+        == "Copy the .env file first.")
+    // A punctuated key is not glued into a longer name ("example.net").
+    #expect(TextProcessor.applyCorrections("visit example.net today", extraDictionary: net) == "visit example.net today")
+}
+
+@Test func builtInDictionaryLeavesEverydayKeyboardShortcutsAlone() {
+    #expect(TextProcessor.correctionDictionary["keyboard shortcuts"] == nil)
+    #expect(TextProcessor.process("My favorite keyboard shortcuts are simple", mode: .casual)
+        == "My favorite keyboard shortcuts are simple")
+    #expect(TextProcessor.process("I added keyboardshortcuts to the package", mode: .casual)
+        == "I added KeyboardShortcuts to the package")
+}
+
+@Test func fillerRemovalKeepsRealWords() {
+    #expect(TextProcessor.removeDisfluencies("She rushed to the ER last night.") == "She rushed to the ER last night.")
+    #expect(TextProcessor.removeDisfluencies("To err is human.") == "To err is human.")
+    #expect(TextProcessor.removeDisfluencies("Uh-oh, the build broke again.") == "Uh-oh, the build broke again.")
+    #expect(TextProcessor.removeDisfluencies("Uh-huh, that works for me.") == "Uh-huh, that works for me.")
+    #expect(TextProcessor.removeDisfluencies("Mm-hmm, sounds good.") == "Mm-hmm, sounds good.")
+    #expect(TextProcessor.removeDisfluencies("He works at UM now.") == "He works at UM now.")
+    // Real fillers, sentence-capitalised or drawn out, still go.
+    #expect(TextProcessor.removeDisfluencies("Er, I was thinking.") == "I was thinking.")
+    #expect(TextProcessor.removeDisfluencies("Errr, maybe later.") == "maybe later.")
+    #expect(TextProcessor.removeDisfluencies("Um, I think so, uh, yes.") == "I think so, yes.")
+}
+
+@Test func veryCasualKeepsThousandsSeparators() {
+    #expect(TextProcessor.process("We raised $1,000,000 last year.", mode: .veryCasual) == "we raised $1,000,000 last year.")
+    #expect(TextProcessor.process("The file has 12,500 rows", mode: .veryCasual) == "the file has 12,500 rows.")
+    // Clause commas are still tidied, including next to digits.
+    #expect(TextProcessor.process("1,,2 and 3 , 4", mode: .veryCasual) == "1, 2 and 3, 4.")
+    #expect(TextProcessor.process("apples,oranges", mode: .veryCasual) == "apples, oranges.")
+}
+
+@Test func formalDoesNotDoublePunctuateAClosedSentence() {
+    #expect(TextProcessor.process("He said \"hello.\"", mode: .formal) == "He said \"hello.\"")
+    #expect(TextProcessor.process("Is that right?\"", mode: .formal) == "Is that right?\"")
+    #expect(TextProcessor.process("It was fine (mostly.)", mode: .formal) == "It was fine (mostly.)")
+    #expect(TextProcessor.process("Here are the steps:", mode: .formal) == "Here are the steps:")
+    #expect(TextProcessor.process("Wait for it…", mode: .formal) == "Wait for it…")
+    // An unterminated quotation still gets its period.
+    #expect(TextProcessor.process("She said “yes”", mode: .formal) == "She said “yes”.")
+}
+
 #elseif canImport(XCTest)
 import XCTest
 @testable import JVoice
@@ -395,7 +481,8 @@ final class TextProcessorTests: XCTestCase {
 
     func testPunctuatedCustomWordCorrectedOnce() {
         let dict = TextProcessor.buildUserDictionary(from: [".NET"])
-        XCTAssertEqual(TextProcessor.applyCorrections("use dot net daily", extraDictionary: dict), "use dot .NET daily")
+        XCTAssertEqual(TextProcessor.applyCorrections("We use .NET daily.", extraDictionary: dict), "We use .NET daily.")
+        XCTAssertEqual(TextProcessor.applyCorrections("use dot net daily", extraDictionary: DeveloperTerms.augment(dict)), "use .NET daily")
     }
 
     func testBuiltInDictionaryStaysIdempotent() {
@@ -406,7 +493,7 @@ final class TextProcessorTests: XCTestCase {
     func testSpokenVariantsDropSelfSubstrings() {
         let variants = Set(TextProcessor.spokenVariants(for: ".NET"))
         XCTAssertFalse(variants.contains("net"))
-        XCTAssertFalse(variants.contains(".net"))
+        XCTAssertTrue(variants.contains(".net"))
     }
 
     // MARK: - TRX-06: preserve legitimate bracketed tokens
@@ -452,6 +539,25 @@ final class TextProcessorTests: XCTestCase {
             from: "i use whisper kit daily",
             corrected: "i use WhisperKit daily")
         XCTAssertEqual(result, ["WhisperKit"])
+    }
+
+    // Whisper's sub-second near-silence fingerprint: < 1 s of hum decodes to
+    // exactly the bare lowercase "you". Matched case-sensitively and
+    // unpunctuated so a real one-word reply ("You." / "You") survives.
+    func testHyphenatedJVoiceIsCorrected() {
+        XCTAssertEqual(TextProcessor.process("J-Voice handles the dictation", mode: .casual), "JVoice handles the dictation")
+    }
+
+    func testHallucinationFilterStripsBareLowercaseYou() {
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("you"), "")
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("  you \n"), "")
+    }
+
+    func testHallucinationFilterKeepsRealOneWordYou() {
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("You."), "You.")
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("You"), "You")
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("you."), "you.")
+        XCTAssertEqual(TextProcessor.removeWhisperHallucinations("you know what I mean"), "you know what I mean")
     }
 }
 

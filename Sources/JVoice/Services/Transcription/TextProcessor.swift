@@ -7,8 +7,10 @@ public struct TextProcessor: Sendable {
         "app kit": "AppKit",
         "appkit": "AppKit",
         "j voice": "JVoice",
+        "j-voice": "JVoice",
         "jvoice": "JVoice",
-        "keyboard shortcuts": "KeyboardShortcuts",
+        // NOT "keyboard shortcuts": that is everyday English ("my favourite
+        // keyboard shortcuts") and this dictionary is always on.
         "keyboardshortcuts": "KeyboardShortcuts",
         "mac os": "macOS",
         "whisper kit": "WhisperKit",
@@ -101,14 +103,19 @@ public struct TextProcessor: Sendable {
         variants.insert(camelSplit)
         variants.insert(camelSplit.replacingOccurrences(of: " ", with: ""))
 
-        // Drop any variant that is itself a substring of the canonical word
+        // Drop any variant that is a PROPER substring of the canonical word
         // (case-insensitive). A punctuated custom word like ".NET" otherwise
-        // registers the bare "net" variant, whose \b…\b pattern then re-matches
-        // the letter-run inside the already-inserted ".NET" replacement,
-        // corrupting it into "..NET"/"...NET" (TRX-01). A variant that is a
-        // substring of the word can never correct anything the word itself
-        // wouldn't already, so removing it is safe and stops the self-overlap.
-        return Array(variants).filter { !$0.isEmpty && $0 != word && !lower.contains($0) }
+        // registers the bare "net" variant, whose pattern then re-matches the
+        // letter-run inside the already-inserted ".NET" replacement, corrupting
+        // it into "..NET"/"...NET" (TRX-01). The plain lower-cased word itself
+        // is always kept: it is the key that fixes casing drift ("claude" →
+        // "Claude"), and it cannot self-overlap because it spans the whole word.
+        // Variants are trimmed first — the "." → " " rewrite turns ".NET" into
+        // " net", which only escaped the substring check through its leading
+        // space and then matched the "NET" inside ".NET".
+        return Array(variants)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty && $0 != word && ($0 == lower || !lower.contains($0)) }
     }
 
     public static func format(_ text: String, mode: AppMode) -> String {
@@ -126,6 +133,11 @@ public struct TextProcessor: Sendable {
             // (so corrections survive); re-lowering here would destroy them.
             let tidied = collapseRepeatedCommas(trimmed)
             return ensureTerminalDotOrQuestion(tidied)
+        case .code:
+            // Verbatim: casing, symbols and punctuation are kept exactly as
+            // spoken (terminals/editors). Whitespace-trim only — no capitalizing,
+            // no terminal-punctuation fixups. Mirrors Windows `ToneStyle.Code`.
+            return trimmed
         }
     }
 
@@ -137,7 +149,13 @@ public struct TextProcessor: Sendable {
     }
 
     public static func removeDisfluencies(_ text: String) -> String {
-        let pattern = #"(?i)\b(um+h?|uhm+|uh+|erm+|er+|a+h+|hmm+)\b[,.]?\s*"#
+        // Case-aware: a filler is lower-case or sentence-capitalised ("um",
+        // "Um"), never ALL CAPS ("ER", "UM" are acronyms). "er" but never
+        // "err" — that is a verb ("to err is human"); a drawn-out "errr" is
+        // still a filler. The lookarounds refuse a filler glued to a word by a
+        // hyphen or apostrophe, so "Uh-oh", "Uh-huh" and "Mm-hmm" are words,
+        // not a filler plus debris.
+        let pattern = #"(?<![\w'’-])(?:[Uu]m+h?|[Uu]hm+|[Uu]h+|[Ee]rm+|[Ee]r(?:rr+)?|[Aa]a*h+|[Hh]mm+)(?![\w'’-])[,.]?\s*"#
         guard let regex = try? NSRegularExpression(pattern: pattern) else { return text }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         let stripped = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "")
@@ -217,6 +235,14 @@ public struct TextProcessor: Sendable {
                 return ""
             }
         }
+        // Whisper's sub-second near-silence fingerprint: a recording under ~1 s
+        // of hum (Whisper pads it to a full window) decodes to exactly the bare
+        // lowercase token "you" — seen pasted from 0.7–0.9 s accidental presses.
+        // Matched case-SENSITIVELY and unpunctuated, so a real one-word reply
+        // ("You." / "You!"), which Whisper capitalizes and punctuates, survives.
+        if trimmed == "you" {
+            return ""
+        }
         return text
     }
 
@@ -234,7 +260,12 @@ public struct TextProcessor: Sendable {
         let components = phrase
             .split(separator: " ")
             .map { NSRegularExpression.escapedPattern(for: String($0)) }
-        return #"\b"# + components.joined(separator: #"\s+"#) + #"\b"#
+        // "Not glued to a word character" on both sides. For a phrase whose
+        // edges are letters/digits this is exactly `\b`; for a punctuated custom
+        // word (".NET", "C#") `\b` would demand a word character NEXT to the
+        // punctuation, so ".net" only matched inside "example.net"
+        // (→ "example.NET") and never a standalone ".net".
+        return #"(?<!\w)"# + components.joined(separator: #"\s+"#) + #"(?!\w)"#
     }
 
     private static func removeTerminalPunctuation(_ text: String) -> String {
@@ -250,17 +281,25 @@ public struct TextProcessor: Sendable {
         return String(first).uppercased() + text.dropFirst()
     }
 
+    /// Closing quotes/brackets that may follow a sentence's own terminal mark.
+    private static let closingMarks: Set<Character> = ["\"", "'", "”", "’", "»", ")", "]", "}"]
+
     private static func ensureTerminalPeriod(_ text: String) -> String {
-        guard let last = text.last else { return text }
-        if ".!?".contains(last) { return text }
+        guard !text.isEmpty else { return text }
+        // Look past closing quotes/brackets: `He said "hello."` already ends.
+        // A colon, semicolon or ellipsis is a deliberate ending too ("steps:").
+        if let last = text.last(where: { !closingMarks.contains($0) }), ".!?…:;".contains(last) {
+            return text
+        }
         return text + "."
     }
 
     /// Collapses runs of commas — and the whitespace around them — into a
     /// single ", " so a very-casual transcript separates clauses without
-    /// piling up commas.
+    /// piling up commas. A lone comma between two digits is a thousands
+    /// separator ("$1,000,000"), not a clause break, and is left alone.
     private static func collapseRepeatedCommas(_ text: String) -> String {
-        guard let regex = try? NSRegularExpression(pattern: #"\s*,(?:\s*,)*\s*"#) else { return text }
+        guard let regex = try? NSRegularExpression(pattern: #"(?!(?<=\d),\d)\s*,(?:\s*,)*\s*"#) else { return text }
         let range = NSRange(text.startIndex..<text.endIndex, in: text)
         return regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: ", ")
     }

@@ -72,6 +72,23 @@ public enum ChunkPlanner {
         return peak < config.silenceRMSFloor
     }
 
+    /// Number of trailing samples below the absolute silence floor, measured
+    /// backwards from the end in `probeSeconds` steps (the answer is quantised
+    /// to that step). Drives the streaming session's pause-triggered
+    /// speculative tail decode: enough trailing silence means the user may be
+    /// about to press stop.
+    public static func trailingSilenceSamples(_ samples: [Int16], config: Config = .init(), probeSeconds: Double = 0.1) -> Int {
+        let step = max(1, Int(probeSeconds * Double(config.sampleRate)))
+        var end = samples.count
+        while end > 0 {
+            let start = max(0, end - step)
+            let rms = windowRMS(samples[start..<end], window: end - start).first?.rms ?? 0
+            if rms >= config.silenceRMSFloor { break }
+            end = start
+        }
+        return samples.count - end
+    }
+
     private static func makeCut(_ unconsumed: [Int16], at sample: Int, config: Config) -> Decision {
         .cut(atSample: sample, isSilent: isSilent(Array(unconsumed[..<sample]), config: config))
     }

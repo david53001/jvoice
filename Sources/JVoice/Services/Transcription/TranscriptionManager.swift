@@ -1,6 +1,7 @@
 import AVFoundation
 import Combine
 import Foundation
+import os
 
 public protocol TranscriptionEngine {
     func transcribe(audioURL: URL) async throws -> String
@@ -124,6 +125,9 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     /// (see `decodeRecoveringFromRegurgitation`). Only the bench's `--no-prompt`
     /// turns this off, to A/B the biasing.
     private let useVocabularyPrompt: Bool
+    /// Dictate-to-translate: when true the decoder runs the `.translate` task,
+    /// which always outputs English regardless of the spoken (source) language.
+    private let translate: Bool
     /// Token IDs for the vocabulary prompt, computed once per vocabulary
     /// change (requires the loaded model's tokenizer). Empty array = computed,
     /// nothing to bias. nil = needs (re)computation.
@@ -131,11 +135,12 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     private var whisperKit: WhisperKit?
     private var loadTask: Task<Void, Error>?
 
-    public init(model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = [], useVocabularyPrompt: Bool = true) {
+    public init(model: WhisperModelOption, language: TranscriptionLanguage = .english, vocabulary: [String] = [], useVocabularyPrompt: Bool = true, translate: Bool = false) {
         self.model = model
         self.language = language
         self.vocabulary = vocabulary
         self.useVocabularyPrompt = useVocabularyPrompt
+        self.translate = translate
     }
 
     public func updateVocabulary(_ words: [String]) {
@@ -158,7 +163,8 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         // without them (verified empirically on 53 s audio — do not flip
         // this to unconditional `true`).
         let withoutTimestamps = Self.isSingleWindowClip(audioURL)
-        let guarded = try await decodeRecoveringFromRegurgitation { usePrompt in
+        let (audioSeconds, peakRMS) = Self.fileStats(audioURL)
+        let guarded = try await decodeRecoveringFromRegurgitation(audioSeconds: audioSeconds, peakRMS: peakRMS) { usePrompt in
             try await self.decodeFile(audioURL, kit: kit, withoutTimestamps: withoutTimestamps, usePrompt: usePrompt)
         }
         if guarded.isEmpty {
@@ -174,27 +180,76 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
     private func transcribeChunkSamples(_ samples: [Float]) async throws -> String {
         let kit = try await loadWhisperKit()
         // An all-loop chunk reduces to "" — the session treats that as a
-        // failure and re-runs the lossless whole-file path (never a silent drop).
-        return try await decodeRecoveringFromRegurgitation { usePrompt in
+        // failure and re-covers the audio in context (never a silent drop).
+        return try await decodeRecoveringFromRegurgitation(audioSeconds: Self.seconds(samples), peakRMS: SilenceHallucinationGate.peakWindowRMS(samples)) { usePrompt in
             try await self.decodeSamples(samples, kit: kit, usePrompt: usePrompt)
         }
     }
 
-    /// Run `decode` with the vocabulary prompt and, if it regurgitated, re-decode
-    /// without the prompt to recover the real speech. The clean re-decode only
-    /// runs on the rare bad decode, so prompt-driven vocabulary accuracy and
-    /// latency are kept in the common (clean) case. See `RegurgitationRecovery`.
-    private func decodeRecoveringFromRegurgitation(_ decode: (_ usePrompt: Bool) async throws -> String) async throws -> String {
+    /// Run `decode` with the vocabulary prompt and, when it shows a prompt failure
+    /// (regurgitation, empty, a loop, a skipped stretch, invented words on quiet
+    /// audio, a recited vocabulary list), re-decode once without the prompt and let
+    /// that witness decide. The clean common case costs one decode, keeping
+    /// prompt-driven vocabulary accuracy and latency. See `RegurgitationRecovery`.
+    private func decodeRecoveringFromRegurgitation(audioSeconds: Double, peakRMS: Float, _ decode: (_ usePrompt: Bool) async throws -> String) async throws -> String {
         try await RegurgitationRecovery.decode(
-            useVocabularyPrompt: useVocabularyPrompt,
+            // An empty vocabulary means no prompt tokens: there is no prompt to fail.
+            useVocabularyPrompt: useVocabularyPrompt && VocabularyPrompt.text(for: vocabulary) != nil,
             vocabulary: vocabulary,
+            audioSeconds: audioSeconds,
+            peakRMS: peakRMS,
+            log: { Self.latencyLog.info("Guard \($0, privacy: .public)") },
             decode: decode
         )
     }
 
+    private static func seconds(_ samples: [Float]) -> Double {
+        Double(samples.count) / Double(WhisperKit.sampleRate)
+    }
+
+    /// Duration and loudest 0.3 s-window RMS of a finalized 16 kHz recording (the
+    /// quiet trigger's measure). Unreadable → (0, NaN): NaN counts as quiet, the
+    /// safe side (a witness is decoded rather than a hallucination pasted).
+    private static func fileStats(_ url: URL) -> (seconds: Double, peakRMS: Float) {
+        guard let samples = WavTailReader.open(url: url)?.samples(from: 0), !samples.isEmpty else { return (0, .nan) }
+        let config = ChunkPlanner.Config()
+        let window = max(1, Int(config.silenceWindowSeconds * Double(config.sampleRate)))
+        let peak = ChunkPlanner.windowRMS(samples[...], window: window).map(\.rms).max() ?? .nan
+        return (Double(samples.count) / Double(config.sampleRate), peak)
+    }
+
+    /// Decode an arbitrary stretch of the recording with the WHOLE-FILE decode
+    /// semantics (VAD windows; timestamps kept past a single window). The
+    /// streaming session uses it to re-decode a failed chunk together with the
+    /// piece before it, instead of the entire recording.
+    private func transcribeRegionSamples(_ samples: [Float]) async throws -> String {
+        let kit = try await loadWhisperKit()
+        let withoutTimestamps = Self.seconds(samples) <= Self.singleWindowSeconds
+        return try await decodeRecoveringFromRegurgitation(audioSeconds: Self.seconds(samples), peakRMS: SilenceHallucinationGate.peakWindowRMS(samples)) { usePrompt in
+            let decodeOptions = self.wholeFileDecodeOptions(kit: kit, withoutTimestamps: withoutTimestamps, usePrompt: usePrompt)
+            let results = try await kit.transcribe(audioArray: samples, decodeOptions: decodeOptions)
+            Self.logTimings(results, label: "region")
+            let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+            return Self.cleanRawDecode(text)
+        }
+    }
+
     private func decodeFile(_ audioURL: URL, kit: WhisperKit, withoutTimestamps: Bool, usePrompt: Bool) async throws -> String {
+        let decodeOptions = wholeFileDecodeOptions(kit: kit, withoutTimestamps: withoutTimestamps, usePrompt: usePrompt)
+        let results = try await kit.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
+        Self.logTimings(results, label: "file")
+        let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        return Self.cleanRawDecode(text)
+    }
+
+    /// The whole-file decode options, shared by `decodeFile` and the streaming
+    /// session's local recovery (`transcribeRegionSamples`).
+    private func wholeFileDecodeOptions(kit: WhisperKit, withoutTimestamps: Bool, usePrompt: Bool) -> DecodingOptions {
         var decodeOptions = DecodingOptions()
         decodeOptions.language = language.whisperCode
+        // Dictate-to-translate: Whisper's translate task always targets English;
+        // `language` above stays the SOURCE hint.
+        if translate { decodeOptions.task = .translate }
         // Language is fixed by the user — skip the language-detection pass.
         decodeOptions.detectLanguage = false
         // Fewer temperature-fallback retries on a hard window → lower tail latency.
@@ -204,31 +259,56 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         decodeOptions.chunkingStrategy = .vad
         decodeOptions.withoutTimestamps = withoutTimestamps
         applyVocabularyBiasing(to: &decodeOptions, kit: kit, usePrompt: usePrompt)
-        let results = try await kit.transcribe(audioPath: audioURL.path, decodeOptions: decodeOptions)
-        let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        // Remove "[BLANK_AUDIO]"-style decoder sentinels that leak in on silence.
-        return TextProcessor.stripDecoderArtifacts(text)
+        return decodeOptions
+    }
+
+    /// Shared raw-decode cleanup for both decode paths: drop "[BLANK_AUDIO]"-style
+    /// decoder sentinels that leak in on silence, a caption-only decode ("[Music]",
+    /// "(wind blowing)", "*coughs*" — `NonSpeechAnnotation`), then whole-text
+    /// stock-phrase hallucinations ("Thank you.", the bare sub-second "you", …) so near-silent
+    /// audio reads as confirmed silence here — an empty result is what triggers
+    /// `RegurgitationRecovery`'s unprompted re-decode (and, on a streaming
+    /// chunk, the lossless whole-file fallback) instead of a pasted artifact.
+    static func cleanRawDecode(_ text: String) -> String {
+        TextProcessor.removeWhisperHallucinations(NonSpeechAnnotation.reduce(TextProcessor.stripDecoderArtifacts(text)))
     }
 
     private func decodeSamples(_ samples: [Float], kit: WhisperKit, usePrompt: Bool) async throws -> String {
         var decodeOptions = DecodingOptions()
         decodeOptions.language = language.whisperCode
+        if translate { decodeOptions.task = .translate }
         decodeOptions.detectLanguage = false
         decodeOptions.temperatureFallbackCount = 2
         decodeOptions.withoutTimestamps = true
         applyVocabularyBiasing(to: &decodeOptions, kit: kit, usePrompt: usePrompt)
         let results = try await kit.transcribe(audioArray: samples, decodeOptions: decodeOptions)
+        Self.logTimings(results, label: "chunk")
         let text = results.map(\.text).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        return TextProcessor.stripDecoderArtifacts(text)
+        return Self.cleanRawDecode(text)
     }
 
     public func makeStreamingSession() -> StreamingTranscriptionSession? {
-        makeStreamingSession(pollNanoseconds: 1_000_000_000)
+        makeStreamingSession(pollNanoseconds: UInt64(AppTimings.streamingPoll * 1_000_000_000))
+    }
+
+    private static let latencyLog = Logger(subsystem: "com.jvoice.app", category: "latency")
+
+    /// One line per decoded window in the unified log (category `latency`):
+    /// where a decode's time goes — log-mel, encoder (a fixed cost per window
+    /// on the Neural Engine), decoder loop (scales with spoken length), and
+    /// temperature fallbacks (each one re-runs the decoder).
+    private static func logTimings(_ results: [TranscriptionResult], label: String) {
+        for result in results {
+            let t = result.timings
+            latencyLog.info("Decode \(label, privacy: .public) audio=\(t.inputAudioSeconds, format: .fixed(precision: 1), privacy: .public)s logmels=\(Int(t.logmels * 1000), privacy: .public)ms encode=\(Int(t.encoding * 1000), privacy: .public)ms decodeLoop=\(Int(t.decodingLoop * 1000), privacy: .public)ms fallbacks=\(Int(t.totalDecodingFallbacks), privacy: .public) total=\(Int(t.fullPipeline * 1000), privacy: .public)ms")
+        }
     }
 
     /// Parameterized variant so the bench harness can poll faster than the
-    /// app's 1 s cadence when it grows the file at 10× real time.
-    public func makeStreamingSession(pollNanoseconds: UInt64) -> StreamingTranscriptionSession? {
+    /// app's cadence (`AppTimings.streamingPoll`) when it grows the file at
+    /// 10× real time.
+    public func makeStreamingSession(pollNanoseconds: UInt64,
+                                     log: @escaping StreamingTranscriptionSession.EventLog = StreamingTranscriptionSession.defaultLog) -> StreamingTranscriptionSession? {
         // Never trigger a model load from the polling path — no loaded model,
         // no streaming (the whole-file fallback covers it).
         guard whisperKit != nil else { return nil }
@@ -237,7 +317,13 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
                 guard let self else { throw CancellationError() }
                 return try await self.transcribeChunkSamples(samples)
             },
-            pollNanoseconds: pollNanoseconds
+            recover: { [weak self] samples in
+                guard let self else { throw CancellationError() }
+                return try await self.transcribeRegionSamples(samples)
+            },
+            pollNanoseconds: pollNanoseconds,
+            speculateAfterSeconds: AppTimings.speculativeTailPause,
+            log: log
         )
     }
 
@@ -293,6 +379,14 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
         ]
     }
 
+    /// Dev/bench: how many decoder passes the current vocabulary prompt costs
+    /// (WhisperKit 1.0.0 runs one forward pass per prompt token, ~9 ms each on
+    /// this machine). 0 when the prompt is off or the vocabulary is empty.
+    public func promptTokenCount() async -> Int {
+        guard useVocabularyPrompt, let kit = try? await loadWhisperKit() else { return 0 }
+        return promptTokens(using: kit)?.count ?? 0
+    }
+
     /// Encode (and cache) the vocabulary prompt with the loaded tokenizer.
     /// WhisperKit filters special tokens and trims length internally; the
     /// local cap just bounds the decode-cost increase.
@@ -310,7 +404,9 @@ public actor WhisperKitTranscriptionEngine: TranscriptionEngine {
 
     /// True when the clip provably fits in a single Whisper window (30 s),
     /// with margin. Unknown duration → false (the safe, timestamped path).
-    private static func isSingleWindowClip(_ url: URL, threshold: TimeInterval = 25.0) -> Bool {
+    private static let singleWindowSeconds: TimeInterval = 25.0
+
+    private static func isSingleWindowClip(_ url: URL, threshold: TimeInterval = singleWindowSeconds) -> Bool {
         guard let file = try? AVAudioFile(forReading: url) else { return false }
         let rate = file.processingFormat.sampleRate
         guard rate > 0 else { return false }
@@ -457,9 +553,9 @@ public final class TranscriptionManager: ObservableObject {
         await engine.makeStreamingSession()
     }
 
-    private static func makeDefaultEngine(model: WhisperModelOption, language: TranscriptionLanguage = .english) -> any TranscriptionEngine {
+    private static func makeDefaultEngine(model: WhisperModelOption, language: TranscriptionLanguage = .english, translate: Bool = false) -> any TranscriptionEngine {
         #if canImport(WhisperKit)
-        return WhisperKitTranscriptionEngine(model: model, language: language)
+        return WhisperKitTranscriptionEngine(model: model, language: language, translate: translate)
         #else
         return FileBackedTranscriptionEngine()
         #endif

@@ -45,7 +45,7 @@ struct AudioInputRouterTests {
         #expect(target == 30)
     }
 
-    @Test("A Bluetooth default input falls back to any non-Bluetooth mic when no built-in exists")
+    @Test("A Bluetooth default input falls back to a physical non-Bluetooth mic when no built-in exists")
     func bluetoothDefaultFallsBackToNonBluetooth() {
         let target = AudioInputRouter.redirectTarget(
             defaultInputTransport: kAudioDeviceTransportTypeBluetooth,
@@ -63,6 +63,43 @@ struct AudioInputRouterTests {
                            device(11, kAudioDeviceTransportTypeBluetoothLE)]
         )
         #expect(target == nil)
+    }
+
+    /// A Mac with no built-in mic (Mac mini, Studio, a closed-lid MacBook) and a
+    /// virtual loopback input (BlackHole) installed: switching the default input
+    /// to BlackHole would record pure digital silence. Leave the default alone.
+    @Test("A virtual input is never a redirect target")
+    func virtualInputIsNeverATarget() {
+        let target = AudioInputRouter.redirectTarget(
+            defaultInputTransport: kAudioDeviceTransportTypeBluetooth,
+            inputDevices: [device(10, kAudioDeviceTransportTypeBluetooth),
+                           device(20, kAudioDeviceTransportTypeVirtual),
+                           device(21, kAudioDeviceTransportTypeAggregate)]
+        )
+        #expect(target == nil)
+    }
+
+    @Test("A physical mic listed after a virtual input is still found")
+    func physicalMicAfterVirtualInputIsPicked() {
+        let target = AudioInputRouter.redirectTarget(
+            defaultInputTransport: kAudioDeviceTransportTypeBluetooth,
+            inputDevices: [device(10, kAudioDeviceTransportTypeBluetooth),
+                           device(20, kAudioDeviceTransportTypeVirtual),
+                           device(30, kAudioDeviceTransportTypeThunderbolt)]
+        )
+        #expect(target == 30)
+    }
+
+    @Test("Every physical transport is an acceptable fallback")
+    func physicalTransportsAreAccepted() {
+        for transport in [kAudioDeviceTransportTypeUSB, kAudioDeviceTransportTypeThunderbolt,
+                          kAudioDeviceTransportTypeFireWire, kAudioDeviceTransportTypePCI] {
+            let target = AudioInputRouter.redirectTarget(
+                defaultInputTransport: kAudioDeviceTransportTypeBluetooth,
+                inputDevices: [device(10, kAudioDeviceTransportTypeBluetooth), device(40, transport)]
+            )
+            #expect(target == 40)
+        }
     }
 
     @Test("A Bluetooth LE default input is treated like classic Bluetooth")

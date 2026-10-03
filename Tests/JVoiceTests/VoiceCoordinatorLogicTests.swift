@@ -4,24 +4,28 @@ import Testing
 
 // MARK: - resolveTargetPID (BLD-06)
 
+@MainActor
 @Test
 func resolveTargetPID_normalFrontmostApp_returnsIt() {
     let result = VoiceCoordinator.resolveTargetPID(frontmostPID: 42, ownPID: 7, lastNonSelfPID: 99)
     #expect(result == 42)
 }
 
+@MainActor
 @Test
 func resolveTargetPID_frontmostIsSelf_fallsBackToLastNonSelf() {
     let result = VoiceCoordinator.resolveTargetPID(frontmostPID: 7, ownPID: 7, lastNonSelfPID: 99)
     #expect(result == 99)
 }
 
+@MainActor
 @Test
 func resolveTargetPID_frontmostIsSelfAndNoFallback_returnsNil() {
     let result = VoiceCoordinator.resolveTargetPID(frontmostPID: 7, ownPID: 7, lastNonSelfPID: nil)
     #expect(result == nil)
 }
 
+@MainActor
 @Test
 func resolveTargetPID_noFrontmost_fallsBackToLastNonSelf() {
     let result = VoiceCoordinator.resolveTargetPID(frontmostPID: nil, ownPID: 7, lastNonSelfPID: 99)
@@ -30,16 +34,19 @@ func resolveTargetPID_noFrontmost_fallsBackToLastNonSelf() {
 
 // MARK: - shouldPromptAX (BLD-20)
 
+@MainActor
 @Test
 func shouldPromptAX_notTrustedNotPrompted_prompts() {
     #expect(VoiceCoordinator.shouldPromptAX(trusted: false, hasPrompted: false) == true)
 }
 
+@MainActor
 @Test
 func shouldPromptAX_notTrustedAlreadyPrompted_doesNotPrompt() {
     #expect(VoiceCoordinator.shouldPromptAX(trusted: false, hasPrompted: true) == false)
 }
 
+@MainActor
 @Test
 func shouldPromptAX_trusted_doesNotPrompt() {
     #expect(VoiceCoordinator.shouldPromptAX(trusted: true, hasPrompted: false) == false)

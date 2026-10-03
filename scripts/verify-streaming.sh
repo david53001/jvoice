@@ -46,7 +46,7 @@ func fastConfig() -> ChunkPlanner.Config {
 
 actor IdxMock {
     private let emptyAtCall: Int
-    private var call = 0
+    private(set) var call = 0
     init(emptyAtCall: Int) { self.emptyAtCall = emptyAtCall }
     func next() -> String { call += 1; return call == emptyAtCall ? "" : "piece\(call)" }
 }
@@ -54,12 +54,30 @@ actor SumMock {
     private(set) var total = 0
     func next(_ n: Int) -> String { total += n; return "p" }
 }
+actor LastMock {
+    private(set) var lastCount = 0
+    func next(_ n: Int) -> String { lastCount = n; return "p\(n)" }
+}
+final class EventBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var events: [String] = []
+    func add(_ e: String) { lock.lock(); events.append(e); lock.unlock() }
+    func contains(_ needle: String) -> Bool { lock.lock(); defer { lock.unlock() }; return events.contains { $0.contains(needle) } }
+}
 actor DecodeRecorder {
     private(set) var calls: [Bool] = []
     let promptResult: String
     let cleanResult: String
     init(_ promptResult: String, _ cleanResult: String) { self.promptResult = promptResult; self.cleanResult = cleanResult }
     func decode(_ usePrompt: Bool) -> String { calls.append(usePrompt); return usePrompt ? promptResult : cleanResult }
+}
+
+/// Polls `condition` every 10 ms (up to 5 s) — waits on real progress, not fixed sleeps.
+func waitUntil(_ condition: () async -> Bool) async throws {
+    for _ in 0..<500 {
+        if await condition() { return }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
 }
 
 let recVocab = ["sub agents", "claude", "li-fraumeni", "vs code"]
@@ -140,6 +158,321 @@ Task {
         expect(await rec.calls == [false], "prompt disabled → exactly one (prompt-free) decode")
     }
 
+    // 9. A chunk decode IN FLIGHT at finish() is awaited and kept — never
+    //    cancelled into a failure (which forced a whole-file re-decode of the
+    //    entire dictation: 6.6 s instead of 1 s on a 96 s recording).
+    do {
+        let url = tmpURL(); try wavSegments([(2.6, 0.5)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let mock = SumMock()
+        let s = StreamingTranscriptionSession(transcribe: { samples in
+            try await Task.sleep(nanoseconds: 250_000_000) // slow decode; a cancelled task would throw here
+            return await mock.next(samples.count)
+        }, config: fastConfig(), pollNanoseconds: 20_000_000, speculateAfterSeconds: 0)
+        await s.start(url: url); try await Task.sleep(nanoseconds: 120_000_000) // first chunk decode is mid-flight
+        let r = await s.finish()
+        let total = await mock.total
+        expect(r != nil, "finish() during an in-flight chunk decode → streamed transcript, NOT a fallback")
+        expect(total == Int(2.6 * 16_000), "in-flight chunk consumed once, remainder drained: every sample exactly once (\(total))")
+    } catch { expect(false, "scenario 9 threw \(error)") }
+
+    // 10. Speculative tail HIT: pending audio ends in a pause → decoded during
+    //     the pause; finish() returns it without decoding anything.
+    do {
+        let url = tmpURL(); try wavSegments([(1.2, 0.5), (0.8, 0.0)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var cfg = ChunkPlanner.Config(); cfg.minChunkSeconds = 5; cfg.maxChunkSeconds = 10
+        let mock = SumMock()
+        let events = EventBox()
+        let s = StreamingTranscriptionSession(transcribe: { samples in await mock.next(samples.count) },
+                                              config: cfg, pollNanoseconds: 20_000_000, speculateAfterSeconds: 0.4,
+                                              log: { events.add($0) })
+        await s.start(url: url); try await Task.sleep(nanoseconds: 150_000_000)
+        let calls = await mock.total
+        expect(calls == Int(2.0 * 16_000), "speculative decode ran during the pause over the pending audio (\(calls))")
+        let t0 = Date()
+        let r = await s.finish()
+        let finishMs = Int(Date().timeIntervalSince(t0) * 1000)
+        expect(r == "p", "finish() returned the speculative result")
+        expect(await mock.total == calls, "finish() decoded NOTHING more (speculation hit)")
+        expect(events.contains("HIT"), "log reports the speculative tail HIT")
+        expect(finishMs < 50, "finish() was immediate (\(finishMs) ms)")
+    } catch { expect(false, "scenario 10 threw \(error)") }
+
+    // 11. Speculative tail MISS: speech resumes after the pause → the
+    //     speculation is dropped and the real tail (all speech) is decoded.
+    do {
+        let url = tmpURL(); try wavSegments([(1.2, 0.5), (0.6, 0.0)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var cfg = ChunkPlanner.Config(); cfg.minChunkSeconds = 5; cfg.maxChunkSeconds = 10
+        let last = LastMock()
+        let events = EventBox()
+        let s = StreamingTranscriptionSession(transcribe: { samples in await last.next(samples.count) },
+                                              config: cfg, pollNanoseconds: 20_000_000, speculateAfterSeconds: 0.4,
+                                              log: { events.add($0) })
+        await s.start(url: url); try await Task.sleep(nanoseconds: 120_000_000)
+        expect(events.contains("started"), "speculation started at the first pause")
+        // The user keeps talking: append 1.0 s of speech + 0.5 s silence.
+        let more = wavSegments([(1.0, 0.5), (0.5, 0.0)]).dropFirst(44)
+        let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
+        try await Task.sleep(nanoseconds: 120_000_000)
+        let r = await s.finish()
+        expect(r != nil, "miss path still yields a streamed transcript")
+        expect(await last.lastCount == Int(3.3 * 16_000), "the final decode covered the WHOLE pending audio (\(await last.lastCount))")
+        expect(events.contains("resumed"), "log reports the dropped speculation (speech resumed)")
+    } catch { expect(false, "scenario 11 threw \(error)") }
+
+    // 12. A chunk cut that lands inside the speculated pause REUSES the
+    //     speculative decode instead of decoding the same speech twice.
+    do {
+        let url = tmpURL(); try wavSegments([(1.0, 0.5), (0.5, 0.0)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var cfg = ChunkPlanner.Config(); cfg.minChunkSeconds = 1.5; cfg.maxChunkSeconds = 3.0
+        let mock = SumMock()
+        let events = EventBox()
+        let s = StreamingTranscriptionSession(transcribe: { samples in await mock.next(samples.count) },
+                                              config: cfg, pollNanoseconds: 20_000_000, speculateAfterSeconds: 0.4,
+                                              log: { events.add($0) })
+        await s.start(url: url); try await Task.sleep(nanoseconds: 120_000_000)
+        expect(events.contains("started"), "speculation started (1.5 s pending, no cut candidate yet)")
+        let more = wavSegments([(0.5, 0.0)]).dropFirst(44) // more silence → a cut candidate appears
+        let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
+        try await Task.sleep(nanoseconds: 120_000_000)
+        expect(events.contains("reuses"), "the chunk cut reused the speculative decode")
+        let r = await s.finish()
+        expect(r == "p", "one piece, from the single decode")
+        expect(await mock.total == Int(1.5 * 16_000), "exactly one decode ran, over the speculated audio (\(await mock.total))")
+    } catch { expect(false, "scenario 12 threw \(error)") }
+
+    // 13. LOCAL recovery: a chunk decodes empty after good pieces → the earlier
+    //     pieces are kept and only the region from the start of the LAST good
+    //     piece to the end is re-decoded (not the whole recording), replacing
+    //     that piece — every sample still covered by a successful decode.
+    do {
+        let url = tmpURL(); try wavSegments([(5.2, 0.5)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let mock = IdxMock(emptyAtCall: 5)
+        let rec = LastMock()
+        let events = EventBox()
+        let s = StreamingTranscriptionSession(transcribe: { _ in await mock.next() },
+                                              recover: { samples in await rec.next(samples.count) },
+                                              config: fastConfig(), pollNanoseconds: 20_000_000, speculateAfterSeconds: 0,
+                                              log: { events.add($0) })
+        await s.start(url: url); try await Task.sleep(nanoseconds: 350_000_000)
+        let r = await s.finish()
+        let n = await rec.lastCount
+        let total = Int(5.2 * 16_000)
+        expect(r == "piece1 piece2 piece3 p\(n)", "earlier pieces kept + recovered region replaces the last good piece (\(r ?? "nil"))")
+        expect(n >= Int(1.0 * 16_000) && n < total / 2 + total / 5, "only the region from the last good piece re-decoded (\(n) of \(total) samples)")
+        expect(events.contains("local recovery"), "log reports the local recovery")
+    } catch { expect(false, "scenario 13 threw \(error)") }
+
+    // 14. Local recovery that ALSO comes back empty → nil (whole-file fallback).
+    do {
+        let url = tmpURL(); try wavSegments([(5.2, 0.5)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let mock = IdxMock(emptyAtCall: 5)
+        let s = StreamingTranscriptionSession(transcribe: { _ in await mock.next() }, recover: { _ in "" },
+                                              config: fastConfig(), pollNanoseconds: 20_000_000, speculateAfterSeconds: 0)
+        await s.start(url: url); try await Task.sleep(nanoseconds: 350_000_000)
+        expect(await s.finish() == nil, "empty local recovery → fallback (nil), never a transcript missing that audio")
+    } catch { expect(false, "scenario 14 threw \(error)") }
+
+    // 15. The FIRST chunk fails (nothing decoded before it) → the region would
+    //     be the whole recording: skip recovery, fall back directly.
+    do {
+        let url = tmpURL(); try wavSegments([(2.6, 0.5)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let mock = IdxMock(emptyAtCall: 1)
+        let rec = SumMock()
+        let s = StreamingTranscriptionSession(transcribe: { _ in await mock.next() }, recover: { samples in await rec.next(samples.count) },
+                                              config: fastConfig(), pollNanoseconds: 20_000_000, speculateAfterSeconds: 0)
+        await s.start(url: url); try await Task.sleep(nanoseconds: 350_000_000)
+        expect(await s.finish() == nil, "first chunk failed → fallback (nil)")
+        expect(await rec.total == 0, "no local recovery attempted without a preceding piece")
+    } catch { expect(false, "scenario 15 threw \(error)") }
+
+    // 16. The speculative tail decoded EMPTY → the same tail is NOT decoded a
+    //     second time on its own; it is re-heard in context via local recovery.
+    do {
+        // The recording grows in three 1.1 s speech + 0.5 s pause blocks (one cut
+        // each), then 0.4 s speech + 0.6 s pause (the speculation) — the pending
+        // tail never reaches a cut candidate.
+        let url = tmpURL(); try wavSegments([(1.1, 0.5), (0.5, 0.0)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var cfg = ChunkPlanner.Config(); cfg.minChunkSeconds = 1.0; cfg.maxChunkSeconds = 3.0
+        let mock = IdxMock(emptyAtCall: 4) // piece1–3, then the speculative tail decodes ""
+        let rec = LastMock()
+        let events = EventBox()
+        let s = StreamingTranscriptionSession(transcribe: { _ in await mock.next() },
+                                              recover: { samples in await rec.next(samples.count) },
+                                              config: cfg, pollNanoseconds: 20_000_000, speculateAfterSeconds: 0.4,
+                                              log: { events.add($0) })
+        await s.start(url: url); try await waitUntil { await mock.call >= 1 }
+        for (i, segs) in [[(1.1, 0.5), (0.5, 0.0)], [(1.1, 0.5), (0.5, 0.0)], [(0.4, 0.5), (0.6, 0.0)]].enumerated() {
+            let more = wavSegments(segs).dropFirst(44)
+            let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
+            try await waitUntil { await mock.call >= i + 2 } // blocks cut (calls 2–3), tail speculated (call 4)
+        }
+        let r = await s.finish()
+        let n = await rec.lastCount
+        expect(events.contains("decoded empty"), "the speculative tail decoded empty")
+        expect(r == "piece1 piece2 p\(n)" && n > 0 && n < Int(5.8 * 16_000) / 2, "recovered in context from the last good piece (\(r ?? "nil"), \(n) samples)")
+        expect(!(r?.contains("piece5") ?? false), "the empty tail was NOT decoded a second time on its own")
+    } catch { expect(false, "scenario 16 threw \(error)") }
+
+    // 17. Speech-end JITTER inside the decoded pause does not drop the
+    //     speculation. A 30 ms near-floor sound in the pause reads as speech on
+    //     one 0.1 s probe grid and as silence on the next (the grid is anchored
+    //     at the growing file's end), so the measured speech end jumps by
+    //     ~0.4 s although nothing new was said — in the live log such flips
+    //     restarted the speculation up to 5× in a row (each ~0.41 s of Neural
+    //     Engine time). The speculation already heard every sample up to its
+    //     decoded end, so it stays valid and the stop press is a HIT.
+    do {
+        let url = tmpURL()
+        try wavSegments([(1.0, 0.5), (0.3, 0.0), (0.03, 0.016), (0.47, 0.0)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var cfg = ChunkPlanner.Config(); cfg.minChunkSeconds = 5; cfg.maxChunkSeconds = 10
+        let mock = SumMock()
+        let events = EventBox()
+        let s = StreamingTranscriptionSession(transcribe: { samples in await mock.next(samples.count) },
+                                              config: cfg, pollNanoseconds: 20_000_000, speculateAfterSeconds: 0.4,
+                                              log: { events.add($0) })
+        await s.start(url: url); try await Task.sleep(nanoseconds: 120_000_000)
+        expect(events.contains("started"), "speculation started (speech end 1.4 s: the blip reads as speech on this grid)")
+        let more = wavSegments([(0.015, 0.0)]).dropFirst(44) // shifts the probe grid: the blip now splits across two probes
+        let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
+        try await Task.sleep(nanoseconds: 120_000_000)
+        expect(!events.contains("dropped"), "speech end jumped back to 1.0 s inside the decoded audio → speculation kept")
+        let r = await s.finish()
+        expect(r == "p", "finish() returned the speculative result")
+        expect(events.contains("HIT"), "the stop press is a HIT")
+        expect(await mock.total == Int(1.8 * 16_000), "exactly one decode ran (\(await mock.total))")
+    } catch { expect(false, "scenario 17 threw \(error)") }
+
+    // 18. A chunk cut must NOT reuse a speculation when above-floor audio lies
+    //     between the speculation's decoded end and the cut. The cut is placed
+    //     by the RELATIVE threshold (10 % of the chunk's peak), so soft audio can
+    //     form the "quiet" cut window; the poll that sees the cut never re-checks
+    //     the speculation, and reusing it would silently skip that audio.
+    do {
+        let url = tmpURL(); try wavSegments([(1.0, 0.5), (0.5, 0.0)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var cfg = ChunkPlanner.Config(); cfg.minChunkSeconds = 1.5; cfg.maxChunkSeconds = 3.0
+        let last = LastMock()
+        let events = EventBox()
+        let s = StreamingTranscriptionSession(transcribe: { samples in await last.next(samples.count) },
+                                              config: cfg, pollNanoseconds: 20_000_000, speculateAfterSeconds: 0.4,
+                                              log: { events.add($0) })
+        await s.start(url: url); try await Task.sleep(nanoseconds: 120_000_000)
+        expect(events.contains("started"), "speculation started over [0, 1.5 s)")
+        // Soft audio (RMS ≈ 0.014: above the 0.005 floor, below 10 % of the peak) → cut window [1.5, 1.8).
+        let more = wavSegments([(0.3, 0.02)]).dropFirst(44)
+        let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
+        try await Task.sleep(nanoseconds: 120_000_000)
+        expect(!events.contains("reuses"), "the speculation (heard only up to 1.5 s) was NOT reused for the 1.65 s chunk")
+        let r = await s.finish()
+        expect(r == "p26400 p2400", "the chunk [0, 1.65 s) was decoded in full, then the soft tail (\(r ?? "nil"))")
+    } catch { expect(false, "scenario 18 threw \(error)") }
+
+    // 19. A HIT needs silence after the speculation's DECODED END: speech that
+    //     arrives after the speculation, with the stop press before any poll
+    //     sees it, must be decoded — not dropped by returning the speculation.
+    do {
+        let url = tmpURL(); try wavSegments([(1.0, 0.5), (0.6, 0.0)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        var cfg = ChunkPlanner.Config(); cfg.minChunkSeconds = 5; cfg.maxChunkSeconds = 10
+        let last = LastMock()
+        let events = EventBox()
+        let s = StreamingTranscriptionSession(transcribe: { samples in await last.next(samples.count) },
+                                              config: cfg, pollNanoseconds: 2_000_000_000, speculateAfterSeconds: 0.4,
+                                              log: { events.add($0) })
+        await s.start(url: url); try await waitUntil { events.contains("started") } // first poll speculated; next poll is 2 s away
+        let more = wavSegments([(0.5, 0.5), (0.2, 0.0)]).dropFirst(44)
+        let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
+        let r = await s.finish()
+        expect(events.contains("started") && events.contains("MISS"), "speech after the speculated audio → MISS, not HIT")
+        expect(r == "p\(Int(2.3 * 16_000))", "the final decode covered the WHOLE pending audio (\(r ?? "nil"))")
+    } catch { expect(false, "scenario 19 threw \(error)") }
+
+    // 20. A backlog at the stop press (slow decodes) is drained chunk by chunk;
+    //     when a drained chunk then fails, local recovery starts at the LAST kept
+    //     piece's true start — every sample decoded exactly once (no overlap).
+    do {
+        let url = tmpURL(); try wavSegments([(5.2, 0.5)]).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        actor SlowCounter {
+            private(set) var counts: [Int] = []
+            func next(_ n: Int) async -> String {
+                counts.append(n)
+                let call = counts.count
+                try? await Task.sleep(nanoseconds: 150_000_000)
+                return call == 5 ? "" : "piece\(call)"
+            }
+        }
+        let slow = SlowCounter()
+        let rec = LastMock()
+        let s = StreamingTranscriptionSession(transcribe: { samples in await slow.next(samples.count) },
+                                              recover: { samples in await rec.next(samples.count) },
+                                              config: fastConfig(), pollNanoseconds: 20_000_000, speculateAfterSeconds: 0)
+        await s.start(url: url); try await waitUntil { await slow.counts.count >= 1 } // chunk 1 in flight; the rest is backlog
+        let r = await s.finish()
+        let c = await slow.counts
+        let n = await rec.lastCount
+        let total = Int(5.2 * 16_000)
+        expect(c.count == 5, "chunk 1 + four drained chunks decoded, the last failed (\(c))")
+        expect(r == "piece1 piece2 piece3 p\(n)", "drained pieces kept, recovery replaced the last kept piece (\(r ?? "nil"))")
+        expect(c.count == 5 && c[0] + c[1] + c[2] + n == total, "kept pieces + recovered region cover every sample exactly once (\(c.prefix(3)) + \(n) vs \(total))")
+    } catch { expect(false, "scenario 20 threw \(error)") }
+
+    // 21–25. The witness policy's new triggers (RegurgitationRecovery): one
+    //        extra, prompt-free decode, only when a prompt failure shows.
+    let userVocab = ["sub agents", "AISB", "Li-Fraumeni", "Vercel", "Ollama"]
+    do { // 21. A loop in the MIDDLE (trailing guard can't see it) → the witness, collapsed.
+        let loop = "we met at noon and " + String(repeating: "the plan is on track. ", count: 8) + "then we left for the airport"
+        let rec = DecodeRecorder(loop, "we met at noon and the plan is on track. then we reviewed the budget and left for the airport")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab) { await rec.decode($0) }
+        expect(out.contains("reviewed the budget") && !out.contains("track. the plan"), "mid-text loop → witness adopted (\(out.prefix(60))…)")
+        expect(await rec.calls == [true, false], "loop → exactly one witness decode")
+    }
+    do { // 22. Sparse: 30 s of audio, 60 chars prompted, witness ≥ 2× → witness.
+        let rec = DecodeRecorder("Now next, the chapter opens. not forgiven. Amen, that's it.", "a full sentence the prompted decode skipped over, then the part about the budget review, the new hires starting on Monday, and the plan for the office move next spring, plus the reminder to send the slides.")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 30) { await rec.decode($0) }
+        expect(out.hasPrefix("a full sentence"), "sparse decode → richer witness adopted")
+        let terse = DecodeRecorder("Yes, that works for me.", "Yes that works for me")
+        let kept = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 12) { await terse.decode($0) }
+        expect(kept == "Yes, that works for me.", "genuinely terse long clip → prompted text kept (witness only vouches)")
+    }
+    do { // 23. Quiet audio: invented phrase rejected; quiet real speech kept.
+        let hiss = DecodeRecorder("and the other side of the body", "so")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 4, peakRMS: 0.02) { await hiss.decode($0) }
+        expect(out == "", "quiet hiss hallucination → rejected (no speech)")
+        let quiet = DecodeRecorder("We run Ollama and deploy to Vercel", "We run Alima and deploy to Versil.")
+        let keep = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 4, peakRMS: 0.02) { await quiet.decode($0) }
+        expect(keep == "We run Ollama and deploy to Vercel", "quiet real speech → prompted (vocabulary-correct) text kept")
+        let loud = DecodeRecorder("Can you move it to Thursday?", "UNUSED")
+        _ = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 4, peakRMS: 0.15) { await loud.decode($0) }
+        expect(await loud.calls == [true], "normal-level speech → no witness decode")
+    }
+    do { // 24. A short recited vocabulary list (loud hum) → rejected; real custom-word speech kept, with no witness.
+        let hum = DecodeRecorder("BISB, Li-Fraumeni, Vercel, Oluf", "")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 4, peakRMS: 0.08) { await hum.decode($0) }
+        expect(out == "", "recited vocabulary list → rejected (no speech)")
+        let real = DecodeRecorder("Vercel and Ollama", "Versil and Alima")
+        let kept = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 2, peakRMS: 0.15) { await real.decode($0) }
+        expect(kept == "Vercel and Ollama", "dictated custom words → kept")
+        let listed = DecodeRecorder("Vercel, Ollama, and AISB", "Versil, Alima, and AISB.")
+        let keptList = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 3, peakRMS: 0.15) { await listed.decode($0) }
+        expect(keptList == "Vercel, Ollama, and AISB", "a dictated list of custom words → witness agrees → kept")
+    }
+    do { // 25. Dictated maths repetition is not a loop → one decode, text kept.
+        let maths = DecodeRecorder("and then it's 26 x 26 x 26 x 10 x 10 x 10", "UNUSED")
+        let out = await RegurgitationRecovery.decode(useVocabularyPrompt: true, vocabulary: userVocab, audioSeconds: 5, peakRMS: 0.15) { await maths.decode($0) }
+        let calls = await maths.calls
+        expect(out == "and then it's 26 x 26 x 26 x 10 x 10 x 10" && calls == [true], "dictated maths kept with a single decode")
+    }
+
     sem.signal()
 }
 sem.wait()
@@ -155,6 +488,9 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhoneticMatcher.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RepetitionGuard.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/RegurgitationRecovery.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/PhraseLoopGuard.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/SparseTranscriptGuard.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/SilenceHallucinationGate.swift" \
     "$TMP_DIR/main.swift" \
     -o "$TMP_DIR/verify-streaming"
 

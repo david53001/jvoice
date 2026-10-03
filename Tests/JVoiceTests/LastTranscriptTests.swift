@@ -1,5 +1,6 @@
 #if canImport(Testing)
 import Testing
+import Foundation
 @testable import JVoice
 
 @Test

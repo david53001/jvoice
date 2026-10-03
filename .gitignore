@@ -15,6 +15,9 @@ xcuserdata/
 # macOS
 .DS_Store
 
+# Release packaging output (scripts/package-release.sh)
+dist/
+
 # Local logs and temp files
 *.log
 *.swp
@@ -41,3 +44,6 @@ windows/artifacts/
 
 # Superpowers plugin local scratch (subagent progress ledgers, brainstorm artifacts)
 .superpowers/
+
+# Personal dictation samples (screenshots, transcripts, logs) kept for accuracy review — never commit
+docs/math-accuracy/

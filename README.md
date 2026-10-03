@@ -1,111 +1,87 @@
-<div align="center">
-
-<img src="docs/assets/icon.png" alt="JVoice" width="104" height="104">
+<img src="docs/assets/icon.png" alt="JVoice" width="96" height="96">
 
 # JVoice
 
-**Free, source-available voice dictation for macOS &amp; Windows — 100% on-device.**
-No subscription, no cloud, no accounts.
+Free voice dictation for macOS and Windows. Press a hotkey, talk, and the text is typed where your cursor is. Speech recognition runs on your computer (OpenAI's Whisper model), so nothing is sent anywhere.
 
-Press a hotkey anywhere, talk, and clean, tone-styled text lands at your cursor — in any app.
-
-[Download for macOS](#macos) · [Download for Windows](#windows) · [Why JVoice](#why-jvoice) · [Build from source](#build-from-source)
-
-</div>
-
----
-
-## Why JVoice
-
-Dictation tools like Wispr Flow and superwhisper charge $8–15/month for something your computer can already do by itself. JVoice runs OpenAI's Whisper **locally** — on macOS via [WhisperKit](https://github.com/argmaxinc/WhisperKit) (Apple Silicon), on Windows via [Whisper.net](https://github.com/sandrohanea/whisper.net) (CPU, or NVIDIA GPU acceleration). Your voice never leaves your machine, and it costs nothing, forever.
-
-- 🎙️ **System-wide dictation** — one global hotkey, works in any app: chat, mail, docs, your IDE
-- 🧠 **On-device Whisper** — pick a model to match your machine; nothing is ever sent anywhere
-- ✍️ **Tone styles** — Casual, Formal, or Very Casual: JVoice rewrites your rambling into the register you want
-- 🧹 **Filler-word removal** — "um", "uh", "like" are gone before the text lands
-- 📖 **Custom dictionary** — teach it your name, your project names. Words don't just get find-replaced afterwards: they bias Whisper itself at recognition time, and a phonetic matcher catches the mishearings that slip through ("jay voice" → "JVoice")
-- 📊 **Stats** — words dictated, time saved, and average WPM (you talk ~3× faster than you type)
-- 🌍 **English &amp; Romanian** — Whisper supports ~100 languages, so more are easy to add
-
-## Download
-
-> JVoice is **free and unsigned** — no $99/yr Apple developer account, no paid Windows certificate. Each OS shows a one-time "unverified developer" prompt the first time you open it. The steps below clear it in a few seconds.
+## Install and update
 
 ### macOS
 
-**[⬇️ Download `JVoice.dmg`](https://github.com/david53001/jvoice/releases/download/v1.0.0/JVoice-1.0.0.dmg)** — macOS 14+ (Apple Silicon recommended)
+Needs macOS 14 or newer (Apple Silicon recommended). Paste this into Terminal:
 
-1. Open the DMG and drag **JVoice** into **Applications**.
-2. First launch: macOS says it *"can't verify the developer."* Click **Done** (not "Move to Trash").
-3. Open **System Settings → Privacy &amp; Security**, scroll to the bottom, and click **Open Anyway** next to JVoice. Enter your password, open JVoice again, and click **Open**. You'll never see the warning again.
+```sh
+curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.sh | bash
+```
 
-> If you instead see *"JVoice is damaged"*, run this once in Terminal:
-> `xattr -dr com.apple.quarantine /Applications/JVoice.app`
+The same command installs JVoice and updates it to the newest version. Updating keeps your settings, custom words, stats, downloaded model and permissions. You can read the script first: [`scripts/install.sh`](scripts/install.sh).
 
-On first run JVoice asks for **Microphone** (to hear you) and **Accessibility** (to type text into the frontmost app) permissions, then downloads your chosen Whisper model.
-
-**Default hotkey:** <kbd>⌥ Option</kbd>+<kbd>Space</kbd> — rebind it to whatever you like in Settings.
+Prefer a manual download? Get [`JVoice-1.1.4.dmg`](https://github.com/david53001/jvoice/releases/download/v1.1.4/JVoice-1.1.4.dmg) and drag JVoice into Applications.
 
 ### Windows
 
-| Download | Get this if… | Size |
-| --- | --- | :---: |
-| **[⬇️ `JVoice-Setup.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.0.0/JVoice-Setup.exe)** ← **most people** | Any Windows 10/11 (x64) PC. CPU-only. | ~65 MB |
-| [`JVoice-Setup-GPU.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.0.0/JVoice-Setup-GPU.exe) | You have an **NVIDIA GPU** and want faster transcription (CUDA/Vulkan). | ~360 MB |
+Needs Windows 10 or 11 (64-bit). Download and run the installer:
 
-Both produce identical transcripts — the GPU build is just *faster* on supported hardware, and it falls back to CPU anyway. **When in doubt, get `JVoice-Setup.exe`.**
+- [`JVoice-Setup.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.0.0/JVoice-Setup.exe) (about 70 MB) for most PCs.
+- [`JVoice-Setup-GPU.exe`](https://github.com/david53001/jvoice/releases/download/windows-v1.0.0/JVoice-Setup-GPU.exe) (about 380 MB) only if you have an NVIDIA graphics card and want faster transcription. The text is the same either way.
 
-1. Run the installer. It's **unsigned**, so Windows SmartScreen shows *"Windows protected your PC."* Click **More info → Run anyway**. (One-time, per download.)
-2. It installs to `%LOCALAPPDATA%\Programs\JVoice`, adds a Start-Menu shortcut, and launches to the system tray. No admin required.
-3. Your first dictation downloads the Whisper model once (a few hundred MB), then everything is offline.
+It installs for your user only (no admin needed) and starts in the system tray. To update, open Settings, go to Updates and click Check Now, then Update Now (JVoice also checks once a day unless you turn that off). Running a newer installer over the old one works too. Your settings are kept.
 
-**Default hotkey:** <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> — rebind it to whatever you like in Settings.
+## Uninstall
 
-## Usage
+On macOS, paste this into Terminal:
 
-1. Press your hotkey — by default <kbd>⌥Space</kbd> on macOS or <kbd>Ctrl+Shift+Space</kbd> on Windows, and rebindable in Settings — a recording indicator appears.
-2. Talk. Press the hotkey again to stop.
-3. Transcribed, tone-styled text is pasted at your cursor.
+```sh
+curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/uninstall.sh | bash
+```
 
-Open **Settings** (menu-bar / tray icon → Settings…) for language, tone style, Whisper model, filler-word removal, custom words, and your dictation stats. Your recent transcripts are kept there too — copy any one back to the clipboard, or clear them. Everything stays on your machine.
+It quits JVoice and removes the app, its settings (including custom words, stats and recent transcripts), the downloaded Whisper model, its caches, and its Microphone and Accessibility permissions. You can read the script first: [`scripts/uninstall.sh`](scripts/uninstall.sh).
+
+## First launch
+
+JVoice is free and not signed with a paid developer certificate, so your system warns you once:
+
+- **macOS** (only if you used the DMG): click Done, then go to System Settings > Privacy & Security and click Open Anyway. If macOS says the app is damaged, run `xattr -dr com.apple.quarantine /Applications/JVoice.app`.
+- **Windows**: on "Windows protected your PC", click More info > Run anyway.
+
+On macOS, JVoice asks for Microphone access (to hear you) and Accessibility access (to type the text into other apps). On both systems, the speech model downloads once on first use.
+
+## Hotkeys
+
+- macOS: Option+Space to start and stop recording.
+- Windows: Ctrl+Shift+Space.
+
+You can change them in Settings.
+
+## Features
+
+- Works in any app: chat, email, documents, code editors.
+- Choose the Whisper model size to match your computer.
+- Tone styles (Casual, Formal, Very Casual) and filler-word removal ("um", "uh").
+- Custom words, so names and project terms come out right.
+- Stats: words dictated, time saved, speaking speed.
+- English and Romanian.
 
 ## Privacy
 
-- **Zero network calls during use.** The only network access is a one-time Whisper-model download on first run (from Hugging Face) — plus, on Windows, an optional update check you can turn off.
-- No telemetry, no analytics, no accounts.
-- Source-available — read the code, or build it yourself.
-- Full details in the [Privacy Policy](PRIVACY.md).
+Your voice never leaves your computer. The only network use is the one-time model download (and, on Windows, the update check, which you can turn off). No accounts, no tracking. Details: [PRIVACY.md](PRIVACY.md).
 
 ## Build from source
 
-Don't trust an unsigned binary? Good instinct — build it yourself.
+macOS (Command Line Tools are enough, no Xcode needed):
 
-**macOS** — macOS 14+, Apple Silicon recommended, Xcode Command Line Tools only (no full Xcode needed):
-
-```bash
+```sh
 git clone https://github.com/david53001/jvoice && cd jvoice
-swift build -c release
-./scripts/install.sh   # builds, signs locally, installs to /Applications
+./scripts/dev-install.sh   # builds and installs to /Applications
 ```
 
-**Windows** — Windows 10/11 x64, [.NET 9 SDK](https://dotnet.microsoft.com/download):
+Windows ([.NET 9 SDK](https://dotnet.microsoft.com/download)):
 
 ```powershell
 git clone https://github.com/david53001/jvoice; cd jvoice
-dotnet build windows/JVoice.sln -c Release
-dotnet run --project windows/JVoice.App
+dotnet run --project windows/JVoice.App -c Release
 ```
 
-## Support the project
+## License
 
-JVoice is free forever. If it saves you a subscription, a ⭐ on this repo is the best way to help others find it.
-
-## License &amp; legal
-
-JVoice is **free to use and source-available**, licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE). Use it free of charge for any noncommercial purpose, read the source, and build it yourself. **Selling or commercially redistributing JVoice is not permitted** without permission.
-
-- **[Terms of Use](TERMS.md)** — JVoice is provided *as-is, with no warranty*; you use it at your own risk.
-- **[Privacy Policy](PRIVACY.md)** — everything stays on your device; nothing is collected.
-- **[Third-Party Notices](THIRD-PARTY-NOTICES.md)** — attributions for the open-source libraries and Whisper models JVoice builds on.
-
-JVoice is an independent project — not affiliated with, or endorsed by, OpenAI, Apple, or Microsoft.
+[PolyForm Strict 1.0.0](LICENSE): you may view the code and use JVoice for free for noncommercial purposes, but not redistribute, modify or sell it. See also the [Terms of Use](TERMS.md) and [Third-Party Notices](THIRD-PARTY-NOTICES.md).

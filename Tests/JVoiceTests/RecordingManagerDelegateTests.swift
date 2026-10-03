@@ -39,6 +39,32 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     #expect(manager.lastError != nil)
 }
 
+/// A live recording torn down mid-way must reach the coordinator, which
+/// otherwise leaves the pill on "recording" until the next press.
+@MainActor
+@Test func midRecordingFailureNotifiesTheOwner() async throws {
+    let manager = RecordingManager()
+    var reported: [RecordingManager.RecordingError] = []
+    manager.onRecordingFailed = { reported.append($0) }
+    manager._setRecordingStateForTesting(isRecording: true)
+    manager.audioRecorderEncodeErrorDidOccur(try makeDummyRecorder(), error: nil)
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    #expect(reported.count == 1)
+    #expect(manager.isRecording == false)
+}
+
+/// A late callback from a recorder that is no longer recording (already
+/// stopped) must not report a failure — nothing was interrupted.
+@MainActor
+@Test func failureCallbackWhileIdleNotifiesNobody() async throws {
+    let manager = RecordingManager()
+    var reported: [RecordingManager.RecordingError] = []
+    manager.onRecordingFailed = { reported.append($0) }
+    manager.audioRecorderDidFinishRecording(try makeDummyRecorder(), successfully: false)
+    try? await Task.sleep(nanoseconds: 50_000_000)
+    #expect(reported.isEmpty)
+}
+
 @MainActor
 @Test func startRecordingClearsStaleLastErrorAtEntry() async throws {
     let manager = RecordingManager()
@@ -55,7 +81,7 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     // lastError must be cleared first. If it then fails, lastError gets
     // a new value — either nil OR a different value is acceptable.
     // The key assertion: the seeded encodeFailure must NOT be preserved.
-    _ = manager.startRecording()
+    _ = await manager.startRecording()
 
     if let newError = manager.lastError {
         if case .encodeFailure(let msg) = newError {
@@ -65,6 +91,7 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     }
 }
 
+@MainActor
 @Test func fileSizeBelowMinimumIsRejected() throws {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("tiny-\(UUID().uuidString).wav")
@@ -74,6 +101,7 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     #expect(result == false)
 }
 
+@MainActor
 @Test func fileSizeAboveMinimumIsAccepted() throws {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("ok-\(UUID().uuidString).wav")
@@ -83,6 +111,7 @@ private func makeDummyRecorder() throws -> AVAudioRecorder {
     #expect(result == true)
 }
 
+@MainActor
 @Test func missingFileIsRejected() {
     let url = FileManager.default.temporaryDirectory
         .appendingPathComponent("nonexistent-\(UUID().uuidString).wav")

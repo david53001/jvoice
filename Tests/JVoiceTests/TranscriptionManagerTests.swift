@@ -6,7 +6,7 @@ import Testing
 @Test
 func fileBackedEngineRejectsBinaryAudio() async throws {
     let url = FileManager.default.temporaryDirectory.appendingPathComponent("jvoice-\(UUID().uuidString).m4a")
-    try Data([0x00, 0x01, 0x02, 0x03]).write(to: url)
+    try Data([0xFF, 0xFE, 0xFD, 0x80]).write(to: url)
 
     defer {
         try? FileManager.default.removeItem(at: url)
@@ -65,7 +65,7 @@ import XCTest
 final class TranscriptionManagerTests: XCTestCase {
     func testFileBackedEngineRejectsBinaryAudio() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("jvoice-\(UUID().uuidString).m4a")
-        try Data([0x00, 0x01, 0x02, 0x03]).write(to: url)
+        try Data([0xFF, 0xFE, 0xFD, 0x80]).write(to: url)
 
         defer {
             try? FileManager.default.removeItem(at: url)
@@ -93,7 +93,7 @@ import Foundation
 enum TranscriptionManagerTestsFallback {
     static func run() async {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("jvoice-\(UUID().uuidString).m4a")
-        try? Data([0x00, 0x01, 0x02, 0x03]).write(to: url)
+        try? Data([0xFF, 0xFE, 0xFD, 0x80]).write(to: url)
         defer {
             try? FileManager.default.removeItem(at: url)
         }

@@ -28,20 +28,44 @@ private func tone(seconds: Double, amplitude: Double) -> [Int16] {
     return (0..<n).map { Int16(amplitude * 32_000 * sin(Double($0) * 2 * .pi * 220 / 16_000)) }
 }
 
+@MainActor
 @Test func silentRecordingDetected() throws {
     let url = try writeWav(tone(seconds: 1, amplitude: 0.0))
     defer { try? FileManager.default.removeItem(at: url) }
     #expect(RecordingManager.isSilentRecording(at: url))
 }
 
+@MainActor
 @Test func speechRecordingNotSilent() throws {
     let url = try writeWav(tone(seconds: 1, amplitude: 0.5))
     defer { try? FileManager.default.removeItem(at: url) }
     #expect(!RecordingManager.isSilentRecording(at: url))
 }
 
+@MainActor
 @Test func unreadableRecordingFailsOpen() {
     let bogus = URL(fileURLWithPath: "/nonexistent/jvoice-missing.wav")
     #expect(!RecordingManager.isSilentRecording(at: bogus))
+}
+
+/// A dead input (BlackHole as the default mic) records exact zeros: the WAV's
+/// stats must read as a dead input so the no-speech message names the device.
+@MainActor
+@Test func digitalSilenceRecordingReadsAsADeadInput() throws {
+    let url = try writeWav([Int16](repeating: 0, count: 16_000))
+    defer { try? FileManager.default.removeItem(at: url) }
+    let stats = RecordingManager.captureSignalStats(at: url)
+    #expect(stats?.totalSamples == 16_000)
+    #expect(stats?.seconds == 1)
+    #expect(stats.map(SilentCaptureDetector.isDeadInput) == true)
+}
+
+@MainActor
+@Test func realRecordingIsNotADeadInput() throws {
+    let url = try writeWav(tone(seconds: 1, amplitude: 0.001))
+    defer { try? FileManager.default.removeItem(at: url) }
+    let stats = RecordingManager.captureSignalStats(at: url)
+    #expect(stats.map(SilentCaptureDetector.isDeadInput) == false)
+    #expect(RecordingManager.captureSignalStats(at: URL(fileURLWithPath: "/nonexistent/jvoice-missing.wav")) == nil)
 }
 #endif
