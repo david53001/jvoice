@@ -12,6 +12,9 @@ namespace JVoice.Core;
 /// blur behind it, so over a white page the backing alone carries the contrast — the Mac's 0.45/0.62
 /// would give white text 2.9:1 at 0. Raised again to 0.70/0.88 after David's dogfood (2026-10-02: "the pill is too
 /// transparent" at the default): the pill reads as a solid dark capsule with only a hint of what's behind it.
+/// Raised again to 0.80/0.94, then 0.90/0.98 (2026-10-03, still too see-through next to the Mac pill): the
+/// Mac's 0.62 sits on Liquid Glass / `.hudWindow` BLUR, so what shows through is a soft tint with no
+/// detail; here it would be a crisp ghost of the windows behind, so near-solid is the visual match.
 public static class UiOpacity
 {
     public const double Default = 0.5;
@@ -27,7 +30,7 @@ public static class UiOpacity
     /// The backing alpha at 0 / 0.5 / 1.
     public static (double Transparent, double Standard, double Opaque) Anchors(Surface surface) => surface switch
     {
-        Surface.Pill => (0.80, 0.94, 1.0),
+        Surface.Pill => (0.90, 0.98, 1.0),
         _ => (0.0, 0.35, 1.0),
     };
 
