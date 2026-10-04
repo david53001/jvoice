@@ -203,3 +203,19 @@ from nothing can pick up the work.
     check, verbatim-relation broken ranges, local + sentence anchors, comma-capital rule, indexed
     families, mention marks, `Juxtapose` rendering; the widened "pie" lexer step; port the 83 new
     assertions.
+- 2026-10-04, the lead's own check after workflow `wf_d9d4cfe4-533` finished (HEAD `9119cb9`):
+  - Rebuilt the probe; `./scripts/run-logic-tests.sh` passes 1287/1287.
+  - everyday.txt, everyday-adversarial.txt and real.txt are byte-identical to the baseline.
+  - David's examples behave as asked:
+    - "Lambda is the unknown here, and we know that 5 equals K and X equals 5." →
+      `λ is the unknown here, and we know that 5 = K and X = 5.`
+    - "Lambda, I don't know, the pie is really tasty." → unchanged.
+    - "lambda equals 5" → `λ = 5`.
+  - Bugs that exist on the baseline too (not caused by this branch) and remain open:
+    1. "given that" becomes the conditional bar: "find theta given that sine theta equals 0.5" →
+       `find θ ∣ sin θ = 0.5`.
+    2. The identity matrix "I" ends a run: "det of A minus lambda I equals 0" →
+       `det of A - λ I equals 0` (half converted).
+    3. "pie r squared" with no number before it stays `pie r²`.
+  - Not done: building the full app (`swift build` is broken, see above), installing,
+    dogfooding, and the Windows mirror.
