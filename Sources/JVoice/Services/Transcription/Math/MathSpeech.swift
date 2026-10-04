@@ -497,6 +497,20 @@ public enum MathSpeech {
                 continue
             }
 
+            // 5c) "C equals 2 pie r": whisper's spelling of a spoken "pi" — only between a
+            //     number (digits or one number word) and a single letter other than a/A/I, with
+            //     no punctuation in between. The same WEAK π as "pi", so "2 pie r" alone stays
+            //     words; never promoted by context ("pie chart", "a pie" never reach here).
+            if core.caseInsensitiveCompare("pie") == .orderedSame, let last = items.last,
+               last.kind == .number, last.count == 1, toks[i - 1].trail.isEmpty,
+               toks[i].lead.isEmpty, toks[i].trail.isEmpty, i + 1 < cores.count,
+               toks[i + 1].lead.isEmpty, cores[i + 1].count == 1,
+               let letter = cores[i + 1].first, letter.isAsciiLetter, !"aAI".contains(letter) {
+                items.append(Item(.symbol, "π", i, 1, sym: MathSymbol("π", .operand)))
+                i += 1
+                continue
+            }
+
             items.append(Item(.word, core, i, 1))
             i += 1
         }

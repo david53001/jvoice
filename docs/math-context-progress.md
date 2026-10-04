@@ -130,3 +130,17 @@ from nothing can pick up the work.
       port the assertions to `windows/JVoice.Tests/MathSpeechTests.cs`; add the invariant-4 exception
       paragraph to `windows/JVoice.Core/Math/CLAUDE.md`.
     - Not merged, not installed, not pushed.
+- 2026-10-04: **"pie" rule** (separate commit, so it can be reverted alone).
+  - `MathSpeech.lex` step 5c: "pie" lexes as the same weak π as "pi" only when a number item of one
+    token (digits or one number word) comes right before it, a single ASCII letter other than
+    a/A/I comes right after it, and no punctuation sits in between. "C equals 2 pie r" → `C = 2πr`;
+    "2 pie r" alone, "I ate 2 pie r slices", "a pie chart", "x equals 2 pie a" stay as dictated.
+    Never a context candidate.
+  - Sweeps: identical to the previous entry (everyday 0 lines differ; `everyday.txt` has 39 lines
+    containing "pie"). Logic tests **1204/1204** (+10). Timing on the 10,000-line file: baseline
+    0.74 / 0.73 / 0.72 s, new 0.74 / 0.74 / 0.73 s (medians 0.73 vs 0.74 s, within 5 %).
+  - Windows mirror: add the same lexer step to `windows/JVoice.Core/Math/MathSpeech.cs` (pending,
+    with the list above).
+  - **Next:** David dogfoods it (needs `swift build`, which is broken until the Command Line Tools are
+    reinstalled — see the 2026-10-04 toolchain entry), then merge `feat/math-context` into
+    `feat/math-format`, then the Windows mirror.

@@ -890,6 +890,10 @@ for (spoken, pasted, why) in [
     ("That's a big delta, and x equals 5.", "That's a big delta, and x = 5.", "'big delta' is English"),
     ("we had pi on pi day, x equals 3", "we had pi on pi day, x = 3", "a name blocks its letter in the whole dictation"),
     ("say \"lowercase sigma\", and x equals 5", "say \"lowercase sigma\", and x = 5", "a quoted word is mentioned, not used"),
+    // "pie": whisper's spelling of pi, only between a number and a single letter (run-only)
+    ("C equals 2 pie r", "C = 2πr", "pie between a number and a letter is π"),
+    ("C equals 2 pie, r", "C = 2 pie, r", "pie: no punctuation in between"),
+    ("x equals 2 pie a", "x = 2 pie a", "pie: never before the article a"),
 ] {
     expectEqual(MathSpeech.convert(spoken), pasted, "context: \(why)")
     expectEqual(MathSpeech.convert(pasted), pasted, "context idempotent: \(why)")
@@ -908,6 +912,7 @@ for prose in [
     "I signed up to be a beta tester and the alpha release is out.",
     "Happy Pi Day, I'm getting a pie after school.",
     "solve for pi day",
+    "2 pie r", "I ate 2 pie r slices", "I paid 5 pie I think", "a pie chart and 2 pies",
 ] {
     expectEqual(MathSpeech.convert(prose), prose, "context, no maths: \"\(prose.prefix(46))\"")
 }

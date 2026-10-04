@@ -127,7 +127,9 @@ pinned to version 1.0.0). To work in this area, read the files below.
     occurrence vetoed by V1–V4 as a NAME blocks that letter in the whole dictation ("we had pi on pi
     day"). It only runs when such a name is present; `MathSpeech.Emitter.promote` applies it at the
     end of `convert`. Tuning = editing the sets in this file. Design + rejected alternatives:
-    `docs/math-context-design.md`; log: `docs/math-context-progress.md`.
+    `docs/math-context-design.md`; log: `docs/math-context-progress.md`. Related, run-only: whisper's
+    "pie" is a weak π only between a number and a single letter ("C equals 2 pie r" → `C = 2πr`;
+    lexer step 5c in `MathSpeech.swift`), never promoted.
   - `SpokenNumbers.swift` — "twenty five" → "25", "three point one four" → "3.14", "three
     quarters" → "¾". Greedy on purpose (it only ever runs inside a recognised run) but it never
     over-consumes: "and", "point" and "a" are each settled by lookahead.
