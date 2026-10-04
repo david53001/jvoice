@@ -42,8 +42,16 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 - `swift build` crashed: dyld "Symbol not found … BuildServerProtocol" in `swift-package`.
 - The default SDK `MacOSX27.0.sdk` needs Swift 6.4, but the compiler was 6.3.3.
 - Workaround for the pure-logic code: `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk` (that symlink points to 26.5) with `./scripts/run-logic-tests.sh`, or with `scripts/build-math-probe.sh [out]`. The second is a new script that builds a standalone `--math-probe` with plain `swiftc`.
-- The real fix is the Command Line Tools 27.0 update: `sudo softwareupdate -i "Command Line Tools for Xcode 27.0-27.0"`.
-- See the install record below for whether it was applied.
+- FIXED the same day by installing Command Line Tools 27.0 (`softwareupdate -i "Command Line Tools for Xcode 27.0-27.0"`, no sudo needed). That gives Swift 6.4 and a working SwiftPM.
+- BUT the app does not build against the new default `MacOSX27.0.sdk`: its SwiftUI turns `@State` into a macro, and the Command Line Tools ship no `SwiftUIMacros` plugin ("external macro implementation type 'SwiftUIMacros.StateMacro' could not be found").
+- **Build with `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk`**, e.g. `SDKROOT=…/MacOSX26.5.sdk ./scripts/dev-install.sh`. That builds clean.
+
+**Install record (2026-10-04):**
+- `SDKROOT=…/MacOSX26.5.sdk ./scripts/dev-install.sh` from the worktree (merge commit `a90f869` + docs). It quit and relaunched JVoice.
+- Signed "JVoice Self-Signed", so permissions persist; `codesign --verify --deep --strict` OK.
+- `--settings-smoke` from a copied `.app`: OK (700×588).
+- The installed `--math-probe` gives `λ is the unknown here, and we know that 5 = K and X = 5.` and leaves "Lambda, I don't know, the pie is really tasty." alone.
+- CI on the pushed branch passed: Test + Windows, runs `37198612628` / `37198612598`.
 
 **Known open (these exist on the baseline too; not caused by this branch):**
 - "given that" becomes `∣`.
@@ -53,7 +61,6 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 **Not done:**
 - The Windows mirror (no .NET on this Mac; the list is in the progress log).
 - Merging into `main` and a release.
-- CI on the pushed branch: check its run.
 
 ## 2026-09-30 session (2) — Tour polish: capsule outline on the pill, an animated Opacity step, windows on the active display (branch `feat/tour-opacity`, off `feat/opacity-setting`; PUSHED as a branch, installed to /Applications; `main` NOT moved, no release)
 
