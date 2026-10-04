@@ -301,3 +301,8 @@ from nothing can pick up the work.
     - Timing, 10,000 lines, 5 runs: v1 0.69–0.72 s, v2 0.73–0.75 s, v3 0.76–0.77 s.
   - **Open**: accepted risks and the not-fixed list are in design §10.7; Windows mirror not done
     (now also the §10.7 rules); not installed.
+- 2026-10-04: workflow #2 (`wf_bb02298c-3ca`) finished with the final check's verdict SHIP (HEAD `3ce0edd`).
+  - Installed with `SDKROOT=…/MacOSX26.5.sdk ./scripts/dev-install.sh`, and the branch pushed.
+  - The installed app now converts David's sentence.
+  - Snapshot of the installed engine: `.build/math-context/probe-v3-installed`.
+  - Remaining recall gaps P1–P7 (from the final check) → workflow #3.
