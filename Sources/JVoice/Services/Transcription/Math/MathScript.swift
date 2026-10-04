@@ -221,7 +221,11 @@ public enum MathScript {
         var factors = 0
         var inNumber = false
         var depth = 0
+        var afterChange = false
         for scalar in scalars where !isDecoration(scalar) {
+            // "Δx" is one quantity, the change in x: Δ and its letter are a single factor.
+            if scalar == "Δ" { afterChange = true; factors += 1; inNumber = false; continue }
+            if afterChange { afterChange = false; if isLetter(scalar) { continue } }
             if openers.contains(scalar) {
                 if depth == 0 { factors += 1 }
                 depth += 1

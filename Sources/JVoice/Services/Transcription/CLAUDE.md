@@ -121,14 +121,21 @@ pinned to version 1.0.0). To work in this area, read the files below.
     (a) the dictation has EVIDENCE — a converted segment holding a real letter operand (`x`, `x̄`,
     `dy/dx`; not `a`/`A`/`i`, not all-caps `ETA`) AND a real construct (relation, power, fraction,
     root, function…; a bare `+`/`-`/`×` is not one, so "T minus 10", "press X plus Y", "n plus 1
-    tickets" are no evidence) — which promotes every passing name; or the name sits in an ANCHOR
+    tickets" are no evidence), or an equation Whisper already WROTE as symbols ("x = 5", "5x + 7z =
+    5", "F = ma", "y=mx+c"; a numbers-only "0 = 0" only beside maths words such as "solutions",
+    "denominator" — `MathContext.writtenEquations`, recall rework 2026-10-04, design §10) — which
+    promotes every passing name; or the name sits in an ANCHOR
     ("find the value of λ", "solve for θ", "Find λ.", "Express your answer in terms of π.", "let λ
     be 3", "the angle/wavelength/constant/eigenvalue λ", "find tan θ", a deliberate "capital Σ"),
     which promotes only that letter and the names of its own sentence; and (b) no VETO applies:
     quoted/bracketed/dashed/colon-labelled (a mention), name-like casing (V1: "AWS Lambda", "PI"),
-    a word before (V2: "a", "my", "the", "in", "hey", "aws"…, a "room 1"-style label), a word after
+    a word before (V2: "hey", "aws", "closed"… always; "the/this/our/in" only for the everyday letters
+    alpha/beta/gamma/pi, "a/an/my" also for lambda/omega, "his/her/their" for all — and these
+    determiners are lifted when the name's stretch holds evidence, its sentence holds evidence plus a
+    maths word, or Whisper wrote that letter: "Where's the λ in this equation for x = 5?"; a
+    "room 1"/"Pixel 9"-style label), a word after
     that is not in the `continuation` allowlist (V3: "alpha team", "lambda sensor", "beta keys"), a
-    number or a capitalised word or a Greek neighbour (V4: "omega 3", "Pi Day", "Lambda Chi Alpha" —
+    number after alpha/beta/gamma/pi/omega or a capitalised word or a Greek neighbour (V4: "omega 3", "Pi Day", "Lambda Chi Alpha" —
     two lower-case names like "alpha beta" are a product, αβ), an anti-cue anywhere (V5: "deployed",
     "fraternity", finance words like "stock"/"options", "call sign"…), or a relation left as words in
     its stretch (a broken equation is never half-converted). An occurrence vetoed as a NAME blocks
@@ -136,7 +143,10 @@ pinned to version 1.0.0). To work in this area, read the files below.
     with the numbers/letters/functions beside them as one product ("2 pi r" → `2πr`, "sine theta" →
     `sin θ`, an indexed family "lambda 1 and lambda 2" → `λ₁`, `λ₂`). It only runs when such a name
     is present; `MathSpeech.Emitter.promote` applies it at the end of `convert`. Tuning = editing the
-    sets in this file. Design + rejected alternatives: `docs/math-context-design.md`; log:
+    sets in this file. Also promotable: Whisper's glued forms "lambda's", "lambda²", "lambda=3" (→
+    `λ's`, `λ²`, `λ=3`) and "delta ⟨letter⟩", which the engine now reads as the change `Δx`
+    everywhere ("delta x equals 3" → `Δx = 3`). Design + rejected alternatives:
+    `docs/math-context-design.md` (§10 is current); log:
     `docs/math-context-progress.md`. Related, run-only: whisper's "pie" is a weak π after a number or
     an infix relation/operator and before a single letter or "over" (or "root" after a number):
     "C equals 2 pie r" → `C = 2πr`, "A equals pie r squared" → `A = πr²`; never promoted.
@@ -176,8 +186,9 @@ pinned to version 1.0.0). To work in this area, read the files below.
    dictation holds evidence (a converted segment with a letter operand and a real construct, or an
    anchor such as "find the value of λ") and every veto passes. It never activates anything; with no candidate word the
    output is byte identical. Changes to the set, anchors or vetoes must be swept against
-   `.build/math-context/everyday.txt` AND `everyday-adversarial.txt` (0 lines differing from the
-   baseline probe) and the S/M rows of `.build/math-context/context.tsv` (gitignored corpora,
+   `.build/math-context/everyday.txt`, `everyday-adversarial.txt` AND `everyday-whisper.txt` (0 lines
+   differing from the baseline probe), the S rows of `wordings.tsv` (all exact) and the S/M rows of
+   `.build/math-context/context.tsv` (gitignored corpora,
    described in `docs/math-context-progress.md`; rebuild them if a cleanup deleted `.build/`).
    Otherwise: a new vocabulary entry of an ACTIVATING kind (Relation / Operator / Prefix) is the
    only thing that can turn a sentence into an equation, so everyday English words

@@ -571,6 +571,82 @@ private let contextVerifyNoBleed: [(String, String)] = [
     }
 }
 
+/// Recall rework (2026-10-04, design §10): real wordings and equations whisper already wrote as
+/// symbols — David's exact sentence first — and the everyday senses beside a written "=".
+private let recallReworkPromotes: [(String, String)] = [
+    ("Where's the lambda in this equation for x = 5?",
+     "Where's the λ in this equation for x = 5?"),
+    ("Where's the lambda in this equation for x equals 5?",
+     "Where's the λ in this equation for x = 5?"),
+    ("Can you find the lambda for this one where 5x + 7z = 5?",
+     "Can you find the λ for this one where 5x + 7z = 5?"),
+    ("So 3z = 5 - 3λ. Then the lambda goes into equation 1.",
+     "So 3z = 5 - 3λ. Then the λ goes into equation 1."),
+    ("I wrote y=mx+c. Now how do I get lambda?",
+     "I wrote y=mx+c. Now how do I get λ?"),
+    ("Where's the mu in F = ma?",
+     "Where's the μ in F = ma?"),
+    ("What's the theta when tan x = 1?",
+     "What's the θ when tan x = 1?"),
+    ("So y = 2 - lambda comma lambda comma 3 - lambda.",
+     "So y = 2 - λ comma λ comma 3 - λ."),
+    ("Then 2x = 5 - 2λ, and the lambda stays free.",
+     "Then 2x = 5 - 2λ, and the λ stays free."),
+    ("So my alpha is 4 and z = 5 ÷ x - 4.",
+     "So my α is 4 and z = 5/x - 4."),
+    ("So 0 = 0, which means infinite solutions, and the lambda can be anything.",
+     "So 0 = 0, which means infinite solutions, and the λ can be anything."),
+    ("So lambda's value is 3 and x = 2.",
+     "So λ's value is 3 and x = 2."),
+    ("So lambda² = 4 and x = 2.",
+     "So λ² = 4 and x = 2."),
+    ("What's lambda 1 if x = 5?",
+     "What's λ₁ if x = 5?"),
+    ("Is lambda 2 then? x² = 4.",
+     "Is λ 2 then? x² = 4."),
+    ("Is there a lambda such that 2x + y = 0?",
+     "Is there a λ ∣ 2x + y = 0?"),
+    ("Then delta x = 5, so x = 7.",
+     "Then Δx = 5, so x = 7."),
+    ("Q equals m c delta T",
+     "Q = mcΔT"),
+    ("The area is pi r² and r = 2.",
+     "The area is πr² and r = 2."),
+    ("Where's the Lambda in 3y + 3z = 5?",
+     "Where's the λ in 3y + 3z = 5?"),
+    ("What is lambda equal to when x = 2?",
+     "What is λ equal to when x = 2?"),
+]
+
+private let recallReworkNoBleed: [String] = [
+    "Set x = 5 in the config and the lambda function will pick it up.",
+    "Use a lambda instead of a for loop, i = 0 to 10.",
+    "1 + 1 = 2, everyone knows that, and the beta is out next week.",
+    "2 + 2 = 4 and the alpha squad still lost.",
+    "x = 5 on the error code, and the lambda sensor is broken.",
+    "Set x = 5 and y = 10 in the config, then restart the beta server.",
+    "Use a lambda for the sort key, like key=lambda x: x[1].",
+    "Check if a == b before you deploy the alpha build.",
+    "The beta is out, so download it now, and x = 2.",
+    "We're still in beta, 500 users so far, and x = 2.",
+    "x = 2. Pixel 9 beta has a new launcher.",
+    "It's 1-0 and the alpha squad is winning.",
+    "The deal was 2 + 1 at the Omega store.",
+    "Set BETA=1 in the .env file.",
+    "My Delta flight leaves at 5 and x = 2.",
+    "Lambda, I don't know, the pie is really tasty.",
+]
+
+@Test func greekNamesFollowRealWordingsAndWrittenNotation() {
+    for (spoken, expected) in recallReworkPromotes {
+        #expect(MathSpeech.convert(spoken) == expected, "\(spoken)")
+        #expect(MathSpeech.convert(expected) == expected, "idempotent: \(spoken)")
+    }
+    for prose in recallReworkNoBleed {
+        #expect(MathSpeech.convert(prose) == prose, "\(prose)")
+    }
+}
+
 @Test func scriptTablesArePaired() {
     // Every character that can be super/subscripted must have exactly one mapping.
     #expect(MathScript.superscript("2") == "²")

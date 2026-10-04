@@ -2,8 +2,8 @@
 
 - Branch: `feat/math-context`. Worktree: `.claude/worktrees/math-context`. Base: `feat/math-format` @ `90c6836`.
 - Status: IMPLEMENTED 2026-10-04 on `feat/math-context` (not merged, not installed), then REVISED the
-  same day after an adversarial verify found bleeds. **§9 is the current design; where §3 disagrees
-  with §9, §9 wins.** The first implementation's three deviations are in `docs/math-context-progress.md`
+  same day after an adversarial verify found bleeds, then REWORKED for recall the same evening after
+  David's first real dictation (§10). **§10 overrides §9, and §9 overrides §3.** The first implementation's three deviations are in `docs/math-context-progress.md`
   (entry "implemented"); the revision is the entry "adversarial verify".
 - Progress log: `docs/math-context-progress.md`.
 
@@ -452,4 +452,141 @@ is unchanged.
 - Residual risk: with real evidence in the dictation, a lower-case Greek word in an allowed slot
   ("the significance level is alpha"-shaped everyday talk such as "my favourite is alpha, x equals 2")
   still promotes.
+
+## 10. Recall rework (2026-10-04, evening)
+
+**Why.** David's first real dictation on the installed build was pasted unchanged: Whisper wrote
+"Where's the lambda in this equation for x = 5?" and he expected `Where's the λ in this equation for
+x = 5?`. Two causes: V2 vetoed every name after "the", and an equation Whisper had already written as
+symbols ("x = 5", "5x + 7z = 5") was not evidence. Whisper large-v3-turbo writes digits and symbols
+itself most of the time, so in real use the context system almost never fired (0 of the 30 dictations
+in his 2026-10-04 transcript set promoted anything). §9 had traded recall away for safety.
+
+**How it was measured.** Corpora in `.build/math-context/` (gitignored; never commit them, they hold
+paraphrases of David's dictations):
+- `wordings.tsv` — 467 Whisper-style rows, `input<TAB>expected`: 326 should-promote (P) and 141
+  must-stay (S), grouped by `# == FAMILY:` headers. Generator in `wordings-gen/`.
+- `everyday-whisper.txt` — 430 everyday sentences, each with a Greek-name word in its everyday sense,
+  in Whisper's output style (digits, `=`, scores, prices, versions, code, env vars). Must not change.
+- A rule ablation (`ablate-src/`, `ablate/`): every rule behind an environment flag, scored on all
+  corpora plus a STRESS set (572 everyday lines with "x = 2." put before them, and the same lines with
+  ", and x = 2." put after) that shows what each veto protects once a dictation has evidence.
+
+**Terms.** *Stretch*: words with no punctuation between them. *Sentence*: words between `.`/`?`/`!`.
+*Everyday letters*: alpha, beta, gamma, pi (`MathContext.everydayLetters`) — their names are also a
+release stage, a dog, a device, a display setting.
+
+### 10.1 Whisper-written notation is evidence (`MathContext.writtenEquations`)
+
+When a dictation holds a candidate name, its tokens are classed: relation (`= ≠ < > ≤ ≥ ≈`), operator
+(`+ - − × · ÷ ± ^ – * /`), number (`5`, `-2`, `0.5`, `⁴⁄₃`, `½`, `√3`), letter term (`x`, `5x`, `3xy`,
+`x²`, `-3y`, `λ`, `f(x`, `sin(x`, `√x`), short letter group right after an operator (`ma` in
+"F = ma"; not an English word), function name (`sin`, `tan`, …), glued equation (`x=2`, `y=mx+c` — each
+side a sum of short terms) or other. A window is a run of non-"other" tokens, closed by `,.;:!?…`.
+A window is **letter evidence** when it has a relation with something on both sides and a letter term,
+or `÷` between letter terms ("v ÷ r"); a glued equation with a letter is letter evidence on its own.
+A window of numbers, operators and a relation only ("0 = 0", "2 + 2 = 4") is **numeric evidence**,
+which counts only when the dictation has a maths word (`mathsWords`: equation(s), solution(s), solve,
+denominator, numerator, system, substitute, unknown(s), coefficient(s), variable(s), parameter,
+simultaneous, determinant, significance) or a name sits in a "value(s) of ⟨C⟩" slot. Scores ("3-1"),
+times, dates, versions, code ("a == b", "i++", "key=lambda"), env vars ("BETA=1") are single
+"other" tokens and never form a window. Unit/ordinal endings ("5km", "2nd", "10am") are not
+coefficients. Nothing is rewritten by this scan; it only marks evidence and runs only when a candidate
+exists (byte identity otherwise holds). Also: whisper's `÷` counts as a real construct for spoken E1.
+
+Rejected: making the lexer read `λ` and `-` as symbols (ablation GREEKSYM) — it re-joined 4
+`prose.txt` lines with no candidate, breaking byte identity.
+
+### 10.2 V2 (word before) now depends on the letter
+
+| Word before | Vetoes | Lifted when |
+|---|---|---|
+| the, this, that, these, those, our, your, in | everyday letters only | local maths (below) |
+| a, an, my | everyday letters + lambda, omega ("use a lambda", "omega 3s") | local maths |
+| his, her, their | every letter | local maths |
+| hey, aws, amazon, raspberry, happy, tai, absolute, closed, open, early, public, private, stock, portfolio, say(s), said | every letter | never |
+
+*Local maths* = evidence in the name's own stretch ("So my α is 4 and z = 5/x - 4."), OR evidence in
+its sentence when that sentence also has a maths word ("So the α is 4 and the β is 3, so 0 = 0 and
+there are infinite solutions."), OR Whisper wrote this very letter somewhere in the dictation ("Is his
+β right? I got 0 = β - 3."). Sentence-level lifting without the maths word was measured and rejected:
+it promoted the STRESS lines "The beta is out, so you can download it now, and x = 2." and "Set the
+alpha to 0.5 so the overlay is see-through, and x = 2." (+48 stress bleeds).
+
+### 10.3 Other rule changes
+
+- **V1 (capital mid-sentence)** is lifted when an equation is in the name's own stretch, the letter is
+  not an everyday letter, it is not all capitals, and no capitalised mid-sentence word stands right
+  before it: "Where's the Lambda in 3y + 3z = 5?" → λ; "AWS Lambda", "Pi Day", "My cat Pi" stay.
+- **V3 continuation allowlist** gained the verbs and words that follow a letter in real dictations
+  (goes, comes, means, makes, stays, cancels, takes, can't, supposed, needs, works, got, using, back,
+  first, out, again, value(s), term(s), bigger, smaller, greater, less, add(s), comma, part, different,
+  matrix, right, wrong, free, just, it, i) and Whisper's operators (`- − + = ÷ · × ≠ /`).
+- **V4 number rule** ("omega 3", "beta 2") now vetoes only the everyday letters and omega; "Is λ 2?"
+  asks a value. A single digit after a promoted name followed by is/was/if/equals/=/goes/gives/has/when
+  is an index: "What's lambda 1 if x = 5?" → `λ₁` ("Is λ 2 then?" keeps its space).
+- **Labels**: a number after a product name is a label, not a coefficient — "Pixel 9 beta", "iOS 27
+  beta", "Spider-Man 2 beta" (a capital inside the word, or a capitalised word that is not a sentence
+  opener from `capitalBefore`) and the label words patch, build. This also fixes the old "Pixel 9β".
+- **V5** gained: letter(s), alphabet, word, pronounced, spell(ing) (the name mentioned, not used);
+  nickname, cat(s), dog(s), puppy, kitten, pet, logo(s), brand(s), tattoo, sticker, shirt, git, npm,
+  checkout; for delta: flight(s), airline(s), airport, variant, river, force.
+- **Mentions**: a lone hyphen-minus `-` is Whisper's minus, not a dash ("x = ⁴⁄₃ - lambda"); em/en
+  dash and `--` still are.
+- **Broken equation** only for a SPOKEN relation (a word, not Whisper's `=` beside notation the lexer
+  cannot read, such as "0 = β - 3"), and not for one left dangling before a clause word ("What is
+  lambda equal to when x = 2?" → `What is λ equal to when x = 2?`).
+- **Anchors**: "the value of ⟨C⟩" also anchors without a command word when the dictation has a maths
+  word ("the value of alpha that makes the denominator zero"). A letter Whisper wrote anywhere in the
+  dictation promotes its own name like an anchor ("2x = 5 - 2λ, and the lambda stays free" → `the λ
+  stays free`).
+- `capitalBefore` gained the, what's, what ("What's capital phi …", "The capital lambda matrix").
+
+### 10.4 New forms
+
+- **Glued names** (lexer step 6): a curated name with Whisper's suffix glued on — `'s`/`’s`,
+  superscripts or subscripts, `=N` — stays an ordinary word for the grammar (no run changes) and is a
+  candidate: "lambda's value" → `λ's value`, "lambda² = 4" → `λ² = 4`, "lambda=3" → `λ=3`.
+- **Change in a quantity** (lexer step 4a, engine-wide): "delta" right before a single letter (not
+  a/A/i/I) is one operand `Δ⟨letter⟩`: "delta x equals 3" → `Δx = 3` (was `δx`), "m c delta T" →
+  `mcΔT`. Bare "delta" stays `δ` ("the discriminant delta"). `Δx` is a candidate for context (letter
+  "delta"), and `MathScript.slashFraction` treats it as one factor (`Δx/Δt`, was `δx/(δt)`).
+- **Powered letter after a name**: "pi r²" → `πr²` (the written `r²` joins the product).
+- **Article before a Greek letter** (engine-wide, convert loop): a weak "a" that would open a run right
+  after a word, with a Greek letter next, is the article: "Is there a lambda such that 2x + y = 0?" →
+  `Is there a λ ∣ 2x + y = 0?` (was `aλ`).
+
+### 10.5 Results (probe `.build/math-context/probe-v2`)
+
+| Measure | installed (`probe-v1`, cf22587) | rework |
+|---|---|---|
+| `wordings.tsv` exact | 239/467 (51.2 %); P 98/326; S 141/141 | **460/467 (98.5 %)**; P 319/326 (97.9 %); S 141/141 (100 %) |
+| `everyday.txt` / `everyday-adversarial.txt` / `everyday-whisper.txt` lines differing from `probe-baseline` | 0 / 0 / 0 | **0 / 0 / 0** |
+| `context.tsv` | 137/137 | 137/137 |
+| `math.txt` | — | 6 lines differ, all `δ` → `Δ` for a change (`Δx = 3`, `Q = mcΔT`, `v = Δx/Δt`) |
+| `math-adversarial.txt` | 57 changed | 60 changed; 9 lines differ, all gains |
+| David's real dictations | 0 promote | 6 of 30 (2026-10-04 set) promote, every change a correct letter; `real.txt` unchanged |
+| `prose.txt` | — | 0 lines differ |
+| STRESS (vs `probe-baseline`) | 132 | 108 |
+| 10,000 lines, 5 runs | 0.72–0.73 s | 0.75 s (+3.4 %) |
+
+The 7 P rows still missed: "Pick a lambda, then z = 3 - y." and "So for an omega of 3, v = 6." (a/an
+before lambda/omega, evidence in the next stretch, no maths word); "So lambda 1 is 2 and lambda 2 is
+3." (no evidence at all — an indexed family alone was tried as an anchor and dropped: "Lambda 1 and
+lambda 2 are down" is server talk); "So 2 lambda - lambda is just lambda." (no relation); "Is the beta 5
+then? Then 0 = 2, …" (everyday letter + number, evidence in another sentence); "The pi in this formula
+…, A = 9." (everyday letter, evidence in the next stretch); "… k + 1, and the lambda was in the
+bracket, k · k + 1." (no relation).
+
+### 10.6 Still not covered / risks
+
+- "equals to" (David says it often) is not a relation, so "alpha equals to 4" stays words and, by the
+  broken-equation rule, so does the name in it. Adding it to the `=` vocabulary is engine-wide and
+  should be its own change (the ablation found it converts 4 more of his real lines and 0 everyday).
+- With evidence in the same STRETCH, "the/a/my + everyday letter" now promotes: "Set the alpha to 0.5
+  so the overlay is see-through, x = 2" would, if said without punctuation. Measured stress: 108 lines
+  differ from the baseline (132 on the installed build); every one of them needs an equation in the
+  same dictation, most in the same sentence.
+- "Alpha² is a band, x = 2." → `α²`: a glued power is trusted as maths.
+- Glued names, `Δx`, and the Windows mirror: not ported (see §6).
 

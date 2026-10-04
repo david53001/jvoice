@@ -219,3 +219,46 @@ from nothing can pick up the work.
     3. "pie r squared" with no number before it stays `pie r²`.
   - Not done: building the full app (`swift build` is broken, see above), installing,
     dogfooding, and the Windows mirror.
+- 2026-10-04 (later), David's first real dictation on the installed build:
+  - Whisper wrote "Where's the lambda in this equation for x = 5?" and it pasted UNCHANGED. Two causes:
+    1. The V2 veto: "the" right before a name blocks it.
+    2. Equations Whisper already wrote as symbols ("x = 5", "5x + 7z = 5") are NOT counted as evidence.
+       Whisper large-v3-turbo writes symbols itself most of the time, so this kills recall in practice.
+  - David: "this probably goes for recognizing other wordings as well" → workflow #2 (recall on
+    real wordings plus Whisper-written notation, without new bleeds).
+  - Workflow #2 launched: run `wf_bb02298c-3ca` (measure: Whisper-style wordings corpus, everyday-whisper bleed corpus, rule ablation → implement → bleed/recall verify → fix → final SHIP/NOT-SHIP check). Snapshot of the installed engine for comparison: `.build/math-context/probe-v1`.
+- 2026-10-04 (evening), workflow #2 implement stage — **recall rework** (design §10):
+  - **What changed** (`Math/MathContext.swift`, `MathSpeech.swift` lexer + `Emitter`, one line in
+    `MathScript.swift`):
+    - Equations Whisper wrote as symbols are evidence (`MathContext.writtenEquations`: a window of
+      notation tokens with a relation and a letter term — "x = 5", "5x + 7z = 5", "F = ma", "tan x =
+      √3", "y=mx+c"; numbers-only "0 = 0" only beside maths words or a "value of ⟨name⟩" slot).
+    - V2 per letter: the/this/our/in veto only alpha/beta/gamma/pi; a/an/my also lambda/omega;
+      his/her/their all; lifted by evidence in the same stretch, evidence + a maths word in the same
+      sentence, or the letter written by Whisper. V1 lifted for a non-everyday capital with an equation
+      in its stretch. V3 allowlist widened (verbs, Whisper operators). V4 number rule only for
+      alpha/beta/gamma/pi/omega; a lone index before is/if/… renders `λ₁`. Hyphen-minus is no dash.
+      Broken-equation rule only for a spoken relation that is not dangling before when/if/….
+    - New forms: glued names ("lambda's", "lambda²", "lambda=3"); "delta ⟨letter⟩" → `Δx` engine-wide
+      (`Δx/Δt` as one factor); "pi r²" → `πr²`; "Is there a lambda such that" no longer `aλ`; "Pixel 9
+      beta"-style product labels no longer `9β`.
+    - Performance: sentence/stretch indices are precomputed (was quadratic), regexes compiled once,
+      fast paths for plain words/numbers.
+  - **Numbers** (final probe `.build/math-context/probe-v2`; references `probe-baseline` 90c6836,
+    `probe-v1` cf22587):
+    - `wordings.tsv` exact 460/467 (98.5 %): P 319/326 (97.9 %), S 141/141 (100 %). probe-v1: 239/467.
+    - `everyday.txt` 0, `everyday-adversarial.txt` 0, `everyday-whisper.txt` 0 lines differ from
+      probe-baseline (and from probe-v1).
+    - `context.tsv` 137/137. `prose.txt` 0 lines differ from probe-v1. `real.txt` 0 differ.
+    - `math.txt` 6 lines differ from probe-v1, all δ → Δ for a change ("Δx = 3", "Q = mcΔT", "v =
+      Δx/Δt"). `math-adversarial.txt` 9 differ, all gains (57 → 60 changed).
+    - David's 2026-10-04 dictations: 6 of 30 now promote (was 0); a word diff shows only Greek names
+      becoming letters (and one "three lambda" → `3λ`), including the dictation that started this.
+    - STRESS set (everyday lines with "x = 2." before / ", and x = 2." after): 108 lines differ from
+      probe-baseline (probe-v1: 132; the ablation's recommendation: 136).
+    - Logic tests 1387/1387 (+58: 21 promote cases ×2 incl. David's exact sentence in both written and
+      spoken form, 16 no-bleed cases), mirrored as `greekNamesFollowRealWordingsAndWrittenNotation` in
+      `Tests/JVoiceTests/MathSpeechTests.swift` (parse-checked; CI-only).
+    - Timing, 10,000 lines (math.txt + everyday.txt), 5 runs: probe-v1 0.72–0.73 s, new 0.75 s (+3.4 %).
+  - **Open**: "equals to" is still not a relation (own change); the 7 missed P rows and the risks are
+    in design §10.5–10.6; Windows mirror not done; not installed.
