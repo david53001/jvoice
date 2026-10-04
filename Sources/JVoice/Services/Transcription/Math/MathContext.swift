@@ -15,14 +15,15 @@ import Foundation
 ///       in an ANCHOR slot ("find the value of λ", "solve for θ", "the angle θ"), which promotes
 ///       that letter and the names of its own sentence only;
 ///   (b) no VETO applies to it (casing, the word before/after, anti-cue words anywhere) — a
-///       determiner or possessive before it ("the λ", "a λ", "our θ") vetoes only the letters
-///       with everyday senses, and not even those when its own sentence holds evidence;
+///       determiner or possessive before it ("the λ", "a λ", "our θ") vetoes it unless the name's
+///       OWN neighbourhood is maths (`Determiner`, design §10.7): "Where's the λ in this equation
+///       for x = 5?" promotes, "The lambda is down when x = 2." does not;
 ///   (c) its own segment did not already convert.
 ///
 /// It never activates anything, and with no candidate name in the dictation `MathSpeech.convert`
 /// takes exactly the old path. `MathSpeech.Emitter.promote` applies it; this enum is only the
 /// word lists and the pure checks (Strings and Bools — the lexer's types stay private), so
-/// tuning means editing these sets. Design: docs/math-context-design.md (§9, §10). Any change
+/// tuning means editing these sets. Design: docs/math-context-design.md (§9, §10, §10.7). Any change
 /// here must be swept against `.build/math-context/everyday.txt`, `everyday-adversarial.txt`,
 /// `everyday-whisper.txt` (0 new changed lines), the S rows of `wordings.tsv` and the S/M rows
 /// of `context.tsv` — see the area brief, invariant 4.
@@ -53,6 +54,10 @@ enum MathContext {
     static let promotable: Set<String> = {
         var s = Set(lowerNames)
         s.formUnion(["lowercase sigma", "small sigma", "lower case sigma"])
+        // the vacuum constants ε₀, μ₀ ("the permittivity epsilon 0")
+        for name in ["epsilon", "mu"] {
+            for index in ["naught", "nought", "zero", "0"] { s.insert(name + " " + index) }
+        }
         for word in deliberateWords {
             for name in allNames { s.insert(word + " " + name) }
         }
@@ -68,6 +73,8 @@ enum MathContext {
     /// "pi", "small sigma" → "sigma".
     static func letter(of phrase: String) -> String {
         if phrase.hasPrefix("delta ") { return "delta" }   // "delta x" → Δx (recall rework)
+        if phrase.hasPrefix("epsilon ") { return "epsilon" }   // "epsilon naught" → ε₀
+        if phrase.hasPrefix("mu ") { return "mu" }
         let name = phrase.split(separator: " ").last.map(String.init) ?? phrase
         return name == "lamda" ? "lambda" : name
     }
@@ -84,27 +91,107 @@ enum MathContext {
     static let vetoBefore: Set<String> = [
         "hey", "aws", "amazon", "raspberry", "happy", "tai", "absolute", "closed", "open", "early",
         "public", "private", "stock", "portfolio", "says", "say", "said",
+        // fix round (2026-10-04): a name for a thing ("Project lambda", "Team omega", "the server
+        // omega", "the boat lambda") and slang adjectives ("very beta", "He's alpha")
+        "project", "team", "operation", "codename", "server", "boat", "very", "pretty", "super",
+        "quite", "totally", "he's", "she's", "i'm", "you're", "they're", "we're", "he’s", "she’s",
+        "i’m", "you’re", "they’re", "we’re", "thanks", "thank", "bye", "hi", "hello", "dear", "love",
+        "hate", "loves", "hates", "meet",
     ]
 
-    /// V2 (recall rework, 2026-10-04) — a determiner, possessive or preposition before a name
-    /// vetoes only the letters listed for it: "the λ in this equation", "our θ", "a μ of 0.3" are
-    /// ordinary maths speech, "the beta is out", "a lambda" (code), "my Pi" are not. Even these are
-    /// lifted when the name's own SENTENCE holds evidence or whisper already wrote that letter as a
-    /// symbol (`localMaths`): "So my α is 4 and z = 5/x - 4." The ablation that set these lists
-    /// is in docs/math-context-design.md §10.
-    private static let determinerVetoes: [String: Set<String>] = {
-        var d: [String: Set<String>] = [:]
-        for w in ["the", "this", "that", "these", "those", "our", "your", "in"] { d[w] = everydayLetters }
-        // "use a lambda", "pass a lambda", "an alpha", "my omega 3s" — code chat and slang
-        for w in ["a", "an", "my"] { d[w] = everydayLetters.union(["lambda", "omega"]) }
-        // "his beta", "their omega": a person's thing, whatever the letter
-        for w in ["his", "her", "their"] { d[w] = ["*"] }
-        return d
-    }()
+    /// V2 (fix round, 2026-10-04) — a determiner or possessive before a name ("the lambda", "our
+    /// theta", "my alpha", "his omega") makes it a THING unless the name's own neighbourhood is
+    /// mathematics (`MathSpeech.Emitter.determinerLifted`: the letter written as a symbol, a
+    /// value statement "the λ is 3 and …", "the λ in this equation / in 3y + 3z = 5", a question
+    /// or command "where's/find the λ" with an equation in its stretch, a condition "… when x = 5"
+    /// in its stretch, or — not for the everyday letters — an equation plus a maths word in its
+    /// sentence). An equation merely elsewhere in the dictation, or "and x = 2" in the same
+    /// stretch, no longer lifts it: "The lambda is called with n = 0 and throws." is AWS talk.
+    /// `article`: the/this/that/these/those/our/your/a/an/my (and "in" before an everyday letter);
+    /// `possessive`: his/her/their — a person's thing, lifted only by a written letter.
+    enum Determiner { case article, possessive }
 
-    static func determinerVetoes(_ before: String, letter: String) -> Bool {
-        guard let letters = determinerVetoes[before.lowercased()] else { return false }
-        return letters.contains("*") || letters.contains(letter)
+    private static let articleWords: Set<String> = [
+        "the", "this", "that", "these", "those", "our", "your", "a", "an", "my",
+    ]
+    private static let possessiveWords: Set<String> = ["his", "her", "their"]
+
+    static func determiner(_ before: String, letter: String) -> Determiner? {
+        let word = before.lowercased()
+        if possessiveWords.contains(word) { return .possessive }
+        if articleWords.contains(word) { return .article }
+        if word == "in" && everydayLetters.contains(letter) { return .article }
+        return nil
+    }
+
+    /// Before "that": a preposition makes it a determiner ("in that λ"); anything else a
+    /// conjunction ("we know that λ is 3", "given that θ is acute").
+    static let prepositions: Set<String> = [
+        "in", "of", "for", "on", "at", "with", "from", "to", "by", "into", "about", "is", "was",
+    ]
+    /// The words between a name and its value: "the λ is 3", "my α can't be 4", "an ω of 3".
+    static let valueLinks: Set<String> = [
+        "is", "was", "equals", "equal", "becomes", "be", "can", "can't", "can’t", "cannot", "has",
+        "to", "must", "should", "will", "of", "isn't", "isn’t", "not", "=", "≠", "gets", "just",
+        "then", "here", "came", "comes", "come", "out", "as", "turns", "turned", "up", "ends",
+        "ended", "now", "only", "always", "still", "supposed",
+    ]
+    /// A sign as the value: "is the λ supposed to be negative?"
+    static let signWords: Set<String> = ["negative", "positive", "zero", "nonzero", "undefined"]
+    /// Units a value may carry: "the θ is 30 degrees, so …", "a λ of 500 nanometers and …".
+    static let valueUnits: Set<String> = [
+        "degrees", "degree", "radians", "radian", "rad", "nanometers", "nanometres", "nm", "metres",
+        "meters", "m", "seconds", "s", "hertz", "hz", "kg", "n", "newtons", "j", "joules", "v",
+        "volts", "percent", "%", "rad/s", "rad/s²", "m/s", "m/s²", "ms⁻¹", "km/h", "kg/m³", "a",
+    ]
+    /// A thing's status, not a letter's ("the λ is down", "the ω for x = 2 is fine", "ω is the
+    /// best"): within six words after a name it stops every lift but a written letter.
+    static let statusWords: Set<String> = [
+        "down", "slow", "fast", "late", "broken", "crashed", "crashes", "crash", "crashing", "fine",
+        "working", "dead", "offline", "online", "live", "deployed", "timing", "throws", "throwing",
+        "failing", "failed", "fails", "cheap", "expensive", "ready", "released", "mine", "tomorrow",
+        "cool", "best", "worst", "favourite", "favorite", "good", "bad", "great", "nice", "awesome",
+        "amazing", "sold", "shipping", "shipped", "buggy", "laggy", "lagging", "up", "strong",
+        "tiny", "old", "new", "called", "named", "busy", "open", "closed", "full", "empty",
+        "available", "installed", "running",
+    ]
+
+    /// After "let ⟨name⟩ be": a definition ("let θ be the angle", "let λ be any real number").
+    static let definitionWords: Set<String> = [
+        "the", "a", "an", "any", "some", "equal", "positive", "negative", "real", "constant", "zero",
+        "nonzero", "our", "this", "that", "such",
+    ]
+
+    /// Words that close a clause after a value ("the λ is 3 AND …").
+    static let connectives: Set<String> = [
+        "and", "so", "then", "but", "because", "which", "when", "if", "since", "while", "whereas", "or",
+        "means", "gives", "makes",
+    ]
+    /// A question or command about the name: "where's the λ", "what's this θ", "find the λ".
+    static let askWords: Set<String> = [
+        "where's", "wheres", "where", "what's", "whats", "what", "find", "solve", "calculate",
+        "determine", "compute", "get", "which", "where’s", "what’s", "need", "put", "plug", "use",
+        "stuck", "isolate", "eliminate", "substitute", "pick", "choose", "about",
+    ]
+    /// A condition that introduces an equation: "… when x = 5", "if x = 5", "for x = 5", "such
+    /// that 2x + y = 0".
+    static let conditionWords: Set<String> = [
+        "when", "if", "for", "where", "given", "once", "whenever", "unless", "that", "because",
+        "since", "gives", "give", "makes", "make", "means", "mean",
+    ]
+
+    /// A number or letter term as whisper writes it ("3", "-2", "½", "x", "5x", "π/2").
+    static func isValueToken(_ core: String) -> Bool {
+        let c = notationClass(core, previous: nil, previousCore: nil)
+        return c == "N" || c == "L"
+    }
+
+    /// A determiner veto that makes the occurrence a NAME, blocking the letter in the whole
+    /// dictation (V2): every possessive, and an article before an everyday letter ("the beta is
+    /// out" — one word, one thing). An article before any other letter only stops that occurrence.
+    static func determinerNames(_ before: String, letter: String) -> Bool {
+        guard let kind = determiner(before, letter: letter) else { return false }
+        return kind == .possessive || everydayLetters.contains(letter)
     }
 
     /// V3 — the ONLY ordinary words that may follow a promoted name inside its stretch. Any other
@@ -135,6 +222,12 @@ enum MathContext {
         "first", "there", "out", "again", "value", "values", "term", "terms", "bigger", "smaller",
         "greater", "less", "add", "adds", "comma", "part", "different", "matrix", "right", "wrong",
         "free", "just", "-", "−", "+",
+        // fix round (2026-10-04): "where's this λ coming from", "the λ getting bigger", "the λ
+        // disappears", "positive when x = 5"
+        "coming", "going", "doing", "getting", "changing", "increasing", "decreasing", "becoming",
+        "tending", "approaching", "varying", "growing", "staying", "appearing", "disappearing",
+        "disappears", "disappear", "positive", "zero", "nonzero", "real", "large", "small", "big",
+        "doesn’t", "can’t", "isn’t", "won’t", "don’t", "didn’t",
         "=", "÷", "·", "×", "≠", "/",
     ]
 
@@ -182,7 +275,11 @@ enum MathContext {
         // a pet, a character, a brand or a logo called by the name; code tooling
         add(["*"], ["nickname", "cat", "cats", "dog", "dogs", "puppy",
                     "kitten", "pet", "logo", "logos", "brand", "brands", "tattoo", "sticker", "shirt",
-                    "git", "npm", "checkout"])
+                    "git", "npm", "checkout", "server", "servers", "name", "named", "codename", "config", "project",
+                    "haskell", "c++", "kotlin", "closure", "closures", "lisp", "code", "coding", "syntax",
+                    "crypto", "token", "coin", "symbol", "symbols", "character", "characters", "pokemon",
+                    "card", "company", "marketing", "boss", "hp",
+                    "env"])
         // finance: the option "greeks", "chasing alpha", "portfolio beta", "venture capital"
         add(["*"], ["stock", "stocks", "portfolio", "portfolios", "options", "hedge", "fund", "funds",
                     "investor", "investors", "investing", "trading", "trader", "traders", "equity",
@@ -196,13 +293,15 @@ enum MathContext {
                                 "climb", "climbing", "route", "boulder", "bouldering", "fish", "gym",
                                 "wolf", "wolves", "pack", "bravo", "charlie", "squad"])
         add(["gamma"], ["hulk", "pokemon"])
-        add(["omega"], ["seamaster", "fatty", "oil", "supplement", "supplements", "acids", "steam", "sale"])
+        add(["omega"], ["seamaster", "fatty", "oil", "supplement", "supplements", "acids", "steam", "sale",
+                        "rolex", "seiko", "swatch", "tissot", "watches", "wrist"])
         add(["chi"], ["tai", "qi", "yoga", "energy"])
         add(["mu"], ["cow", "cows", "moo"])
         add(["tau"], ["protein", "proteins", "brain", "alzheimer", "alzheimer's"])
         add(["theta"], ["healing", "brainwaves"])
         add(["epsilon"], ["brand", "coffee"])
-        add(["delta"], ["flight", "flights", "airline", "airlines", "airport", "variant", "river", "force"])
+        add(["delta"], ["flight", "flights", "airline", "airlines", "airport", "variant", "river", "force",
+                        "game", "games", "loop", "frame", "frames", "unity", "engine"])
         return d
     }()
 
@@ -239,14 +338,14 @@ enum MathContext {
     /// but two curated lower-case names ("alpha beta" → αβ; "Lambda Chi Alpha", "phi beta kappa").
     /// `labelBefore`: a number right before it follows a label word ("room 1 alpha", "question 2
     /// alpha"). `afterNumberWord`: the ordinary word after the number that follows it ("alpha 2
-    /// builds", "omega 3 every") — checked like `after`. `localMaths`: its sentence holds evidence
-    /// or whisper wrote this letter as a symbol somewhere (lifts the determiner veto);
+    /// builds", "omega 3 every") — checked like `after`. `determinerLifted`: the name's own
+    /// neighbourhood is mathematics (lifts the determiner veto, see `Determiner`);
     /// `stretchMaths`: an equation sits in its own stretch and no capitalised word stands right
     /// before it (lifts V1 for a capitalised letter without an everyday sense: "Where's the
     /// Lambda in 3y + 3z = 5?" — never "AWS Lambda").
     static func namesSomething(phrase: String, firstCore: String, sentenceInitial: Bool,
                                before: String?, labelBefore: Bool, after: String?, afterIsWord: Bool,
-                               afterNumberWord: String?, greekGroupOK: Bool, localMaths: Bool,
+                               afterNumberWord: String?, greekGroupOK: Bool, determinerLifted: Bool,
                                stretchMaths: Bool) -> Bool {
         let letter = letter(of: phrase)
         if nameLike(core: firstCore, sentenceInitial: sentenceInitial) {                  // V1
@@ -255,7 +354,7 @@ enum MathContext {
                 || isDeliberateCapital(phrase) { return true }
         }
         if let before, vetoBefore.contains(before.lowercased()) { return true }          // V2
-        if let before, !localMaths, determinerVetoes(before, letter: letter) { return true } // V2
+        if let before, !determinerLifted, determinerNames(before, letter: letter) { return true } // V2
         if labelBefore { return true }                                                     // V2
         if let afterNumberWord, !continuation.contains(afterNumberWord.lowercased()) { return true } // V3
         if isDeliberateCapital(phrase), let before,
@@ -297,6 +396,22 @@ enum MathContext {
     /// "the eigenvalues λ").
     private static let cueNouns: Set<String> = [
         "wavelength", "wavelengths", "angle", "angles", "eigenvalue", "eigenvalues", "constant",
+        // fix round (2026-10-04): the IB physics quantities ("the coefficient of friction μ",
+        // "the density ρ", "the angular speed ω", "the phase difference φ")
+        "friction", "density", "resistivity", "efficiency", "flux", "emf", "torque", "temperature",
+        "conductivity", "permittivity", "permeability", "phase",
+    ]
+    /// "the angular speed ω", "the phase difference φ": a cue noun after its qualifier.
+    private static let qualifiedCues: [String: Set<String>] = [
+        "angular": ["speed", "frequency", "velocity", "acceleration", "displacement"],
+        "phase": ["difference", "angle", "constant", "shift"],
+    ]
+    /// Nouns a name is "in"/"of" in maths only: "the λ in this equation", "λ of the system".
+    static let mathsNouns: Set<String> = [
+        "equation", "equations", "formula", "formulas", "formulae", "expression", "expressions",
+        "system", "matrix", "polynomial", "inequality", "inequalities", "determinant",
+        "denominator", "numerator", "fraction", "exponent", "integral", "derivative", "triangle",
+        "circle", "graph", "diagram", "question", "bracket", "brackets",
     ]
 
     /// E2 — a slot only mathematics uses. An anchor promotes ITS OWN letter only (every passing
@@ -316,17 +431,27 @@ enum MathContext {
     ///   (`isMathsWord`) — then "the value of λ" needs no command word.
     static func anchored(before: [String], stretchStartsClause: Bool, after: [String],
                          afterAfterIsNumber: Bool, sentenceFinal: Bool, afterTrig: Bool,
-                         deliberateCapital: Bool, mathsVocabulary: Bool = false) -> Bool {
+                         deliberateCapital: Bool, mathsVocabulary: Bool = false, valueStated: Bool = false) -> Bool {
         let b = before.map { $0.lowercased() }
         let a = after.map { $0.lowercased() }
         func at(_ k: Int) -> String { k < b.count ? b[k] : "" }
         let commanded = b.contains { commands.contains($0) }
         // "substitute the value of θ" (not "use": "use the value of beta from the survey")
         let valueCommanded = commanded || b.contains { $0 == "substitute" }
+        // "What's the value of λ?" — a question that ENDS on the name.
+        let valueAsked = sentenceFinal && b.contains { ["what's", "whats", "what"].contains($0) }
         // "capital sigma" is said on purpose; its own vetoes (capitalBefore, V3) already ran.
         if deliberateCapital { return true }
         if afterTrig { return true }
         if cueNouns.contains(at(0)) { return true }
+        if let qualified = qualifiedCues[at(1)], qualified.contains(at(0)) { return true }
+        // "For which λ does the system …?", "for what values of λ …"
+        if at(0) == "which" && at(1) == "for" { return true }
+        // "What is λ in this equation?", "the λ of the system": a name in/of a maths noun.
+        if let first = a.first, first == "in" || first == "of" {
+            let rest = a.dropFirst().drop { ["this", "the", "that", "our", "each", "every", "my"].contains($0) }
+            if let noun = rest.first, mathsNouns.contains(noun) { return true }
+        }
         // "let λ be 3", "let λ equal 3" — a number must follow; "let beta be honest" is English.
         if at(0) == "let", let first = a.first, ["be", "equal", "equals"].contains(first),
            afterAfterIsNumber { return true }
@@ -334,10 +459,14 @@ enum MathContext {
         if at(0) == "express" && a.starts(with: ["in", "terms", "of"]) { return true }
         // "Find the value of λ", "substitute the value of θ" — never "the value of beta
         // access" (V3 already vetoed that) nor "I don't see the value of beta." (no command).
-        if at(0) == "of" && (at(1) == "value" || at(1) == "values") && (valueCommanded || mathsVocabulary) {
+        // "The value of λ is 3." (`valueStated`) — fix round.
+        if at(0) == "of" && (at(1) == "value" || at(1) == "values")
+            && (valueCommanded || mathsVocabulary || valueAsked || valueStated) {
             return true
         }
         if at(0) == "for" && at(1) == "solve" { return true }
+        // "So λ can't be 2 because then the denominator is 0": a value given beside maths words.
+        if valueStated && mathsVocabulary { return true }
         guard sentenceFinal else { return false }
         // "Express your answer in terms of π." / "Express y in terms of θ." — not "Express
         // yourself in terms of beta."
@@ -365,7 +494,16 @@ enum MathContext {
         "denominator", "numerator", "system", "substitute", "substituted", "unknown", "unknowns",
         "coefficient", "coefficients", "variable", "variables", "parameter", "simultaneous",
         "determinant", "significance",
+        // fix round (2026-10-04)
+        "matrix", "matrices", "singular", "discriminant", "eigenvalue", "eigenvalues", "eigenvector",
+        "eigenvectors", "formula", "quadratic", "polynomial", "inequality", "roots", "radians",
     ]
+
+    /// A noun that makes the phrase around a name maths: "the θ is the ANGLE", "the α makes the
+    /// DENOMINATOR 0", "our α is the SIGNIFICANCE level".
+    static func definesMaths(_ word: String) -> Bool {
+        cueNouns.contains(word) || mathsNouns.contains(word) || mathsWords.contains(word)
+    }
 
     static func isMathsWord(_ core: String) -> Bool {
         mathsWords.contains(core) || (core.first?.isUppercase == true && mathsWords.contains(core.lowercased()))
@@ -383,7 +521,9 @@ enum MathContext {
     }()
 
     /// The curated names whose letters whisper already wrote somewhere in the dictation ("So
-    /// 3z = 5 - 3λ" → lambda): such a name is maths here, whatever stands before it.
+    /// 3z = 5 - 3λ" → lambda): such a name is maths here, whatever stands before it. `cores` are
+    /// only the tokens written as a LETTER TERM (`Written.letterTerms`): the μ of a unit ("50 μs",
+    /// "10 μg") is no letter.
     static func writtenLetters(cores: [String]) -> Set<String> {
         var out: Set<String> = []
         for core in cores where core.utf8.contains(where: { $0 >= 0xCE && $0 <= 0xCF }) {   // Greek block
@@ -393,22 +533,39 @@ enum MathContext {
     }
 
     /// A Greek name with whisper's notation glued on: "lambda's", "Lambda²", "lambda=3",
-    /// "theta₁". Returns the name (lower-case) and the suffix to keep, or nil.
-    static func gluedName(_ core: String) -> (name: String, suffix: String)? {
-        // Fast path (this runs on every word the lexer sees): a plain ASCII word has no suffix
-        // (it needs an apostrophe, "=", or a non-ASCII script character).
-        guard core.utf8.contains(where: { $0 >= 0x80 || $0 == 0x27 || $0 == 0x3D }) else { return nil }
-        let lower = core.lowercased()
-        for name in lowerNames where lower.hasPrefix(name) && lower.count > name.count {
-            let suffix = String(core.dropFirst(name.count))
-            if suffix == "'s" || suffix == "’s" { return (name, suffix) }
-            if suffix.allSatisfy({ "⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ₀₁₂₃₄₅₆₇₈₉".contains($0) }) { return (name, suffix) }
-            if suffix.first == "=", suffix.count >= 2,
+    /// "theta₁" — or, since the fix round, after whisper's minus or an opening bracket: "-lambda",
+    /// "-omega²", "sin(theta", "N(mu", "e^(-lambda". Returns the name (lower-case), the prefix and
+    /// the suffix to keep, or nil. "=N" is not accepted for the everyday letters ("alpha=1" is a
+    /// config flag).
+    static func gluedName(_ core: String) -> (name: String, prefix: String, suffix: String)? {
+        // Fast path (this runs on every word the lexer sees): a plain ASCII word has no prefix or
+        // suffix (it needs an apostrophe, "=", "-", "(", or a non-ASCII character).
+        guard core.utf8.contains(where: { $0 >= 0x80 || $0 == 0x27 || $0 == 0x3D || $0 == 0x2D || $0 == 0x28 })
+        else { return nil }
+        var prefix = ""
+        if let m = whole(gluedPrefix, core), let r = Range(m.range, in: core) { prefix = String(core[r]) }
+        let body = String(core.dropFirst(prefix.count))
+        let lower = body.lowercased()
+        for name in lowerNames where lower.hasPrefix(name) {
+            let suffix = String(body.dropFirst(name.count))
+            if suffix.isEmpty { return prefix.isEmpty ? nil : (name, prefix, suffix) }
+            if suffix == "'s" || suffix == "’s" { return (name, prefix, suffix) }
+            if suffix.allSatisfy({ "⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ₀₁₂₃₄₅₆₇₈₉".contains($0) }) { return (name, prefix, suffix) }
+            if suffix.first == "=", suffix.count >= 2, !everydayLetters.contains(name),
                suffix.dropFirst().range(of: "^[-−]?[0-9]+(\\.[0-9]+)?$", options: .regularExpression) != nil {
-                return (name, suffix)
+                return (name, prefix, suffix)
             }
         }
         return nil
+    }
+
+    /// Whisper's minus, or an opening bracket after at most a short function name ("sin(", "N(",
+    /// "e^(-") — what may stand glued before a name.
+    private static let gluedPrefix = regex("^([-−]|[A-Za-z]{0,4}\\^?\\([-−]?)")
+
+    /// Whisper's signed coefficient: "-2", "−0.5".
+    static func isSignedNumber(_ core: String) -> Bool {
+        core.range(of: "^[-−][0-9]+(\\.[0-9]+)?$", options: .regularExpression) != nil
     }
 
     /// A letter with a power whisper wrote ("r²", "x³"): a letter term, not an English word —
@@ -442,48 +599,98 @@ enum MathContext {
         try! NSRegularExpression(pattern: pattern)
     }
     private static let numberPatterns = [
-        regex("^[-−]?[0-9]+([.,][0-9]+)?$"), regex("^[-−]?[0-9⁰¹²³⁴⁵⁶⁷⁸⁹]*⁄[0-9₀₁₂₃₄₅₆₇₈₉]+$"),
-        regex("^[½⅓⅔¼¾⅕⅙⅛]$"), regex("^√[0-9.]+$"),
+        regex("^[-−±]?[0-9]+([.,][0-9]+)?$"), regex("^[-−]?[0-9⁰¹²³⁴⁵⁶⁷⁸⁹]*⁄[0-9₀₁₂₃₄₅₆₇₈₉]+$"),
+        regex("^[-−]?[½⅓⅔¼¾⅕⅙⅛]$"), regex("^[-−]?√[0-9.]+$"),
+        // fix round: "30°", "1/3", "10^-3"
+        regex("^[-−]?[0-9]+(\\.[0-9]+)?°$"), regex("^[-−]?[0-9]+/[0-9]+$"),
+        regex("^[0-9]+(\\.[0-9]+)?\\^[-−]?[0-9]+$"),
     ]
     private static let letterPatterns = [
-        regex("^[-−]?([0-9]+(\\.[0-9]+)?)?[A-Za-zα-ωΑ-Ω][²³⁴ⁿ]?$"), regex("^√[A-Za-z]$"),
-        regex("^([A-Za-z]|sin|cos|tan|log|ln|exp)\\([-−]?[0-9A-Za-zα-ω.²³+−*/^-]*\\)?$"),
+        regex("^[-−]?([0-9]+(\\.[0-9]+)?)?[A-Za-zα-ωΑ-Ω][²³⁴ⁿ]?$"), regex("^[-−]?√[A-Za-z]$"),
+        regex("^[-−]?[0-9]*([A-Za-z]|sin|cos|tan|log|ln|exp|det)?\\([-−]?[0-9A-Za-zα-ω.²³+−*/^-]*\\)?$"),
+        // fix round: "mc²", "ab²"; "x1", "v0", "N0"; "π/6", "5π/6", "h/p", "c/f"
+        regex("^[A-Za-z]{1,3}[²³]$"), regex("^[a-z][0-9]$|^[A-Z]0$"),
+        // a short product holding a Greek letter: "λv", "2λx", "Aω" — never a μ unit ("μs", "μg")
+        regex("^[-−]?[0-9]*(?!μ[a-zA-Z]{1,2}$)(?=[A-Za-z]{0,2}[α-ω])[A-Za-zα-ω]{2,3}[²³]?$"),
+        regex("^[-−]?([0-9]+(\\.[0-9]+)?)?([A-Za-z]{1,2}|[α-ωΑ-Ω√])*[²³]?([/^*][-−]?([0-9]+(\\.[0-9]+)?)?([A-Za-z]{1,2}|[α-ωΑ-Ω√])*[²³]?)+$"),
     ]
-    private static let coefficientPattern = regex("^[-−]?[0-9]+(\\.[0-9]+)?([a-z]{1,2})[²³]?$")
+    /// Unit fractions — no letter terms ("v = 3 m/s" is evidence through "v = 3" anyway).
+    private static let unitWords: Set<String> = ["w/o", "km/h", "m/s", "m/s²", "kg/m³", "g/cm³", "km/s", "rad/s", "rad/s²", "mi/h"]
+    private static let coefficientPattern = regex("^[-−]?([0-9]+)(\\.[0-9]+)?([a-z]{1,2})[²³]?$")
+    /// One side of a glued equation ("y=mx+c"): a sum of short terms. The left side must be one
+    /// letter (fix round: "lr=0.01", "bs=32" are config keys, "x=2", "n=100" are equations).
     private static let equationSide: NSRegularExpression = {
         let term = "([0-9]+(\\.[0-9]+)?)?([a-z]{1,2}|[A-Z]|[α-ω])?[²³]?"
         return regex("^[-−]?\(term)([-+−*/^]\(term))*$")
     }()
+    private static let equationLeft = regex("^[-−]?([0-9]+(\\.[0-9]+)?)?([A-Za-z]|[α-ω])[²³]?$")
     private static let functionNames: Set<String> = ["sin", "cos", "tan", "sec", "csc", "cot", "log", "ln", "exp"]
+
+    /// Words that put a single capital letter in a LABEL ("Plan B = 20", "Gate B = 4", "Row A =
+    /// 12"): any capitalised word but a sentence opener or a maths noun, and these.
+    private static let labelNouns: Set<String> = [
+        "plan", "option", "options", "row", "seat", "gate", "room", "grade", "tier", "block", "section",
+        "building", "platform", "terminal", "level", "vitamin", "type", "size", "class", "group",
+        "team", "zone", "wing", "floor", "bus", "route", "hall", "lot", "exit", "door", "box", "bay",
+    ]
+    /// Capitalised words before a single letter that do not make it a label: "So X = 5", "Let A
+    /// = 3", "Point A = (1, 2)".
+    private static let letterOpeners: Set<String> = [
+        "so", "then", "let", "if", "and", "where", "for", "find", "now", "but", "here", "since", "when",
+        "because", "hence", "thus", "solve", "set", "put", "say", "take", "given", "assume", "suppose",
+        "with", "or", "is", "was", "what's", "what", "where's", "why", "how", "also", "okay", "ok",
+        "yes", "no", "well", "wait", "check", "plug", "substitute", "use", "write", "point", "matrix",
+        "vector", "line", "plane", "triangle", "angle", "segment", "circle", "function", "case",
+        "equation", "therefore", "make", "making", "makes", "until", "unless", "once", "whenever",
+    ]
 
     private static func whole(_ re: NSRegularExpression, _ s: String) -> NSTextCheckingResult? {
         re.firstMatch(in: s, range: NSRange(s.startIndex..., in: s))
     }
 
-    private static func notationClass(_ core: String, previous: Character?) -> Character {
+    /// `previous`: the class of the token before inside the current window (nil at its start);
+    /// `previousCore`: the word right before (any class), for labels.
+    private static func notationClass(_ core: String, previous: Character?, previousCore: String?) -> Character {
         let utf8 = core.utf8
         if core.unicodeScalars.count == 1, let c = core.unicodeScalars.first {
             if "=≠<>≤≥≈".unicodeScalars.contains(c) { return "R" }
             if "+-−×·÷±^–*/".unicodeScalars.contains(c) { return "O" }
-            if c == "I" { return "W" }
+            // "I" is the pronoun — except as a factor after notation ("λ I", "A - λ I")
+            if c == "I" { return previous.map { "ORL".contains($0) } == true ? "L" : "W" }
         }
         // Fast paths for plain words and plain numbers, which are almost every token.
         if !utf8.isEmpty, utf8.allSatisfy({ (0x41...0x5A).contains($0) || (0x61...0x7A).contains($0) }) {
-            if core.count == 1 { return "L" }
+            if core.count == 1 {
+                // "Plan B = 20", "Gate B = 4": a capital after a label word is a name, not a letter.
+                if let p = previousCore, core.first!.isUppercase, let f = p.first, f.isLetter {
+                    let word = p.lowercased()
+                    if labelNouns.contains(word) || (f.isUppercase && !letterOpeners.contains(word)) { return "W" }
+                }
+                return "L"
+            }
             if functionNames.contains(core) { return "F" }
-            if let previous, "RO".contains(previous), core.count <= 3, core.allSatisfy({ $0.isLowercase }),
-               !shortWords.contains(core) { return "l" }
+            // "λ max", "λ min" keep the term going
+            if previous == "L", ["max", "min"].contains(core) { return "L" }
+            if let previous, "RO".contains(previous), core.count <= 3,
+               !shortWords.contains(core.lowercased()) { return "l" }
             return "W"
         }
         if !utf8.isEmpty, utf8.allSatisfy({ (0x30...0x39).contains($0) }) { return "N" }
+        if unitWords.contains(core) { return "W" }
         if numberPatterns.contains(where: { whole($0, core) != nil }) { return "N" }
-        if letterPatterns.contains(where: { whole($0, core) != nil }) { return "L" }
-        // "5x", "3xy", "2x²" — a coefficient, unless the letters are a unit or ordinal ("5km", "2nd").
-        if let m = whole(coefficientPattern, core), let r = Range(m.range(at: 2), in: core),
-           !numberSuffixes.contains(String(core[r])) { return "L" }
+        if letterPatterns.contains(where: { whole($0, core) != nil }) {
+            return core.contains(where: { $0.isLetter || $0 == "π" }) ? "L" : "N"
+        }
+        // "5x", "3xy", "2x²" — a coefficient, unless the letters are a unit or ordinal ("5km",
+        // "2nd"), or the number is no coefficient anyone writes ("1x", "100m": a speed-up, a
+        // distance).
+        if let m = whole(coefficientPattern, core), let r = Range(m.range(at: 3), in: core),
+           let n = Range(m.range(at: 1), in: core), !numberSuffixes.contains(String(core[r])),
+           m.range(at: 2).location != NSNotFound || (core[n] != "1" && core[n].count < 3) { return "L" }
         if core.filter({ $0 == "=" }).count == 1 {
             let sides = core.split(separator: "=", omittingEmptySubsequences: false).map(String.init)
             if sides.count == 2, sides.allSatisfy({ !$0.isEmpty && whole(equationSide, $0) != nil }),
+               whole(equationLeft, sides[0]) != nil,
                !sides.contains(where: { shortWords.contains($0) }) {
                 return "G"
             }
@@ -491,17 +698,29 @@ enum MathContext {
         return "W"
     }
 
-    /// Equations whisper already WROTE as symbols, which the lexer leaves as words: windows of
-    /// notation tokens holding a relation with something on both sides (or "÷" between letter
-    /// terms: "v ÷ r"), plus glued equations ("x=2", "y=mx+c"). `letter`: the token indices of
-    /// windows with a letter term ("x = 5", "5x + 7z = 5", "F = ma", "tan x = √3"); `numeric`:
-    /// numbers only ("0 = 0", "2 + 2 = 4") — evidence only next to `mathsVocabulary`. Scores
-    /// ("3-1"), times ("2:30"), dates ("3/14"), code ("a == b", "i++", "key=lambda") and env
-    /// vars ("BETA=1") are single words, so they never form a window. `ends[k]`: token k ends
-    /// with punctuation, which closes a window. Linear in the dictation.
-    static func writtenEquations(cores: [String], ends: [Bool]) -> (letter: [Int], numeric: [Int]) {
+    /// What `writtenEquations` found. Window starts: `letter` (a relation and a letter term — "x
+    /// = 5", "5x + 7z = 5", "F = ma", "tan x = √3", "λ = -3"), `numeric` (numbers only — "0 =
+    /// 0"), `expression` (an operator and a letter term, no relation — "2 - λ", evidence only in
+    /// a sentence with a maths word: "the denominator 2 - λ can't be zero"). `letterTerms`: the
+    /// tokens whisper wrote as a letter term ("3λ", "β"), for `writtenLetters`.
+    struct Written {
         var letter: [Int] = []
         var numeric: [Int] = []
+        var expression: [Int] = []
+        var letterTerms: [Int] = []
+    }
+
+    /// Equations whisper already WROTE as symbols, which the lexer leaves as words: windows of
+    /// notation tokens holding a relation with something on both sides (or "÷" between letter
+    /// terms: "v ÷ r"), plus glued equations ("x=2", "y=mx+c"). Scores ("3-1"), times ("2:30"),
+    /// code ("a == b", "i++", "key=lambda") and env vars ("BETA=1", "lr=0.01") are single words,
+    /// so they never form a window; a capital after a label word ("Plan B = 20") is a name, and a
+    /// window whose letters are all capitals ordered by < or > ("S > A > B") is a ranking.
+    /// `ends[k]`: token k ends with punctuation, which closes a window. `letters`: tokens of the
+    /// Greek NAMES in the dictation, each a letter term here ("lambda = -3", "lambda² - 4 = 0",
+    /// "sin(theta) = 0.5"). Linear in the dictation.
+    static func writtenEquations(cores: [String], ends: [Bool], letters: Set<Int> = []) -> Written {
+        var out = Written()
         var window: [Character] = []
         var start = 0
         func close() {
@@ -510,17 +729,42 @@ enum MathContext {
             let inner = window.indices.dropFirst().dropLast()
             let relation = inner.contains { window[$0] == "R" }
             let strong = window.contains("L")
-            if relation && strong { letter.append(start); return }
-            if !relation, strong, inner.contains(where: { window[$0] == "O" && cores[start + $0] == "÷" }) {
-                letter.append(start); return
+            if relation && strong {
+                // "S > A > B", "A > B": a ranking, not an inequality between letters.
+                let ranking = !window.indices.contains { window[$0] == "R" && ["=", "≠", "≈"].contains(cores[start + $0]) }
+                    && window.indices.allSatisfy { k in
+                        window[k] != "L" || (cores[start + k].count == 1 && cores[start + k].first!.isUppercase)
+                    }
+                if !ranking { out.letter.append(start) }
+                return
             }
-            if relation && window.allSatisfy({ "NOR".contains($0) }) && window.contains("N") { numeric.append(start) }
+            if !relation, strong, inner.contains(where: { window[$0] == "O" && cores[start + $0] == "÷" }) {
+                out.letter.append(start); return
+            }
+            if !relation, strong, window.contains("O") {
+                // "x is 3 - λ", "λ is 3 - x": a letter, "is", the expression — an equation said with
+                // "is" ("the score is 3 - 1" has no letter before it).
+                if start >= 2, !ends[start - 1], !ends[start - 2], ["is", "was", "be"].contains(cores[start - 1].lowercased()),
+                   letters.contains(start - 2)
+                    || (cores[start - 2].count == 1 && notationClass(cores[start - 2], previous: nil, previousCore: nil) == "L"
+                        && cores[start - 2] != "I" && cores[start - 2].lowercased() != "a") {
+                    out.letter.append(start); return
+                }
+                out.expression.append(start); return
+            }
+            if relation && window.allSatisfy({ "NOR".contains($0) }) && window.contains("N") { out.numeric.append(start) }
         }
         for (k, core) in cores.enumerated() {
-            let c = notationClass(core, previous: window.last)
+            var c: Character
+            if letters.contains(k) {
+                c = core.contains("=") ? "G" : "L"
+            } else {
+                c = notationClass(core, previous: window.last, previousCore: k > 0 ? cores[k - 1] : nil)
+                if c == "L" || c == "G" { out.letterTerms.append(k) }
+            }
             if c == "G" {
                 close()
-                if core.contains(where: { $0.isLetter }) { letter.append(k) } else { numeric.append(k) }
+                if core.contains(where: { $0.isLetter }) { out.letter.append(k) } else { out.numeric.append(k) }
                 continue
             }
             if c == "W" { close(); continue }
@@ -529,6 +773,6 @@ enum MathContext {
             if ends[k] { close() }
         }
         close()
-        return (letter, numeric)
+        return out
     }
 }

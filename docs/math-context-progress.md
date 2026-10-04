@@ -262,3 +262,42 @@ from nothing can pick up the work.
     - Timing, 10,000 lines (math.txt + everyday.txt), 5 runs: probe-v1 0.72–0.73 s, new 0.75 s (+3.4 %).
   - **Open**: "equals to" is still not a relation (own change); the 7 missed P rows and the risks are
     in design §10.5–10.6; Windows mirror not done; not installed.
+- 2026-10-04 (night), workflow #2 fix stage — **fix round** after the verify of `28bcad5` (design §10.7):
+  - **Why**: the verify reproduced 9 bleed families (e.g. "Set x = 5 in the config. The lambda is still
+    timing out." → `The λ …`; "Plan B = 20 euros, and the omega is too expensive." → `ω`; "x = 2 and
+    his lambda is broken." → `his λ`) and 17 recall families (e.g. "So lambda = -3.", "So lambda² = 4.",
+    "sin(theta)", "lambda N" → `λ_N`, "equals to", "Where's the lambda coming from if x = 5?").
+  - **What changed** (`Math/MathContext.swift`, `MathSpeech.swift`, `MathSymbols.swift`):
+    - V2 rewritten: a determiner/possessive vetoes EVERY letter unless the name's own neighbourhood is
+      maths (written letter, value statement, in/of an equation or maths noun, a question/command, a
+      condition "when x = 5", a maths word); a status word after the name ("down", "fine", "best", …)
+      cancels the lift. Everyday letters without a determiner need maths around them.
+    - Whisper-written evidence: names count as letter terms in Whisper's windows (so "lambda = -3" is
+      its own evidence); degrees, slash/power numbers, letter products, "2(x", "det(A"; labels ("Plan B
+      = 20"), rankings ("S > A > B"), config keys ("lr=0.01"), "1x"/"100m" and the μ of units are never
+      evidence.
+    - New anchors (for which λ, "What's the value of λ?", "The value of λ is 3.", "λ in this equation",
+      IB quantity nouns), new vetoes (naming nouns, slang adjectives, code/crypto/brand/game words).
+    - New forms: "-lambda", "-omega²", "sin(theta", "N(mu", "e^(-lambda" (with the letter after inside
+      the bracket: `sin(ωt + φ)`, `e^(-λt)`, `det(A - λI)`), "-2 lambda" → `-2λ`, "A = pie r²" → `πr²`.
+    - Engine-wide: "equals to" → "="; Δ before a Greek name (`Δθ/Δt`); "pie r squared" after any word;
+      a capital indexes only n/k (`λN`, `GMm`); "4 over 3 pi r cubed" → `(4/3)πr³`; ε₀/μ₀; unit
+      letters ending an equation keep their space (`F = 12 N`, `10 N m`); a relation after only keywords
+      ("has to equal to 3") or before unreadable notation is no broken equation.
+  - **Numbers** (final probe `.build/math-context/probe-v3`; eval script recreated in the session
+    scratchpad — the checks are the same as the recall-rework entry's):
+    - Verify inputs: 0 of 81 bleed inputs change (v2: 81); 115 of 130 recall rows exact (v2: 1).
+    - `everyday.txt` 0, `everyday-adversarial.txt` 0, `everyday-whisper.txt` (now 511 lines, the 81
+      bleed inputs appended) 0 lines differ from probe-baseline. `prose.txt` 0 differ from probe-v2.
+    - `wordings.tsv` (now 597 rows: two families appended) 573/597; P 431/455; S 142/142. On the
+      original 467 rows 456 (P 315/326, S 141/141; v2 had 460) — 6 more P misses, each a determiner
+      with only distant/other-stretch evidence, the price of the B1–B5 fixes (listed in design §10.7).
+    - `context.tsv` 137/137. `math.txt` 7 lines differ from probe-v2, all fixes. `math-adversarial.txt` 0.
+    - David's real dictations (2026-10-04 set + real.txt): vs v2 only "equals to" → "=" (8 lines) and
+      the half-promoted α/β dictation now fully converted (the §10.6 doubt is closed).
+    - STRESS: 29 lines differ from baseline (v2: 108).
+    - Logic tests 1538/1538 (+151: 59 promote cases × 2, 33 no-bleed), mirrored as
+      `greekNamesFixRoundRecallWithoutBleeds` in `Tests/JVoiceTests/MathSpeechTests.swift` (parse-checked).
+    - Timing, 10,000 lines, 5 runs: v1 0.69–0.72 s, v2 0.73–0.75 s, v3 0.76–0.77 s.
+  - **Open**: accepted risks and the not-fixed list are in design §10.7; Windows mirror not done
+    (now also the §10.7 rules); not installed.

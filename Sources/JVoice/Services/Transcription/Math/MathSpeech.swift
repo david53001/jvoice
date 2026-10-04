@@ -98,6 +98,7 @@ public enum MathSpeech {
         }
         emitter.flush(&buf, brokenByWord: false)
         if contextOn { emitter.promote() }
+        emitter.joinPoweredLetters()
 
         return emitter.changed ? emitter.result() : text
     }
@@ -236,12 +237,16 @@ public enum MathSpeech {
         /// ordinary WORD for the grammar, which context promotion may still write as its letter
         /// (`sym`) followed by this suffix ("λ's", "λ²", "λ=3").
         var suffix: String?
+        /// Whisper's minus or opening bracket glued BEFORE such a name ("-lambda", "sin(theta"),
+        /// kept in front of its letter ("-λ", "sin(θ").
+        var prefix = ""
 
         init(_ kind: ItemKind, _ text: String, _ start: Int, _ count: Int,
              sym: MathSymbol? = nil, key: Kw = .none, weak: Bool = false, ordinal: Ordinal = .none,
-             glued: Bool = false, suffix: String? = nil) {
+             glued: Bool = false, suffix: String? = nil, prefix: String = "") {
             self.glued = glued
             self.suffix = suffix
+            self.prefix = prefix
             self.kind = kind
             self.text = text
             self.start = start
@@ -482,6 +487,18 @@ public enum MathSpeech {
                     i += 2
                     continue
                 }
+                // …and before a lower-case Greek name: "delta omega over delta t" → Δω/Δt (fix
+                // round — it was δω/Δt, two deltas in one fraction).
+                if symbol.symbol.text == "δ", symbol.consumed == 1, i + 1 < cores.count,
+                   toks[i].trail.isEmpty, toks[i + 1].lead.isEmpty,
+                   cores[i + 1].first?.isLowercase == true,
+                   let greek = MathSymbols.phrases[cores[i + 1].lowercased()], greek.kind == .operand,
+                   Parser.isGreekLetter(greek.text), greek.text != "δ" {
+                    let text = "Δ" + greek.text
+                    items.append(Item(.symbol, text, i, 2, sym: MathSymbol(text, .operand)))
+                    i += 2
+                    continue
+                }
                 items.append(Item(.symbol, symbol.symbol.text, i, symbol.consumed, sym: symbol.symbol))
                 i += symbol.consumed
                 continue
@@ -531,23 +548,34 @@ public enum MathSpeech {
             //     Widened 2026-10-04 (verify): after any number ("4 thirds pie r") or an infix
             //     relation/operator ("A equals pie r squared"), before "over" ("theta equals pie
             //     over 2", "2 pie over omega") and, after a number, "root" ("2 pie root l over g").
-            if core.caseInsensitiveCompare("pie") == .orderedSame, let last = items.last,
-               last.kind == .number || isOperatorLike(last), toks[i - 1].trail.isEmpty,
-               toks[i].lead.isEmpty, toks[i].trail.isEmpty, i + 1 < cores.count,
-               toks[i + 1].lead.isEmpty,
-               (cores[i + 1].count == 1 && cores[i + 1].first!.isAsciiLetter && !"aAI".contains(cores[i + 1]))
-                || (cores[i + 1].caseInsensitiveCompare("over") == .orderedSame)
-                || (last.kind == .number && cores[i + 1].caseInsensitiveCompare("root") == .orderedSame) {
+            //     Fix round: also before whisper's powered letter or operator ("A = pie r²", "x =
+            //     pie ÷ 2") and, after a relation or operator, at the end of the sentence ("θ =
+            //     pie.").
+            if core.caseInsensitiveCompare("pie") == .orderedSame, i > 0, toks[i - 1].trail.isEmpty,
+               toks[i].lead.isEmpty, let last = items.last,
+               ((last.kind == .number || isOperatorLike(last))
+                && ((toks[i].trail.isEmpty && i + 1 < cores.count && toks[i + 1].lead.isEmpty
+                     && ((cores[i + 1].count == 1 && cores[i + 1].first!.isAsciiLetter && !"aAI".contains(cores[i + 1]))
+                         || (cores[i + 1].caseInsensitiveCompare("over") == .orderedSame)
+                         || (last.kind == .number && cores[i + 1].caseInsensitiveCompare("root") == .orderedSame)
+                         || MathContext.isPoweredLetter(cores[i + 1])
+                         || ["÷", "/", "×", "·", "+", "-", "−"].contains(cores[i + 1])))
+                    || (isOperatorLike(last) && toks[i].trail.contains { ".?!".contains($0) })))
+                // "The area is pie r squared": the area formula, whatever stands before it.
+                || (toks[i].trail.isEmpty && i + 2 < cores.count && toks[i + 1].lead.isEmpty && toks[i + 1].trail.isEmpty
+                    && cores[i + 1].count == 1 && cores[i + 1].first!.isAsciiLetter && !"aAI".contains(cores[i + 1])
+                    && ["squared", "cubed"].contains(cores[i + 2].lowercased())) {
                 items.append(Item(.symbol, "π", i, 1, sym: MathSymbol("π", .operand)))
                 i += 1
                 continue
             }
 
-            // 6) "lambda's", "Lambda²", "lambda=3": a Greek name with whisper's notation glued
-            //    on stays a WORD (so no run changes), marked for context promotion.
+            // 6) "lambda's", "Lambda²", "lambda=3", "-lambda", "sin(theta": a Greek name with
+            //    whisper's notation glued on stays a WORD (so no run changes), marked for context
+            //    promotion.
             if let glued = MathContext.gluedName(core),
                let sym = MathSymbols.phrases[glued.name] {
-                items.append(Item(.word, core, i, 1, sym: sym, suffix: glued.suffix))
+                items.append(Item(.word, core, i, 1, sym: sym, suffix: glued.suffix, prefix: glued.prefix))
                 i += 1
                 continue
             }
@@ -666,6 +694,13 @@ public enum MathSpeech {
         /// Token ranges of runs that hold a broken equation: no name in the same stretch
         /// (punctuation to punctuation) is promoted.
         private var brokenRanges: [Range<Int>] = []
+        /// Letters a converted run already wrote ("y is 2 minus lambda" → `2 - λ`): the same name
+        /// elsewhere in the dictation is that letter too ("z is λ and y is 2 - λ").
+        private var runLetters: Set<String> = []
+        /// Converted runs: their part and last token, for `joinPoweredLetters`.
+        private var runParts: [(part: Int, lastTok: Int)] = []
+        /// Tokens a converted run rewrote (one part for the whole run, not one per token).
+        private lazy var convertedTok = [Bool](repeating: false, count: toks.count)
 
         private struct Pending {
             /// Index in `parts` of the segment's first token (`verbatim` writes one part per token).
@@ -736,7 +771,13 @@ public enum MathSpeech {
                             evidence = true
                             evidenceToks.append(fromTok)
                         }
+                        for it in slice where MathSpeech.isCandidate(it, toks)
+                            && !MathContext.nameLike(core: toks[it.start].core, sentenceInitial: sentenceInitial(it.start)) {
+                            runLetters.insert(MathContext.letter(of: MathSpeech.phrase(it, toks)))
+                        }
                     }
+                    for t in fromTok..<toTok { convertedTok[t] = true }
+                    runParts.append((parts.count, toTok - 1))
                     parts.append(toks[fromTok].lead + text + toks[toTok - 1].trail)
                     changed = true
                 } else {
@@ -757,10 +798,15 @@ public enum MathSpeech {
             // is λ equal to when …" leaves nothing half-converted.
             if items != nil {
                 let endTok = buf[buf.count - 1].start + buf[buf.count - 1].count
+                // …or before whisper's own notation the lexer cannot read ("λ such that x² + …").
                 let dangling = brokenByWord && endTok < toks.count
-                    && MathContext.clauseWords.contains(toks[endTok].core.lowercased())
+                    && (MathContext.clauseWords.contains(toks[endTok].core.lowercased())
+                        || MathContext.isValueToken(toks[endTok].core))
+                // (fix round) …and something other than a bare keyword stands before it: "beta has
+                // to equal to 3" leaves "to = 3", which half-converts nothing.
                 let broken = buf.indices.dropFirst().contains { k in
-                    verbatimAt[k] && buf[k].kind == .symbol && !buf[k].weak && buf[k].sym?.kind == .relation
+                    buf[..<k].contains { $0.kind != .keyword }
+                    && verbatimAt[k] && buf[k].kind == .symbol && !buf[k].weak && buf[k].sym?.kind == .relation
                         && !(dangling && k == buf.count - 1) && (toks[buf[k].start].core.first?.isLetter ?? false)
                 }
                 if broken {
@@ -798,6 +844,19 @@ public enum MathSpeech {
             return scalars.dropFirst().allSatisfy { (0x300...0x36F).contains($0.value) }
         }
 
+        /// "A = π r²" → "A = πr²", "(4/3)π r³" → "(4/3)πr³": a converted run that ends in a Greek
+        /// letter takes whisper's powered letter right after it as one more factor (fix round).
+        /// Only ever touches a dictation a run already changed; it goes last and back to front.
+        func joinPoweredLetters() {
+            for (part, last) in runParts.reversed() {
+                let next = last + 1
+                guard next < toks.count, joinedLeft(next), !convertedTok[next], part + 1 < parts.count,
+                      MathContext.isPoweredLetter(toks[next].core), parts[part + 1] == toks[next].raw,
+                      let end = parts[part].last, Parser.isGreekLetter(String(end)) else { continue }
+                parts.replaceSubrange(part...(part + 1), with: [parts[part] + parts[part + 1]])
+            }
+        }
+
         /// Writes the passing candidates as their letters once the whole dictation is known.
         func promote() {
             guard let items, !pending.isEmpty else { return }
@@ -810,10 +869,14 @@ public enum MathSpeech {
             let indexed = indexedLetters(items)
 
             // Equations whisper already wrote as symbols are evidence like spoken ones ("x = 5",
-            // "5x + 7z = 5", "y=mx+c"); a numbers-only one ("0 = 0") only beside maths
-            // vocabulary ("infinite solutions", "the denominator").
+            // "5x + 7z = 5", "y=mx+c", "lambda = -3" — a name counts as a letter term there); a
+            // numbers-only one ("0 = 0") only beside maths vocabulary ("infinite solutions", "the
+            // denominator"); an expression with no relation ("2 - lambda") only in a sentence with
+            // a maths word.
+            var nameToks: Set<Int> = []
+            for it in items where MathSpeech.isCandidate(it, toks) { nameToks.formUnion(it.start..<(it.start + it.count)) }
             let written = MathContext.writtenEquations(
-                cores: cores, ends: toks.map { $0.trail.contains { ",.;:!?…".contains($0) } })
+                cores: cores, ends: toks.map { $0.trail.contains { ",.;:!?…".contains($0) } }, letters: nameToks)
             // Sentences that say "denominator", "solutions", … (`MathContext.isMathsWord`).
             let vocabularySentences = Set(cores.indices.filter { MathContext.isMathsWord(cores[$0]) }.map { sentenceAt[$0] })
             let vocabulary = !vocabularySentences.isEmpty
@@ -828,18 +891,60 @@ public enum MathSpeech {
             }
             if !written.letter.isEmpty { evidence = true; evidenceToks += written.letter }
             if (vocabulary || valueSlot) && !written.numeric.isEmpty { evidence = true; evidenceToks += written.numeric }
-            let writtenLetters = MathContext.writtenLetters(cores: cores)
+            let expressions = written.expression.filter { vocabularySentences.contains(sentenceAt[$0]) }
+            if !expressions.isEmpty { evidence = true; evidenceToks += expressions }
+            let writtenLetters = MathContext.writtenLetters(cores: written.letterTerms.map { cores[$0] })
+            // A letter whisper wrote, or (not for the everyday letters) one a converted run wrote:
+            // that name is maths in this dictation, whatever stands before it.
+            let liftLetters = writtenLetters.union(runLetters.subtracting(MathContext.everydayLetters))
             let evidenceSentences = Set(evidenceToks.map { sentenceAt[$0] })
             let evidenceStretches = Set(evidenceToks.map { stretchAt[$0] })
-            // Lifts the determiner veto ("the λ", "a μ", "our θ"): evidence in the name's own
-            // stretch ("So my α is 4 and z = 5/x - 4."), or in its sentence when that sentence
-            // also talks maths ("So the α is 4, so 0 = 0 and there are infinite solutions."),
-            // or whisper wrote this very letter somewhere. Evidence elsewhere in a plain
-            // sentence does not: "The beta is out, so download it now, and x = 2."
-            func localMaths(_ it: Item) -> Bool {
-                evidenceStretches.contains(stretchAt[it.start])
-                    || (evidenceSentences.contains(sentenceAt[it.start]) && vocabularySentences.contains(sentenceAt[it.start]))
-                    || writtenLetters.contains(MathContext.letter(of: MathSpeech.phrase(it, toks)))
+            let evidenceStarts = Set(evidenceToks)
+            // Sentences with an equation that a condition word introduces ("… when x = 5").
+            let conditionedSentences = Set(evidenceToks.filter { e in
+                e > 0 && joinedLeft(e) && MathContext.conditionWords.contains(toks[e - 1].core.lowercased())
+            }.map { sentenceAt[$0] })
+
+            // Evidence in this sentence or the one before or after ("I have x = 5. Where's the λ?").
+            func near(_ t: Int) -> Bool {
+                let n = sentenceAt[t]
+                return evidenceSentences.contains(n) || evidenceSentences.contains(n - 1) || evidenceSentences.contains(n + 1)
+            }
+            // V2 lift for a determiner ("the λ", "our θ", "my α"): the name's OWN neighbourhood
+            // is maths (`MathContext.Determiner`). Nil when no determiner stands before it.
+            func determinerLifted(_ it: Item) -> Bool? {
+                // "sin(θ" has its bracket before it; a capital "A" mid-sentence is a variable ("A sin(ωt)").
+                guard joinedLeft(it.start), it.prefix.isEmpty,
+                      !(toks[it.start - 1].core == "A" && !sentenceInitial(it.start - 1)) else { return nil }
+                let letter = MathContext.letter(of: MathSpeech.phrase(it, toks))
+                let before = toks[it.start - 1].core.lowercased()
+                guard let kind = MathContext.determiner(before, letter: letter) else { return nil }
+                // "we know that λ is 3", "given that θ is acute": a conjunction, no determiner.
+                if before == "that", joinedLeft(it.start - 1),
+                   !MathContext.prepositions.contains(toks[it.start - 2].core.lowercased()) { return nil }
+                if liftLetters.contains(letter) { return true }
+                // "the λ is down when x = 2", "the ω for x = 2 is fine": a thing's status.
+                if describesThing(it) { return false }
+                let sentence = evidenceSentences.contains(sentenceAt[it.start])
+                let stretch = evidenceStretches.contains(stretchAt[it.start])
+                let value = valueStatement(it, items, itemAt, evidenceStarts)
+                if kind == .possessive { return value && stretch }                     // "Their ω is 2 and v = 6."
+                if value && near(it.start) { return true }                             // "the λ is 3, and …"
+                if inMaths(it, evidenceStarts) { return true }                         // "the λ in 3y + 3z = 5"
+                if definesMaths(it) && near(it.start) { return true }                  // "the θ is the angle …"
+                // "The denominator gives 0 = 0, so what's the beta?"
+                if asked(it) && sentence && vocabularySentences.contains(sentenceAt[it.start]) { return true }
+                // "where's the λ … x = 5" ("I have x = 5. Where's the λ?"); an everyday letter
+                // only inside the stretch;
+                // our/your/my only inside the sentence ("x = 2. Where's our omega?" is a watch), a/an
+                // only inside the stretch ("Just use a lambda, it's one line, and x = 2").
+                if asked(it) && (MathContext.everydayLetters.contains(letter) || ["a", "an"].contains(before) ? stretch
+                                 : ["the", "this", "that", "these", "those"].contains(before) ? near(it.start) : sentence) {
+                    return true
+                }
+                if MathContext.everydayLetters.contains(letter) { return false }
+                if conditionedSentences.contains(sentenceAt[it.start]) { return true }  // "… when x = 5"
+                return near(it.start) && vocabularySentences.contains(sentenceAt[it.start])  // "… solutions"
             }
 
             // An occurrence that names something blocks its letter everywhere in the dictation —
@@ -847,33 +952,64 @@ public enum MathSpeech {
             // lambda, Lambda is the wavelength"): then it stays a word but blocks nothing.
             let candidates = pending.flatMap(\.candidates)
             var names: [Bool] = []
+            var stopped: [Bool] = []
             for it in candidates {
-                let local = localMaths(it)
+                let lifted = determinerLifted(it)
                 let stretch = evidenceStretches.contains(stretchAt[it.start])
-                let named = namesSomething(it, items, itemAt, ignoringCase: false, localMaths: local,
+                let named = namesSomething(it, items, itemAt, ignoringCase: false, determinerLifted: lifted ?? true,
                                            stretchMaths: stretch)
                 names.append(named)
                 let commaCapital = it.start > 0 && toks[it.start - 1].trail.contains(",")
-                    && !namesSomething(it, items, itemAt, ignoringCase: true, localMaths: local,
+                    && !namesSomething(it, items, itemAt, ignoringCase: true, determinerLifted: lifted ?? true,
                                        stretchMaths: stretch)
-                if named && !commaCapital { blocked.insert(MathContext.letter(of: MathSpeech.phrase(it, toks))) }
+                let letter = MathContext.letter(of: MathSpeech.phrase(it, toks))
+                if named && !commaCapital { blocked.insert(letter) }
+                // An article before any other letter stops only this occurrence ("the lambda is
+                // down"); a glued power or "'s" needs maths in its own stretch ("Alpha² is a band").
+                let glued = !(it.suffix ?? "").isEmpty && !stretch && !liftLetters.contains(letter)
+                    && !(valueStatement(it, items, itemAt, evidenceStarts) && near(it.start))
+                stopped.append(lifted == false || glued)
             }
-
             // Whole-dictation evidence promotes every passing name. An anchor promotes its own
             // letter everywhere ("Given that theta is acute, find tan theta." → both θ) and the
             // other names of its own sentence ("Solve for theta in the interval 0 to 2 pi." →
             // 2π) — never names in other sentences ("In terms of …, the alpha team" stays).
             let unvetoed = candidates.indices.filter { k in
-                !names[k] && !vetoed(candidates[k], items, itemAt, blocked, indexed) && !inBrokenStretch(candidates[k])
+                !names[k] && !stopped[k] && !vetoed(candidates[k], items, itemAt, blocked, indexed)
+                    && !inBrokenStretch(candidates[k])
             }
             let anchors = unvetoed.filter { anchored(candidates[$0], items, itemAt, vocabulary) }
             // A letter whisper already wrote ("2x = 5 - 2λ, and the lambda stays free") is maths in this
             // dictation: it promotes its own name like an anchor does.
             let anchoredLetters = Set(anchors.map { MathContext.letter(of: MathSpeech.phrase(candidates[$0], toks)) })
-                .union(writtenLetters)
+                .union(writtenLetters).union(runLetters)
             let anchoredSentences = Set(anchors.map { sentenceAt[candidates[$0].start] })
+            // Evidence elsewhere promotes an everyday letter (alpha, beta, gamma, pi) only with
+            // maths around it: evidence in its own stretch, a determiner lifted by its
+            // neighbourhood, or a maths word in the dictation — "x = 2. He's alpha." and "x = 2.
+            // Fortnite went from alpha to beta in 2017." stay English.
+            func evidencePromotes(_ it: Item) -> Bool {
+                guard evidence else { return false }
+                // "x = 2. ω is the best.", "… and μ is fine": away from the equation, a thing's status.
+                if !evidenceStretches.contains(stretchAt[it.start]) && describesThing(it) { return false }
+                // "Just let θ be, she's grumpy": "let … be" with no value is English.
+                if joinedLeft(it.start), toks[it.start - 1].core.lowercased() == "let",
+                   wordAfter(it)?.lowercased() == "be", !valueStatement(it, items, itemAt, evidenceStarts) {
+                    // …but "let θ be the angle between …" defines it.
+                    let be = it.start + it.count
+                    let next = be + 1 < toks.count && joinedLeft(be + 1) ? toks[be + 1].core.lowercased() : nil
+                    if next.map({ !MathContext.definitionWords.contains($0) }) ?? true { return false }
+                }
+                guard MathContext.everydayLetters.contains(MathContext.letter(of: MathSpeech.phrase(it, toks))) else { return true }
+                if vocabulary || evidenceStretches.contains(stretchAt[it.start]) || determinerLifted(it) == true { return true }
+                // "Can alpha be 4? Then z = 5 ÷ 0.", "2 pi, and x = 3": a value or a coefficient.
+                if valueStatement(it, items, itemAt, evidenceStarts) && near(it.start) { return true }
+                let index = itemAt[it.start]
+                return index > 0 && joinedLeft(it.start) && items[index - 1].kind == .number
+            }
             let passing = Set(unvetoed.filter { k in
-                evidence || anchoredLetters.contains(MathContext.letter(of: MathSpeech.phrase(candidates[k], toks)))
+                evidencePromotes(candidates[k])
+                    || anchoredLetters.contains(MathContext.letter(of: MathSpeech.phrase(candidates[k], toks)))
                     || anchoredSentences.contains(sentenceAt[candidates[k].start])
             }.map { candidates[$0].start })
             guard !passing.isEmpty else { return }
@@ -882,6 +1018,19 @@ public enum MathSpeech {
             for entry in pending.reversed() where entry.candidates.contains(where: { passing.contains($0.start) }) {
                 for (from, to, text) in rendering(entry.segment, passing, indexed).reversed() {
                     let at = entry.part + from - entry.fromTok
+                    let last = to - 1
+                    if last > from, convertedTok[last] {
+                        // "sin(omega" + the run "t + φ)," → "sin(ωt + φ),": the absorbed letter opens
+                        // the next part, a converted run.
+                        let run = at + last - from
+                        let letter = toks[last].core
+                        if run < parts.count, parts[run].hasPrefix(letter) {
+                            parts.replaceSubrange(at...run, with: [toks[from].lead + text.dropLast(letter.count) + parts[run]])
+                        } else {
+                            parts.replaceSubrange(at..<run, with: [toks[from].lead + text.dropLast(letter.count) + toks[last - 1].trail])
+                        }
+                        continue
+                    }
                     parts.replaceSubrange(at..<(at + to - from), with: [toks[from].lead + text + toks[to - 1].trail])
                 }
                 changed = true
@@ -898,7 +1047,8 @@ public enum MathSpeech {
                 case .number: return true
                 case .variable: return !it.weak && !it.glued
                 case .symbol: return it.sym?.kind == .function
-                case .word: return MathContext.isPoweredLetter(it.text)   // "pi r²" → πr²
+                // "pi r²" → πr²; whisper's signed coefficient "-2 lambda" → -2λ
+                case .word: return MathContext.isPoweredLetter(it.text) || MathContext.isSignedNumber(it.text)
                 default: return false
                 }
             }
@@ -917,15 +1067,31 @@ public enum MathSpeech {
                 }
                 let named = group.filter { MathSpeech.isCandidate($0, toks) }
                 guard let first = group.first, let last = group.last, !named.isEmpty else { continue }
+                // "x = -2 lambda": whisper's signed coefficient just before the segment.
+                var signed = ""
+                if MathSpeech.isCandidate(first, toks), first.prefix.isEmpty, first.start > 0, joinedLeft(first.start),
+                   !convertedTok[first.start - 1], MathContext.isSignedNumber(toks[first.start - 1].core) {
+                    signed = toks[first.start - 1].core
+                }
+                let from = signed.isEmpty ? first.start : first.start - 1
                 // "pi r²": whisper's powered letter is a word right after the segment, so it
                 // joins the product as one more factor ("πr²").
                 let end = last.start + last.count
-                if j == segment.count, last.suffix == nil, end < toks.count, joinedLeft(end),
+                // "sin(omega t)", "e^(-lambda t)", "det(A - lambda I)": inside brackets the letter
+                // after the name is its factor (λt, λI).
+                let bracketed = last.prefix.contains("(") || (end < toks.count && toks[end].trail.contains(")"))
+                if j == segment.count, (last.suffix ?? "").isEmpty, MathSpeech.isCandidate(last, toks),
+                   end < toks.count, joinedLeft(end), bracketed, toks[end].core.count == 1,
+                   let letter = toks[end].core.first, letter.isAsciiLetter, letter != "a",
+                   var text = juxtapose(group, indexed) {
+                    text += toks[end].core
+                    out.append((from, end + 1, signed + text))
+                } else if j == segment.count, last.suffix == nil, end < toks.count, joinedLeft(end),
                    MathContext.isPoweredLetter(toks[end].core), var text = juxtapose(group, indexed) {
                     text += toks[end].core
-                    out.append((first.start, end + 1, text))
+                    out.append((from, end + 1, signed + text))
                 } else if let text = juxtapose(group, indexed) {
-                    out.append((first.start, last.start + last.count, text))
+                    out.append((from, last.start + last.count, signed + text))
                 } else {
                     for it in named { out.append((it.start, it.start + it.count, letterText(it))) }
                 }
@@ -943,9 +1109,9 @@ public enum MathSpeech {
             var previous: Item?
             for (k, it) in group.enumerated() {
                 defer { previous = it }
-                if it.suffix != nil {
-                    // "λ²", "λ's": whisper's suffix closes the product.
-                    guard k == group.count - 1 else { return nil }
+                if let suffix = it.suffix {
+                    // "λ²", "λ's": whisper's suffix closes the product; "-λ", "sin(ω" open it.
+                    guard suffix.isEmpty || k == group.count - 1, it.prefix.isEmpty || k == 0 else { return nil }
                     text += letterText(it)
                     continue
                 }
@@ -978,11 +1144,11 @@ public enum MathSpeech {
 
         /// A promoted name's text: its letter, plus whisper's glued suffix ("λ's", "λ²").
         private func letterText(_ it: Item) -> String {
-            it.sym!.text + (it.suffix ?? "")
+            it.prefix + it.sym!.text + (it.suffix ?? "")
         }
 
         private func namesSomething(_ it: Item, _ items: [Item], _ itemAt: [Int], ignoringCase: Bool,
-                                    localMaths: Bool, stretchMaths: Bool) -> Bool {
+                                    determinerLifted: Bool, stretchMaths: Bool) -> Bool {
             let index = itemAt[it.start]
             let after = wordAfter(it)
             let next = after != nil ? items[index + 1] : nil
@@ -1017,7 +1183,7 @@ public enum MathSpeech {
             }
             return MathContext.namesSomething(
                 phrase: MathSpeech.phrase(it, toks),
-                firstCore: toks[it.start].core,
+                firstCore: String(toks[it.start].core.dropFirst(it.prefix.count)),
                 sentenceInitial: ignoringCase || sentenceInitial(it.start),
                 before: joinedLeft(it.start) ? toks[it.start - 1].core : nil,
                 labelBefore: labelBefore,
@@ -1026,7 +1192,7 @@ public enum MathSpeech {
                     && !MathContext.isPoweredLetter(next?.text ?? ""),
                 afterNumberWord: afterNumberWord,
                 greekGroupOK: groupOK,
-                localMaths: localMaths,
+                determinerLifted: determinerLifted,
                 stretchMaths: stretchMaths && !(joinedLeft(it.start)
                     && toks[it.start - 1].core.first?.isUppercase == true && !sentenceInitial(it.start - 1)))
         }
@@ -1074,6 +1240,102 @@ public enum MathSpeech {
             var end = it.start + it.count
             while end < toks.count, joinedLeft(end) { end += 1 }
             return brokenRanges.contains { $0.overlaps(start..<end) }
+        }
+
+        /// "the λ is 3 and …", "my α is 4, so …", "an ω of 3", "the θ is 30 degrees, so …", "the
+        /// ω here is v ÷ r", "Is the λ 3?": a value given to the name — a few linking words, then
+        /// a number (a sign word and a unit allowed) or a letter term, then the clause ends.
+        private func valueStatement(_ it: Item, _ items: [Item], _ itemAt: [Int], _ evidenceStarts: Set<Int>) -> Bool {
+            var t = it.start + it.count
+            // "λ's value is 3"
+            if it.suffix == "'s" || it.suffix == "’s", t < toks.count, joinedLeft(t),
+               toks[t].core.lowercased() == "value" { t += 1 }
+            if value(it, from: t, items, itemAt, evidenceStarts) { return true }
+            // "the μ between the box and the floor is 0.3", "the ρ of water is 1000": a short
+            // phrase, then "is".
+            guard t < toks.count, joinedLeft(t),
+                  ["of", "between", "in", "for", "on", "at", "with"].contains(toks[t].core.lowercased()) else { return false }
+            var k = t + 1
+            while k < toks.count, k <= t + 6, joinedLeft(k), !["is", "was", "="].contains(toks[k].core.lowercased()),
+                  !MathContext.isValueToken(toks[k].core) { k += 1 }
+            guard k < toks.count, k <= t + 6, joinedLeft(k), ["is", "was", "="].contains(toks[k].core.lowercased()) else { return false }
+            return value(it, from: k, items, itemAt, evidenceStarts)
+        }
+
+        /// The linking words from token `t` on, then the value and the clause end.
+        private func value(_ it: Item, from start: Int, _ items: [Item], _ itemAt: [Int], _ evidenceStarts: Set<Int>) -> Bool {
+            var t = start
+            var steps = 0
+            while steps < 4, t < toks.count, joinedLeft(t) {
+                let word = toks[t].core.lowercased()
+                let previous = toks[t - 1].core.lowercased()
+                // "came out as", "has to be" — never "the beta is out", "set the alpha to 0.5"
+                if word == "out" && !["came", "comes", "come", "turned", "turns"].contains(previous) { break }
+                if word == "to" && !["has", "have", "had", "need", "needs", "ought", "equal", "equals", "is", "got",
+                                     "supposed"].contains(previous) { break }
+                guard MathContext.valueLinks.contains(word) else { break }
+                t += 1
+                steps += 1
+            }
+            guard t < toks.count, joinedLeft(t) else { return false }
+            if steps == 0 {
+                // "Is the λ 3?" — only straight after "is/was the".
+                let b = wordsBefore(it.start, max: 2).map { $0.lowercased() }
+                guard b.count == 2, ["is", "was"].contains(b[1]) else { return false }
+            }
+            if evidenceStarts.contains(t) { return true }                     // "is v ÷ r"
+            // "is the λ supposed to be negative?"
+            if MathContext.signWords.contains(toks[t].core.lowercased())
+                && (t + 1 == toks.count || !joinedLeft(t + 1) || MathContext.connectives.contains(toks[t + 1].core.lowercased())) {
+                return true
+            }
+            if ["negative", "minus"].contains(toks[t].core.lowercased()), t + 1 < toks.count, joinedLeft(t + 1) { t += 1 }
+            let item = items[itemAt[t]]
+            guard item.kind == .number || item.kind == .variable || MathContext.isValueToken(toks[t].core) else { return false }
+            var end = item.kind == .number ? item.start + item.count : t + 1
+            if end < toks.count, joinedLeft(end), MathContext.valueUnits.contains(toks[end].core.lowercased()) { end += 1 }
+            guard end < toks.count, joinedLeft(end) else { return true }
+            return MathContext.connectives.contains(toks[end].core.lowercased())
+        }
+
+        /// "the θ is the angle with …", "our α is the significance level", "the α makes the
+        /// denominator 0": a maths noun within the next three words.
+        private func definesMaths(_ it: Item) -> Bool {
+            for word in wordsAfter(it, max: 3).map({ $0.lowercased() }) {
+                if MathContext.statusWords.contains(word) { return false }
+                if MathContext.definesMaths(word) { return true }
+            }
+            return false
+        }
+
+        /// "the λ in 3y + 3z = 5", "the μ in F = ma", "the λ goes in equation 3", "the π in this
+        /// formula": in/of (after at most one verb) right before the equation or a maths noun.
+        private func inMaths(_ it: Item, _ evidenceStarts: Set<Int>) -> Bool {
+            var t = it.start + it.count
+            if t < toks.count, joinedLeft(t),
+               ["goes", "go", "is", "appears", "comes", "sits", "stays", "belongs", "fits", "was"].contains(toks[t].core.lowercased()) {
+                t += 1
+            }
+            guard t + 1 < toks.count, joinedLeft(t), joinedLeft(t + 1),
+                  ["in", "of", "into"].contains(toks[t].core.lowercased()) else { return false }
+            if evidenceStarts.contains(t + 1) { return true }
+            var k = t + 1
+            while k < toks.count, joinedLeft(k), ["this", "the", "that", "our", "each", "every", "my"].contains(toks[k].core.lowercased()) {
+                k += 1
+            }
+            return k < toks.count && joinedLeft(k) && MathContext.mathsNouns.contains(toks[k].core.lowercased())
+        }
+
+        /// "the λ is down", "ω is the best", "the λ for x = 2 crashes": a status word within the
+        /// next six words of the name's stretch says it is a thing (`MathContext.statusWords`).
+        private func describesThing(_ it: Item) -> Bool {
+            wordsAfter(it, max: 6).contains { MathContext.statusWords.contains($0.lowercased()) }
+        }
+
+        /// "Where's the λ …", "what's this θ …", "find the λ …": a question or command about the
+        /// name opens its stretch.
+        private func asked(_ it: Item) -> Bool {
+            wordsBefore(it.start, max: 5).contains { MathContext.askWords.contains($0.lowercased()) }
         }
 
         /// Letters the dictation numbers as a family: two or more occurrences each followed by a
@@ -1130,7 +1392,8 @@ public enum MathSpeech {
                 sentenceFinal: sentenceFinal,
                 afterTrig: afterTrig,
                 deliberateCapital: MathContext.isDeliberateCapital(MathSpeech.phrase(it, toks)),
-                mathsVocabulary: vocabulary)
+                mathsVocabulary: vocabulary,
+                valueStated: valueStatement(it, items, itemAt, []))
         }
 
         /// No punctuation between token `t - 1` and token `t` — they share a stretch.
@@ -1178,7 +1441,7 @@ public enum MathSpeech {
     private static func isCandidate(_ it: Item, _ toks: [Tok]) -> Bool {
         guard it.kind == .symbol || it.suffix != nil, let sym = it.sym, sym.kind == .operand else { return false }
         if isChange(it) { return true }
-        guard Parser.isGreekLetter(sym.text) else { return false }
+        guard Parser.isGreekLetter(String(sym.text.prefix(1))) else { return false }
         return MathContext.promotable.contains(phrase(it, toks))
     }
 
@@ -1192,7 +1455,7 @@ public enum MathSpeech {
     /// glued name ("lambda's") is its name alone.
     private static func phrase(_ it: Item, _ toks: [Tok]) -> String {
         if let suffix = it.suffix {
-            return String(toks[it.start].core.dropLast(suffix.count)).lowercased()
+            return String(toks[it.start].core.dropFirst(it.prefix.count).dropLast(suffix.count)).lowercased()
         }
         return toks[it.start..<(it.start + it.count)].map { $0.core.lowercased() }.joined(separator: " ")
     }
@@ -1259,14 +1522,14 @@ public enum MathSpeech {
         private struct Part {
             var text: String
             let role: Role
-            let tight: Bool
+            var tight: Bool
             var made: Made = .plain
             /// An infix that is a RELATION ("=", "<", "→"): where one side of an equation ends.
             var relation = false
         }
 
         private var parts: [Part] = []
-        private var tightNext = false
+        var tightNext = false
 
         var count: Int { parts.count }
         var lastIsOperand: Bool { parts.last?.role == .operand }
@@ -1350,6 +1613,11 @@ public enum MathSpeech {
         /// A spoken "times" is laid out only here, once both of its sides are final (a later
         /// "squared" or "factorial" still changes them): `MathScript.productSeparator` picks
         /// "×", a space, or juxtaposition.
+        /// "F = 12 N", "Δx = 5 m", "τ = 10 N m" (fix round): unit letters that END an equation
+        /// after a number keep their space — they are units, not factors (was "12N").
+        static let unitLetters: Set<String> = ["N", "J", "V", "W", "m", "s"]
+        var hasEquals: Bool { parts.contains { $0.role == .infix && $0.text == "=" } }
+
         func render(from start: Int) -> String {
             var out = ""
             var joined = false
@@ -1448,7 +1716,13 @@ public enum MathSpeech {
         /// composite ("aₙ", "sin(x)", "1/2") keeps its space, where the product is clearer
         /// spaced out.
         static func juxtaposes(_ left: String, _ right: String) -> Bool {
-            (isSingleLetter(right) || isChange(right)) && (isSingleLetter(left) || isPlainNumber(left))
+            (isSingleLetter(right) || isChange(right) || isConstant(right))
+                && (isSingleLetter(left) || isPlainNumber(left) || isConstant(left))
+        }
+
+        /// "ε₀", "μ₀" — a letter with its one-digit index multiplies like a letter: 4πε₀ (fix round).
+        private static func isConstant(_ s: String) -> Bool {
+            s.count == 2 && s.first!.isLetter && !s.first!.isASCII && "₀₁₂".contains(s.last!)
         }
 
         /// "Δx", "ΔT" — "delta x" (lexer step 3b) multiplies like a letter: "m c delta T" → mcΔT.
@@ -1475,7 +1749,10 @@ public enum MathSpeech {
         private static let indexLetters: Set<Character> = ["n", "k", "i", "j", "m"]
 
         private static func indexes(_ left: String, _ right: String) -> Bool {
-            canCarryIndex(left) && isIndex(right)
+            guard canCarryIndex(left) && isIndex(right) else { return false }
+            // A capital carries only n, k or a number ("S n" → Sₙ); "G M m" is the product GMm.
+            if left.last!.isUppercase, let r = right.first, r.isLetter { return r == "n" || r == "k" }
+            return true
         }
 
         private static func canCarryIndex(_ s: String) -> Bool {
@@ -1486,7 +1763,8 @@ public enum MathSpeech {
         private static func isIndex(_ s: String) -> Bool {
             if !s.isEmpty && isInteger(s) { return true }
             guard isSingleLetter(s), let first = s.first else { return false }
-            return indexLetters.contains(Character(first.lowercased()))
+            // lower-case only: "λ N" is the product λN (A = λN), not λ_N (fix round)
+            return indexLetters.contains(first)
         }
 
         private static func isSingleLetter(_ s: String) -> Bool {
@@ -1766,7 +2044,31 @@ public enum MathSpeech {
             let expr = Expr()
             var i = start
             while i < items.count, step(expr, &i) {}
-            return (expr.render(), activated, i - start)
+            return (spacingUnits(expr.render(), expr, start, i), activated, i - start)
+        }
+
+        /// The run's last items are unit letters after a number, in an equation: write them
+        /// spaced ("12 N", "10 N m") instead of as a product ("12N").
+        private func spacingUnits(_ text: String, _ expr: Expr, _ start: Int, _ end: Int) -> String {
+            guard expr.hasEquals, end - start >= 3 else { return text }
+            var k = end - 1
+            var units: [String] = []
+            while k > start, items[k].kind == .variable, Expr.unitLetters.contains(items[k].text) {
+                units.insert(items[k].text, at: 0)
+                k -= 1
+            }
+            guard !units.isEmpty, items[k].kind == .number else { return text }
+            let glued = items[k].text + units.joined()
+            // the rendered tail, spaces aside, must be exactly number + units
+            var tail = 0
+            var seen = ""
+            for c in text.reversed() {
+                if seen.count == glued.count { break }
+                tail += 1
+                if c != " " { seen.insert(c, at: seen.startIndex) }
+            }
+            guard seen == glued else { return text }
+            return String(text.dropLast(tail)) + items[k].text + " " + units.joined(separator: " ")
         }
 
         private func step(_ expr: Expr, _ i: inout Int) -> Bool {
@@ -1782,6 +2084,19 @@ public enum MathSpeech {
                     // is a fraction in algebra ("x divided by 2 y" → x/2y), its denominator
                     // read like one after "over" (a power stays on it: "x/y²").
                     if sym.text == "÷" {
+                        // "4 ÷ 3 pi r³" → (4/3)π…, as for "over" (the sphere's coefficient).
+                        let numerator = expr.lastText
+                        if numerator != "1", Expr.isPlainNumber(numerator), !numerator.contains("."),
+                           i + 2 < items.count, items[i + 1].kind == .number, !items[i + 1].text.contains("."),
+                           items[i + 2].sym?.text == "π", let denominator = tryOperand(i + 1, allowApply: false),
+                           denominator.next == i + 2 {
+                            expr.collapse(from: expr.count - 1, into: "(" + numerator + "/" + denominator.text + ")",
+                                          made: .quotient)
+                            expr.tightNext = true
+                            if sym.activates && !it.weak { activated = true }
+                            i = denominator.next
+                            return true
+                        }
                         guard let bottom = subExpression(i + 1, .product) else { return false }
                         if MathScript.isNumeric(expr.lastText) && MathScript.isNumeric(bottom.text) {
                             expr.pushInfix("÷")
@@ -1990,6 +2305,19 @@ public enum MathSpeech {
                 if scope == .event && startsApplication(i + 1) { return false }
                 let top = expr.tailStart(joinedBy: Parser.products, wall: .quotient)
                 let topIsProduct = expr.isCompound(from: top)
+                // "4 over 3 pi r cubed" → (4/3)πr³ (fix round): an integer other than 1 over an
+                // integer that π follows is the sphere's coefficient — "1 over 2 pi" stays 1/(2π).
+                let numerator = expr.render(from: top)
+                if !topIsProduct, numerator != "1", Expr.isPlainNumber(numerator), !numerator.contains("."),
+                   i + 2 < items.count, items[i + 1].kind == .number, !items[i + 1].text.contains("."),
+                   items[i + 2].sym?.text == "π", let denominator = tryOperand(i + 1, allowApply: false),
+                   denominator.next == i + 2 {
+                    expr.collapse(from: top, into: "(" + numerator + "/" + denominator.text + ")", made: .quotient)
+                    expr.tightNext = true
+                    activated = true
+                    i = denominator.next
+                    return true
+                }
                 guard let bottom = subExpression(i + 1, .product, joinsProducts: topIsProduct) else {
                     return false
                 }

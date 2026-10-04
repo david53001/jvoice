@@ -143,7 +143,7 @@ public enum MathSymbols {
 
         // equality & inequality
         add("=", .relation,
-            "equals", "equal to", "is equal to", "is equals to", "is the same as", "the same as", "=")
+            "equals", "equal to", "is equal to", "is equals to", "equals to", "is the same as", "the same as", "=")
         add("≠", .relation,
             "not equal to", "is not equal to", "does not equal", "not equals", "isn't equal to",
             "is unequal to", "≠", "!=")
@@ -346,6 +346,9 @@ public enum MathSymbols {
         add("N_A", .operand, "avogadro's number", "avogadros number")
         add("R", .operand, "the gas constant")
         add("G", .operand, "the gravitational constant")
+        // the vacuum constants as said in IB physics ("4 pi epsilon naught" → 4πε₀)
+        add("ε₀", .operand, "epsilon naught", "epsilon nought", "epsilon zero", "epsilon 0")
+        add("μ₀", .operand, "mu naught", "mu nought", "mu zero", "mu 0")
         add("µ", .operand, "micro")
 
         // greek — the complete alphabet, lower case by name and upper case as "capital x"

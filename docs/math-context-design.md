@@ -3,7 +3,8 @@
 - Branch: `feat/math-context`. Worktree: `.claude/worktrees/math-context`. Base: `feat/math-format` @ `90c6836`.
 - Status: IMPLEMENTED 2026-10-04 on `feat/math-context` (not merged, not installed), then REVISED the
   same day after an adversarial verify found bleeds, then REWORKED for recall the same evening after
-  David's first real dictation (§10). **§10 overrides §9, and §9 overrides §3.** The first implementation's three deviations are in `docs/math-context-progress.md`
+  David's first real dictation (§10), then FIXED the same night after a second verify found new
+  bleeds and recall gaps (§10.7). **§10.7 overrides §10.1–10.6, §10 overrides §9, and §9 overrides §3.** The first implementation's three deviations are in `docs/math-context-progress.md`
   (entry "implemented"); the revision is the entry "adversarial verify".
 - Progress log: `docs/math-context-progress.md`.
 
@@ -589,4 +590,123 @@ bracket, k · k + 1." (no relation).
   same dictation, most in the same sentence.
 - "Alpha² is a band, x = 2." → `α²`: a glued power is trusted as maths.
 - Glued names, `Δx`, and the Windows mirror: not ported (see §6).
+
+### 10.7 Fix round (2026-10-04, night) — a determiner needs the name's OWN neighbourhood
+
+**Why.** A verify of §10 (probe-v2, commit `28bcad5`) reproduced bleeds in 9 families (AWS/code chat
+"the lambda is down" next to any equation; labels and config keys as evidence — "Plan B = 20",
+"lr=0.01", "100m"; his/her/their/my lifted by "x = 2 and …" in the same stretch; sentence evidence +
+maths word crossing a comma into "the beta is out"; names for things — "Project lambda", "the server
+omega"; the μ of "50 μs"; glued "alpha=1"/"Alpha²"; "Fortnite went from alpha to beta") and recall gaps
+in 17 (whisper right sides such as "-3", "½", "1/3", "30°", "π/6", "h/p", "mg", "(x + 1)"; glued
+"lambda²"/"-lambda" inside their own equation; "sin(theta" and other bracket-glued names; "lambda N"
+read as λ_N; "equals to"; -ing verbs; IB quantity nouns; "pie"; δ before a Greek name; the sphere's
+4/(3πr³); ε₀; units glued to numbers). Measurement corpora: `.build/math-context/` — the verify inputs,
+`verify2-bleed.txt` / `verify2-recall.txt`; the bleed inputs are now appended to
+`everyday-whisper.txt` (511 lines) and the recall rows to `wordings.tsv` (597 rows, two new families).
+
+**V2, rewritten.** A determiner or possessive before ANY name now vetoes it unless the name's own
+neighbourhood is mathematics (`MathSpeech.Emitter.determinerLifted`, word lists in `MathContext`):
+
+| Determiner | Lifted by |
+|---|---|
+| his, her, their | the letter written as a symbol (Whisper's "3λ", or a converted run's λ for a non-everyday letter), or a value statement with an equation in the stretch ("Their ω is 2 and v = 6") |
+| the, this, that, these, those, our, your, a, an, my (and "in" before alpha/beta/gamma/pi) | the letter written; a VALUE STATEMENT with evidence in the same or an adjacent sentence ("the λ is 3, and …", "a μ of 0.3 means …", "the θ is 30 degrees, so …", "the μ between the box and the floor is 0.3 and …", "Is the λ 3? x² = 9"); the name IN/OF an equation or maths noun ("the λ in 3y + 3z = 5", "the λ goes in equation 3", "the π in this formula"); a maths noun within three words ("the θ is the angle …", "the α makes the denominator 0"); a QUESTION or COMMAND about it (where's/what's/find/need/put/plug/use/pick/about …) with evidence in its stretch — for the/this/that also the adjacent sentence ("I have x = 5. Where's the λ?"), for our/your/my the same sentence, for a/an and the everyday letters only the stretch |
+| …and for the non-everyday letters also | a CONDITION word right before an equation in its sentence (when/if/for/where/given/because/since/makes/gives/means/that: "Why is the λ getting bigger when x = 5?", "a λ that makes x = 5"); evidence in the same/adjacent sentence plus a maths word in its own sentence |
+
+A STATUS word within six words after the name ("down", "slow", "fine", "broken", "crashes", "best",
+"favourite", "ready", "called", …: `MathContext.statusWords`) cancels every lift but the written letter:
+"The lambda is down when x = 2." stays. A possessive, and an article before an everyday letter, still
+block the letter in the whole dictation (a NAME); an article before any other letter only stops that
+occurrence. "that" after anything but a preposition is a conjunction ("we know that λ is 3"); a capital
+"A" mid-sentence is a variable ("A sin(ωt)").
+
+**Everyday letters without a determiner** (alpha, beta, gamma, pi) promote by evidence only with
+maths around them: evidence in their stretch, a maths word anywhere in the dictation, a value statement
+near evidence ("Can α be 4? Then z = 5 ÷ 0."), or a number right before ("2 pi, and x = 3" → 2π).
+"x = 2. He's alpha." and "x = 2. Fortnite went from alpha to beta in 2017." stay English. Any name
+away from the equation's stretch with a status word after it stays ("x = 2. ω is the best.").
+
+**Evidence (`writtenEquations`).** Greek NAMES count as letter terms inside Whisper's windows
+("lambda = -3", "lambda² - 4 = 0", "sin(theta) = 0.5"), so a name with a Whisper-written right side is
+its own evidence. New classes: degrees, slash and power-of-ten numbers ("30°", "1/3", "10^-3", "±2");
+letter powers and short products ("mc²", "λv", "x1", "N0"); slash products ("π/6", "h/p"); "2(x", "det(A";
+any 2–3-letter group after a relation/operator ("IR", "mg"); "I" after notation ("λ I"); "max"/"min"
+after a letter. Never evidence: a capital after a label word ("Plan B = 20", "Gate B = 4", "Grade A";
+`labelNouns`, or any capitalised word that is no sentence opener), a ranking of capitals by < or > ("S >
+A > B"), a glued equation whose left side is not one letter ("lr=0.01", "bs=32"), "1x" and 3-digit
+coefficients ("100m"), unit fractions ("km/h", "m/s"). An expression with an operator and no relation
+("2 - λ") is evidence in a sentence with a maths word, or after "⟨letter⟩ is" ("x is 3 - λ"). The
+written-letter lift and anchor only use LETTER TERMS: the μ of "50 μs" is a unit.
+
+**Anchors added.** "for which λ", "What's the value of λ?" (a question ending on the name), "The value
+of λ is 3." (a value statement), "What is λ in this equation?" (a name in/of a maths noun), a value
+statement beside a maths word ("So λ can't be 2 because then the denominator is 0."), the IB quantity
+cue nouns (friction, density, resistivity, efficiency, flux, emf, torque, temperature, conductivity,
+permittivity, permeability, phase; "angular speed/frequency/velocity/acceleration", "phase difference").
+Maths words added: matrix, matrices, singular, discriminant, eigenvalue(s)/eigenvector(s), formula,
+quadratic, polynomial, inequality, roots, radians. A letter a converted run wrote anchors its name
+elsewhere ("z is lambda and y is 2 minus lambda" → both λ).
+
+**Vetoes added.** vetoBefore: project, team, operation, codename, server, boat, very, pretty, super,
+quite, totally, he's/she's/I'm/you're/they're/we're, thanks/thank/bye/hi/hello/dear/love/hate/meet.
+V5 for all letters: server(s), name(d), codename, config, env, project, haskell, c++, kotlin,
+closure(s), lisp, code, coding, syntax, crypto, token, coin, symbol(s), character(s), pokemon, card,
+company, marketing, boss, hp; omega: rolex, seiko, swatch, tissot, watches, wrist; delta: game(s),
+loop, frame(s), unity, engine. Glued "=N" is never accepted for alpha/beta/gamma/pi ("alpha=1"); a
+glued power or "'s" needs evidence in its stretch, or a value statement near evidence ("Alpha² is a
+band, x = 2." stays). "let ⟨name⟩ be" + anything but a value or a definition word stays English.
+
+**New forms.**
+- Glued prefixes: "-lambda" → `-λ`, "-omega²" → `-ω²`, "sin(theta" → `sin(θ`, "N(mu" → `N(μ`,
+  "e^(-lambda" → `e^(-λ`; inside brackets the next single letter joins ("sin(ωt + φ)", "e^(-λt)",
+  "det(A - λI)"), also into a following converted run.
+- Whisper's signed coefficient: "x = -2 lambda" → `-2λ`.
+- A run ending in a Greek letter takes Whisper's powered letter: "A = pie r²" → `A = πr²`.
+
+**Engine-wide changes (sweep: everyday, everyday-adversarial, everyday-whisper and prose unchanged).**
+- "equals to" is "=" (David's habit; 8 of his real dictation lines gain correct conversions, 0 everyday lines).
+- A relation preceded only by keywords ("beta has to equal to 3" → "to = 3") is no broken equation.
+- A relation left dangling before Whisper notation the lexer cannot read ("λ such that x² + …") is no
+  broken equation.
+- "delta" before a lower-case Greek name is the change: "delta theta over delta t" → `Δθ/Δt`.
+- "pie" is π also before a powered letter, an operator symbol, at a sentence end after a relation
+  ("θ = pie."), and in "pie r squared"/"cubed" after any word ("The area is pie r squared" → `πr²`).
+- A capital carries only n/k as a sequence index: "G M m" → `GMm`, "lambda N" → `λN` (was `G_M m`,
+  `λ_N`; "S n" is still `Sₙ`).
+- An integer other than 1 over an integer that π follows is a coefficient: "4 over 3 pi r cubed" →
+  `(4/3)πr³` (also "4 ÷ 3 pi r³"); "1 over 2 pi" stays `1/(2π)`.
+- "epsilon/mu naught|nought|zero|0" are `ε₀`/`μ₀`, which multiply like letters ("4πε₀r²").
+- Unit letters N, J, V, W, m, s that END an equation's run after a number keep their space: "F = 12 N",
+  "τ = 10 N m", "Δx = 5 m" (was "12N").
+
+**Results (probe `.build/math-context/probe-v3`).**
+
+| Measure | probe-v2 (`28bcad5`) | fix round |
+|---|---|---|
+| verify bleed families (81 inputs) | 81 bleed | **0** |
+| verify recall families (130 rows) | 1 exact | **115 exact** (see below) |
+| `wordings.tsv` original 467 rows | 460 (P 319/326, S 141/141) | 456 (P 315/326, S 141/141) |
+| `wordings.tsv` all 597 rows | 462 | **573** (P 431/455, S 142/142) |
+| everyday / everyday-adversarial / everyday-whisper (511) vs `probe-baseline` | 0 / 0 / 81 | **0 / 0 / 0** |
+| `context.tsv` | 137/137 | 137/137 |
+| `prose.txt` vs probe-v2 | — | 0 lines differ |
+| `math.txt` vs probe-v2 | — | 7 differ, all fixes (`λN`, `GMm`, `GM`, `(4/3)πr³`, `4πε₀r²`, "density ρ", "torque τ") |
+| David's real dictations | 6 of 30 promote | 10 lines differ from baseline; vs v2 only "equals to" → "=" and the half-promoted line now fully converted |
+| STRESS (vs baseline) | 108 | **29** (every one a bare non-everyday name, e.g. "x = 2. Lambda, …") |
+| 10,000 lines, 5 runs | 0.73–0.75 s | 0.76–0.77 s (+~3 %) |
+
+Original P rows now missed (trade-off for the bleeds above): "So the λ is just a number, and x = …",
+"That λ is the one we found, x = 2.", "Why is this β different from the one in 3y + 3z = 5?", "What's our
+λ? x=2.", "The λ goes in, and then …", "When α takes the value from part A, x = 4." plus 5 of §10.5's 7
+("Pick a λ, …", "λ 1 … λ 2", "2λ - λ", "Is the β 5 then?", "k · k + 1"). Not fixed on purpose: bare
+"delta = b² - 4ac" (bare delta stays run-only), "3 pie"/"10 pie" with no evidence, the "rad" postfix
+("2πrad"), the format spec's spaced composites ("ω² r", "sin 2θ/g", "I ω", "ω A"), "the same as" → "="
+(vocabulary), solution triples with no maths word ("(2 - λ, λ, 1)"), "-N Δφ" spacing.
+
+**Accepted risks.** A question about "the λ" right after an equation in the previous sentence promotes
+even when it is a watch or a server ("x = 2. Where's the omega?") — it is exactly David's real pattern
+("I have x = 5. Where's the λ?"); "The α is 0.5 and x = 2." (a value statement next to an equation)
+promotes; a bare non-everyday name with evidence in another sentence still promotes unless a veto or a
+status word stops it ("x = 2. Lambda, sorry, wrong chat.").
 
