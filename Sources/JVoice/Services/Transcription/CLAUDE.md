@@ -151,8 +151,18 @@ pinned to version 1.0.0). To work in this area, read the files below.
     `λ's`, `λ²`, `λ=3`), glued after Whisper's minus or a bracket ("-lambda", "sin(theta", "N(mu",
     "e^(-lambda" → `-λ`, `sin(θ`, `N(μ`, `e^(-λ`), and "delta ⟨letter or Greek name⟩", which the engine
     now reads as the change `Δx`/`Δθ` everywhere ("delta x equals 3" → `Δx = 3`). Whisper-written right
-    sides make a name its own evidence ("lambda = -3", "theta = π/6", "lambda² - 4 = 0"). Design + rejected alternatives:
-    `docs/math-context-design.md` (§10, with §10.7 the current V2/evidence rules); log:
+    sides make a name its own evidence ("lambda = -3", "theta = π/6", "lambda² - 4 = 0"). **Round 3 (design §11):**
+    a name in an everyday PLACE is a thing ("the lambda is in the cloud" stays; "… in the denominator" promotes);
+    one meaning per dictation — a letter converted anywhere also converts after a colon or (everyday letters)
+    an article in a maths position ("Solve for λ: 3λ - 6 = 0."); "the same as"/"such that" before English is
+    no broken equation; a QUANTITY with a unit its letter stands for promotes ("θ is 30 degrees", "the λ is
+    600 nm", "ω is 3 rad/s" — never "30% off", "40 mm", "512 MB"); STRONG maths vocabulary
+    (`MathContext.strongTerms`: eigenvalue, "both sides by", "double angle", "standard deviation", …) is
+    evidence for the names of its own sentence; "multiply/divide ⟨maths object⟩ by λ" and "λ is an eigenvalue
+    of A" anchor; whisper's "|x - 2|", "(x + λ)²", "arctan(3/4)", "pi/4" are read as notation; bare "delta"
+    promotes only as a term of such an equation (`windowOnlyNames`). Corpus `.build/math-context/round3.tsv`.
+    Design + rejected alternatives:
+    `docs/math-context-design.md` (§10, with §10.7 the current V2/evidence rules and §11 round 3); log:
     `docs/math-context-progress.md`. Related, run-only: whisper's "pie" is a weak π after a number or
     an infix relation/operator and before a single letter or "over" (or "root" after a number):
     "C equals 2 pie r" → `C = 2πr`, "A equals pie r squared" → `A = πr²`; never promoted.
@@ -187,8 +197,8 @@ pinned to version 1.0.0). To work in this area, read the files below.
    re-run the no-bleed half of the suite (`./scripts/run-logic-tests.sh`) AND sweep a real corpus
    through `--math-probe`. The single exception to "weak words render only inside an activated
    run" is **dictation-level context promotion** (`Math/MathContext.swift`,
-   `docs/math-context-design.md`): a curated set of Greek-letter names (never delta, bare sigma,
-   eta, iota, kappa, nu, xi, omicron, psi) may render outside an activated run, only when the
+   `docs/math-context-design.md`): a curated set of Greek-letter names (never bare sigma,
+   eta, iota, kappa, nu, xi, omicron, psi; bare delta only as a term of a whisper-written equation) may render outside an activated run, only when the
    dictation holds evidence (a converted segment with a letter operand and a real construct, or an
    anchor such as "find the value of λ") and every veto passes. It never activates anything; with no candidate word the
    output is byte identical. Changes to the set, anchors or vetoes must be swept against

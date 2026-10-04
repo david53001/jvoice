@@ -306,3 +306,26 @@ from nothing can pick up the work.
   - The installed app now converts David's sentence.
   - Snapshot of the installed engine: `.build/math-context/probe-v3-installed`.
   - Remaining recall gaps P1–P7 (from the final check) → workflow #3.
+  - Workflow #3 launched: run `wf_c532e914-58a` (P1–P7 families: units, maths verbs, written notation such as pi/4 or (x + λ)², the colon / "the same as" half conversions; then bleed/recall verify → fix → SHIP check). Fresh corpora from round 2's check are saved as `everyday-fresh.txt` / `math-fresh.txt`.
+- 2026-10-04 (late night), workflow #3 implement stage — **round 3** (design §11):
+  - **What changed** (`Math/MathContext.swift` section "round 3", `MathSpeech.Emitter`): a name in an everyday
+    place is a thing (P1); one meaning per dictation — a colon and an everyday letter's article are lifted for a
+    letter converted elsewhere, with a second decision pass (P2); "the same as"/"such that"/"given that" before
+    English is no broken equation (P3); definitions with filler (P4); whisper bars/brackets/arc functions/
+    powered brackets/"pi/4"/window-only δ (P5); letter-specific quantity units and "we got" clauses (P6);
+    strong maths vocabulary at sentence scope, maths-verb operands, definition anchors, "γ factor" (P7).
+    Engine-wide: none (the rendering of runs is unchanged).
+  - **Corpus**: `.build/math-context/round3.tsv` (259 rows, P1–P7, P and S per family; gitignored).
+  - **Numbers** (probe `.build/math-context/probe-r3`, eval script recreated in the session scratchpad as
+    `ev3.py`): round3.tsv 259/259 (v3 110); wordings.tsv 576/597, P 435/456, S 141/141 after relabelling the
+    one row round 3 reverses ("Theta is 45 degrees." S → P; v3 on the new labels 572); context.tsv 137/137;
+    everyday, everyday-adversarial, everyday-whisper, everyday-fresh 0 lines differ from baseline;
+    verify2-bleed 43 differ from baseline (v3 44 — the one change removes the bleed "… by the way the omega
+    is in the shop"); maths corpora 0 losses vs v3 (gains: math 8, math-fresh 19, verify2-recall 15; others 0);
+    STRESS 14/15 (unchanged); a held-out set written after the rules: promote 40/40 (v3 9/40), 99 everyday
+    lines 0 changed (one bleed found and fixed before: "Phi is the angle of my bed").
+  - Logic tests 1662/1662 (+124: 42 promote cases ×2, 40 no-bleed; the "delta is run-only" assertion now
+    says window-only), mirrored as `greekNamesRoundThreeQuantitiesVocabularyAndPlaces` in
+    `Tests/JVoiceTests/MathSpeechTests.swift` (parse-checked; CI-only).
+  - Timing, 10,000 lines, 5 runs: v3-installed 0.71–0.73 s, round 3 0.74–0.76 s (median +3.2 %).
+  - **Open**: design §11.3; Windows mirror; not installed; verify/fix/SHIP stages of workflow #3 pending.

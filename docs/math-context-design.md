@@ -4,7 +4,8 @@
 - Status: IMPLEMENTED 2026-10-04 on `feat/math-context` (not merged, not installed), then REVISED the
   same day after an adversarial verify found bleeds, then REWORKED for recall the same evening after
   David's first real dictation (§10), then FIXED the same night after a second verify found new
-  bleeds and recall gaps (§10.7). **§10.7 overrides §10.1–10.6, §10 overrides §9, and §9 overrides §3.** The first implementation's three deviations are in `docs/math-context-progress.md`
+  bleeds and recall gaps (§10.7), then extended by round 3 (§11, workflow #3). **§11 adds to §10.7 (and changes the
+  two rules it names), §10.7 overrides §10.1–10.6, §10 overrides §9, and §9 overrides §3.** The first implementation's three deviations are in `docs/math-context-progress.md`
   (entry "implemented"); the revision is the entry "adversarial verify".
 - Progress log: `docs/math-context-progress.md`.
 
@@ -710,3 +711,67 @@ even when it is a watch or a server ("x = 2. Where's the omega?") — it is exac
 promotes; a bare non-everyday name with evidence in another sentence still promotes unless a veto or a
 status word stops it ("x = 2. Lambda, sorry, wrong chat.").
 
+
+## 11. Round 3 (2026-10-04, workflow #3) — one meaning per dictation, quantities, strong vocabulary
+
+**Why.** The final check of workflow #2 (SHIP) listed seven remaining families (P1–P7). This round closes
+them as families, not sentences. Measurement corpus: `.build/math-context/round3.tsv` (259 rows, Whisper
+style, `# == FAMILY:` headers as in `wordings.tsv`; per family ≥ 22 should-promote rows and ≥ 11 must-stay
+rows that probe the same rule from the everyday side). Code: `MathContext.swift` (section "round 3" — every
+word list is documented there) and `MathSpeech.Emitter` (`located`, `definition`, `quantity`, `operand`, the
+two-pass `decide` in `promote`, the broken-equation exemption in `flush`).
+
+Terms: *maths position* = a slot where only a letter makes sense (a value statement, "in/of" a maths noun, a
+question/command about it, a definition, a quantity, the operand of a maths verb). *Converted letters* = the
+letters whisper wrote, a converted run wrote, or (second pass) context promoted somewhere in the dictation.
+
+### 11.1 The rules
+
+| Family | Rule | Promotes | Stays |
+|---|---|---|---|
+| P1 place | "⟨name⟩ [is/lives/sits/…] in/on/at ⟨place⟩" is a THING (like a status word: it cancels every lift but a written letter) unless the place holds a maths noun, a `placeNouns` noun ending the phrase (power, quadrant, interval, term, …), a unit, a number or a letter term | "…, also the λ is in the denominator", "the θ is in the second quadrant", "Is θ in degrees? tan x = 1." | "Solve 2x + 3 = 7, also the lambda is in the cloud.", "…, the omega is in my bag" |
+| P2 one meaning | for a converted letter, a colon after the name is no mention, and an article before an EVERYDAY letter is lifted in a maths position; `promote` runs a second pass when the first promoted letters that were not yet "converted" | "Solve for λ: 3λ - 6 = 0.", "Find λ: λ² = 9.", "Solve for α: 2α = 6." | "Lambda function: it returns x + 1.", "Note: the alpha team meets at 5, and 2α = 6." (V3 compound still names it) |
+| P3 comparison | a multi-word relation ("the same as", "such that", "given that") that ends its run, followed only by keywords/weak items and then an ordinary word (not "pie", a name or a number), is English — no broken equation | "Is the λ in this equation for x = 5 the same as before?", "Find the value of μ such that the vectors are perpendicular." | "Is the lambda in this region the same as before?" (no maths) |
+| P4 definition | a definition "⟨name⟩ [here/now/basically] is the [adj] ⟨noun⟩" with a definition noun followed by a tail (of/for/between/…, a connective or the end) counts as `definesMaths`; with evidence near it lifts the article | "Okay so the β here is the coefficient, y = 3 + βx." | "…the beta here is the new version, y = 3x + 2", "the alpha here is the best one" |
+| P5 notation | whisper's bars and brackets are read through ("|x", "2|", "1)²"); arc/hyperbolic/inverse functions ("arctan(3/4)", "tan^-1(…)", "sin⁻¹(…)") are letter terms; a relation-free expression is evidence after expand/simplify/factorise/… or with a powered bracket; glued names take ")^2", ")²", "^2", "/N", "/x" and a digit prefix ("3pi/2"); "pi/N" is its own evidence; bare **delta** promotes only as a term of a written window that has a letter of its own (`windowOnlyNames`); a window holding a name needs an own term (number, letter, function, ≤ 2-letter product) | "Expand (x + λ)^2.", "θ = arctan(3/4).", "|x - 2| < δ", "x = π/4", "The discriminant δ = b² - 4ac." | "Lambda = arn of the function." (was a v3 bleed), "We tag releases alpha/1 and beta/1.", "Delta = 0.5 …" (engine-only) |
+| P6 quantity | a value with a unit THIS letter stands for (`quantityUnits`: angle letters θ φ α β γ with degrees/°/rad; λ with nm/μm/m/cm; ω with rad/s; ρ with kg/m³, Ωm; τ with N m), also through "we got/measured" and "of water"; a change Δx with any number; a value statement beside strong vocabulary ("reject H0") | "θ is 30 degrees.", "the λ is 600 nm", "The θ we got was 0.93 rad.", "Our α is 0.05, so we reject H0.", "The μ of the distribution is 50 …" (stats nouns are maths nouns now) | "The beta is 30% off.", "The omega is 40 mm.", "Lambda 2 is 600 MB.", "The lambda is 30 seconds.", "Beta is 30 degrees warmer today." |
+| P7 vocabulary | `strongTerms` (eigenvalue, perpendicular, "both sides by", "double angle", "standard deviation", "null hypothesis", "angular velocity", "coefficient of friction", "gamma factor", …) are evidence for the names of their own SENTENCE (an everyday letter: own stretch; a name alone between commas — a list — never); a definition with a strong noun anchors; "multiply/divide ⟨maths object⟩ by ⟨name⟩" anchors; "the γ factor" is a maths compound | "λ is an eigenvalue of A.", "Multiply both sides by λ.", "Divide by λ.", "Is it θ or 2θ in the double angle formula?", "The γ factor is 1.5.", "Then the Δx is 0.1." | "Multiply your savings by beta.", "The alpha factor is huge in this game.", "The gamma factor of my monitor is 2.2.", "Lambda is integral to our stack now." |
+
+Deliberately NOT strong terms (each measured as a bleed on a held-out everyday set): integrate/differentiate
+("integrate beta into the pipeline"), integral ("λ is integral to our stack"), derivative(s) (finance, "a
+derivative of the old design"), orthogonal, variance, hypothesis, simultaneous, h1 (HTML), "of friction" ("a lot
+of friction"). Not strong definition nouns: constant, root, unknown ("Lambda is the constant we use for
+retries") — they still count next to evidence.
+
+### 11.2 Results (probe `.build/math-context/probe-r3`; references `probe-v3-installed`, `probe-baseline`)
+
+| Measure | probe-v3-installed | round 3 |
+|---|---|---|
+| `round3.tsv` | 110/259 (P 30/162, S 80/97) | **259/259** (P 162/162, S 97/97) |
+| held-out rows written after the rules (scratch, not committed) | promote 9/40 | promote 40/40; 99 everyday lines: 0 changed |
+| `wordings.tsv` (one row relabelled, below) | 572/597 (P 431/456, S 141/141) | **576/597** (P 435/456, S 141/141) |
+| `context.tsv` | 137/137 | 137/137 |
+| everyday / everyday-adversarial / everyday-whisper / everyday-fresh vs baseline | 0 / 0 / 0 / 0 | **0 / 0 / 0 / 0** |
+| `verify2-bleed.txt` lines differing from baseline | 44 | 43 (one v3 bleed fixed: "… the omega is in the shop") |
+| maths corpora vs v3: losses / gains | — | **0 losses**; gains: math 8, math-fresh 19, verify2-recall 15; math-adversarial, real, real-2026-10-04, prose 0 |
+| STRESS A/B vs baseline | 14 / 15 | 14 / 15 |
+| 10,000 lines, 5 runs (median) | 0.719 s | 0.742 s (+3.2 %) |
+
+`wordings.tsv` relabel: the single-row family "fix-round must-stay (S)" held "Theta is 45 degrees." → stays.
+Round 3's P6 requires the opposite ("Theta is 30 degrees." → θ), so the row is now P (`θ is 45 degrees.`) with
+a comment. On the original labels: S 142 → 141 because of that row only.
+
+### 11.3 Still not covered / risks
+
+- A definition or quantity promotes the name in its own stretch even when the same letter sits in a broken
+  equation elsewhere: "So θ is the angle, and sine theta equals opposite over hypotenuse." (math.txt) — the
+  second θ stays words because its stretch is a broken spoken equation. Same shape as an anchor in v3.
+- Strong terms work at SENTENCE scope for the non-everyday letters: "Eigenvalues are hard, and lambda …"
+  promotes a bare lambda unless a veto, a status word or a place stops it (stress: 2 of 510 everyday-whisper
+  lines with such a prefix differ from v3, both toward fewer letters).
+- "the λ is 2 m" promotes (λ with metres); "Lambda is 3 m from the door" stays only because "from" is no
+  connective.
+- 21 P rows of `wordings.tsv` still miss: the engine-format spacing rows ("ω A", "I ω", "mc ΔT", "-N Δφ",
+  "sin 2θ/g", "2πrad"), "3/10 pie" without evidence, "the same as" converted to "=" in "Is λ the same as t",
+  indexed families with no evidence, and the determiner rows §10.7 traded away.
+- Windows mirror: not ported (now also §11).

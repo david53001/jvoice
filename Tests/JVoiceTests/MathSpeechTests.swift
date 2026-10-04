@@ -433,7 +433,9 @@ private let contextLeavesAlone: [String] = [
     for prose in contextLeavesAlone {
         #expect(MathSpeech.convert(prose) == prose, "\(prose)")
     }
-    for runOnly in ["delta", "sigma", "eta", "iota", "kappa", "nu", "xi", "omicron", "psi", "big delta"] {
+    // bare "delta" only as a term of a whisper-written equation with its own letter (round 3)
+    #expect(MathContext.windowOnlyNames == ["delta"])
+    for runOnly in ["sigma", "eta", "iota", "kappa", "nu", "xi", "omicron", "psi", "big delta"] {
         #expect(!MathContext.promotable.contains(runOnly), "\(runOnly) must stay run-only")
     }
 }
@@ -811,6 +813,147 @@ private let fixRoundNoBleed: [String] = [
         #expect(MathSpeech.convert(expected) == expected, "idempotent: \(spoken)")
     }
     for prose in fixRoundNoBleed {
+        #expect(MathSpeech.convert(prose) == prose, "\(prose)")
+    }
+}
+
+/// Round 3 (docs/math-context-design.md §11): the P1–P7 families of the workflow-#2 final check.
+private let roundThreePromotes: [(String, String)] = [
+    ("Solve 2x + 3 = 7, also the lambda is in the denominator.",
+     "Solve 2x + 3 = 7, also the λ is in the denominator."),
+    ("x + y = 4, and the lambda is in the power.",
+     "x + y = 4, and the λ is in the power."),
+    ("Solve x + 4 = 9, also the theta is in the second quadrant.",
+     "Solve x + 4 = 9, also the θ is in the second quadrant."),
+    ("Solve for lambda: 3 lambda - 6 = 0.",
+     "Solve for λ: 3λ - 6 = 0."),
+    ("Solve for theta: 2 sin theta = 1.",
+     "Solve for θ: 2 sin θ = 1."),
+    ("Find lambda: lambda² = 9.",
+     "Find λ: λ² = 9."),
+    ("Solve for alpha: 2 alpha = 6.",
+     "Solve for α: 2α = 6."),
+    ("Is the lambda in this equation for x = 5 the same as before?",
+     "Is the λ in this equation for x = 5 the same as before?"),
+    ("The lambda in x + lambda = 5 is the same as before.",
+     "The λ in x + λ = 5 is the same as before."),
+    ("Find the value of mu such that the vectors are perpendicular.",
+     "Find the value of μ such that the vectors are perpendicular."),
+    ("Find the value of mu given that the block does not slide.",
+     "Find the value of μ given that the block does not slide."),
+    ("Okay so the beta here is the coefficient, y = 3 + beta x.",
+     "Okay so the β here is the coefficient, y = 3 + βx."),
+    ("So the alpha here is the angle, and sin alpha = 0.5.",
+     "So the α here is the angle, and sin α = 0.5."),
+    ("Right so the beta is basically the coefficient, y = beta x.",
+     "Right so the β is basically the coefficient, y = βx."),
+    ("Expand (x + lambda)^2.",
+     "Expand (x + λ)^2."),
+    ("(x + lambda)²",
+     "(x + λ)²"),
+    ("Theta = arctan(3/4).",
+     "θ = arctan(3/4)."),
+    ("|x - 2| < delta",
+     "|x - 2| < δ"),
+    ("x = pi/4",
+     "x = π/4"),
+    ("My answer is θ = pi/4",
+     "My answer is θ = π/4"),
+    ("Theta = sin⁻¹(0.6).",
+     "θ = sin⁻¹(0.6)."),
+    ("x = 3pi/2",
+     "x = 3π/2"),
+    ("The discriminant delta = b² - 4ac.",
+     "The discriminant δ = b² - 4ac."),
+    ("Factorise lambda² - 5 lambda + 6.",
+     "Factorise λ² - 5λ + 6."),
+    ("Theta is 30 degrees.",
+     "θ is 30 degrees."),
+    ("So the theta here is 30 degrees.",
+     "So the θ here is 30 degrees."),
+    ("the lambda is 600 nm",
+     "the λ is 600 nm"),
+    ("The theta we got was 0.93 rad.",
+     "The θ we got was 0.93 rad."),
+    ("Our alpha is 0.05, so we reject H0.",
+     "Our α is 0.05, so we reject H0."),
+    ("The mu of the distribution is 50 and sigma is 5.",
+     "The μ of the distribution is 50 and sigma is 5."),
+    ("Omega is 3 rad/s.",
+     "ω is 3 rad/s."),
+    ("The rho of water is 1000 kg/m³.",
+     "The ρ of water is 1000 kg/m³."),
+    ("Lambda is an eigenvalue of A.",
+     "λ is an eigenvalue of A."),
+    ("Multiply both sides by lambda.",
+     "Multiply both sides by λ."),
+    ("Divide by lambda.",
+     "Divide by λ."),
+    ("Now multiply by lambda and add 5x.",
+     "Now multiply by λ and add 5x."),
+    ("Is it theta or 2 theta in the double angle formula?",
+     "Is it θ or 2θ in the double angle formula?"),
+    ("Find mu such that the vectors are perpendicular.",
+     "Find μ such that the vectors are perpendicular."),
+    ("The gamma factor is 1.5.",
+     "The γ factor is 1.5."),
+    ("Then the delta x is 0.1.",
+     "Then the Δx is 0.1."),
+    ("Is mu the mean of the distribution?",
+     "Is μ the mean of the distribution?"),
+    ("The standard deviation is 3 and mu is 10.",
+     "The standard deviation is 3 and μ is 10."),
+]
+
+private let roundThreeNoBleed: [String] = [
+    "Solve 2x + 3 = 7, also the lambda is in the cloud.",
+    "Solve x + 4 = 9, also the omega is in my bag.",
+    "Solve 2x + 3 = 7, also lambda is in the cloud.",
+    "Solve 2x = 10, also the lambda lives in the cloud.",
+    "Find x if 2x + 3 = 7 by the way the omega is in the shop.",
+    "Lambda function: it returns x + 1.",
+    "Beta: the new build is out.",
+    "Alpha: the first letter of the alphabet.",
+    "Theta: my cat's name.",
+    "Is the lambda in this region the same as before?",
+    "Find a lambda such that the API returns 200.",
+    "Is the beta the same as last week's build?",
+    "Okay so the beta here is the new version, y = 3x + 2.",
+    "Okay so the alpha here is the best one, and y = 3 + 2x.",
+    "The lambda here is the function we deploy, x = 2.",
+    "Lambda = arn of the function.",
+    "Use the alpha/beta toggle in settings.",
+    "We tag releases alpha/1 and beta/1.",
+    "Ship the beta/2 build tonight.",
+    "The beta is 30% off.",
+    "The omega costs 5000 euros.",
+    "The omega is 40 mm.",
+    "Lambda 2 is 600 MB.",
+    "The lambda is 512 MB.",
+    "The lambda is 30 seconds.",
+    "Beta is 30 degrees warmer today.",
+    "The gamma is 2.2 on my monitor.",
+    "Multiply your savings by beta.",
+    "Divide the team by alpha and beta groups.",
+    "The alpha factor is huge in this game.",
+    "The gamma factor of my monitor is 2.2.",
+    "Multiply by beta testers.",
+    "The eigenvalue lecture was boring, and the beta is out.",
+    "Pi is the best angle for photos.",
+    "Let's integrate beta into the pipeline next sprint.",
+    "Lambda is integral to our stack now.",
+    "Lambda is the mean one of the bunch.",
+    "Phi is the angle of my bed.",
+    "Lambda adds a lot of friction to deploys.",
+    "Squared, cubed, sine, cosine, theta, integral, derivative.",
+]
+
+@Test func greekNamesRoundThreeQuantitiesVocabularyAndPlaces() {
+    for (spoken, expected) in roundThreePromotes {
+        #expect(MathSpeech.convert(spoken) == expected, "\(spoken)")
+        #expect(MathSpeech.convert(expected) == expected, "idempotent: \(spoken)")
+    }
+    for prose in roundThreeNoBleed {
         #expect(MathSpeech.convert(prose) == prose, "\(prose)")
     }
 }
