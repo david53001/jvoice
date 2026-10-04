@@ -279,7 +279,7 @@ Greek word. Log the mirror as pending.
 
 ## 7. Limitations and follow-ups (not part of this feature)
 
-- `real.txt` line 38, "I forgot really what lambda is", has no evidence and stays a word. A later fix:
+- `real.txt` line 38 (a casual remark that mentions lambda) has no evidence and stays a word. A later fix:
   cue-word evidence (two or more of wavelength, eigenvalue, decay constant, Poisson, quadratic, radians),
   added only after a sweep.
 - Talk about the feature itself is promoted when it contains a spoken equation (`real.txt` line 33 before

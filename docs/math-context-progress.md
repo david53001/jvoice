@@ -118,7 +118,7 @@ from nothing can pick up the work.
   - **Known gaps / not done.**
     - Rule 2 (item by item) leaves the neighbours as dictated: "r theta" → `r θ`, "sine theta" →
       `sine θ` (not `rθ` / `sin θ`). Widening rule 1 would touch non-Greek items; left as designed.
-    - `real.txt` line 38 ("I forgot really what lambda is") still stays a word — no evidence.
+    - `real.txt` line 38 (a casual remark that mentions lambda) still stays a word — no evidence.
     - Mid-sentence capitalised names are always vetoed (V1), so "…, Lambda is 5, x equals 2" whose
       capital came from whisper stays a word.
     - **Windows mirror pending** (no .NET on this Mac): `windows/JVoice.Core/Math/MathContext.cs`
