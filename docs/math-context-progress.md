@@ -144,3 +144,62 @@ from nothing can pick up the work.
   - **Next:** David dogfoods it (needs `swift build`, which is broken until the Command Line Tools are
     reinstalled — see the 2026-10-04 toolchain entry), then merge `feat/math-context` into
     `feat/math-format`, then the Windows mirror.
+- 2026-10-04: **adversarial verify + fixes** (revision; design `docs/math-context-design.md` §9 is now
+  the current design).
+  - **Findings.** Verifiers reproduced 12 bleed patterns and 13 recall gaps against `761c3ee`.
+    - Bleeds: an anchor alone ("In terms of beta access", "Let beta be honest", "value of theta
+      healing") promoted, and counted as evidence for the WHOLE dictation; "capital X" swallowed
+      "venture capital beta" (→ Latin-looking `Β`); "big X" ("big alpha energy"); old run bleeds with
+      a letter ("T minus 10", "press X plus Y", "n plus 1 tickets") counted as evidence; one real
+      equation promoted everyday nouns in later sentences ("alpha team", "still in beta", "lambda
+      sensor", "tau is a protein"); finance greeks; "capital omega 99" → `Ω₉₉`; commas/brackets/dashes
+      /colons hid a mention; "The cow says mu".
+    - Recall: "Find alpha beta" blocked by Greek-beside-Greek; half-typeset products "2 π r", "ρ g
+      h"; V5 cues that are IB words ("testing", "released", "version", "males", "watch", "rays");
+      a comma-capital "Lambda" blocked every lambda; half-converted broken equations; `x̄`/`dy/dx`
+      not evidence; "pie" only after a number; IB command stems ("Find λ.", "Let λ equal 3"); indexed
+      "lambda 1 and lambda 2"; sigma.
+  - **Fixes** (all in `Math/MathContext.swift` + `MathSpeech.Emitter`, details in design §9):
+    evidence needs a letter operand AND a real construct (§9.1); anchors are local — own letter +
+    own sentence — and stricter (§9.2), with new IB stems (command clause, cue nouns, trig, let …
+    equal N, express … in terms of); V3 is an allowlist of words that may follow a name; V2 gains
+    the/in/absolute/closed/… and "room 1"-style labels; V5 loses the IB words and gains finance,
+    gaming, climbing, "call sign" and per-letter cues; mentions include brackets, dashes and a colon;
+    deliberate capitals pass every veto plus a word-before allowlist; "big X" removed; two lower-case
+    names are a product (αβ); indexed families (indices 0–2) render `λ₁`; a comma-capital no longer
+    blocks its letter; a stretch with a relation left as words is never promoted; promoted stretches
+    are written as one product ("2πr", "ρgh", "μmg", "sin θ"); "pie" widened (after a relation, before
+    "over"/"root").
+  - **Corpora** (gitignored, `.build/math-context/`): new `everyday-adversarial.txt` (103 lines: every
+    verifier bleed input + 25 of my own probes of the new rules, e.g. "Let beta be 2 hours late",
+    "Room 1 alpha and room 2 alpha are booked, x equals 4") and `math-adversarial.txt` (60 lines: every
+    recall input, split one per line). Baselines `baseline-everyday-adversarial.out` /
+    `baseline-math-adversarial.out` from `probe-baseline` (90c6836).
+  - **Acceptance numbers** (new probe vs `probe-baseline` @ 90c6836):
+    - `everyday.txt`: CHANGED 2 → 2, **0 lines differ**. `everyday-adversarial.txt`: CHANGED 77 → 77,
+      **0 lines differ** (the verifiers' build differed on 78 of 103).
+    - `real.txt`: 0 → 0, 0 differ. `prose.txt`: 268 → 268, 1 line differs (the same already-converted
+      docs table row as before, now `sin θ, cos 2θ, sin²θ`).
+    - `context.tsv`: **137/137**.
+    - `math.txt`: CHANGED 247 → 270, 74 lines differ; a token diff shows only Greek names becoming
+      letters, a number/letter/function joining one ("2π", "rθ", "Δx", "sin θ"), and indexed names.
+      Versus `761c3ee`: 24 lines differ — 22 gains, 2 losses: "For part b, use the value of lambda
+      from part a, which was 2." (no command word, no equation) and "…, lambda equals minus 1." (a
+      broken equation is now left as words, not half-converted).
+    - `math-adversarial.txt`: CHANGED 42 → 57.
+    - Logic tests **1287/1287** (1204 + 83 new: 24 promote cases ×2, 32 no-bleed cases, 3 "big X"
+      checks), mirrored as `greekNamesSurviveTheAdversarialVerify` in
+      `Tests/JVoiceTests/MathSpeechTests.swift` (parse-checked; CI-only).
+    - Timing, 10,000 lines (`math.txt` + `everyday.txt`), 3 runs: baseline 0.73 / 0.73 / 0.72 s, new
+      0.74 / 0.74 / 0.74 s (medians 0.73 vs 0.74 s, +1.4 %, within 5 %).
+  - **Known limitations** (design §9.6): bare "sigma" stays ∑ (David's 2026-09-29 decision); a
+    mid-sentence capital is always a name ("value of Lambda", "4 Pi"); "our/your/a theta" vetoed even
+    in maths; a single index ("So lambda 1 is 2"); "lambda's"/"lambda-max"; Whisper-written symbols
+    ("x=2") are not evidence; "I" never a variable; "lambda 5 equals K" → `λ₅` (engine); residual risk
+    "My favourite is alpha, x equals 2." → `α` (allowed slot + real evidence).
+  - **Windows mirror (pending, no .NET here)** — on top of the earlier list: port `MathContext.cs`
+    from the revised `MathContext.swift` (continuation allowlist, capitalBefore, labelWords, cue/command
+    lists, two-word anti-cues, the trimmed V5); in `MathSpeech.cs` `Emitter`: E1 strong-construct
+    check, verbatim-relation broken ranges, local + sentence anchors, comma-capital rule, indexed
+    families, mention marks, `Juxtapose` rendering; the widened "pie" lexer step; port the 83 new
+    assertions.

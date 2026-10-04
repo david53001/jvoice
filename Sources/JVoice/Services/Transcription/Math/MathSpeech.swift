@@ -501,11 +501,16 @@ public enum MathSpeech {
             //     number (digits or one number word) and a single letter other than a/A/I, with
             //     no punctuation in between. The same WEAK π as "pi", so "2 pie r" alone stays
             //     words; never promoted by context ("pie chart", "a pie" never reach here).
+            //     Widened 2026-10-04 (verify): after any number ("4 thirds pie r") or an infix
+            //     relation/operator ("A equals pie r squared"), before "over" ("theta equals pie
+            //     over 2", "2 pie over omega") and, after a number, "root" ("2 pie root l over g").
             if core.caseInsensitiveCompare("pie") == .orderedSame, let last = items.last,
-               last.kind == .number, last.count == 1, toks[i - 1].trail.isEmpty,
+               last.kind == .number || isOperatorLike(last), toks[i - 1].trail.isEmpty,
                toks[i].lead.isEmpty, toks[i].trail.isEmpty, i + 1 < cores.count,
-               toks[i + 1].lead.isEmpty, cores[i + 1].count == 1,
-               let letter = cores[i + 1].first, letter.isAsciiLetter, !"aAI".contains(letter) {
+               toks[i + 1].lead.isEmpty,
+               (cores[i + 1].count == 1 && cores[i + 1].first!.isAsciiLetter && !"aAI".contains(cores[i + 1]))
+                || (cores[i + 1].caseInsensitiveCompare("over") == .orderedSame)
+                || (last.kind == .number && cores[i + 1].caseInsensitiveCompare("root") == .orderedSame) {
                 items.append(Item(.symbol, "π", i, 1, sym: MathSymbol("π", .operand)))
                 i += 1
                 continue
@@ -619,15 +624,19 @@ public enum MathSpeech {
         private var evidence = false
         /// Unconverted segments that hold candidates, in output order.
         private var pending: [Pending] = []
+        /// Token ranges of runs that hold a broken equation: no name in the same stretch
+        /// (punctuation to punctuation) is promoted.
+        private var brokenRanges: [Range<Int>] = []
 
         private struct Pending {
             /// Index in `parts` of the segment's first token (`verbatim` writes one part per token).
             let part: Int
             let fromTok: Int
             let toTok: Int
-            /// The parser's rendering when every item is a candidate or a number ("2 pi," →
-            /// "2π,"), else nil and only the candidates' own words are replaced.
-            let text: String?
+            /// The segment's items. Once its names pass, each stretch of passing names, numbers,
+            /// letters and functions in it is rendered by the parser ("2 pi r" → "2πr", "sine
+            /// theta" → "sin θ"); anything else stays exactly as dictated.
+            let segment: [Item]
             let candidates: [Item]
         }
 
@@ -652,14 +661,16 @@ public enum MathSpeech {
             let anyForced = buf.contains { item in
                 (item.start..<(item.start + item.count)).contains { forced[$0] }
             }
-
             let run = Run(items: buf, weakCutoff: weakCutoff, cleanEnd: !brokenByWord)
+            var verbatimAt = [Bool](repeating: false, count: buf.count)
+            var unconverted: [(slice: Range<Int>, part: Int)] = []
             var pos = 0
             while pos < buf.count {
                 let parser = Parser(run)
                 let (text, activated, used) = parser.run(pos)
                 if used == 0 {
-                    note(buf[pos..<(pos + 1)], text: nil)
+                    verbatimAt[pos] = true
+                    if items != nil { unconverted.append((pos..<(pos + 1), parts.count)) }
                     verbatim(buf[pos].start, buf[pos].start + buf[pos].count)
                     pos += 1
                     continue
@@ -669,40 +680,63 @@ public enum MathSpeech {
                 let toTok = buf[pos + used - 1].start + buf[pos + used - 1].count
                 if (activated || anyForced) && !text.isEmpty {
                     if items != nil && !evidence {
-                        evidence = buf[pos..<(pos + used)].contains { isLetterOperand($0) }
+                        // E1: a letter operand AND a real construct — "x = 5", "x²", "c/λ"; never
+                        // a countdown "T - 10", a button combo "X + Y" or "n + 1 tickets".
+                        let slice = buf[pos..<(pos + used)]
+                        evidence = slice.contains { isLetterOperand($0) }
+                            && (anyForced || slice.contains { MathSpeech.isStrongConstruct($0) })
                     }
                     parts.append(toks[fromTok].lead + text + toks[toTok - 1].trail)
                     changed = true
                 } else {
-                    note(buf[pos..<(pos + used)], text: text)
+                    for k in pos..<(pos + used) { verbatimAt[k] = true }
+                    if items != nil { unconverted.append((pos..<(pos + used), parts.count)) }
                     verbatim(fromTok, toTok)
                 }
 
                 pos += used
+            }
+
+            // A relation left as words (past the run's first item — "given that θ" opens a
+            // clause) is a broken equation ("theta equals pie over 2", "sine 2 theta equals cos
+            // theta"): promoting only its names would half-convert it, so context leaves every
+            // name in that stretch alone. (A dangling "times" is not: "π times ∫ y² dx".)
+            if items != nil {
+                let broken = buf.indices.dropFirst().contains { k in
+                    verbatimAt[k] && buf[k].kind == .symbol && !buf[k].weak && buf[k].sym?.kind == .relation
+                }
+                if broken {
+                    brokenRanges.append(buf[0].start..<(buf[buf.count - 1].start + buf[buf.count - 1].count))
+                } else {
+                    for (slice, part) in unconverted { note(buf[slice], part: part) }
+                }
             }
             buf.removeAll()
         }
 
         // ─────────── context promotion (MathContext, docs/math-context-design.md) ───────────
 
-        /// Records an unconverted segment's candidates, before `verbatim` copies it out.
-        private func note(_ slice: ArraySlice<Item>, text: String?) {
-            guard items != nil else { return }
+        /// Records an unconverted segment's candidates; `part` is where `verbatim` wrote it.
+        private func note(_ slice: ArraySlice<Item>, part: Int) {
             let candidates = slice.filter { MathSpeech.isCandidate($0, toks) }
             guard let first = slice.first, let last = slice.last, !candidates.isEmpty else { return }
-            let whole = slice.allSatisfy { $0.kind == .number || MathSpeech.isCandidate($0, toks) }
-            pending.append(Pending(part: parts.count, fromTok: first.start, toTok: last.start + last.count,
-                                   text: whole && text?.isEmpty == false ? text : nil,
-                                   candidates: candidates))
+            pending.append(Pending(part: part, fromTok: first.start, toTok: last.start + last.count,
+                                   segment: Array(slice), candidates: candidates))
         }
 
-        /// E1's letter operand: a real variable ("x", not "a"/"A"/"i"), or a Greek letter
-        /// not written like a name (all-caps "ETA" → η is no evidence).
+        /// E1's letter operand: a real variable ("x", not "a"/"A"/"i"), a Greek letter not
+        /// written like a name (all-caps "ETA" → η is no evidence), an accented letter ("x bar"
+        /// → x̄) or a derivative ("d y by d x").
         private func isLetterOperand(_ it: Item) -> Bool {
             if it.kind == .variable { return !it.weak }
-            guard it.kind == .symbol, let sym = it.sym, sym.kind == .operand,
-                  Parser.isGreekLetter(sym.text) else { return false }
-            return !MathContext.nameLike(core: toks[it.start].core, sentenceInitial: sentenceInitial(it.start))
+            if it.kind == .keyword { return it.key == .derivRatio }
+            guard it.kind == .symbol, let sym = it.sym, sym.kind == .operand else { return false }
+            if Parser.isGreekLetter(sym.text) {
+                return !MathContext.nameLike(core: toks[it.start].core, sentenceInitial: sentenceInitial(it.start))
+            }
+            let scalars = Array(sym.text.unicodeScalars)
+            guard scalars.count >= 2, scalars[0].isASCII, CharacterSet.letters.contains(scalars[0]) else { return false }
+            return scalars.dropFirst().allSatisfy { (0x300...0x36F).contains($0.value) }
         }
 
         /// Writes the passing candidates as their letters once the whole dictation is known.
@@ -713,66 +747,234 @@ public enum MathSpeech {
                 for t in it.start..<(it.start + it.count) { itemAt[t] = index }
             }
             var blocked = MathContext.dictationVetoes(cores: toks.map(\.core))
+            let indexed = indexedLetters(items)
 
-            // An occurrence that names something blocks its letter everywhere in the dictation.
+            // An occurrence that names something blocks its letter everywhere in the dictation —
+            // unless only its capital says so and a comma put that capital there ("value of
+            // lambda, Lambda is the wavelength"): then it stays a word but blocks nothing.
             let candidates = pending.flatMap(\.candidates)
-            let names = candidates.map { namesSomething($0, items, itemAt) }
-            for (it, named) in zip(candidates, names) where named {
-                let phrase = MathSpeech.phrase(it, toks)
-                if !MathContext.isDeliberateCapital(phrase) { blocked.insert(MathContext.letter(of: phrase)) }
+            var names: [Bool] = []
+            for it in candidates {
+                let named = namesSomething(it, items, itemAt, ignoringCase: false)
+                names.append(named)
+                let commaCapital = it.start > 0 && toks[it.start - 1].trail.contains(",")
+                    && !namesSomething(it, items, itemAt, ignoringCase: true)
+                if named && !commaCapital { blocked.insert(MathContext.letter(of: MathSpeech.phrase(it, toks))) }
             }
 
-            var passing: [[Item]] = []
-            var anchored = false
-            var k = 0
-            for entry in pending {
-                var ok: [Item] = []
-                for it in entry.candidates {
-                    defer { k += 1 }
-                    guard !names[k], !vetoed(it, items, itemAt, blocked) else { continue }
-                    ok.append(it)
-                    if !anchored { anchored = MathContext.anchored(before: wordsBefore(it.start), after: wordAfter(it)) }
-                }
-                passing.append(ok)
+            // Whole-dictation evidence promotes every passing name. An anchor promotes its own
+            // letter everywhere ("Given that theta is acute, find tan theta." → both θ) and the
+            // other names of its own sentence ("Solve for theta in the interval 0 to 2 pi." →
+            // 2π) — never names in other sentences ("In terms of …, the alpha team" stays).
+            let unvetoed = candidates.indices.filter { k in
+                !names[k] && !vetoed(candidates[k], items, itemAt, blocked, indexed) && !inBrokenStretch(candidates[k])
             }
-            guard evidence || anchored else { return }
+            let anchors = unvetoed.filter { anchored(candidates[$0], items, itemAt) }
+            let anchoredLetters = Set(anchors.map { MathContext.letter(of: MathSpeech.phrase(candidates[$0], toks)) })
+            let anchoredSentences = Set(anchors.map { sentence(of: candidates[$0].start) })
+            let passing = Set(unvetoed.filter { k in
+                evidence || anchoredLetters.contains(MathContext.letter(of: MathSpeech.phrase(candidates[k], toks)))
+                    || anchoredSentences.contains(sentence(of: candidates[k].start))
+            }.map { candidates[$0].start })
+            guard !passing.isEmpty else { return }
 
             // In reverse, so every earlier entry's part index stays valid.
-            for (entry, ok) in zip(pending, passing).reversed() where !ok.isEmpty {
-                if let text = entry.text, ok.count == entry.candidates.count {
-                    parts.replaceSubrange(entry.part..<(entry.part + entry.toTok - entry.fromTok),
-                                          with: [toks[entry.fromTok].lead + text + toks[entry.toTok - 1].trail])
-                } else {
-                    for it in ok.reversed() {
-                        let at = entry.part + it.start - entry.fromTok
-                        parts.replaceSubrange(at..<(at + it.count),
-                                              with: [toks[it.start].lead + it.sym!.text + toks[it.start + it.count - 1].trail])
-                    }
+            for entry in pending.reversed() where entry.candidates.contains(where: { passing.contains($0.start) }) {
+                for (from, to, text) in rendering(entry.segment, passing, indexed).reversed() {
+                    let at = entry.part + from - entry.fromTok
+                    parts.replaceSubrange(at..<(at + to - from), with: [toks[from].lead + text + toks[to - 1].trail])
                 }
                 changed = true
             }
         }
 
-        private func namesSomething(_ it: Item, _ items: [Item], _ itemAt: [Int]) -> Bool {
+        /// What replaces which tokens of a segment: each maximal stretch of passing names,
+        /// numbers, real letters and functions that holds a passing name is written as one
+        /// product (`juxtapose`); when it is not one, only the names' own words are replaced.
+        private func rendering(_ segment: [Item], _ passing: Set<Int>, _ indexed: Set<String>) -> [(Int, Int, String)] {
+            func groupable(_ it: Item) -> Bool {
+                if MathSpeech.isCandidate(it, toks) { return passing.contains(it.start) }
+                switch it.kind {
+                case .number: return true
+                case .variable: return !it.weak && !it.glued
+                case .symbol: return it.sym?.kind == .function
+                default: return false
+                }
+            }
+            var out: [(Int, Int, String)] = []
+            var i = 0
+            while i < segment.count {
+                guard groupable(segment[i]) else { i += 1; continue }
+                var j = i
+                while j < segment.count, groupable(segment[j]) { j += 1 }
+                var group = Array(segment[i..<j])
+                i = j
+                // "question 2 lambda": a number after a label word is no coefficient.
+                if let first = group.first, first.kind == .number, joinedLeft(first.start),
+                   MathContext.labelWords.contains(toks[first.start - 1].core.lowercased()) {
+                    group.removeFirst()
+                }
+                let named = group.filter { MathSpeech.isCandidate($0, toks) }
+                guard let first = group.first, let last = group.last, !named.isEmpty else { continue }
+                if let text = juxtapose(group, indexed) {
+                    out.append((first.start, last.start + last.count, text))
+                } else {
+                    for it in named { out.append((it.start, it.start + it.count, it.sym!.text)) }
+                }
+            }
+            return out
+        }
+
+        /// A promoted stretch written as the format spec writes a product (§6 item 3: letters
+        /// multiply by juxtaposition): "2 pi r" → "2πr", "rho g h" → "ρgh", "alpha beta" → "αβ",
+        /// "sine theta" → "sin θ", an indexed name "lambda 1" → "λ₁". Built here rather than by
+        /// the parser, whose sequence-term rule reads "mu m" as μₘ. nil when the stretch is not
+        /// such a product (a number after a letter or a number, a function with nothing after).
+        private func juxtapose(_ group: [Item], _ indexed: Set<String>) -> String? {
+            var text = ""
+            var previous: Item?
+            for it in group {
+                defer { previous = it }
+                switch it.kind {
+                case .symbol where it.sym?.kind == .function:
+                    if !text.isEmpty && !text.hasSuffix(" ") { text += " " }
+                    text += it.sym!.text + " "
+                case .number:
+                    guard let previous else { text += it.text; continue }
+                    guard MathSpeech.isCandidate(previous, toks), ["0", "1", "2"].contains(it.text),
+                          indexed.contains(MathContext.letter(of: MathSpeech.phrase(previous, toks))),
+                          let sub = MathScript.subscriptText(it.text) else { return nil }
+                    text += sub
+                case .variable:
+                    text += it.text
+                default:
+                    text += it.sym!.text
+                }
+            }
+            return text.hasSuffix(" ") ? nil : text
+        }
+
+        private func namesSomething(_ it: Item, _ items: [Item], _ itemAt: [Int], ignoringCase: Bool) -> Bool {
             let index = itemAt[it.start]
-            let previous = joinedLeft(it.start) ? items[index - 1] : nil
-            let next = wordAfter(it) != nil ? items[index + 1] : nil
+            let after = wordAfter(it)
+            let next = after != nil ? items[index + 1] : nil
+            // The Greek items touching it ("alpha beta", "Lambda Chi Alpha").
+            var lo = index
+            while lo > 0, joinedLeft(items[lo].start), MathSpeech.isGreekItem(items[lo - 1]) { lo -= 1 }
+            var hi = index
+            while hi + 1 < items.count, wordAfter(items[hi]) != nil, MathSpeech.isGreekItem(items[hi + 1]) { hi += 1 }
+            let groupOK = lo == hi || (hi - lo == 1 && (lo...hi).allSatisfy { k in
+                let phrase = MathSpeech.phrase(items[k], toks)
+                return MathSpeech.isCandidate(items[k], toks) && !MathContext.isDeliberateCapital(phrase)
+                    && !MathContext.nameLike(core: toks[items[k].start].core, sentenceInitial: sentenceInitial(items[k].start))
+            })
+            // "room 1 alpha": a label word, a number, the name.
+            let previous = joinedLeft(it.start) && index > 0 ? items[index - 1] : nil
+            var labelBefore = false
+            if let previous, previous.kind == .number, joinedLeft(previous.start) {
+                labelBefore = MathContext.labelWords.contains(toks[previous.start - 1].core.lowercased())
+            }
+            // "alpha 2 builds": the word after its number.
+            var afterNumberWord: String?
+            if let next, next.kind == .number, wordAfter(next) != nil, index + 2 < items.count,
+               items[index + 2].kind == .word {
+                afterNumberWord = items[index + 2].text
+            }
             return MathContext.namesSomething(
                 phrase: MathSpeech.phrase(it, toks),
                 firstCore: toks[it.start].core,
-                sentenceInitial: sentenceInitial(it.start),
+                sentenceInitial: ignoringCase || sentenceInitial(it.start),
                 before: joinedLeft(it.start) ? toks[it.start - 1].core : nil,
-                after: wordAfter(it),
-                besideGreek: [previous, next].contains { $0.map(MathSpeech.isGreekItem) ?? false })
+                labelBefore: labelBefore,
+                after: after,
+                afterIsWord: next?.kind == .word,
+                afterNumberWord: afterNumberWord,
+                greekGroupOK: groupOK)
         }
 
-        private func vetoed(_ it: Item, _ items: [Item], _ itemAt: [Int], _ blocked: Set<String>) -> Bool {
+        private func vetoed(_ it: Item, _ items: [Item], _ itemAt: [Int], _ blocked: Set<String>,
+                            _ indexed: Set<String>) -> Bool {
             let next = wordAfter(it) != nil ? items[itemAt[it.start] + 1] : nil
+            let end = it.start + it.count
+            let marks = toks[it.start].lead + toks[end - 1].trail
+            let mention = marks.contains { "\"'“”‘’[]".contains($0) } || toks[end - 1].trail.hasPrefix(":")
+                || (it.start > 0 && MathSpeech.isDash(toks[it.start - 1]))
+                || (end < toks.count && MathSpeech.isDash(toks[end]))
+            let phrase = MathSpeech.phrase(it, toks)
             return MathContext.vetoed(
-                phrase: MathSpeech.phrase(it, toks),
-                quoted: (toks[it.start].lead + toks[it.start + it.count - 1].trail).contains { "\"'“”‘’".contains($0) },
+                phrase: phrase,
+                mention: mention,
                 afterIsNumber: next?.kind == .number,
+                indexed: indexed.contains(MathContext.letter(of: phrase)),
                 blocked: blocked)
+        }
+
+        /// Which sentence token `t` is in: the number of sentence ends (". ? !") before it.
+        private func sentence(of t: Int) -> Int {
+            toks[..<t].reduce(0) { $0 + ($1.trail.contains { ".?!".contains($0) } ? 1 : 0) }
+        }
+
+        private func inBrokenStretch(_ it: Item) -> Bool {
+            guard !brokenRanges.isEmpty else { return false }
+            var start = it.start
+            while joinedLeft(start) { start -= 1 }
+            var end = it.start + it.count
+            while end < toks.count, joinedLeft(end) { end += 1 }
+            return brokenRanges.contains { $0.overlaps(start..<end) }
+        }
+
+        /// Letters the dictation numbers as a family: two or more occurrences each followed by a
+        /// different index 0, 1 or 2 ("lambda 1 and lambda 2") — so "lambda 1" is λ₁, not
+        /// "omega 3".
+        private func indexedLetters(_ items: [Item]) -> Set<String> {
+            var seen: [String: Set<String>] = [:]
+            var bad: Set<String> = []
+            for (k, it) in items.enumerated() where MathSpeech.isCandidate(it, toks) {
+                guard wordAfter(it) != nil, k + 1 < items.count, items[k + 1].kind == .number else { continue }
+                let letter = MathContext.letter(of: MathSpeech.phrase(it, toks))
+                let index = items[k + 1].text
+                if ["0", "1", "2"].contains(index) { seen[letter, default: []].insert(index) } else { bad.insert(letter) }
+            }
+            return Set(seen.filter { $0.value.count >= 2 && !bad.contains($0.key) }.keys)
+        }
+
+        private func anchored(_ it: Item, _ items: [Item], _ itemAt: [Int]) -> Bool {
+            let index = itemAt[it.start]
+            let previous = joinedLeft(it.start) && index > 0 ? items[index - 1] : nil
+            // "value of lambda mu": the second name of a pair shares the first one's slot.
+            if let previous, MathSpeech.isCandidate(previous, toks) { return anchored(previous, items, itemAt) }
+            // …and the first one ends the sentence where its pair does.
+            var end = it
+            if wordAfter(it) != nil, index + 1 < items.count, MathSpeech.isCandidate(items[index + 1], toks) {
+                end = items[index + 1]
+            }
+            var start = it.start
+            while joinedLeft(start) { start -= 1 }
+            let after = wordsAfter(end, max: 3)
+            let endIndex = itemAt[end.start]
+            // "let λ be 3" — and the number closes the clause (punctuation, the end, or a
+            // connective): "let beta be 2 hours late" is English.
+            var afterAfterIsNumber = false
+            if !after.isEmpty, endIndex + 2 < items.count, wordAfter(items[endIndex + 1]) != nil,
+               items[endIndex + 2].kind == .number {
+                let number = items[endIndex + 2]
+                let following = wordAfter(number)?.lowercased()
+                afterAfterIsNumber = following == nil
+                    || ["and", "so", "then", "where", "when", "if", "since", "because"].contains(following!)
+            }
+            let last = toks[end.start + end.count - 1]
+            let sentenceFinal = last.trail.contains { ".?!".contains($0) }
+                || (end.start + end.count == toks.count && last.trail.isEmpty)
+            let afterTrig = previous?.kind == .symbol && previous?.sym?.kind == .function
+                && ["sin", "cos", "tan", "sec", "csc", "cot"].contains(previous?.sym?.text ?? "")
+            return MathContext.anchored(
+                before: wordsBefore(it.start, max: 12),
+                stretchStartsClause: sentenceInitial(start) || (start > 0 && toks[start - 1].trail.contains(",")),
+                after: after,
+                afterAfterIsNumber: afterAfterIsNumber,
+                sentenceFinal: sentenceFinal,
+                afterTrig: afterTrig,
+                deliberateCapital: MathContext.isDeliberateCapital(MathSpeech.phrase(it, toks)))
         }
 
         /// No punctuation between token `t - 1` and token `t` — they share a stretch.
@@ -780,21 +982,32 @@ public enum MathSpeech {
             t > 0 && toks[t - 1].trail.isEmpty && toks[t].lead.isEmpty
         }
 
-        /// Up to three words before token `t` inside its stretch, nearest first.
-        private func wordsBefore(_ t: Int) -> [String] {
+        /// Up to `max` words before token `t` inside its stretch, nearest first.
+        private func wordsBefore(_ t: Int, max: Int) -> [String] {
             var words: [String] = []
             var k = t
-            while words.count < 3, joinedLeft(k) {
+            while words.count < max, joinedLeft(k) {
                 k -= 1
                 words.append(toks[k].core)
             }
             return words
         }
 
+        /// Up to `max` words after an item inside its stretch.
+        private func wordsAfter(_ it: Item, max: Int) -> [String] {
+            var words: [String] = []
+            var t = it.start + it.count
+            while words.count < max, t < toks.count, joinedLeft(t) {
+                words.append(toks[t].core)
+                t += 1
+            }
+            return words
+        }
+
         private func wordAfter(_ it: Item) -> String? {
-            let last = it.start + it.count - 1
-            guard last + 1 < toks.count, toks[last].trail.isEmpty else { return nil }
-            return toks[last + 1].core
+            let next = it.start + it.count
+            guard next < toks.count, joinedLeft(next) else { return nil }
+            return toks[next].core
         }
 
         /// Where a sentence starts, a capital is the tone style's, not a name's.
@@ -821,6 +1034,44 @@ public enum MathSpeech {
     private static func isGreekItem(_ it: Item) -> Bool {
         guard it.kind == .symbol, let sym = it.sym else { return false }
         return Parser.isGreekLetter(sym.text) || sym.text == "∑"
+    }
+
+    /// A non-weak infix relation or operator ("equals", "plus"): a run holding one that still
+    /// left a segment unconverted is a broken equation, which context never half-converts.
+    private static func isOperatorLike(_ it: Item) -> Bool {
+        guard it.kind == .symbol, !it.weak, let sym = it.sym else { return false }
+        return sym.kind == .relation || sym.kind == .operatorSymbol
+    }
+
+    /// E1's construct: something only mathematics says — a relation, a function, a power, a
+    /// root, a fraction, a derivative, a limit, a big operator. A bare "+", "-" or "×" is not
+    /// enough ("T minus 10", "press X plus Y", "n plus 1 tickets", "w times h").
+    private static func isStrongConstruct(_ it: Item) -> Bool {
+        switch it.kind {
+        case .symbol:
+            guard let sym = it.sym else { return false }
+            switch sym.kind {
+            case .relation, .function: return true
+            case .prefix: return sym.text != "-" && sym.text != "¬"
+            case .postfix: return MathSymbols.activatingPostfixes.contains(sym.text)
+            default: return false
+            }
+        case .keyword:
+            switch it.key {
+            case .sup, .pow2, .pow3, .power, .root, .over, .allOver, .deriv, .partialDeriv, .derivRatio,
+                 .limit, .abs, .tendsTo, .approaches, .choose:
+                return true
+            default:
+                return false
+            }
+        default:
+            return false
+        }
+    }
+
+    /// A dash standing alone between words ("our team name — alpha — is cool"): a mention.
+    private static func isDash(_ tok: Tok) -> Bool {
+        ["—", "–", "-", "--"].contains(tok.core) || (tok.core.isEmpty && (tok.lead + tok.trail).contains { "—–".contains($0) })
     }
 
     // ─────────────────────────── expression building ───────────────────────────

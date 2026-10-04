@@ -438,6 +438,139 @@ private let contextLeavesAlone: [String] = [
     }
 }
 
+/// The 2026-10-04 adversarial verify of context promotion: recall it found missing…
+private let contextVerifyPromotes: [(String, String)] = [
+    ("Alpha and beta are the roots of x squared minus 5 x plus 6 equals 0. Find alpha beta.",
+     "α and β are the roots of x² - 5x + 6 = 0. Find αβ."),
+    ("Find the value of lambda mu.",
+     "Find the value of λμ."),
+    ("The circumference is 2 pi r, and x equals 2.",
+     "The circumference is 2πr, and x = 2."),
+    ("The pressure is rho g h, where h equals 2.",
+     "The pressure is ρgh, where h = 2."),
+    ("The force is mu m g, where m equals 2.",
+     "The force is μmg, where m = 2."),
+    ("The answer is 2 pi radians. x equals 1.",
+     "The answer is 2π radians. x = 1."),
+    ("In hypothesis testing, the significance level is alpha, and x equals 2.",
+     "In hypothesis testing, the significance level is α, and x = 2."),
+    ("The ball is released at an angle alpha above the horizontal, and v x equals u cos alpha.",
+     "The ball is released at an angle α above the horizontal, and vx = u cos α."),
+    ("Watch out, omega is in radians per second, so v equals omega r.",
+     "Watch out, ω is in radians per second, so v = ωr."),
+    ("Find the value of lambda, Lambda is the wavelength, and v equals f lambda.",
+     "Find the value of λ, Lambda is the wavelength, and v = fλ."),
+    ("theta equals pie over 2, so x equals 3.",
+     "θ = π/2, so x = 3."),
+    ("Find all values of theta. sine 2 theta equals cos theta.",
+     "Find all values of θ. sine 2 theta equals cos theta."),
+    ("Find mu. x bar equals 3.",
+     "Find μ. x̄ = 3."),
+    ("Find theta. d y by d x equals 3.",
+     "Find θ. dy/dx = 3."),
+    ("A equals pie r squared",
+     "A = πr²"),
+    ("The period is 2 pie over omega.",
+     "The period is 2π/ω."),
+    ("Hence find lambda.",
+     "Hence find λ."),
+    ("Let lambda equal 3.",
+     "Let λ equal 3."),
+    ("Express lambda in terms of k.",
+     "Express λ in terms of k."),
+    ("The wavelength lambda is 500 nanometres.",
+     "The wavelength λ is 500 nanometres."),
+    ("Given that theta is acute, find tan theta.",
+     "Given that θ is acute, find tan θ."),
+    ("The sum is capital sigma.",
+     "The sum is Σ."),
+    ("The eigenvalues are lambda 1 and lambda 2, and A x equals lambda x.",
+     "The eigenvalues are λ₁ and λ₂, and Ax = λx."),
+    ("Solve for theta in the interval 0 to 2 pi.",
+     "Solve for θ in the interval 0 to 2π."),
+]
+
+/// …and the bleeds it found: the Greek word stays (other maths converts as before).
+private let contextVerifyNoBleed: [(String, String)] = [
+    ("In terms of beta access, everyone on the waitlist gets in next week.",
+     "In terms of beta access, everyone on the waitlist gets in next week."),
+    ("Let beta be honest, it's not ready to ship.",
+     "Let beta be honest, it's not ready to ship."),
+    ("In terms of pi, I prefer apple over pumpkin.",
+     "In terms of pi, I prefer apple over pumpkin."),
+    ("What's the value of mu in your opinion, the Pokemon card?",
+     "What's the value of mu in your opinion, the Pokemon card?"),
+    ("In terms of alpha, it's done. Mu, the dog, is sleeping. Pi, the cat, is hungry.",
+     "In terms of alpha, it's done. Mu, the dog, is sleeping. Pi, the cat, is hungry."),
+    ("Let beta be 2 hours late, honestly.",
+     "Let beta be 2 hours late, honestly."),
+    ("Express yourself in terms of beta.",
+     "Express yourself in terms of beta."),
+    ("Use the value of beta from the survey.",
+     "Use the value of beta from the survey."),
+    ("We had 2 pie over at grandma's.",
+     "We had 2 pie over at grandma's."),
+    ("We raised venture capital beta round last week, and the x equals 5 bug is fixed.",
+     "We raised venture capital beta round last week, and the x = 5 bug is fixed."),
+    ("I work at capital alpha partners, and the n equals 3 issue is closed.",
+     "I work at capital alpha partners, and the n = 3 issue is closed."),
+    ("Press X plus Y, it's big alpha energy.",
+     "Press X + Y, it's big alpha energy."),
+    ("Big pi slice for me please, and the score was x equals 2.",
+     "Big pi slice for me please, and the score was x = 2."),
+    ("T minus 10 minutes until launch, and the game is still in beta.",
+     "T - 10 minutes until launch, and the game is still in beta."),
+    ("For the controller, press X plus Y to parry. Honestly the beta feels smoother than the alpha.",
+     "For the controller, press X + Y to parry. Honestly the beta feels smoother than the alpha."),
+    ("I need n plus 1 tickets because my cousin is coming too. Btw the beta for the climb is to stay left.",
+     "I need n + 1 tickets because my cousin is coming too. Btw the beta for the climb is to stay left."),
+    ("I finished question 4, x equals 3. Then I went to the gym and felt like an absolute alpha. Then mum made pie.",
+     "I finished question 4, x = 3. Then I went to the gym and felt like an absolute alpha. Then mum made pie."),
+    ("The lambda sensor in my car is broken, and x equals 5 on the error code.",
+     "The lambda sensor in my car is broken, and x = 5 on the error code."),
+    ("x equals 2. Alpha team, move out.",
+     "x = 2. Alpha team, move out."),
+    ("My call sign is alpha, and y equals 12.",
+     "My call sign is alpha, and y = 12."),
+    ("So x equals 5 on the form. And by the way, tau is a protein in the brain linked to Alzheimer's.",
+     "So x = 5 on the form. And by the way, tau is a protein in the brain linked to Alzheimer's."),
+    ("The stock beta is like 1.2, and x equals 5.",
+     "The stock beta is like 1.2, and x = 5."),
+    ("Theta is killing my options, and x equals 10 contracts.",
+     "Theta is killing my options, and x = 10 contracts."),
+    ("My username is capital omega 99, and k equals 2.",
+     "My username is capital omega 99, and k = 2."),
+    ("Hey, alpha team! x equals 5.",
+     "Hey, alpha team! x = 5."),
+    ("x equals 5. [beta] tag.",
+     "x = 5. [beta] tag."),
+    ("x equals 5. Alpha: the first letter.",
+     "x = 5. Alpha: the first letter."),
+    ("x equals 5. The cow says mu.",
+     "x = 5. The cow says mu."),
+    ("I think the omega is the last letter, x equals 1.",
+     "I think the omega is the last letter, x = 1."),
+    ("Room 1 alpha and room 2 alpha are booked, x equals 4.",
+     "Room 1 alpha and room 2 alpha are booked, x = 4."),
+    ("We need alpha 1 and alpha 2 builds by Friday, n equals 2.",
+     "We need alpha 1 and alpha 2 builds by Friday, n = 2."),
+    ("I take omega 3 and omega 6 supplements, x equals 2.",
+     "I take omega 3 and omega 6 supplements, x = 2."),
+]
+
+@Test func greekNamesSurviveTheAdversarialVerify() {
+    for (spoken, expected) in contextVerifyPromotes {
+        #expect(MathSpeech.convert(spoken) == expected, "\(spoken)")
+        #expect(MathSpeech.convert(expected) == expected, "idempotent: \(spoken)")
+    }
+    for (spoken, expected) in contextVerifyNoBleed {
+        #expect(MathSpeech.convert(spoken) == expected, "\(spoken)")
+    }
+    for gone in ["big alpha", "big pi", "big omega"] {
+        #expect(!MathContext.promotable.contains(gone), "\(gone) is English")
+    }
+}
+
 @Test func scriptTablesArePaired() {
     // Every character that can be super/subscripted must have exactly one mapping.
     #expect(MathScript.superscript("2") == "²")

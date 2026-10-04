@@ -239,10 +239,13 @@ every maths-only pass and is ≈ 3× faster with it off (median 413 → 133 ms p
    (`../BetterScreenshot/tools/ocr-bench/Sources/ocr-bench/`) are a ready-made list of canonical outputs
    to borrow.
 9. **A Greek name outside an equation** (decided 2026-10-04, branch `feat/math-context`): it becomes its
-   letter only through **context promotion** — the rest of the dictation holds an equation with a letter
-   in it, or the name sits in a maths slot ("value of λ", "solve for θ", "in terms of π", "let λ be"),
-   and no veto applies ("AWS Lambda", "Pi Day", "omega 3"). Otherwise it stays a word. Rules:
-   `docs/math-context-design.md`; code: `Sources/JVoice/Services/Transcription/Math/MathContext.swift`.
+   letter only through **context promotion** — the rest of the dictation holds a real equation with a
+   letter in it ("x = 5", "x²"; not "T - 10" or "X + Y"), or the name sits in a maths slot ("find the
+   value of λ", "solve for θ", "Find λ.", "the angle θ", "let λ be 3"), and no veto applies ("AWS
+   Lambda", "Pi Day", "omega 3", "alpha team"). Otherwise it stays a word. A promoted name joins the
+   numbers and letters next to it as a product ("2 pi r" → `2πr`, "alpha beta" → `αβ`, "sine theta" →
+   `sin θ`). Rules: `docs/math-context-design.md` (§9 is the current revision); code:
+   `Sources/JVoice/Services/Transcription/Math/MathContext.swift`.
 
 ## 7. How to verify a change
 

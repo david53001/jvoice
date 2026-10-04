@@ -1,9 +1,10 @@
 # Maths context: design (2026-10-04)
 
 - Branch: `feat/math-context`. Worktree: `.claude/worktrees/math-context`. Base: `feat/math-format` @ `90c6836`.
-- Status: IMPLEMENTED 2026-10-04 on `feat/math-context` (not merged, not installed). Three deviations
-  from this design were made during the sweep; they are listed in `docs/math-context-progress.md`
-  (entry "implemented").
+- Status: IMPLEMENTED 2026-10-04 on `feat/math-context` (not merged, not installed), then REVISED the
+  same day after an adversarial verify found bleeds. **§9 is the current design; where §3 disagrees
+  with §9, §9 wins.** The first implementation's three deviations are in `docs/math-context-progress.md`
+  (entry "implemented"); the revision is the entry "adversarial verify".
 - Progress log: `docs/math-context-progress.md`.
 
 ## 1. Goal and terms
@@ -342,3 +343,113 @@ SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk scripts/build-math-p
    - Never run `swift test`.
    - Never commit `.build/`.
    - Update `docs/math-context-progress.md` after each stage.
+
+## 9. Revision after the adversarial verify (2026-10-04)
+
+Verifiers fed the first implementation ordinary sentences and found 12 bleed patterns (for example "In
+terms of beta access, …" → `In terms of β access`, "T minus 10 … still in beta" → `still in β`, "venture
+capital beta round" → `venture Β round`). The no-bleed guarantee outranks recall, so the design changed
+as follows. Code: `Math/MathContext.swift` (word lists, checks) and `MathSpeech.Emitter` (`flush`,
+`promote`, `rendering`, `juxtapose`).
+
+**Terms used here.** *Stretch*: the words around a name with no punctuation between them (§3.3).
+*Sentence*: the words between two `.`, `?` or `!`.
+
+### 9.1 Evidence (replaces §3.2 E1)
+
+A converted segment is evidence only when it has **both**:
+- a letter operand: a real variable (not `a`/`A`/`i`), a Greek letter not written like a name, an
+  accented letter (`x̄`) or a derivative (`dy/dx`); and
+- a real construct: a relation, a function, a power or script keyword, a root, a fraction, a
+  derivative, a limit, an absolute value, "choose", a big operator, a factorial. A bare `+`, `-` or `×`
+  is not one. Forced spans ("start equation … end equation") need only the letter.
+
+So "T minus 10", "press X plus Y", "hold R 1 plus X", "n plus 1 tickets" and "w times h" are no
+longer evidence. Evidence still promotes every passing name in the dictation.
+
+### 9.2 Anchors (replaces §3.2 E2)
+
+An anchor promotes **its own letter** (every passing occurrence of it in the dictation) and every
+passing name **in its own sentence**. It is never evidence for the rest of the dictation. Slots:
+
+| Slot | Extra condition |
+|---|---|
+| `value(s) of ⟨C⟩` | a command word earlier in the stretch: find, calculate, determine, state, deduce, hence, evaluate, compute, obtain, write, show, substitute |
+| `solve for ⟨C⟩` | none |
+| `in terms of ⟨C⟩` | ⟨C⟩ ends the sentence, and the stretch has "answer(s)"/"exact", or "express" + one letter/name ("Express y in terms of θ.") |
+| `let ⟨C⟩ be/equal(s) N` | N is a number that ends the clause (punctuation, the end, or and/so/then/where/when/if/since/because) |
+| `express ⟨C⟩ in terms of` | none |
+| command clause | the stretch is only 1–2 command words + ⟨C⟩, starts a clause, and ⟨C⟩ ends the sentence: "Find λ.", "Hence find θ." |
+| cue noun | the word before is angle(s), wavelength(s), eigenvalue(s) or constant |
+| trig | the item before is a sine/cosine/tangent/secant/cosecant/cotangent function, or the bare word tan/sin/cos when a command word precedes and ⟨C⟩ ends the sentence ("find tan θ.") |
+| deliberate capital | "capital/uppercase ⟨X⟩" that passed its vetoes |
+
+A pair of names ("value of lambda mu") shares the first name's slot.
+
+### 9.3 Vetoes (changes to §3.3)
+
+- **V2 (word before)** also: the, this, these, those, in, absolute, closed, open, early, public,
+  private, stock, portfolio, say, says, said; and a number that follows a label word ("room 1 alpha",
+  "question 2 alpha"; label words: question, part, page, problem, room, level, version, …).
+- **V3 (word after) is now an allowlist** (`MathContext.continuation`): an ordinary word right after a
+  name must be one of the connectives, verbs, prepositions, units and maths words in that list (is,
+  and, of, in, where, satisfies, doubles, radians, above, cos, …). Anything else makes the name a
+  compound noun ("alpha team", "beta keys", "lambda sensor", "omega sale"). The same check applies to
+  the word after a number that follows the name ("alpha 2 builds").
+- **V4**: "Greek beside Greek" is no longer a name when the group is exactly two curated lower-case
+  names ("alpha beta" → `αβ`, a product of roots). Groups of three, groups with a run-only or
+  capitalised name ("Lambda Chi Alpha", "phi beta kappa") stay names. The number rule is lifted for an
+  **indexed family**: the same letter followed by at least two different indices from 0, 1, 2 and no
+  other number ("lambda 1 and lambda 2" → `λ₁`, `λ₂`; "omega 3 and omega 6" stays).
+- **V5** dropped "testing", "released", "version(s)", "male(s)", "watch", "rays", "radiation": they are
+  ordinary IB words, and V3 already catches "alpha release", "Omega watch", "gamma rays". V5 added:
+  finance words for every letter (stock, portfolio, options, hedge, fund, investor, trading, equity,
+  venture, earnings, market, shares…), "call sign"/"callsign" (two-word cues are matched), and
+  per-letter cues (alpha/beta: game, discord, steam, climbing, fish, gym, wolf, squad…; lambda:
+  sensor, probe, engine, logo…; omega: supplements, sale…; chi: yoga, energy; mu: cow; tau: protein,
+  brain; theta: healing; epsilon: brand, coffee).
+- **Mentions**: a square bracket, a dash token beside the name, or a colon right after it ("Alpha: the
+  first letter") vetoes it, like a quotation mark.
+- **Deliberate capitals** now pass every veto (V1–V5), and the word before "capital"/"uppercase" must be
+  absent or in `capitalBefore` (is, of, and, find, where, let, equals, …): "venture capital beta",
+  "at capital alpha partners" stay.
+- **"big X" is removed** from the promotable set ("big alpha energy", "big pi slice").
+- **Capital after a comma**: a name vetoed only by its capital, right after a comma, stays a word but
+  no longer blocks its letter for the whole dictation ("Find the value of lambda, Lambda is the
+  wavelength" → `λ, Lambda is …`).
+- **Broken equation**: when a run leaves a relation as words (past its first item — "given that θ"
+  opens a clause), no name in that stretch is promoted ("theta equals pie over 2" before the pie fix,
+  "sine 2 theta equals cos theta" stay words rather than half-converting).
+
+### 9.4 What promotion writes (replaces §3.4)
+
+Each maximal stretch of passing names, numbers, real letters (not `a`/`A`/`i`) and functions inside an
+unconverted segment that holds a passing name is written as one product (`Emitter.juxtapose`): factors
+side by side ("2 pi r" → `2πr`, "rho g h" → `ρgh`, "mu m g" → `μmg`, "alpha beta" → `αβ`), a function
+followed by a space ("sine theta" → `sin θ`), an indexed name with a subscript ("lambda 1" → `λ₁`). A
+leading number after a label word is left out ("question 2 lambda"). When the stretch is not a product
+(a number after a letter, a function at the end), only the names' own words are replaced. The parser is
+not used here because its sequence-term rule reads "mu m" as `μₘ`.
+
+### 9.5 "pie" (changes §3.5)
+
+"pie" is the weak π also after any number item ("4 thirds pie r") or a non-weak relation/operator
+("A equals pie r squared"), and also before "over" ("theta equals pie over 2", "2 pie over omega") or,
+after a number, "root" ("2 pie root l over g"). It stays weak, so "We had 2 pie over at grandma's"
+is unchanged.
+
+### 9.6 Still not covered (documented, not fixed)
+
+- Bare "sigma" is ∑ by David's decision (2026-09-29), so "the standard deviation sigma" stays a word;
+  σ is "lowercase sigma"/"small sigma".
+- A capitalised name mid-sentence is always a name: "the value of Lambda", "Where Theta is", "4 Pi".
+- Possessive/article words before a name veto it even in maths: "our theta", "your lambda", "a theta".
+- One index alone ("So lambda 1 is 2") stays words; possessive/hyphenated forms ("lambda's",
+  "lambda-max") are never candidates.
+- Equations Whisper itself wrote as symbols ("x² = 4", "x=2", "λ = 5") are not evidence.
+- "I" is never a variable ("epsilon equals I times R"), and "lambda 5 equals K" reads λ₅ (engine-wide,
+  pre-existing).
+- Residual risk: with real evidence in the dictation, a lower-case Greek word in an allowed slot
+  ("the significance level is alpha"-shaped everyday talk such as "my favourite is alpha, x equals 2")
+  still promotes.
+
