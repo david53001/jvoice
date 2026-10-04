@@ -52,6 +52,8 @@ public enum TourCatalog {
                  body: "Your last dictations, kept on this Mac. Hover one to copy it again."),
         TourStep(anchor: "settings.customWords", kind: .explain, title: "Custom words",
                  body: "Add names and jargon so JVoice always spells them your way."),
+        TourStep(anchor: OpacityDemoTimeline.anchor, kind: .explain, title: "Opacity",
+                 body: "Sets how see-through JVoice's windows and pill are."),
         TourStep(anchor: "settings.help", kind: .explain, title: "Replay any tour",
                  body: "Click ⓘ to replay this tour, or pick one part to see again."),
     ])

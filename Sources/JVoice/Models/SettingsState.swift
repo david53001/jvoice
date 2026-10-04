@@ -30,7 +30,7 @@ public struct SettingsState: Codable, Equatable, Sendable {
         language: TranscriptionLanguage = .english,
         customWords: [String] = [],
         removeFillerWords: Bool = true,
-        theme: AppTheme = .dark,
+        theme: AppTheme = .system,
         developerTerms: Bool = true,
         translateToEnglish: Bool = false,
         copyToClipboardOnly: Bool = false,
@@ -60,6 +60,8 @@ public struct SettingsState: Codable, Equatable, Sendable {
         case customWords
         case removeFillerWords
         case theme
+        /// The appearance incl. `.system`, stored beside the legacy `theme` field (see `init(from:)`).
+        case appearance
         case developerTerms
         case translateToEnglish
         case copyToClipboardOnly
@@ -84,7 +86,17 @@ public struct SettingsState: Codable, Equatable, Sendable {
         language = try container.decodeIfPresent(TranscriptionLanguage.self, forKey: .language) ?? .english
         customWords = try container.decodeIfPresent([String].self, forKey: .customWords) ?? []
         removeFillerWords = try container.decodeIfPresent(Bool.self, forKey: .removeFillerWords) ?? true
-        theme = try container.decodeIfPresent(AppTheme.self, forKey: .theme) ?? .dark
+        // Appearance (2026-09-29, System / Light / Dark). Stored under a NEW key, `appearance`, so the
+        // schema stays v4 and older builds (which only know `theme` and ignore unknown keys) keep
+        // reading this blob instead of refusing it. Without `appearance` (a blob from an older build),
+        // the legacy `theme` decides: `.dark` was the old DEFAULT, not a choice, so it becomes
+        // `.system`; an explicit `.light` is kept.
+        if let appearance = try? container.decode(AppTheme.self, forKey: .appearance) {
+            theme = appearance
+        } else {
+            let legacy = try? container.decode(AppTheme.self, forKey: .theme)
+            theme = legacy == .light ? .light : .system
+        }
         // v3 fields: absent in v1/v2 blobs → default (developerTerms ON, rest OFF).
         developerTerms = try container.decodeIfPresent(Bool.self, forKey: .developerTerms) ?? true
         translateToEnglish = try container.decodeIfPresent(Bool.self, forKey: .translateToEnglish) ?? false
@@ -103,7 +115,9 @@ public struct SettingsState: Codable, Equatable, Sendable {
         try container.encode(language, forKey: .language)
         try container.encode(customWords, forKey: .customWords)
         try container.encode(removeFillerWords, forKey: .removeFillerWords)
-        try container.encode(theme, forKey: .theme)
+        try container.encode(theme, forKey: .appearance)
+        // What an older build reads (it has no `.system`): the explicit choice, or its old default.
+        try container.encode(theme == .light ? AppTheme.light : AppTheme.dark, forKey: .theme)
         try container.encode(developerTerms, forKey: .developerTerms)
         try container.encode(translateToEnglish, forKey: .translateToEnglish)
         try container.encode(copyToClipboardOnly, forKey: .copyToClipboardOnly)

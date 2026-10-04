@@ -25,6 +25,11 @@ enum JVoiceMain {
         if SettingsSmokeRunner.shouldRun(arguments: CommandLine.arguments) {
             MainActor.assumeIsolated { SettingsSmokeRunner.runAndExit() }
         }
+        // Hidden dev mode: `JVoice --ui-preview <dir>` screenshots Settings, Welcome and every HUD
+        // state in Light and Dark — the only way to look at the UI without clicking through it.
+        if UIPreviewRunner.shouldRun(arguments: CommandLine.arguments) {
+            MainActor.assumeIsolated { UIPreviewRunner.runAndExit(arguments: CommandLine.arguments) }
+        }
         // Guided tours are for NEW users only (BetterScreenshot spec §14.9). Decide once, for good,
         // whether this is a first launch — and do it HERE, before `JVoiceApp.main()` builds the
         // AppDelegate → VoiceCoordinator → SettingsStore, whose init writes `jvoice.app.settings.state`

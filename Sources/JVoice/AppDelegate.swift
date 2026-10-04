@@ -67,6 +67,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let tours = tourCoordinator
         tours.install()   // wires the TourEvents bus, incl. Reset All Tours (+ its HUD confirmation)
         tours.notify = { [weak self] message in self?.coordinator.showTourNotice(message) }
+        // The Opacity step plays the slider down and up (never saved; `OpacityTourDemo`).
+        tours.makeDemo = { step in step.anchor == OpacityTourDemo.anchor ? OpacityTourDemo() : nil }
         tours.openSurface = { [weak self] surface in
             guard let self else { return false }
             switch surface {

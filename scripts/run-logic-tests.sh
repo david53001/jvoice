@@ -631,7 +631,9 @@ expect(abs(SilenceHallucinationGate.peakWindowRMS(gateBurst) - 0.5) < 0.0001, "p
 print("AppTheme")
 expectEqual(AppTheme.dark.toggled, .light, "dark toggles to light")
 expectEqual(AppTheme.light.toggled, .dark, "light toggles to dark")
-expectEqual(try! JSONDecoder().decode(AppTheme.self, from: "\"sepia\"".data(using: .utf8)!), .dark, "unknown theme → dark")
+expectEqual(AppTheme.system.toggled, .dark, "system toggles to dark")
+expectEqual(try! JSONDecoder().decode(AppTheme.self, from: "\"sepia\"".data(using: .utf8)!), .system, "unknown theme → system")
+expectEqual(AppTheme.allCases, [.system, .light, .dark], "picker order: System, Light, Dark")
 
 print("DictationError")
 expect(DictationError.allCases.allSatisfy { !$0.message.isEmpty }, "every error has a message")
@@ -1350,6 +1352,42 @@ let systemSettings = SettingsEntryPolicy.appRuleTarget(for: "system settings", i
 expectEqual(systemSettings, .app(.init(name: "System Settings", bundleID: "com.apple.systempreferences")), "a real installed app resolves (System Settings)")
 }
 
+print("UIOpacity — Settings → Appearance → Opacity → each surface's backing alpha (2026-09-30)")
+do {
+    func near(_ a: Double, _ b: Double) -> Bool { abs(a - b) < 1e-9 }
+    expectEqual(UIOpacity.defaultsKey, "jvoice.app.uiOpacity", "key in JVoice's namespace (shared spec §2)")
+    expectEqual(UIOpacity.defaultValue, 0.5, "default = 0.5")
+    for surface in [UIOpacity.Surface.window, .pill] {
+        let a = UIOpacity.anchors(for: surface)
+        expect(near(UIOpacity.backingAlpha(1, on: surface), 1), "\(surface): 1 = solid")
+        expect(near(UIOpacity.backingAlpha(0.5, on: surface), a.standard), "\(surface): 0.5 = the designed default")
+        expect(near(UIOpacity.backingAlpha(0, on: surface), a.transparent), "\(surface): 0 = the clamped floor")
+        expect(near(UIOpacity.backingAlpha(0.25, on: surface), (a.transparent + a.standard) / 2), "\(surface): linear 0 → 0.5")
+        expect(near(UIOpacity.backingAlpha(0.75, on: surface), (a.standard + 1) / 2), "\(surface): linear 0.5 → 1")
+        var last = -1.0
+        var monotonic = true
+        for step in 0...100 {
+            let alpha = UIOpacity.backingAlpha(Double(step) / 100, on: surface)
+            if alpha < last || alpha < 0 || alpha > 1 { monotonic = false }
+            last = alpha
+        }
+        expect(monotonic, "\(surface): never less solid as the slider moves right, always within 0…1")
+        expect(near(UIOpacity.backingAlpha(-3, on: surface), a.transparent) && near(UIOpacity.backingAlpha(7, on: surface), 1),
+               "\(surface): out-of-range values clamp")
+        expect(near(UIOpacity.backingAlpha(.nan, on: surface), a.standard), "\(surface): NaN reads as the default")
+    }
+    // The pill floats over any app: it never goes fully see-through (readability clamp, measured ≥ 3:1 at 0).
+    expect(UIOpacity.anchors(for: .pill).transparent >= 0.45, "pill keeps a backing ≥ 0.45 even at 0")
+    let suite = "jvoice.test.opacity.\(UUID().uuidString)"
+    let d = UserDefaults(suiteName: suite)!
+    expectEqual(UIOpacity.stored(in: d), 0.5, "never written → default")
+    d.set(0.2, forKey: UIOpacity.defaultsKey)
+    expectEqual(UIOpacity.stored(in: d), 0.2, "stored value read back")
+    d.set(4.0, forKey: UIOpacity.defaultsKey)
+    expectEqual(UIOpacity.stored(in: d), 1.0, "stored out-of-range value clamps")
+    d.removePersistentDomain(forName: suite)
+}
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S)")
     exit(1)
@@ -1364,6 +1402,7 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/UI/ShortcutCapturePolicy.swift" \
     "$REPO_ROOT/Sources/JVoice/UI/ShortcutCapturePolicy+AppKit.swift" \
     "$REPO_ROOT/Sources/JVoice/UI/SettingsEntryPolicy.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/UIOpacity.swift" \
     "$TMP_DIR/ui/main.swift" \
     -o "$TMP_DIR/ui-logic-tests"
 
@@ -2258,6 +2297,61 @@ do {
     expect(tagBodyHeight(long, maxLines: 0) > tagBodyHeight(long, maxLines: TagStyle.bodyMaxLines), "the fit check bites (20× “Something” doesn't fit)")
 }
 
+// MARK: - Outline shape (2026-09-30: the pill's box is a capsule, not a rectangle around it)
+
+print("Outline shape — the box follows the control's own corner radius")
+do {
+    let plain = CGRect(x: 100, y: 100, width: 200, height: 30)
+    expectEqual(TagLayout.boxRadius(box: plain, anchorRadius: nil), TagStyle.boxRadius, "no declared shape → the default box radius")
+    // The recording pill: 240 × 56 capsule (radius 28) → box 248 × 64 → radius 32 = half its height.
+    let pill = CGRect(x: 600, y: 64, width: 240, height: 56)
+    let box = pill.insetBy(dx: -TagStyle.boxPadding, dy: -TagStyle.boxPadding)
+    expectEqual(TagLayout.boxRadius(box: box, anchorRadius: 28), box.height / 2, "capsule pill → a capsule box, concentric (28 + padding)")
+    expectEqual(TagLayout.boxRadius(box: box, anchorRadius: .infinity), box.height / 2, "radius is capped at half the short side")
+    let p = TagLayout.place(anchor: pill, tagSize: CGSize(width: 240, height: 90),
+                            visible: CGRect(x: 0, y: 0, width: 1440, height: 875),
+                            order: TagLayout.order(verticalFirst: true), anchorRadius: 28)
+    if let leader = p.leader {
+        expect(leader.to.x >= p.box.minX + box.height / 2 && leader.to.x <= p.box.maxX - box.height / 2,
+               "the leader meets the capsule on its straight edge, not a rounded end")
+    } else {
+        expect(false, "a tag beside the pill has a leader")
+    }
+}
+
+// MARK: - Opacity step demo (2026-09-30)
+
+print("Opacity demo — slider down to Transparent, up to Opaque, back to yours")
+do {
+    let T = OpacityDemoTimeline.self
+    expect(TourCatalog.settings.steps.contains { $0.anchor == T.anchor }, "the Settings tour has the Opacity step")
+    expectEqual(T.frame(at: 0, from: 0.5).value, 0.5, "starts at the user's value")
+    expectEqual(T.frame(at: 2.0, from: 0.5), .init(value: 0, readout: "Watch: 0 % Transparent"), "reaches Transparent after 2 s")
+    expectEqual(T.frame(at: 5.6, from: 0.5), .init(value: 1, readout: "Watch: 100 % Opaque"), "reaches Opaque after the rise")
+    expectEqual(T.frame(at: T.loopDuration - 0.1, from: 0.3), .init(value: 0.3, readout: "Yours: 30 %"), "ends back on the user's value")
+    expect(T.frame(at: 1, from: 0.5).readout.hasSuffix("↓") && T.frame(at: 4, from: 0.5).readout.hasSuffix("↑"), "arrows show the direction")
+    var down = true, inRange = true, previous = 2.0
+    for i in 0...200 {
+        let v = T.frame(at: Double(i) * 0.01, from: 0.7).value
+        if v > previous + 1e-9 { down = false }
+        previous = v
+    }
+    for i in 0...Int(T.loopDuration * 20) {
+        let v = T.frame(at: Double(i) * 0.05, from: 0.62).value
+        if v < 0 || v > 1 { inRange = false }
+    }
+    expect(down, "the first move only goes down")
+    expect(inRange, "every value stays in 0…1")
+    let once = T.frame(at: 1.3, from: 0.5), again = T.frame(at: 1.3 + T.loopDuration, from: 0.5)
+    expect(abs(once.value - again.value) < 1e-9 && once.readout == again.readout, "it loops")
+    let body = TourCatalog.settings.steps.first { $0.anchor == T.anchor }!.body
+    for readout in ["Watch: 0 % Transparent", "Watch: 100 % Opaque", "Watch: 100 % ↑", "Yours: 100 %"] {
+        let text = body + " " + readout
+        expect(tagBodyHeight(text, maxLines: 0) <= tagBodyHeight(text, maxLines: TagStyle.bodyMaxLines),
+               "Opacity body + “\(readout)” fits two lines")
+    }
+}
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S) in tours")
     exit(1)
@@ -2274,6 +2368,8 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Tours/Kit/TagLayout.swift" \
     "$REPO_ROOT/Sources/JVoice/Tours/Kit/TagKeys.swift" \
     "$REPO_ROOT/Sources/JVoice/Tours/TourCatalog.swift" \
+    "$REPO_ROOT/Sources/JVoice/Tours/OpacityDemoTimeline.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/UIOpacity.swift" \
     "$TMP_DIR/tours/main.swift" \
     -o "$TMP_DIR/tour-tests"
 

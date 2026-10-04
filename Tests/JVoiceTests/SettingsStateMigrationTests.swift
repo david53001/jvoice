@@ -53,20 +53,45 @@ import Foundation
     #expect(decoded == .casual)
 }
 
-@Test func newSettingsStateDefaultsToDarkTheme() {
-    #expect(SettingsState().theme == .dark)
+@Test func newSettingsStateDefaultsToSystemTheme() {
+    #expect(SettingsState().theme == .system)
 }
 
-@Test func decodesV1BlobWithoutThemeAsDark() throws {
+@Test func decodesV1BlobWithoutThemeAsSystem() throws {
     // A schema-v1 blob predates the theme field; it must decode (v1 < current)
-    // and default theme to .dark.
+    // and default theme to .system (follow macOS).
     let v1JSON = """
     {"schemaVersion":1,"mode":"casual","model":"tiny","language":"english",
      "customWords":[],"removeFillerWords":true}
     """.data(using: .utf8)!
     let decoded = try JSONDecoder().decode(SettingsState.self, from: v1JSON)
-    #expect(decoded.theme == .dark)
+    #expect(decoded.theme == .system)
     #expect(decoded.schemaVersion == SettingsState.currentSchemaVersion)
+}
+
+@Test func legacyThemeMigratesToSystemAppearance() throws {
+    // A blob without `appearance` (older build): `.dark` was the old default, not a choice, so it
+    // becomes `.system`; an explicit `.light` is kept. `appearance`, when present, wins.
+    func decode(_ json: String) throws -> AppTheme {
+        try JSONDecoder().decode(SettingsState.self, from: json.data(using: .utf8)!).theme
+    }
+    #expect(try decode("{\"schemaVersion\":4,\"theme\":\"dark\"}") == .system)
+    #expect(try decode("{\"schemaVersion\":4,\"theme\":\"light\"}") == .light)
+    #expect(try decode("{\"schemaVersion\":4,\"theme\":\"dark\",\"appearance\":\"dark\"}") == .dark)
+    #expect(try decode("{\"schemaVersion\":4,\"theme\":\"dark\",\"appearance\":\"system\"}") == .system)
+}
+
+@Test func appearanceKeepsOlderBuildsReadable() throws {
+    // The schema stays v4 and the legacy `theme` field is still written (never "system", which an
+    // older build doesn't know), so a v1.1.3 build keeps reading the blob.
+    for (appearance, legacy) in [(AppTheme.system, "dark"), (.dark, "dark"), (.light, "light")] {
+        var s = SettingsState()
+        s.theme = appearance
+        let object = try JSONSerialization.jsonObject(with: JSONEncoder().encode(s)) as! [String: Any]
+        #expect(object["schemaVersion"] as? Int == 4)
+        #expect(object["theme"] as? String == legacy)
+        #expect(object["appearance"] as? String == appearance.rawValue)
+    }
 }
 
 @Test func themeRoundTripsThroughSettingsState() throws {

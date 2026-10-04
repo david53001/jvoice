@@ -1,8 +1,8 @@
 import AppKit
 
 /// The on-screen tour tag (spec §14.3, the owner's mock): an outline box around the real control, a tag
-/// bubble joined to it by a leader line, and a light dim over the rest of the host window. Monochrome,
-/// inverted against the host (`TagStyle` — near-black on a light host, white on a dark one).
+/// bubble joined to it by a leader line, and a light dim over the rest of the host window. Native look
+/// (`TagStyle`): a material bubble in the host's appearance, the outline in the user's accent colour.
 ///
 /// Two borderless panels, children of the host window so they move, hide and z-order with it:
 /// - **decor** (dim + box + leader line) ignores the mouse — clicks land on the real controls under it,
@@ -59,6 +59,8 @@ public final class TagOverlayController: TourTagPresenting {
     private weak var anchor: NSView?
     /// The step on screen and its resolved body (to redo the counter in `updateProgress`).
     private var shown: (step: TourStep, body: String)?
+    /// The "n of m" on screen (to redo the bubble in `updateBody`).
+    private var counter = (number: 1, total: 1)
     private var isExplain = true
     private var isDone = false
     private var isMenuBarHost = false
@@ -89,6 +91,7 @@ public final class TagOverlayController: TourTagPresenting {
         if self.anchor !== anchor || scrollObservers.isEmpty { followScrolling(of: anchor) }
         self.anchor = anchor
         shown = (step, body)
+        counter = (number, total)
         isExplain = step.kind == .explain
         isDone = false
         tagSize = bubble.configure(title: step.title, body: body, number: number, total: total,
@@ -101,8 +104,18 @@ public final class TagOverlayController: TourTagPresenting {
 
     public func updateProgress(number: Int, total: Int) {
         guard host != nil, !isDone, let shown else { return }
+        counter = (number, total)
         tagSize = bubble.configure(title: shown.step.title, body: shown.body, number: number, total: total,
                                    isExplain: isExplain)
+        laidOut = nil
+        refresh()
+    }
+
+    public func updateBody(_ body: String) {
+        guard host != nil, !isDone, let shown, shown.body != body else { return }
+        self.shown = (shown.step, body)
+        tagSize = bubble.configure(title: shown.step.title, body: body, number: counter.number,
+                                   total: counter.total, isExplain: isExplain)
         laidOut = nil
         refresh()
     }
@@ -232,6 +245,8 @@ public final class TagOverlayController: TourTagPresenting {
         // What the user sees of the host: the pill's capsule, not its window grown for a hover hint.
         let shape = (host as? TourHostShaping)?.tourHostShape
         let hostRect = shape?.frame ?? host.frame
+        // Before the unchanged-geometry early return: a System / Light / Dark switch moves nothing.
+        followHostAppearance(of: anchor)
         if let l = laidOut, l.anchor == anchorRect, l.host == hostRect, l.tag == tagSize,
            decor.isVisible, tagPanel.isVisible, decor.frame == l.decor, tagPanel.frame == l.tagFrame { return }
 
@@ -250,7 +265,8 @@ public final class TagOverlayController: TourTagPresenting {
                                 screen: screen?.frame,
                                 preferred: shown?.step.placement ?? .automatic,
                                 host: isMenuBarHost ? nil : hostRect,
-                                obstacles: Self.obstacles(around: anchor, in: host))
+                                obstacles: Self.obstacles(around: anchor, in: host),
+                                anchorRadius: anchor.tourCornerRadius)
 
         // The decor spans the host (for the dim), the box and the tag (for the leader line).
         var frame = p.outer.union(p.tag)
@@ -260,11 +276,8 @@ public final class TagOverlayController: TourTagPresenting {
         func local(_ r: CGRect) -> CGRect { r.offsetBy(dx: -o.x, dy: -o.y) }
         func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - o.x, y: p.y - o.y) }
         decorView.dim = isMenuBarHost ? nil : (local(hostRect), shape?.cornerRadius ?? Self.cornerRadius(of: host))
-        let hostIsDark = Self.isDark(anchor.effectiveAppearance)
-        decorView.dimAlpha = TagStyle.dimAlpha(hostIsDark: hostIsDark)
-        decorView.hostIsDark = hostIsDark
-        bubble.hostIsDark = hostIsDark
         decorView.box = local(p.box)
+        decorView.boxRadius = TagLayout.boxRadius(box: p.box, anchorRadius: anchor.tourCornerRadius)
         decorView.outer = local(p.outer)
         decorView.leader = p.leader.map { (local($0.from), local($0.to)) }
         decor.setFrame(frame, display: false)
@@ -275,8 +288,20 @@ public final class TagOverlayController: TourTagPresenting {
         laidOut = (anchorRect, hostRect, tagSize, decor.frame, tagPanel.frame)
     }
 
+    /// The overlay takes the host's light/dark (a Settings window forced Dark on a light system…), so
+    /// the bubble's material, label colours and the dim strength match the window it points into.
+    private func followHostAppearance(of anchor: NSView) {
+        let hostIsDark = Self.isDark(anchor.effectiveAppearance)
+        let appearance = NSAppearance(named: hostIsDark ? .darkAqua : .aqua)
+        guard decor.appearance?.name != appearance?.name else { return }
+        decor.appearance = appearance
+        tagPanel.appearance = appearance
+        decorView.dimAlpha = TagStyle.dimAlpha(hostIsDark: hostIsDark)
+        decorView.needsDisplay = true
+    }
+
     /// Dark Aqua (or vibrant dark — the HUD panels): the dim goes to `TagStyle.darkHostDimAlpha` and the
-    /// tag turns white (`TagStyle.tagColour(hostIsDark:)`).
+    /// overlay's panels take the dark appearance.
     static func isDark(_ appearance: NSAppearance) -> Bool {
         appearance.bestMatch(from: [.aqua, .darkAqua, .vibrantLight, .vibrantDark]).map {
             $0 == .darkAqua || $0 == .vibrantDark

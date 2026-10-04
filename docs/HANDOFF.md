@@ -1,7 +1,112 @@
-# HANDOFF — state as of 2026-09-29 (v1.1.3 shipped; branch `feat/math-format` — the maths-engine package landed + the shared notation format — is committed locally and INSTALLED to /Applications for dogfooding 2026-09-29; NOT merged/pushed)
+# HANDOFF — state as of 2026-10-04 (branch `feat/math-context` = `feat/math-format` + context-aware Greek letters, merged with the installed `feat/tour-opacity`; pushed as a branch and installed; v1.1.4 is the last release)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+
+## 2026-10-04 session — context-aware Greek letters in Math Notation (branch `feat/math-context`; merged with the installed `feat/tour-opacity`; PUSHED as a branch, INSTALLED; not merged into `main`, not released)
+
+**Ask (David, dictated):**
+- "lambda" should become λ when he's speaking mathematics.
+- Words that mean one thing in maths and another in everyday speech should be decided from the WHOLE dictation: "lambda … 5 = K and X = 5" → λ; "lambda … the pie is really tasty" → keep the word; "λ = 5" on its own must still convert.
+- Done with a multi-agent workflow. Then (same day): "document and commit and push, update the applications with the current version, close and reopen".
+
+**What landed (branch history):**
+- `feat/math-context` starts at `feat/math-format` (`90c6836`), the maths-engine package plus the shared notation format, previously local-only.
+- Then 3 feature commits: `41c60b7` context promotion; `761c3ee` Whisper's "pie" as π next to a number or letter; `9119cb9` the fixes from the adversarial verify.
+- Then a docs commit, and a merge of `feat/tour-opacity` (the build that was installed on 2026-09-30) so that installing this branch loses nothing.
+- `feat/launch-at-login` (2026-10-01) is NOT included. It was never installed or approved.
+
+**How it works:**
+- New `Sources/JVoice/Services/Transcription/Math/MathContext.swift` holds the word lists and pure checks; the hooks are in `MathSpeech.swift`.
+- A Greek name outside an equation becomes its letter only when (a) and (b) both hold:
+  - (a) Either the dictation has EVIDENCE, or the name sits in an IB question-stem ANCHOR ("find/calculate/hence find …", "the value of …", "express … in terms of …", "let λ equal 3", "the wavelength/angle/eigenvalue λ").
+    - Evidence = an equation that converted, contains a letter operand and has a real construct (a relation, function, power, fraction, root…). A bare "X plus Y" or "T minus 10" does not count.
+  - (b) No veto applies:
+    - collocations: AWS Lambda, beta access, venture capital, alpha team…;
+    - capitalised names mid-sentence;
+    - quoted mentions;
+    - finance, gaming and slang anti-cues;
+    - one meaning per dictation.
+- It never activates anything new. A dictation with no Greek-name candidate goes through exactly the old code path and comes back unchanged, byte for byte.
+- Full design: `docs/math-context-design.md`; §9 overrides §3. Numbers, deviations and the Windows mirror list: `docs/math-context-progress.md`.
+
+**Verified:**
+- Logic tests: `./scripts/run-logic-tests.sh` 1287/1287 on the feature commits, 1329/1329 after the merge.
+- Test corpora, kept in `.build/math-context/` (gitignored, partly personal — never commit):
+  - ~550 everyday plus adversarial sentences and David's 30 real dictations: byte-identical to the baseline;
+  - context.tsv: 137/137 hand-labelled cases correct;
+  - 10k lines run in about the same time as before (+1.4 %).
+- The adversarial verify had 2 agents: 12 bleeds and 13 recall misses found, all bleeds fixed.
+
+**⚠️ Toolchain (this Mac, since the Command Line Tools 26.6 install on 2026-10-02):**
+- `swift build` crashed: dyld "Symbol not found … BuildServerProtocol" in `swift-package`.
+- The default SDK `MacOSX27.0.sdk` needs Swift 6.4, but the compiler was 6.3.3.
+- Workaround for the pure-logic code: `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk` (that symlink points to 26.5) with `./scripts/run-logic-tests.sh`, or with `scripts/build-math-probe.sh [out]`. The second is a new script that builds a standalone `--math-probe` with plain `swiftc`.
+- The real fix is the Command Line Tools 27.0 update: `sudo softwareupdate -i "Command Line Tools for Xcode 27.0-27.0"`.
+- See the install record below for whether it was applied.
+
+**Known open (these exist on the baseline too; not caused by this branch):**
+- "given that" becomes `∣`.
+- "det of A minus lambda I equals 0" only half converts (`I` ends the run).
+- "pie r squared" with no number before it stays `pie r²`.
+
+**Not done:**
+- The Windows mirror (no .NET on this Mac; the list is in the progress log).
+- Merging into `main` and a release.
+- CI on the pushed branch: check its run.
+
+## 2026-09-30 session (2) — Tour polish: capsule outline on the pill, an animated Opacity step, windows on the active display (branch `feat/tour-opacity`, off `feat/opacity-setting`; PUSHED as a branch, installed to /Applications; `main` NOT moved, no release)
+
+**Asks (David, dictated):** (1) the recording tour "doesn't perfectly outline that pill"; (2) the tour has no Opacity part — it must show the opacity, with "the bar slowly going down" and how it decreased and increased; (3) (mid-task) Settings / the UI must open "on the screen that you actually open it on, not on the main screen"; then push to GitHub and reinstall the app. Worktree `.claude/worktrees/tour-opacity`.
+
+**Done:**
+1. **Pill outline** — the box was a 6 pt-radius rectangle around the 56 pt capsule (screenshot proved it). Anchors can now declare their shape: `.tourAnchor("pill.controls", cornerRadius: HUDLayout.pillCorner)`; `TagLayout.boxRadius` makes the box a concentric capsule (drawn with SwiftUI's circular `Capsule()`, like the pill); the dim hole + leader clearance follow. Details: `Sources/JVoice/Tours/CLAUDE.md` → "Outline shape".
+2. **Opacity step** — new Settings-tour step "Opacity" (anchor `settings.appearance`, 9 of 10, before the ⓘ step; also in the ⓘ's Show Me list). While it's up, `OpacityTourDemo` glides the real slider from the user's value → 0 → 1 → back (eased, looping ~9.5 s) so the whole window follows live, and the tag reads "Watch: 37 % ↓" / "Watch: 0 % Transparent" / "Watch: 100 % Opaque" / "Yours: 50 %". It never writes the setting; touching the slider hands control back. New generic hooks: `TourCoordinator.makeDemo` / `TourStepDemo`, `TourTagPresenting.updateBody`. Details: Tours brief → "Step demos".
+3. **Active display** — `UI/ActiveScreen.swift`: Settings and Welcome centre on the display under the mouse each time they open; the pill appears on that display (kept during its morphs).
+4. `scripts/verify-tour-scroll.sh` was already broken on `feat/opacity-setting` (the tag uses `OpacityBackingView`, not in its file list) — fixed.
+
+**Verified:** `swift build -c release`, `swift build --build-tests` (compile only; new CI file `Tests/JVoiceTests/TourOpacityAndShapeTests.swift`); `./scripts/run-logic-tests.sh` 1027/1027 (18 new, Tours section); `./scripts/verify-tour-scroll.sh` PASS; `--settings-smoke` OK (700×592); `--ui-preview` looked at: `tour-pill-*` (capsule hugging the pill), `tour-opacity-{falling,transparent,rising,opaque}-*` (thumb + readout correct); `jvoice.app.uiOpacity` still 0.5 after the preview (nothing written).
+
+**NOT verified:** the active-display behaviour on a real second monitor (only one display was connected here — logic is `NSEvent.mouseLocation` → screen); the Opacity demo interrupted by a live slider drag was reasoned, not clicked.
+
+**Pushed + CI:** branch `feat/tour-opacity` pushed (after merging `origin/main`'s README/license commit `f1bf056`, clean); CI run `36742433368` green — swift-testing 510 authored = 510 executed, logic scripts 1027/1027. Installed via `./scripts/dev-install.sh` (signed "JVoice Self-Signed"). Next, only with David's go-ahead: fast-forward `main` and/or release v1.1.5.
+
+
+## 2026-09-30 session — Opacity setting + "a touch more transparent" (branch `feat/opacity-setting`, off `feat/native-look`; NOT merged / pushed / installed)
+
+**Ask (David, via the lead agent):** make JVoice a touch more transparent, like MacStats, and add an Opacity setting identical in MacStats, JVoice and BetterScreenshot (shared spec `../MacStats/.claude/worktrees/opacity/docs/design-language/opacity-setting.md`). Worktree `.claude/worktrees/opacity`.
+
+**Done:** Settings → new **Appearance** card (bottom of the right column): Opacity slider Transparent…Opaque, small bordered **Default** (disabled at 0.5), help line; live, stored as `jvoice.app.uiOpacity` (standard domain, default 0.5). Every translucent surface = system material + a `windowBackgroundColor` backing whose alpha the slider sets (`UI/UIOpacity.swift`, pure + logic-tested; `UI/Components/OpacityBacking.swift`): Settings/Welcome/tour tag `.popover` (was `.sidebar`) with backing 0 → 0.35 → 1; the HUD pill `.clear` Liquid Glass as a background layer (was `.regular` as the content's effect — it flipped light over white pages and washed the red stop pink) with backing 0.45 → 0.62 → 1. At the default: windows 17 → 23 % see-through (Dark), pill steady with 5.1:1 text over a white page. `--ui-preview` gained in-process capture (no Screen Recording permission needed), `--opacity`, `--backdrop`, `--active`, `--hud-timeline` and a scrolled-to-bottom Settings shot. Full numbers, screenshots and method: `docs/opacity-progress.md`.
+
+**Verified:** `swift build`, `swift build -c release`, `swift build --build-tests` (compile only); `./scripts/run-logic-tests.sh` 1009/1009 (22 new, Settings UI section); `--settings-smoke` OK (700×592); `--ui-preview` at 0/0.5/1 × Light/Dark over white, black and a bright wallpaper, looked at by eye; contrast measured from the PNGs.
+
+**NOT verified:** the live app (real pill over apps, Settings while key, dragging the slider), Reduce Transparency, macOS 14/15 (fallback pill only emulated via `JVOICE_HUD_MATERIAL=1`). "Restore Default Settings…" doesn't reset Opacity (separate key; follow-up if wanted).
+
+## 2026-09-29 session — Native macOS look (MacStats design language) for the whole UI (branch `feat/native-look`, off `feat/guided-tour` @ `0877330`; SHIPPED as v1.1.4 — `main` fast-forwarded to it)
+
+**Ship record (v1.1.4, 2026-09-29, David: "merge to main and update the installer"):** release commit `5c4748d` (Info.plist 1.1.4 / build 6, CHANGELOG `[1.1.4]`, README link → `v1.1.4/JVoice-1.1.4.dmg`); branch pushed first and CI run `36595563381` passed — swift-testing **504 authored = 504 executed**, logic scripts 987/987; then `origin/main` fast-forwarded `987d2f9 → 5c4748d` (this also published `0877330`, the math-notation-format doc commit that was on `feat/guided-tour`). `./scripts/package-release.sh` → `dist/JVoice.app.zip` + `dist/JVoice-1.1.4.dmg`, signed "JVoice Self-Signed" (leaf `H"1164938a…7860"`, unchanged → users keep permissions). GitHub release `v1.1.4` (Latest) carries both assets. Verified after publishing: `scripts/install.sh`'s release query resolves to `…/v1.1.4/JVoice.app.zip`; the downloaded zip passes `codesign --verify --deep --strict` and reports 1.1.4; the README DMG link returns 200. David's `/Applications/JVoice.app` is the dev build of the same code (`9076d12`, Info.plist 1.1.3) — the one-liner makes it report 1.1.4.
+
+**Ask (David, overnight/unattended):** apply the redesign spec `../MacStats/docs/design-language/jvoice-native-redesign.md` (design language: `../MacStats/docs/design-language/README.md`) to ALL of JVoice's UI — pills, Settings, everything — so it looks like his MacStats app / an Apple-native app. No sub-agents except one final reviewer.
+
+**Where:** a separate git worktree at `.claude/worktrees/native-look` (branch `feat/native-look`), so the main checkout (on `feat/guided-tour`, with an unrelated uncommitted `docs/math-notation-format.md` edit) was not touched. To try it: `cd .claude/worktrees/native-look && ./scripts/dev-install.sh` (David runs it), or merge the branch.
+
+**Done (spec phases 1–5; phase 6, the app icon, is optional — "only if the user asks" — not done):**
+- Tokens: `UI/Theme.swift` → semantic `Color.primary` tints (`Theme.native`) + a `Design` table from MacStats; `danger` = red.
+- Appearance: `AppTheme` gains **System** (default), stored under a NEW `SettingsState` key `appearance` — the schema stays **v4** and the legacy `theme` field is still written, so going back to v1.1.3 keeps all settings (an earlier draft bumped to v5, which would have wiped them; the reviewer caught it). A blob without `appearance` maps the old `.dark` *default* to `.system` and keeps an explicit `.light` (test-locked in `SettingsStateMigrationTests`; verified locally with a scratch `swiftc` program).
+- Settings: translucent `.sidebar` window material (`WindowMaterial.install`), dot-free cards (`CardBackground`), text styles, native small switches, segmented System/Light/Dark picker, `SubtleButtonStyle` buttons (destructive = red), hover-revealed row actions, `NSAlert` sheet for Restore Defaults.
+- HUD: Liquid Glass capsule on macOS 26 / capsule-masked `.hudWindow` material before (guarded `#if compiler(>=6.2)` + `#available`; the non-glass branch compile-checked by flipping the guard and screenshotted via `JVOICE_HUD_MATERIAL=1`), one soft shadow outside the capsule, no glow, flat-line bars, red stop square, no "RECORDING" label, status symbols in their meaning colour (no badge circle). Pill sits where it did (`HUDLayout.bottomGap`).
+- **HUD morph (David's follow-up the same night):** every pill hugs its content ("Pasted" is now a small capsule instead of a 240 pt one; errors wrap at 360) and one pill turning into the next (recording → transcribing → Pasted…) resizes the same capsule with a subtle `.snappy(0.3)` while the contents cross-fade. First show and hide stay instant (latency contract). A mid-morph `--ui-preview` frame confirms the capsule really animates.
+- Welcome: same material, real app icon, native large bordered/prominent buttons, card rows.
+- Tour tag: `.popover` material bubble with continuous corners in the host's appearance, accent-colour outline/leader/Next.
+- New hidden dev mode `JVoice --ui-preview <dir>` (`UI/UIPreviewRunner.swift`) that screenshots every surface — see `Sources/JVoice/UI/CLAUDE.md`.
+
+**Review (the one mandatory reviewer agent):** no blockers; its findings were all fixed — the v5 schema bump (above), the pre-26 material ignoring the capsule clip (now `maskImage`), Settings content scrolling under the transparent title bar on 14/15 (now pinned below it), the tour tag not following a System/Light/Dark switch until it moved, Return defaulting to "Reset" in the Restore Defaults alert (Cancel is now the default), icon-only picker segments without labels.
+
+**Not done:** the app icon (spec phase 6, "only if the user asks"). The menu-bar menu and the ⓘ popover were left alone (already native, per spec). Possible nit to eyeball when dogfooding: in the mid-morph preview frame the Liquid Glass briefly rendered lighter than the settled pill over a dark backdrop (glass re-adapting its tint while it resizes) — only visible if you look for it; if it bothers you, shorten `HUDLayout.morph`.
+
+**Verified:** `swift build` + `swift build -c release` + `swift build --build-tests`; `./scripts/run-logic-tests.sh` 987/987; `./scripts/verify-tour-scroll.sh` PASS; `--settings-smoke` from an assembled `.app` OK (700×592, unchanged); `--ui-preview` screenshots of Settings/Welcome/tour tag (Light + Dark), all 7 HUD states, a mid-morph frame, and the pre-26 material pill looked right by eye. CI-only swift-testing files updated for the new default/migration (NOT executed locally — never run `swift test` here).
+
+**NOT verified:** the live app (hotkey → pill latency, real mic bars, glass over a bright wallpaper, Settings while key/active = translucent). Suggested dogfood: install from the worktree, dictate once in Light and once in Dark, open Settings over a bright wallpaper, switch System/Light/Dark with Settings open.
 
 ## 2026-09-29 session — maths engine: the unfinished package landed, then the shared notation format (branch `feat/math-format`, off `feat/guided-tour` @ `0877330`; 3 commits, NOT merged, NOT pushed; installed via `./scripts/dev-install.sh` 2026-09-29, `--settings-smoke` OK from the installed .app)
 

@@ -516,12 +516,12 @@ final class VoiceCoordinator: ObservableObject {
         )
     }
 
-    /// Re-render theme-dependent surfaces when the user flips the sun/moon
-    /// toggle. The Settings SwiftUI view re-renders automatically (it observes
+    /// Re-render theme-dependent surfaces when the user picks System / Light /
+    /// Dark. The Settings SwiftUI view re-renders automatically (it observes
     /// `appTheme` via `@ObservedObject`); the HUD pill and the Settings
     /// NSWindow chrome need an explicit nudge.
     private func applyTheme() {
-        settingsWindow?.appearance = NSAppearance(named: appTheme == .dark ? .darkAqua : .aqua)
+        settingsWindow?.appearance = appTheme.nsAppearance
         hudWindow.update(state: hudState, theme: appTheme, meter: recordingManager.levelMeter)
     }
 

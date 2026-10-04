@@ -4,105 +4,111 @@ import SwiftUI
 import KeyboardShortcuts
 #endif
 
-// MARK: - Section card (theme-aware)
+// MARK: - Section card
 
+/// A MacStats-style inset card: a `.caption2` semibold secondary label (no dot, no kerning) over the
+/// content, on a faint tint of the window's material (`CardBackground`).
 private struct SettingsSection<Content: View>: View {
     let title: String
-    let theme: Theme
     let content: Content
 
-    init(_ title: String, theme: Theme, @ViewBuilder content: () -> Content) {
+    init(_ title: String, @ViewBuilder content: () -> Content) {
         self.title = title
-        self.theme = theme
         self.content = content()
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 7) {
-                Circle()
-                    .fill(theme.textMuted)
-                    .frame(width: 5, height: 5)
-                Text(title.uppercased())
-                    .font(.system(size: 9.5, weight: .bold))
-                    .kerning(0.7)
-                    .foregroundStyle(theme.textSecondary)
-            }
-            .padding(.horizontal, 12)
-            .padding(.top, 9)
-            .padding(.bottom, 7)
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Rectangle().fill(theme.hairline).frame(height: 0.5)
-
-            content.padding(12)
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased())
+                .font(.caption2)
+                .fontWeight(.semibold)
+                .foregroundStyle(.secondary)
+                .accessibilityAddTraits(.isHeader)
+            content
         }
-        .background(
-            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                .fill(theme.surface)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .strokeBorder(theme.hairline, lineWidth: 1)
-                )
-        )
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(CardBackground())
     }
 }
 
-// MARK: - Button style (theme-aware)
+// MARK: - Appearance picker
 
-private struct SettingsButtonStyle: ButtonStyle {
-    let theme: Theme
-    var destructive = false
-
-    func makeBody(configuration: Configuration) -> some View {
-        let c = destructive ? theme.danger : theme.textPrimary
-        return configuration.label
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(c)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                    .fill(c.opacity(0.10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
-                            .strokeBorder(c.opacity(0.25), lineWidth: 1)
-                    )
-            )
-            .opacity(configuration.isPressed ? 0.70 : 1.0)
-    }
-}
-
-// MARK: - Sun/moon theme toggle
-
-private struct ThemeToggle: View {
+/// System / Light / Dark, as a native segmented control (SF Symbols, like Control Center's).
+private struct AppearancePicker: View {
     @Binding var selection: AppTheme
-    let theme: Theme
 
     var body: some View {
-        HStack(spacing: 2) {
-            icon("sun.max.fill", on: selection == .light) { selection = .light }
-            icon("moon.fill", on: selection == .dark) { selection = .dark }
+        Picker("Appearance", selection: $selection) {
+            ForEach(AppTheme.allCases) { theme in
+                Label(theme.displayName, systemImage: Self.symbol(theme))
+                    .labelStyle(.iconOnly)
+                    .help(theme.displayName)
+                    .tag(theme)
+            }
         }
-        .padding(3)
-        .background(
-            Capsule().fill(theme.inputBackground)
-                .overlay(Capsule().strokeBorder(theme.hairline, lineWidth: 1))
-        )
-        .accessibilityLabel("Appearance")
+        .labelsHidden()
+        .pickerStyle(.segmented)
+        .fixedSize()
+        .help("Appearance")
     }
 
-    private func icon(_ name: String, on: Bool, _ action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: name)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(on ? theme.textPrimary : theme.textMuted)
-                .frame(width: 26, height: 20)
-                .background(
-                    Capsule().fill(on ? theme.barFill.opacity(0.14) : .clear)
-                )
+    private static func symbol(_ theme: AppTheme) -> String {
+        switch theme {
+        case .system: return "circle.lefthalf.filled"
+        case .light:  return "sun.max"
+        case .dark:   return "moon"
         }
-        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Row with hover actions
+
+/// A row inside a card: its trailing actions (copy, remove…) appear on hover, over a
+/// `Color.primary` 0.07 continuous-rounded highlight (the MacStats list-row pattern).
+private struct HoverRow<Label: View, Actions: View>: View {
+    @ViewBuilder let label: () -> Label
+    @ViewBuilder let actions: () -> Actions
+    @State private var hovering = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            label()
+                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) { actions() }
+                .opacity(hovering ? 1 : 0)
+                .allowsHitTesting(hovering)
+        }
+        .padding(.vertical, 3)
+        .padding(.horizontal, 6)
+        .frame(minHeight: 24)
+        .background(
+            RoundedRectangle(cornerRadius: Design.rowCornerRadius, style: .continuous)
+                .fill(Color.primary.opacity(hovering ? Design.rowHoverFill : 0))
+        )
+        .contentShape(Rectangle())
+        .animation(.easeOut(duration: 0.12), value: hovering)
+        .onHover { hovering = $0 }
+    }
+}
+
+/// The quiet row action: an SF Symbol in `.secondary`, `.primary` while pressed.
+private struct RowActionButton: View {
+    let symbol: String
+    let help: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(PanelPressableButtonStyle())
+        .help(help)
+        .accessibilityLabel(help)
     }
 }
 
@@ -115,75 +121,76 @@ struct SettingsView: View {
     /// Why the last Add was turned away — shown under its field, cleared on edit.
     @State private var wordNotice: String?
     @State private var appMatchNotice: String?
-    @State private var showResetConfirm = false
     /// Mirror of `TourSettings.firstUseToursEnabled` (a plain UserDefaults key SwiftUI can't observe):
     /// refreshed on appear and whenever a window becomes key, written through on change.
     @State private var toursEnabled = false
+    /// Settings → Appearance → Opacity; shared with every window and pill, which follow it live.
+    @ObservedObject private var opacity = UIOpacityStore.shared
 
     var body: some View {
         let theme = coordinator.appTheme.theme
 
+        // No background of its own: the window's content view is a behind-window material
+        // (`WindowMaterial`), and its appearance (System / Light / Dark) is set on the NSWindow.
         return ScrollView {
             VStack(alignment: .leading, spacing: 12) {
 
-                // Header with sun/moon toggle (top-right)
-                HStack(alignment: .top) {
-                    VStack(alignment: .leading, spacing: 3) {
+                // Header: title left, appearance picker right
+                HStack(alignment: .center) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text("JVoice")
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(theme.textPrimary)
+                            .font(.title2.bold())
                         Text("Menu bar transcription controls")
-                            .font(.system(size: 11))
-                            .foregroundStyle(theme.textMuted)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    ThemeToggle(selection: $coordinator.appTheme, theme: theme)
+                    AppearancePicker(selection: $coordinator.appTheme)
                 }
-                .padding(.bottom, 2)
 
                 // Stats — full width
-                statsSection(theme)
+                statsSection
 
                 // Two columns: controls (left) · your data (right)
                 HStack(alignment: .top, spacing: 12) {
                     VStack(spacing: 12) {
-                        modelSection(theme)
-                        processingSection(theme)
-                        voiceStyleSection(theme)
-                        languageSection(theme)
+                        modelSection
+                        processingSection
+                        voiceStyleSection
+                        languageSection
                         appModesSection(theme)
                         shortcutSection(theme)
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
 
                     VStack(spacing: 12) {
-                        recentTranscriptsSection(theme)
+                        recentTranscriptsSection
                         customWordsSection(theme)
-                        // The right column is the shorter one, so this card costs no height.
-                        toursSection(theme)
+                        // The right column is the shorter one, so these cards cost no height.
+                        toursSection
+                        appearanceSection
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
 
-                footer(theme)
+                footer
             }
-            .padding(18)
+            .padding(20)
         }
-        .background(theme.windowBackground)
-        .preferredColorScheme(theme.colorScheme)
         .frame(width: 700, height: 560)
     }
 
     // MARK: Sections
 
-    private func statsSection(_ theme: Theme) -> some View {
-        SettingsSection("Stats", theme: theme) {
+    private var statsSection: some View {
+        SettingsSection("Stats") {
             HStack(spacing: 0) {
-                stat("\(coordinator.totalWordsSpoken)", "total words", theme)
-                Rectangle().fill(theme.hairline).frame(width: 0.5, height: 44)
-                stat(coordinator.averageWPM > 0 ? String(format: "%.0f", coordinator.averageWPM) : "—", "avg WPM", theme)
-                Rectangle().fill(theme.hairline).frame(width: 0.5, height: 44)
-                stat(timeSavedDisplay(coordinator.minutesSaved), "time saved", theme)
+                stat("\(coordinator.totalWordsSpoken)", "total words", number: Double(coordinator.totalWordsSpoken))
+                Divider().frame(height: 36)
+                stat(coordinator.averageWPM > 0 ? String(format: "%.0f", coordinator.averageWPM) : "—", "avg WPM",
+                     number: coordinator.averageWPM)
+                Divider().frame(height: 36)
+                stat(timeSavedDisplay(coordinator.minutesSaved), "time saved", number: coordinator.minutesSaved)
             }
             .frame(maxWidth: .infinity)
         }
@@ -198,22 +205,25 @@ struct SettingsView: View {
         return "\(Int(minutes / 60)) h"
     }
 
-    private func stat(_ value: String, _ label: String, _ theme: Theme) -> some View {
-        VStack(spacing: 3) {
+    /// The MacStats stat pattern: a `.title2` semibold monospaced value that fades (not rolls) when it
+    /// changes, over a `.caption2` secondary label.
+    private func stat(_ value: String, _ label: String, number: Double) -> some View {
+        VStack(spacing: 2) {
             Text(value)
-                .font(.system(size: 26, weight: .bold))
-                .foregroundStyle(theme.textPrimary)
+                .font(.title2.weight(.semibold))
                 .monospacedDigit()
+                .contentTransition(.interpolate)
+                .animation(.easeInOut(duration: 0.25), value: number)
             Text(label)
-                .font(.system(size: 10))
-                .foregroundStyle(theme.textMuted)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
     }
 
-    private func modelSection(_ theme: Theme) -> some View {
-        SettingsSection("Whisper Model", theme: theme) {
-            VStack(alignment: .leading, spacing: 7) {
+    private var modelSection: some View {
+        SettingsSection("Whisper Model") {
+            VStack(alignment: .leading, spacing: 8) {
                 Picker("Model", selection: $coordinator.whisperModel) {
                     ForEach(WhisperModelChoice.allCases) { model in
                         Text(model.displayName).tag(model)
@@ -223,69 +233,70 @@ struct SettingsView: View {
                 .pickerStyle(.segmented)
 
                 Text(coordinator.whisperModel.guidance)
-                    .font(.system(size: 10))
-                    .foregroundStyle(theme.textMuted)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .tourAnchor("settings.model")
     }
 
-    private func processingSection(_ theme: Theme) -> some View {
-        SettingsSection("Processing", theme: theme) {
-            VStack(spacing: 12) {
+    private var processingSection: some View {
+        SettingsSection("Processing") {
+            VStack(spacing: 10) {
                 toggleRow("Developer Terms",
                           "Fix coding terms: Node.js, GitHub, TypeScript, JSON, C#…",
-                          isOn: $coordinator.developerTerms, theme)
+                          isOn: $coordinator.developerTerms)
                 toggleRow("Math Notation",
                           "Spoken equations become symbols: x squared equals 4 → x² = 4",
-                          isOn: $coordinator.mathNotation, theme)
+                          isOn: $coordinator.mathNotation)
                 toggleRow("Remove Filler Words",
                           "Strip um, uh, er, ah, hmm from output",
-                          isOn: $coordinator.removeFillerWords, theme)
+                          isOn: $coordinator.removeFillerWords)
                 toggleRow("Copy to Clipboard",
                           "Copy the text instead of auto-pasting it",
-                          isOn: $coordinator.copyToClipboardOnly, theme)
+                          isOn: $coordinator.copyToClipboardOnly)
             }
         }
         .tourAnchor("settings.processing")
     }
 
-    /// A labelled switch row matching the original Processing toggle style.
-    private func toggleRow(_ title: String, _ subtitle: String, isOn: Binding<Bool>, _ theme: Theme) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
+    /// A labelled switch row, System-Settings style: `.callout` title, `.caption` secondary subtitle,
+    /// a small native switch.
+    private func toggleRow(_ title: String, _ subtitle: String, isOn: Binding<Bool>) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(theme.textPrimary)
+                    .font(.callout)
                 Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundStyle(theme.textMuted)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Spacer()
-            Toggle("", isOn: isOn)
+            Spacer(minLength: 0)
+            Toggle(title, isOn: isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
+                .controlSize(.small)
         }
     }
 
-    private func voiceStyleSection(_ theme: Theme) -> some View {
-        SettingsSection("Voice Style", theme: theme) {
+    private var voiceStyleSection: some View {
+        SettingsSection("Voice Style") {
             Picker("Tone", selection: $coordinator.toneMode) {
                 ForEach(ToneMode.allCases) { mode in
                     Text(mode.displayName).tag(mode)
                 }
             }
+            .labelsHidden()
             .pickerStyle(.segmented)
         }
         .tourAnchor("settings.voiceStyle")
     }
 
-    private func languageSection(_ theme: Theme) -> some View {
-        SettingsSection("Language", theme: theme) {
-            VStack(alignment: .leading, spacing: 12) {
+    private var languageSection: some View {
+        SettingsSection("Language") {
+            VStack(alignment: .leading, spacing: 10) {
                 Picker("Language", selection: $coordinator.transcriptionLanguage) {
                     ForEach(TranscriptionLanguage.allCases) { lang in
                         Text(lang.displayName).tag(lang)
@@ -296,84 +307,57 @@ struct SettingsView: View {
 
                 toggleRow("Translate to English",
                           "Speak the language above, paste English",
-                          isOn: $coordinator.translateToEnglish, theme)
+                          isOn: $coordinator.translateToEnglish)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
     private func appModesSection(_ theme: Theme) -> some View {
-        SettingsSection("App Modes", theme: theme) {
-            VStack(alignment: .leading, spacing: 12) {
+        SettingsSection("App Modes") {
+            VStack(alignment: .leading, spacing: 10) {
                 toggleRow("Auto-switch by App",
                           "Match the app's bundle ID; code apps → Code tone",
-                          isOn: $coordinator.appAwareModes, theme)
+                          isOn: $coordinator.appAwareModes)
 
                 if coordinator.appAwareModes {
                     if coordinator.appModeRules.isEmpty {
                         Text("No rules yet. Terminals and editors already default to Code.")
-                            .font(.system(size: 10))
-                            .foregroundStyle(theme.textMuted)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
                     } else {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 0) {
                             ForEach(coordinator.appModeRules, id: \.appMatch) { rule in
-                                HStack(spacing: 6) {
-                                    Text(rule.appMatch)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(theme.textSecondary)
-                                        .lineLimit(1)
-                                        .truncationMode(.middle)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                                    Button {
-                                        coordinator.cycleAppModeRuleMode(rule)
-                                    } label: {
-                                        Text(rule.mode.displayName)
-                                            .font(.system(size: 10, weight: .semibold))
-                                            .foregroundStyle(theme.textPrimary)
-                                            .padding(.horizontal, 8)
-                                            .padding(.vertical, 3)
-                                            .background(
-                                                Capsule().fill(theme.barFill.opacity(0.14))
-                                                    .overlay(Capsule().strokeBorder(theme.hairline, lineWidth: 1))
-                                            )
+                                HoverRow {
+                                    HStack(spacing: 8) {
+                                        Text(rule.appMatch)
+                                            .font(.callout)
+                                            .lineLimit(1)
+                                            .truncationMode(.middle)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                        Button(rule.mode.displayName) {
+                                            coordinator.cycleAppModeRuleMode(rule)
+                                        }
+                                        .buttonStyle(SubtleButtonStyle())
+                                        .help("Click to change tone")
                                     }
-                                    .buttonStyle(.plain)
-                                    .help("Click to change tone")
-
-                                    Button {
+                                } actions: {
+                                    RowActionButton(symbol: "minus.circle", help: "Remove") {
                                         coordinator.removeAppModeRule(rule)
-                                    } label: {
-                                        Image(systemName: "minus.circle.fill")
-                                            .foregroundStyle(theme.textMuted)
                                     }
-                                    .buttonStyle(.plain)
                                 }
                             }
                         }
+                        .padding(.horizontal, -6)
                     }
 
                     HStack(spacing: 6) {
                         TextField("App name or bundle ID (e.g. Slack)", text: $newAppMatch)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 11))
-                            .foregroundStyle(theme.textSecondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 5)
-                            .background(
-                                RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                    .fill(theme.inputBackground)
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                            .strokeBorder(theme.hairline, lineWidth: 1)
-                                    )
-                            )
+                            .inputFieldStyle()
                             .onSubmit { submitAppRule() }
 
                         Button("Add") { submitAppRule() }
-                            .buttonStyle(SettingsButtonStyle(theme: theme))
+                            .buttonStyle(SubtleButtonStyle())
                             .disabled(newAppMatch.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                     .onChange(of: newAppMatch) { appMatchNotice = nil }
@@ -383,125 +367,104 @@ struct SettingsView: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .tourAnchor("settings.appModes")
     }
 
     private func shortcutSection(_ theme: Theme) -> some View {
-        SettingsSection("Keyboard Shortcut", theme: theme) {
-            VStack(alignment: .leading, spacing: 8) {
+        SettingsSection("Keyboard Shortcut") {
+            VStack(alignment: .leading, spacing: 6) {
                 #if canImport(KeyboardShortcuts)
-                ShortcutRecorder(label: "Toggle Recording:", name: .toggleRecording, theme: theme)
+                ShortcutRecorder(label: "Toggle Recording", name: .toggleRecording, theme: theme)
                 #else
                 Text("Shortcut customization is unavailable in this build.")
-                    .font(.footnote)
-                    .foregroundStyle(theme.textMuted)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 #endif
                 Text("Default: ⌥ Space")
-                    .font(.system(size: 10))
-                    .foregroundStyle(theme.textMuted)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
                 #if canImport(KeyboardShortcuts)
-                Rectangle().fill(theme.hairline).frame(height: 0.5).padding(.vertical, 2)
-                ShortcutRecorder(label: "Undo Last Paste:", name: .undoLastPaste, theme: theme)
+                Divider().padding(.vertical, 4)
+                ShortcutRecorder(label: "Undo Last Paste", name: .undoLastPaste, theme: theme)
                 Text("Optional — sends the app's Undo (⌘Z) to reverse the last paste")
-                    .font(.system(size: 10))
-                    .foregroundStyle(theme.textMuted)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 #endif
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .tourAnchor("settings.shortcut")
     }
 
-    private func recentTranscriptsSection(_ theme: Theme) -> some View {
-        SettingsSection("Recent Transcripts", theme: theme) {
+    private var recentTranscriptsSection: some View {
+        SettingsSection("Recent Transcripts") {
             VStack(alignment: .leading, spacing: 8) {
                 if coordinator.recentTranscripts.isEmpty {
                     Text("No transcripts yet.")
-                        .font(.footnote)
-                        .foregroundStyle(theme.textMuted)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 0) {
                             ForEach(coordinator.recentTranscripts) { entry in
                                 TranscriptRow(
                                     text: entry.text,
-                                    theme: theme,
                                     onCopy: { coordinator.copyToClipboard(entry.text) },
                                     onDelete: { coordinator.deleteTranscript(entry.id) }
                                 )
                             }
                         }
-                        .padding(.vertical, 2)
                     }
                     .frame(maxHeight: 220)
+                    .padding(.horizontal, -6)
 
                     HStack {
                         Spacer()
-                        Button("Clear all") { coordinator.clearTranscriptHistory() }
-                            .buttonStyle(SettingsButtonStyle(theme: theme))
+                        Button("Clear All", role: .destructive) { coordinator.clearTranscriptHistory() }
+                            .buttonStyle(SubtleButtonStyle(destructive: true))
                     }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .tourAnchor("settings.transcripts")
     }
 
     private func customWordsSection(_ theme: Theme) -> some View {
-        SettingsSection("Custom Words", theme: theme) {
+        SettingsSection("Custom Words") {
             VStack(alignment: .leading, spacing: 8) {
                 if coordinator.customWords.isEmpty {
                     Text("No custom words added.")
-                        .font(.footnote)
-                        .foregroundStyle(theme.textMuted)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 0) {
                             ForEach(coordinator.customWords, id: \.self) { word in
-                                HStack {
+                                HoverRow {
                                     Text(word)
-                                        .font(.system(size: 11))
-                                        .foregroundStyle(theme.textSecondary)
-                                    Spacer()
-                                    Button {
+                                        .font(.callout)
+                                        .lineLimit(1)
+                                } actions: {
+                                    RowActionButton(symbol: "minus.circle", help: "Remove") {
                                         coordinator.removeCustomWord(word)
-                                    } label: {
-                                        Image(systemName: "minus.circle.fill")
-                                            .foregroundStyle(theme.textMuted)
                                     }
-                                    .buttonStyle(.plain)
                                 }
                             }
                         }
-                        .padding(.vertical, 2)
                     }
                     .frame(maxHeight: 150)
+                    .padding(.horizontal, -6)
                 }
 
                 HStack(spacing: 6) {
                     TextField("Add word (e.g. VS Code)", text: $newWord)
-                        .textFieldStyle(.plain)
-                        .font(.system(size: 11))
-                        .foregroundStyle(theme.textSecondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 5)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                .fill(theme.inputBackground)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 6, style: .continuous)
-                                        .strokeBorder(theme.hairline, lineWidth: 1)
-                                )
-                        )
+                        .inputFieldStyle()
                         .onSubmit { submitWord() }
 
                     Button("Add") { submitWord() }
-                        .buttonStyle(SettingsButtonStyle(theme: theme))
+                        .buttonStyle(SubtleButtonStyle())
                         .disabled(newWord.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 .onChange(of: newWord) { wordNotice = nil }
@@ -510,29 +473,26 @@ struct SettingsView: View {
                     InlineNotice(text: wordNotice, theme: theme)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .tourAnchor("settings.customWords")
     }
 
     /// "Tours & Tips": the first-use tours switch, plus replay/reset (see `Tours/TourCatalog.swift`).
-    private func toursSection(_ theme: Theme) -> some View {
-        SettingsSection("Tours & Tips", theme: theme) {
-            VStack(alignment: .leading, spacing: 12) {
+    private var toursSection: some View {
+        SettingsSection("Tours & Tips") {
+            VStack(alignment: .leading, spacing: 10) {
                 toggleRow("Show Me Around",
                           "Point out each part the first time you use it.",
                           isOn: Binding(get: { toursEnabled },
-                                        set: { toursEnabled = $0; TourSettings.firstUseToursEnabled = $0 }),
-                          theme)
+                                        set: { toursEnabled = $0; TourSettings.firstUseToursEnabled = $0 }))
 
                 HStack(spacing: 6) {
                     Button("Replay Welcome Tour") { TourEvents.replay(.welcome, in: nil) }
-                        .buttonStyle(SettingsButtonStyle(theme: theme))
+                        .buttonStyle(SubtleButtonStyle())
                     Button("Reset All Tours") { TourEvents.resetAll() }
-                        .buttonStyle(SettingsButtonStyle(theme: theme))
+                        .buttonStyle(SubtleButtonStyle())
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .onAppear { toursEnabled = TourSettings.firstUseToursEnabled }
         // The Welcome window's "Show Me Around" can flip it while Settings stays open.
@@ -541,24 +501,72 @@ struct SettingsView: View {
         }
     }
 
-    private func footer(_ theme: Theme) -> some View {
-        HStack {
-            Button("Restore Default Settings") { showResetConfirm = true }
-                .buttonStyle(SettingsButtonStyle(theme: theme, destructive: true))
-                .confirmationDialog(
-                    "Reset all JVoice settings to defaults?",
-                    isPresented: $showResetConfirm,
-                    titleVisibility: .visible
-                ) {
-                    Button("Reset", role: .destructive) { coordinator.resetSettings() }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("Your custom words, model choice, and language will be restored to defaults, and your recent transcripts will be cleared. Recording statistics will not be affected.")
+    /// "Appearance": the Opacity slider shared by MacStats, JVoice and BetterScreenshot
+    /// (`../MacStats/docs/design-language/opacity-setting.md` §2). Applies live; "Default" = 0.5.
+    private var appearanceSection: some View {
+        SettingsSection("Appearance") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Opacity")
+                        .font(.callout)
+                    Spacer(minLength: 0)
+                    Button("Default") { opacity.value = UIOpacity.defaultValue }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(abs(opacity.value - UIOpacity.defaultValue) < 0.001)
+                        .help("Back to the standard look")
                 }
+                Slider(value: $opacity.value, in: 0...1) {
+                    Text("Opacity")
+                } minimumValueLabel: {
+                    Text("Transparent").font(.caption).foregroundStyle(.secondary)
+                } maximumValueLabel: {
+                    Text("Opaque").font(.caption).foregroundStyle(.secondary)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                Text("How much of what's behind JVoice shows through its windows and the recording pill.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        // The Settings tour's Opacity step plays the slider down and up here (`OpacityTourDemo`).
+        .tourAnchor(OpacityTourDemo.anchor)
+    }
 
+    /// The MacStats footer: the secondary/destructive actions as small buttons, red where destructive.
+    private var footer: some View {
+        HStack {
+            Button("Restore Default Settings…", role: .destructive) { confirmReset() }
+                .buttonStyle(SubtleButtonStyle(destructive: true))
             Spacer()
             Button("Quit JVoice", role: .destructive) { coordinator.quitApp() }
-                .buttonStyle(SettingsButtonStyle(theme: theme, destructive: true))
+                .buttonStyle(SubtleButtonStyle(destructive: true))
+        }
+        .padding(.top, 2)
+    }
+
+    /// A native `NSAlert` sheet, not a SwiftUI `.confirmationDialog`: in an accessory (menu-bar) app a
+    /// SwiftUI dialog can lose focus (MacStats hit exactly this — `AppModel.confirmAndEmptyTrash`).
+    private func confirmReset() {
+        let alert = NSAlert()
+        alert.messageText = "Reset all JVoice settings to defaults?"
+        alert.informativeText = "Your custom words, model choice, and language will be restored to defaults, and your recent transcripts will be cleared. Recording statistics will not be affected."
+        alert.alertStyle = .warning
+        // Return must not wipe settings: Cancel is the default button, Reset is click-only (red).
+        let resetButton = alert.addButton(withTitle: "Reset")
+        resetButton.hasDestructiveAction = true
+        resetButton.keyEquivalent = ""
+        alert.addButton(withTitle: "Cancel").keyEquivalent = "\r"
+        let reset = { (response: NSApplication.ModalResponse) in
+            if response == .alertFirstButtonReturn { coordinator.resetSettings() }
+        }
+        if let window = NSApp.windows.first(where: { $0 is SettingsWindow && $0.isVisible }) {
+            alert.beginSheetModal(for: window, completionHandler: reset)
+        } else {
+            NSApp.activate(ignoringOtherApps: true)
+            reset(alert.runModal())
         }
     }
 
@@ -606,52 +614,24 @@ struct SettingsView: View {
 
 private struct TranscriptRow: View {
     let text: String
-    let theme: Theme
     let onCopy: () -> Void
     let onDelete: () -> Void
 
-    @State private var hovering = false
     @State private var justCopied = false
 
     var body: some View {
-        HStack(spacing: 6) {
+        HoverRow {
             Text(text)
-                .font(.system(size: 11))
-                .foregroundStyle(theme.textSecondary)
+                .font(.callout)
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if hovering {
-                Button {
-                    onCopy()
-                    flashCopied()
-                } label: {
-                    Image(systemName: justCopied ? "checkmark" : "doc.on.doc")
-                        .foregroundStyle(theme.textPrimary)
-                }
-                .buttonStyle(.plain)
-                .help("Copy to clipboard")
-
-                Button {
-                    onDelete()
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .foregroundStyle(theme.textMuted)
-                }
-                .buttonStyle(.plain)
-                .help("Remove")
+        } actions: {
+            RowActionButton(symbol: justCopied ? "checkmark" : "doc.on.doc", help: "Copy to clipboard") {
+                onCopy()
+                flashCopied()
             }
+            RowActionButton(symbol: "minus.circle", help: "Remove", action: onDelete)
         }
-        .padding(.vertical, 3)
-        .padding(.horizontal, 6)
-        .frame(minHeight: 22)
-        .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(hovering ? theme.inputBackground : Color.clear)
-        )
-        .contentShape(Rectangle())
-        .onHover { hovering = $0 }
     }
 
     private func flashCopied() {

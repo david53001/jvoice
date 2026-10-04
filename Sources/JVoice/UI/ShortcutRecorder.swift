@@ -54,40 +54,40 @@ struct ShortcutRecorder: View {
     private var row: some View {
         HStack(spacing: 8) {
             Text(label)
-                .font(.system(size: 11))
-                .foregroundStyle(theme.textSecondary)
+                .font(.callout)
 
             Spacer(minLength: 8)
 
             Button(action: toggleCapture) {
                 Text(fieldText)
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(isCapturing || shortcutText.isEmpty ? theme.textMuted : theme.textPrimary)
+                    .font(.callout.weight(.medium))
+                    .foregroundStyle(isCapturing || shortcutText.isEmpty ? theme.textSecondary : theme.textPrimary)
                     .frame(minWidth: 104)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
+                    .frame(height: Design.smallButtonHeight)
                     .background(
-                        RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        RoundedRectangle(cornerRadius: Design.smallButtonRadius, style: .continuous)
                             .fill(theme.inputBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .strokeBorder(
-                                        isCapturing ? theme.textPrimary.opacity(0.55) : theme.hairline,
-                                        lineWidth: 1
-                                    )
-                            )
                     )
+                    .overlay(
+                        // Listening: the accent ring, like a focused field. Otherwise a hairline.
+                        RoundedRectangle(cornerRadius: Design.smallButtonRadius, style: .continuous)
+                            .strokeBorder(isCapturing ? Color.accentColor : theme.hairline,
+                                          lineWidth: isCapturing ? 1.5 : Design.hairlineWidth)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: Design.smallButtonRadius, style: .continuous))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PanelPressableButtonStyle())
             .help(isCapturing ? "Press the new shortcut, or Esc to cancel" : "Click, then press the shortcut")
 
             Button(action: clear) {
                 Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 11))
+                    .font(.callout)
                     .foregroundStyle(theme.textMuted)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PanelPressableButtonStyle())
             .help("Remove this shortcut")
+            .accessibilityLabel("Remove this shortcut")
             .opacity(shortcutText.isEmpty ? 0 : 1)
             .disabled(shortcutText.isEmpty)
         }

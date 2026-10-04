@@ -1,6 +1,37 @@
 # Changelog
 
-All notable changes to JVoice — a free, open-source macOS menu-bar voice-dictation app (press ⌥Space to record, on-device speech recognition via WhisperKit, styled text pasted into the frontmost app; zero network calls at runtime) — are documented here. WhisperKit is an Apple-Silicon-optimised on-device Whisper inference library. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+All notable changes to JVoice — a free, source-available macOS menu-bar voice-dictation app (press ⌥Space to record, on-device speech recognition via WhisperKit, styled text pasted into the frontmost app; zero network calls at runtime) — are documented here. WhisperKit is an Apple-Silicon-optimised on-device Whisper inference library. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+---
+
+## [Unreleased]
+
+### Added
+
+- **Opacity setting.** Settings → **Appearance** → **Opacity**: a slider from *Transparent* to *Opaque* that sets how much of what's behind JVoice shows through its windows, tour tags and the recording pill. It applies instantly; **Default** puts it back. The same setting exists in MacStats and BetterScreenshot.
+- **The Settings tour shows the Opacity slider in action.** A new "Opacity" step glides the real slider down to *Transparent*, up to *Opaque* and back to your value while the window follows it live, with a readout in the tour tag ("Watch: 37 % ↓"). It never changes your saved setting, and touching the slider hands it back to you.
+- **Math Notation decides Greek letters from the whole dictation.** Say "lambda" in a maths dictation and you get λ: "Lambda is the unknown, and 5 equals K and X equals 5" pastes `λ is the unknown, and 5 = K and X = 5`. Question wording counts too ("find the value of lambda" → `find the value of λ`). Without any maths nearby it stays a word ("lambda, the pie is really tasty" is untouched), and names like "AWS Lambda", "beta access" or "Delta" the airline are never converted. Works for every Greek letter; Whisper's "lamda" and "pie" (π next to a number) are understood.
+- **Spoken maths: the engine package and the shared notation format.** `x² = 4`, `(x² - 9)/(x - 3)`, `sin θ`, `√(b² - 4ac)` — the same notation as BetterScreenshot's Capture Text (see `docs/math-notation-format.md`).
+
+### Fixed
+
+- **The recording tour's outline now hugs the pill.** It was a square-cornered box around the round capsule; it's now a capsule of its own, running parallel to the pill's edge.
+- **Windows open on the display you're using.** Settings, the Welcome window and the recording pill appear on the screen with your mouse pointer, not always on the main display.
+
+### Changed
+
+- **A touch more see-through by default, like MacStats.** Settings and the Welcome window use the same frosted material family as MacStats' panel, slightly more transparent than before. The recording pill is now a steady frosted capsule that keeps its colour over any app — before, over a white page it could turn itself white after a second — and the red stop button stays red. Text stays readable at the default even over a white page (checked: ≥ 5:1 for the pill's text).
+
+---
+
+## [1.1.4] — 2026-09-29
+
+### Changed
+
+- **JVoice now looks like a native Mac app.** Settings and the Welcome window sit on a softly see-through background (the desktop shows through, like System Settings), with rounded "squircle" cards, standard macOS text sizes and native switches, pickers and buttons — no more solid black page and no more little dots before every heading. Colour is used only where it means something: red for stop and destructive actions, green for done, orange for warnings.
+- **Light, Dark — or follow your Mac.** A System / Light / Dark picker at the top of Settings; **System** is the new default (if you had the old default dark look, you're moved to System; an explicit Light choice is kept). Your settings stay readable by older JVoice versions.
+- **A glass recording pill.** The pill is a Liquid Glass capsule on macOS 26 (a frosted material on macOS 14–15) with one soft shadow instead of a glow, a calm waveform that rests as a flat line, and a red stop button. **Each pill now fits its content** — "Pasted" is a small capsule, errors get room to wrap — and one state turns into the next (recording → transcribing → pasted) with a subtle resize. The pill still appears the instant you press the shortcut.
+- **Tour tags** match: a frosted bubble in your window's light/dark look, with the outline and Next button in your Mac's accent colour.
 
 ---
 
