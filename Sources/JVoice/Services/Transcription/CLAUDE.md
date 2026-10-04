@@ -102,7 +102,8 @@ pinned to version 1.0.0). To work in this area, read the files below.
     operand on both sides, a prefix with one after it, or a structural construct — script, power,
     root, fraction, bounds, derivative, limit, absolute value, choose). π, α, %, °, `sin`,
     brackets, number words and signs are WEAK: they render inside an already-activated run and
-    stay plain words otherwise. When nothing activates, `convert` returns the input unchanged.
+    stay plain words otherwise. When nothing activates, `convert` returns the input unchanged,
+    unless context promotion applies (`MathContext.swift`, below).
     **Structural activators added 2026-09-29**, each checked against a bleed list for its own
     words: "d y by d x" (→ `dy/dx`); "f prime/inverse of x" (a single non-weak letter + mark +
     "of" + operand); "natural log of …" and a powered function ("sine squared θ"); a factorial
@@ -111,6 +112,22 @@ pinned to version 1.0.0). To work in this area, read the files below.
     "all over" and "the quantity" are WEAK. How far each construct reaches is the numbered
     grouping rule on `Parser` (rules 1–7); without a grouping word every construct takes the
     SMALLEST reading (`√x + 1`, `sin x + 1`, `log₃x + 1` — spec §6.1).
+  - `MathContext.swift` (2026-10-04, branch `feat/math-context`) — **dictation-level context
+    promotion** of Greek-letter NAMES: "Find the value of lambda. … X equals 5." → "… of λ. … X = 5.",
+    while "Lambda, the pie is really tasty." stays words. A curated name (alpha, beta, gamma,
+    epsilon, zeta, theta, lambda/"lamda", mu, rho, tau, upsilon, phi, chi, omega, pi, small sigma,
+    "big X" for those, and "capital/uppercase X" for every letter) outside any converted segment is
+    written as its letter when (a) the dictation has EVIDENCE — a converted segment holding a real
+    letter operand (`x`, not `a`/`A`/`i`, not all-caps `ETA`), or the name sits in an ANCHOR slot
+    ("value(s) of", "solve for", "in terms of", "let … be", "eigenvalue(s)") — and (b) no VETO
+    applies: quoted, name-like casing (V1: "AWS Lambda", all-caps "PI"), a word before (V2: "a",
+    "my", "hey", "aws"…), a word after (V3: "function", "rays", "watch", "day"…), a number or a
+    capitalised word or another Greek name next to it (V4: "omega 3", "Pi Day", "Lambda Chi"), an
+    anti-cue anywhere in the dictation (V5: "deployed", "python", "release", "fraternity"…). An
+    occurrence vetoed by V1–V4 as a NAME blocks that letter in the whole dictation ("we had pi on pi
+    day"). It only runs when such a name is present; `MathSpeech.Emitter.promote` applies it at the
+    end of `convert`. Tuning = editing the sets in this file. Design + rejected alternatives:
+    `docs/math-context-design.md`; log: `docs/math-context-progress.md`.
   - `SpokenNumbers.swift` — "twenty five" → "25", "three point one four" → "3.14", "three
     quarters" → "¾". Greedy on purpose (it only ever runs inside a recognised run) but it never
     over-consumes: "and", "point" and "a" are each settled by lookahead.
@@ -140,8 +157,18 @@ pinned to version 1.0.0). To work in this area, read the files below.
 3. Long clips keep timestamps (the WhisperKit 1.0.0 truncation trap above).
 4. Mathematics must never bleed into ordinary talking. Before changing anything under `Math/`,
    re-run the no-bleed half of the suite (`./scripts/run-logic-tests.sh`) AND sweep a real corpus
-   through `--math-probe`; a new vocabulary entry of an ACTIVATING kind (Relation / Operator /
-   Prefix) is the only thing that can turn a sentence into an equation, so everyday English words
+   through `--math-probe`. The single exception to "weak words render only inside an activated
+   run" is **dictation-level context promotion** (`Math/MathContext.swift`,
+   `docs/math-context-design.md`): a curated set of Greek-letter names (never delta, bare sigma,
+   eta, iota, kappa, nu, xi, omicron, psi) may render outside an activated run, only when the
+   dictation holds evidence (a converted segment with a letter operand, or an anchor such as
+   "value of λ") and every veto passes. It never activates anything; with no candidate word the
+   output is byte identical. Changes to the set, anchors or vetoes must be swept against
+   `.build/math-context/everyday.txt` (0 new changed lines) and the S/M rows of
+   `.build/math-context/context.tsv` (gitignored corpora, described in
+   `docs/math-context-progress.md`; rebuild them if a cleanup deleted `.build/`).
+   Otherwise: a new vocabulary entry of an ACTIVATING kind (Relation / Operator / Prefix) is the
+   only thing that can turn a sentence into an equation, so everyday English words
    may only ever be added as weak kinds. A new STRUCTURAL activator (like the 2026-09-29 ones) must
    also be swept against a list of ordinary sentences using its own words — the 494-sentence corpus
    in `.build/bench-2026-09-23/hunt-math/` never said "factorial design" or "plan B tends to", which

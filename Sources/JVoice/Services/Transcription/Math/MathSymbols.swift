@@ -359,7 +359,7 @@ public enum MathSymbols {
         greek("θ", "Θ", "theta", "vartheta")
         greek("ι", "Ι", "iota")
         greek("κ", "Κ", "kappa")
-        greek("λ", "Λ", "lambda")
+        greek("λ", "Λ", "lambda", "lamda") // "lamda": a whisper spelling
         greek("μ", "Μ", "mu")
         greek("ν", "Ν", "nu")
         greek("ξ", "Ξ", "xi")

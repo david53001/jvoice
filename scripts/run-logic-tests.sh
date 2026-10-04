@@ -855,6 +855,68 @@ for prose in [
     expectEqual(MathSpeech.convert(prose), prose, "untouched: \"\(prose.prefix(46))\"")
 }
 
+print("MathSpeech.convert — a Greek name is decided by the whole dictation (MathContext, 2026-10-04)")
+for (spoken, pasted, why) in [
+    // promotes: other maths in the dictation, or an anchor slot
+    ("find the value of lambda", "find the value of λ", "anchor: value of (David's screenshot)"),
+    ("Solve for theta.", "Solve for θ.", "anchor: solve for"),
+    ("Let lambda be 3.", "Let λ be 3.", "anchor: let … be"),
+    ("Express your answer in terms of pi.", "Express your answer in terms of π.", "anchor: in terms of"),
+    ("Find the value of lambda. We know that 5 equals K and X equals 5.",
+     "Find the value of λ. We know that 5 = K and X = 5.", "David's example"),
+    ("Find lambda. Okay, never mind, I'll write it down later. Anyway, 5 equals K and X equals 5.",
+     "Find λ. Okay, never mind, I'll write it down later. Anyway, 5 = K and X = 5.", "evidence two sentences away"),
+    ("The period is 2 pi, and x equals 3.", "The period is 2π, and x = 3.", "a number + name segment splices whole"),
+    ("Solve for theta in the interval from 0 to pi, where 2 x equals 1.",
+     "Solve for θ in the interval from 0 to π, where 2x = 1.", "only the name's own words change"),
+    ("Lambda is 5. Then x equals 2 lambda.", "λ is 5. Then x = 2λ.", "sentence-initial capital is the tone style's"),
+    ("x equals lamda", "x = λ", "the whisper spelling 'lamda'"),
+    ("the value of capital lambda", "the value of Λ", "capitals by name"),
+    // "λ = 5" alone needs nothing else
+    ("lambda equals 5", "λ = 5", "an equation converts on its own"),
+    // maths elsewhere, but this word is no letter
+    ("Write a lambda function that returns x squared plus 1, and test it with x equals 5.",
+     "Write a lambda function that returns x² + 1, and test it with x = 5.", "V2/V3: a lambda function"),
+    ("I deployed it on AWS Lambda, and the cost is x equals 5 cents per call.",
+     "I deployed it on AWS Lambda, and the cost is x = 5 cents per call.", "V1/V2/V5: AWS Lambda"),
+    ("Alpha decay reduces the mass number by 4, so A equals 238 minus 4.",
+     "Alpha decay reduces the mass number by 4, so A = 238 - 4.", "V3 + the weak 'A' is no evidence"),
+    ("My Omega watch says 5 o'clock, and question 3 is x plus 2 equals 7.",
+     "My Omega watch says 5 o'clock, and question 3 is x + 2 = 7.", "V1/V2/V3: Omega watch"),
+    ("The plan costs 2 plus 1 free months, theta.", "The plan costs 2 + 1 free months, theta.",
+     "numbers alone are no evidence"),
+    ("I'm taking omega 3 and x equals 5.", "I'm taking omega 3 and x = 5.", "V4: a number after"),
+    ("We joined Lambda Chi Alpha, x equals 2.", "We joined Lambda Chi Alpha, x = 2.", "V1/V4: Greek beside Greek"),
+    ("That's a big delta, and x equals 5.", "That's a big delta, and x = 5.", "'big delta' is English"),
+    ("we had pi on pi day, x equals 3", "we had pi on pi day, x = 3", "a name blocks its letter in the whole dictation"),
+    ("say \"lowercase sigma\", and x equals 5", "say \"lowercase sigma\", and x = 5", "a quoted word is mentioned, not used"),
+] {
+    expectEqual(MathSpeech.convert(spoken), pasted, "context: \(why)")
+    expectEqual(MathSpeech.convert(pasted), pasted, "context idempotent: \(why)")
+}
+// no other maths and no anchor: the word stays, byte for byte
+for prose in [
+    "lambda", "Lambda.", "theta", "pi", "lambda is 5",
+    "Lambda, the pie is really tasty.",
+    "Lambda. Anyway, the pie is really tasty, you should try it.",
+    "Hey lambda, come here, good girl.",
+    "I paid 5 for the pie and the lambda function costs 0.2 cents.",
+    "Is it Lambda or Lamda? I can never remember the spelling.",
+    "The lambda function costs 0.2 cents and runs 3 times a day.",
+    "Lambda, theta, sigma, these are all just names of fraternities in the movies.",
+    "My uncle wears an Omega watch and I take omega 3 every morning.",
+    "I signed up to be a beta tester and the alpha release is out.",
+    "Happy Pi Day, I'm getting a pie after school.",
+    "solve for pi day",
+] {
+    expectEqual(MathSpeech.convert(prose), prose, "context, no maths: \"\(prose.prefix(46))\"")
+}
+expect(MathContext.promotable.contains("lambda") && MathContext.promotable.contains("capital delta"),
+       "promotable: the curated names and every deliberate capital")
+for runOnly in ["delta", "sigma", "eta", "iota", "kappa", "nu", "xi", "omicron", "psi", "big delta"] {
+    expect(!MathContext.promotable.contains(runOnly), "never promoted by context: \"\(runOnly)\"")
+}
+
 print("MathSpeech.convert — idempotent, and blank input is returned unchanged")
 expectEqual(MathSpeech.convert(MathSpeech.convert("x squared plus y squared equals z squared")), "x² + y² = z²", "converting twice changes nothing")
 expectEqual(MathSpeech.convert(""), "", "empty string")
@@ -935,6 +997,7 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/MathSymbols.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/SpokenNumbers.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/MathSpeech.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Transcription/Math/MathContext.swift" \
     "$TMP_DIR/main.swift" \
     -o "$TMP_DIR/logic-tests"
 

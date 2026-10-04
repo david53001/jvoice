@@ -238,6 +238,11 @@ every maths-only pass and is ≈ 3× faster with it off (median 413 → 133 ms p
    Part 8 §8.2, and both JVoice engines (Mac + Windows) together. BetterScreenshot's test cases
    (`../BetterScreenshot/tools/ocr-bench/Sources/ocr-bench/`) are a ready-made list of canonical outputs
    to borrow.
+9. **A Greek name outside an equation** (decided 2026-10-04, branch `feat/math-context`): it becomes its
+   letter only through **context promotion** — the rest of the dictation holds an equation with a letter
+   in it, or the name sits in a maths slot ("value of λ", "solve for θ", "in terms of π", "let λ be"),
+   and no veto applies ("AWS Lambda", "Pi Day", "omega 3"). Otherwise it stays a word. Rules:
+   `docs/math-context-design.md`; code: `Sources/JVoice/Services/Transcription/Math/MathContext.swift`.
 
 ## 7. How to verify a change
 

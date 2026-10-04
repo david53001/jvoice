@@ -368,6 +368,71 @@ private let mathLeavesAlone: [String] = [
     #expect(MathSpeech.convert(spoken) == expected)
 }
 
+/// Dictation-level context (`MathContext`, 2026-10-04, docs/math-context-design.md): a Greek
+/// name outside an equation becomes its letter only when the rest of the dictation is
+/// mathematics or it sits in an anchor slot ("value of λ"), and no veto applies. Mirrors the
+/// "a Greek name is decided by the whole dictation" section of scripts/run-logic-tests.sh.
+private let contextPromotes: [(String, String)] = [
+    ("find the value of lambda", "find the value of λ"),
+    ("Solve for theta.", "Solve for θ."),
+    ("Let lambda be 3.", "Let λ be 3."),
+    ("Express your answer in terms of pi.", "Express your answer in terms of π."),
+    ("Find the value of lambda. We know that 5 equals K and X equals 5.",
+     "Find the value of λ. We know that 5 = K and X = 5."),
+    ("Find lambda. Okay, never mind, I'll write it down later. Anyway, 5 equals K and X equals 5.",
+     "Find λ. Okay, never mind, I'll write it down later. Anyway, 5 = K and X = 5."),
+    ("The period is 2 pi, and x equals 3.", "The period is 2π, and x = 3."),
+    ("Solve for theta in the interval from 0 to pi, where 2 x equals 1.",
+     "Solve for θ in the interval from 0 to π, where 2x = 1."),
+    ("Lambda is 5. Then x equals 2 lambda.", "λ is 5. Then x = 2λ."),
+    ("x equals lamda", "x = λ"),
+    ("the value of capital lambda", "the value of Λ"),
+    ("lambda equals 5", "λ = 5"),
+    // maths elsewhere, but this word is no letter
+    ("Write a lambda function that returns x squared plus 1, and test it with x equals 5.",
+     "Write a lambda function that returns x² + 1, and test it with x = 5."),
+    ("I deployed it on AWS Lambda, and the cost is x equals 5 cents per call.",
+     "I deployed it on AWS Lambda, and the cost is x = 5 cents per call."),
+    ("Alpha decay reduces the mass number by 4, so A equals 238 minus 4.",
+     "Alpha decay reduces the mass number by 4, so A = 238 - 4."),
+    ("My Omega watch says 5 o'clock, and question 3 is x plus 2 equals 7.",
+     "My Omega watch says 5 o'clock, and question 3 is x + 2 = 7."),
+    ("The plan costs 2 plus 1 free months, theta.", "The plan costs 2 + 1 free months, theta."),
+    ("I'm taking omega 3 and x equals 5.", "I'm taking omega 3 and x = 5."),
+    ("We joined Lambda Chi Alpha, x equals 2.", "We joined Lambda Chi Alpha, x = 2."),
+    ("That's a big delta, and x equals 5.", "That's a big delta, and x = 5."),
+    ("we had pi on pi day, x equals 3", "we had pi on pi day, x = 3"),
+    ("say \"lowercase sigma\", and x equals 5", "say \"lowercase sigma\", and x = 5"),
+]
+
+private let contextLeavesAlone: [String] = [
+    "lambda", "Lambda.", "theta", "pi", "lambda is 5",
+    "Lambda, the pie is really tasty.",
+    "Lambda. Anyway, the pie is really tasty, you should try it.",
+    "Hey lambda, come here, good girl.",
+    "I paid 5 for the pie and the lambda function costs 0.2 cents.",
+    "Is it Lambda or Lamda? I can never remember the spelling.",
+    "The lambda function costs 0.2 cents and runs 3 times a day.",
+    "Lambda, theta, sigma, these are all just names of fraternities in the movies.",
+    "My uncle wears an Omega watch and I take omega 3 every morning.",
+    "I signed up to be a beta tester and the alpha release is out.",
+    "Happy Pi Day, I'm getting a pie after school.",
+    "solve for pi day",
+]
+
+@Test func greekNamesAreDecidedByTheWholeDictation() {
+    for (spoken, expected) in contextPromotes {
+        #expect(MathSpeech.convert(spoken) == expected, "\(spoken)")
+        #expect(MathSpeech.convert(expected) == expected, "idempotent: \(spoken)")
+    }
+    for prose in contextLeavesAlone {
+        #expect(MathSpeech.convert(prose) == prose, "\(prose)")
+    }
+    for runOnly in ["delta", "sigma", "eta", "iota", "kappa", "nu", "xi", "omicron", "psi", "big delta"] {
+        #expect(!MathContext.promotable.contains(runOnly), "\(runOnly) must stay run-only")
+    }
+}
+
 @Test func scriptTablesArePaired() {
     // Every character that can be super/subscripted must have exactly one mapping.
     #expect(MathScript.superscript("2") == "²")
