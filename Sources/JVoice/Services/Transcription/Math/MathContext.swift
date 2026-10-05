@@ -512,7 +512,7 @@ enum MathContext {
         "reject the null", "line of best fit", "normal distribution",
         "expected value", "confidence interval", "decay constant", "spring constant",
         "phase difference", "simple harmonic", "divide both sides", "multiply both sides",
-        "two equations", "time dilation", "test statistic", "critical value",
+        "two equations", "add the equations", "subtract the equations", "time dilation", "test statistic", "critical value",
         "p-value", "p value", "hand side", "scalar product", "dot product", "cross product",
         "position vector", "direction vector", "parametric form", "the derivative of",
         "first derivative", "second derivative", "integral of", "definite integral",
@@ -565,6 +565,7 @@ enum MathContext {
         "notes", "worksheet", "worksheets", "teacher", "teachers", "club", "song", "movie", "lab", "labs",
         "project", "projects", "assignment", "assignments", "presentation", "guy", "guys", "people",
         "kid", "kids", "nerd", "nerds", "unit", "topic", "chapter", "grade", "grades", "mark", "marks",
+        "fan", "fans",
     ]
 
     /// Round 3b (verify 2) — what a PERSON does: after a name, these make it someone, so strong

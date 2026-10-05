@@ -1080,6 +1080,12 @@ public enum MathSpeech {
                         && wordAfter(it).map({ MathContext.continuation.contains($0.lowercased()) }) ?? true) {
                     named = false
                 }
+                // round 3b (verify 2): a range only maths writes is no compound ("The θ runs from -π to π.")
+                if named, !MathContext.nameLike(core: toks[it.start].core, sentenceInitial: sentenceInitial(it.start)),
+                   wordAfter(it).map({ ["runs", "run", "ranges", "range", "varies", "moves"].contains($0.lowercased()) }) ?? false,
+                   rangeStatement(it) {
+                    named = false
+                }
                 names.append(named)
                 let commaCapital = it.start > 0 && toks[it.start - 1].trail.contains(",")
                     && !namesSomething(it, items, itemAt, ignoringCase: true, determinerLifted: lifted ?? true,
@@ -1572,6 +1578,11 @@ public enum MathSpeech {
                     if strong, !letFrame, !mathsAdjective, MathContext.everydayDefinitionNouns.contains(w) {
                         return mathsTail(after: t + 1)
                     }
+                    // round 3b (verify 2): "Let μ be the mean." ends there; "Let θ be the angle of
+                    // the story." needs the same maths tail
+                    if strong, letFrame, !mathsAdjective, MathContext.everydayDefinitionNouns.contains(w) {
+                        return word(t + 1) == nil || mathsTail(after: t + 1)
+                    }
                     return word(t + 1).map { MathContext.definitionTails.contains($0) || MathContext.connectives.contains($0) } ?? true
                 }
                 // "the standard deviation", "the angular speed", "the significance level"
@@ -1807,39 +1818,68 @@ public enum MathSpeech {
         /// Round 3b — a SOLUTION reported: "for λ I got 3 and for μ I got -1" — "for", the name, "I/we
         /// got/found", a number or letter term, then the clause ends.
         private func solvedFor(_ it: Item) -> Bool {
-            guard wordsBefore(it.start, max: 1).first?.lowercased() == "for" else { return false }
+            // A chain "for λ I got 3 and for μ I got -1 and …" is judged once, from its end
+            // (memoised, so a long chain stays linear — round 3b verify 2).
+            if let known = solvedMemo[it.start] { return known }
+            var chain: [Item] = []
+            var current: Item? = it
+            var verdict = false
+            while let link = current {
+                if let known = solvedMemo[link.start] { verdict = known; break }
+                chain.append(link)
+                switch solvedStep(link) {
+                case .done(let ok): verdict = ok; current = nil
+                case .next(let following): current = following
+                }
+            }
+            for link in chain { solvedMemo[link.start] = verdict }
+            return verdict
+        }
+        private var solvedMemo: [Int: Bool] = [:]
+        private enum SolvedStep { case done(Bool), next(Item) }
+
+        private func solvedStep(_ it: Item) -> SolvedStep {
+            guard wordsBefore(it.start, max: 1).first?.lowercased() == "for" else { return .done(false) }
             let a = wordsAfter(it, max: 3)
             guard a.count == 3, ["i", "we"].contains(a[0].lowercased()),
                   ["got", "get", "found", "find", "have", "had"].contains(a[1].lowercased()),
-                  MathContext.isValueToken(a[2]), a[2] != "a" else { return false }
+                  MathContext.isValueToken(a[2]), a[2] != "a" else { return .done(false) }
             let end = it.start + it.count + 3
             // Round 3b (verify): the report ends the sentence, or another "for ⟨name⟩ I got"
             // follows — "For omega I got 5, it was fun." and "For theta we got 4, the pizzas."
             // are scores and orders.
-            if end >= toks.count || toks[end - 1].trail.contains(where: { ".?!".contains($0) }) { return true }
-            return end + 1 < toks.count && ["and", "but"].contains(toks[end].core.lowercased())
-                && toks[end + 1].core.lowercased() == "for" && candidateToks.contains(end + 2)
-                // round 3b (verify 2): …and that report is one too ("…, and for ω I got 3, at the
-                // raffle." is a score)
-                && items.map({ solvedFor($0[itemIndex[end + 2]]) }) ?? false
+            if end >= toks.count || toks[end - 1].trail.contains(where: { ".?!".contains($0) }) { return .done(true) }
+            guard end + 1 < toks.count, ["and", "but"].contains(toks[end].core.lowercased()),
+                  toks[end + 1].core.lowercased() == "for", candidateToks.contains(end + 2), let items else { return .done(false) }
+            // round 3b (verify 2): …and that report is one too ("…, and for ω I got 3, at the
+            // raffle." is a score)
+            return .next(items[itemIndex[end + 2]])
         }
 
         /// Round 3b (verify) — the sentence before token `t` says what is differentiated or
         /// integrated: "Differentiate with respect to θ.", "the derivative with respect to λ".
         private func calculusBefore(_ t: Int) -> Bool {
-            var k = t - 1
-            while k >= 0, sentenceAt[k] == sentenceAt[t] {
+            t > 0 && calculusVerdict[t - 1] == true
+        }
+
+        /// For each token: the verdict of the nearest calculus word at or before it in its sentence
+        /// (nil: none) — one linear pass, so `calculusBefore` stays O(1) (round 3b verify 2).
+        private lazy var calculusVerdict: [Bool?] = {
+            var out = [Bool?](repeating: nil, count: toks.count)
+            var current: Bool?
+            for k in toks.indices {
+                if k > 0, sentenceAt[k] != sentenceAt[k - 1] { current = nil }
                 let w = toks[k].core.lowercased()
                 if w.hasPrefix("differentiat") || w.hasPrefix("integrat") || w.hasPrefix("derivative")
                     || w == "partial" || w == "partially" {
                     // round 3b (verify 2): "Differentiate yourself with respect to θ." is advice
                     let next = k + 1 < toks.count ? toks[k + 1].core.lowercased() : ""
-                    return !["yourself", "myself", "himself", "herself", "themselves", "ourselves", "yourselves", "itself"].contains(next)
+                    current = !["yourself", "myself", "himself", "herself", "themselves", "ourselves", "yourselves", "itself"].contains(next)
                 }
-                k -= 1
+                out[k] = current
             }
-            return false
-        }
+            return out
+        }()
 
         /// Round 3b (verify) — "Let α be the angle at A.", "Let λ be the wavelength of the light":
         /// a let-definition whose noun (`MathContext.definitionNouns`) has a maths tail. Enough
