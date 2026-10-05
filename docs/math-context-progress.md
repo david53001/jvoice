@@ -329,3 +329,17 @@ from nothing can pick up the work.
     `Tests/JVoiceTests/MathSpeechTests.swift` (parse-checked; CI-only).
   - Timing, 10,000 lines, 5 runs: v3-installed 0.71–0.73 s, round 3 0.74–0.76 s (median +3.2 %).
   - **Open**: design §11.3; Windows mirror; not installed; verify/fix/SHIP stages of workflow #3 pending.
+- 2026-10-05: workflow #3 was interrupted while its verify agents ran (the Mac went to sleep). The implement stage had already committed `27e5760`. Resumed the same run (`wf_c532e914-58a`, resumeFromRunId), which reuses the implement result and re-runs verify → fix → final check. Nothing from round 3 is pushed or installed yet.
+- 2026-10-05: **PAUSED by David** (he had to close the machine). Workflow #3 was stopped during verify.
+  - State: round 3 is committed as `27e5760`. It is pushed with this note, but it has NOT been
+    adversarially verified and is NOT installed.
+  - The installed app is round 2 (`3ce0edd`).
+  - Resume from a Claude Code session in this worktree:
+    `Workflow({scriptPath: "~/.claude/projects/-Users-davidghermansteinberg-Desktop-Home-Projects-Code-JVoice--claude-worktrees-math-context/a8ef1c78-bcf4-4895-a8b4-fe5408133bf2/workflows/scripts/jvoice-math-context-round3-wf_c532e914-58a.js", resumeFromRunId: "wf_c532e914-58a"})`.
+    The implement stage is cached; verify → fix → final check re-run.
+  - If that resume is not available (it only works in the same session), run the script's
+    Verify/Fix/final-check stages by hand.
+  - Then follow the usual ship steps:
+    1. `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/run-logic-tests.sh`
+    2. `SDKROOT=… ./scripts/dev-install.sh` (this quits and relaunches JVoice)
+    3. `git push`
