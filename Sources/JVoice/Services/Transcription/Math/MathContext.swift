@@ -207,7 +207,7 @@ enum MathContext {
     static let continuation: Set<String> = [
         "is", "isn't", "are", "aren't", "was", "were", "be", "been", "being", "equals", "equal",
         "and", "or", "but", "nor", "if", "then", "so", "where", "when", "whereas", "which", "that",
-        "such", "since", "because", "as", "for", "in", "on", "at", "by", "with", "within", "into",
+        "such", "since", "because", "as", "for", "in", "on", "at", "by", "with", "within", "into", "given",
         "between", "than", "satisfies", "satisfy", "represents", "represent", "denotes", "denote",
         "gives", "give", "lies", "lie", "tends", "approaches", "becomes", "increases", "decreases",
         "doubles", "halves", "triples", "changes", "varies", "remains", "must", "should", "can",
@@ -237,6 +237,8 @@ enum MathContext {
         "=", "÷", "·", "×", "≠", "/",
         // round 3: "the λ sits in the denominator"
         "sits", "sit", "sat", "belongs", "fits",
+        // round 3b: "the λ drops out when you subtract the two equations"
+        "drops", "drop", "dropped", "vanishes", "vanish", "factors",
     ]
 
     /// Round 3 — a noun that makes a maths COMPOUND with one letter: "the γ factor" (Lorentz) is
@@ -261,6 +263,10 @@ enum MathContext {
         "is", "are", "was", "of", "and", "or", "find", "where", "so", "then", "let", "by", "equals",
         "call", "called", "use", "using", "write", "denote", "denotes", "with", "as", "be", "to",
         "plus", "minus", "times", "over", "hence", "calculate", "determine", "the", "what's", "what",
+        // round 3b: sentence openers before a coefficient ("Because 2 lambda = -4.", "Since 3 theta = 90°.")
+        "because", "since", "if", "when", "but", "now", "here", "also", "okay", "ok", "well", "wait",
+        "check", "given", "suppose", "assume", "therefore", "thus", "solve", "substitute", "plug", "put",
+        "set", "take", "said", "say", "says", "think", "know", "get", "got",
     ]
 
     /// Before a number that starts a promoted group, these make the number a LABEL, not a
@@ -434,9 +440,11 @@ enum MathContext {
         "system", "matrix", "polynomial", "inequality", "inequalities", "determinant",
         "denominator", "numerator", "fraction", "exponent", "integral", "derivative", "triangle",
         "circle", "graph", "diagram", "question", "bracket", "brackets",
-        // round 3: statistics ("the μ of the distribution is 50", "the μ of the sample")
-        "distribution", "population", "sample",
     ]
+    /// Statistics nouns (round 3b): maths only when the name is GIVEN A VALUE through them — "the μ
+    /// of the distribution is 50", "the μ of the sample is 12" — never "the alpha of the population
+    /// is the leader" or "the sample folder" (round 3 had them as maths nouns: a bleed).
+    static let statsNouns: Set<String> = ["distribution", "population", "sample"]
 
     // ─────────────────────── round 3 (2026-10-04, design §11) ───────────────────────
 
@@ -445,7 +453,28 @@ enum MathContext {
     /// never "the alpha in the power struggle").
     static let placeNouns: Set<String> = [
         "quadrant", "quadrants", "interval", "intervals", "power", "powers", "term", "terms", "sum",
-        "vector", "vectors", "series", "sequence", "identity", "expansion", "integrand", "argument",
+        "vector", "vectors", "sequence", "identity", "expansion", "integrand", "argument",
+        // round 3b: maths places v3 converted and round 3's place rule lost ("the λ is in the
+        // second row", "… in the parametric form", "… inside the square root", "… on the left
+        // hand side", "… in the range 0 to 360", "… in the first column", "… in the limit")
+        "row", "rows", "column", "columns", "form", "limit", "limits", "root", "roots", "function",
+        "functions", "side", "answer", "answers", "range", "solution", "solutions", "quadratic",
+        "coefficient", "coefficients", "product", "quotient", "result",
+    ]
+    /// Round 3b — "in ⟨noun⟩" with no article is an idiom, not a maths place: "in power now", "in
+    /// question", "in series", "in order", "in line".
+    static let placeIdioms: Set<String> = ["power", "question", "series", "order", "line", "place", "time", "charge"]
+    /// Round 3b — nouns that only make a phrase maths: "the angle BETWEEN THE TWO VECTORS", "the
+    /// angle OF THE LINE", "the mean OF THE DISTRIBUTION" (a definition's tail, `mathsTail`).
+    static let tailNouns: Set<String> = [
+        "vector", "vectors", "line", "lines", "axis", "axes", "x-axis", "y-axis", "horizontal",
+        "vertical", "incline", "inclined", "curve", "function", "plane", "planes", "normal", "tangent",
+        "origin", "chord", "radius", "hypotenuse", "triangle", "graph", "distribution", "sample",
+        "population", "data", "matrix", "wave", "waves", "light", "spring", "pendulum", "slit", "slits",
+        "surface", "lens", "mirror", "particle", "body", "mass", "block", "box", "ball", "system",
+        "oscillation", "oscillator", "beam", "ray", "rays", "photon", "photons", "electron", "electrons",
+        "regression", "model", "equation", "equations", "variable", "variables", "decay", "fluid",
+        "liquid", "gas", "material", "wire", "medium", "glass", "water", "air", "string",
     ]
 
     /// A name LOCATED somewhere: "the λ is in the cloud", "the ω is in my bag", "the λ lives in
@@ -475,9 +504,11 @@ enum MathContext {
         "both sides by", "each side by", "double angle", "compound angle", "standard deviation",
         "significance level", "null hypothesis", "angular velocity", "angular speed",
         "angular frequency", "angular momentum", "angular displacement", "angular acceleration",
-        "coefficient of friction", "gamma factor", "unit circle", "normal distribution",
+        "coefficient of friction", "unit circle", "characteristic equation", "characteristic polynomial",
+        "reject the null", "line of best fit", "normal distribution",
         "expected value", "confidence interval", "decay constant", "spring constant",
-        "phase difference", "simple harmonic", "time dilation", "test statistic", "critical value",
+        "phase difference", "simple harmonic", "divide both sides", "multiply both sides",
+        "two equations", "time dilation", "test statistic", "critical value",
         "p-value", "p value", "hand side", "scalar product", "dot product", "cross product",
         "position vector", "direction vector", "parametric form", "the derivative of",
         "first derivative", "second derivative", "integral of", "definite integral",
@@ -489,14 +520,28 @@ enum MathContext {
     static func strongTermStarts(cores: [String], ends: [Bool]) -> [Int] {
         var out: [Int] = []
         let words = cores.map { $0.lowercased() }
+        // Round 3b: "both sides by" / "each side by" only before an operand ("both sides by 2",
+        // "… by λ") — "Both sides by now want omega gone." is English.
+        func operandAt(_ k: Int) -> Bool {
+            guard k < words.count else { return false }
+            let w = words[k]
+            return w.first.map { $0.isNumber || $0 == "-" || $0 == "−" } == true || w.count == 1 || promotable.contains(w)
+                || lowerNames.contains(where: { w.hasPrefix($0) })
+        }
         for i in words.indices {
             var phrase = words[i]
             if strongTerms.contains(phrase) { out.append(i); continue }
+            // "At the 5% level α is 0.05."
+            if !ends[i], i + 1 < words.count, words[i + 1] == "level",
+               phrase.range(of: "^[0-9]+(\\.[0-9]+)?%$", options: .regularExpression) != nil { out.append(i); continue }
             var k = i
             while k + 1 < words.count, k - i < 2, !ends[k] {
                 k += 1
                 phrase += " " + words[k]
-                if strongTerms.contains(phrase) { out.append(i); break }
+                if strongTerms.contains(phrase) {
+                    if phrase.hasSuffix(" by") && (ends[k] || !operandAt(k + 1)) { break }
+                    out.append(i); break
+                }
             }
         }
         return out
@@ -544,7 +589,15 @@ enum MathContext {
     static let definitionNouns: Set<String> = [
         "eigenvalue", "eigenvalues", "eigenvector", "eigenvectors", "angle", "angles", "coefficient",
         "coefficients", "gradient", "slope", "exponent", "wavelength", "mean", "variance", "multiplier",
-        "parameter", "scalar",
+        "parameter", "scalar", "density", "wavelengths", "frequency", "resistivity", "permittivity",
+    ]
+    /// Round 3b — the definition nouns that are ALSO everyday English (a ski slope, a story's
+    /// angle, an XP multiplier, a URL parameter, "the golden mean"): with no evidence near, they
+    /// anchor only with a maths tail ("θ is the angle BETWEEN THE TWO VECTORS", "μ is the mean OF
+    /// THE DISTRIBUTION", "θ is the angle at B") — never "Lambda is the angle for this story".
+    static let everydayDefinitionNouns: Set<String> = [
+        "angle", "angles", "coefficient", "coefficients", "gradient", "slope", "exponent", "mean",
+        "variance", "multiplier", "parameter", "density", "frequency",
     ]
     /// What may follow a definition noun — "θ is the angle BETWEEN …", "μ is the mean OF …", "the β
     /// here is the coefficient," — never "Lambda is the mean one".
@@ -570,6 +623,43 @@ enum MathContext {
         "first", "second", "third", "row", "line", "expression", "term", "terms", "all", "out",
         "we", "you", "i", "can", "now", "then", "so", "just",
     ]
+    /// Round 3b — verbs of working-out that make the rest of a sentence maths ("Now multiply by λ
+    /// and ADD 5x", "θ is 30 degrees, so SUBSTITUTE …").
+    static let mathsVerbs: Set<String> = [
+        "add", "subtract", "multiply", "divide", "simplify", "solve", "expand", "rearrange", "factorise",
+        "factorize", "substitute", "differentiate", "integrate", "square", "cancel", "isolate", "collect",
+    ]
+    /// Round 3b — units no Greek letter stands for in IB maths/physics: a price, a time, a size, a
+    /// score ("the β is 2 weeks away", "the π is 5 euros", "λ is 512 MB", "the α is 3 points ahead").
+    static let everydayUnits: Set<String> = [
+        "off", "euros", "euro", "eur", "dollars", "dollar", "usd", "bucks", "pounds", "lei", "ron", "cents",
+        "quid", "yen", "weeks", "week", "days", "day", "hours", "hour", "hrs", "minutes", "minute", "mins",
+        "seconds", "second", "secs", "ms", "months", "month", "years", "year", "yrs", "mb", "gb", "kb", "tb",
+        "gigs", "megabytes", "gigabytes", "mm", "km", "miles", "mile", "ft", "feet", "inches", "points",
+        "point", "pts", "people", "players", "kids", "users", "followers", "likes", "views", "times",
+        "done", "battery", "left", "ahead", "behind", "away", "late", "early", "kilos", "kg", "lbs",
+    ]
+    /// Round 3b: after "Beta, …" at a sentence start, an order or a question to a person.
+    static let vocativeFollowers: Set<String> = [
+        "solve", "do", "did", "can", "could", "please", "go", "come", "finish", "eat", "are", "have", "you",
+        "your", "stop", "don't", "don’t", "listen", "look", "wait", "tell", "give", "get", "take", "help",
+        "check", "call", "put", "make", "let", "try", "sit", "open", "close", "show", "bring", "find", "where",
+        "what", "why", "how", "when", "beta", "come", "hurry", "first",
+    ]
+    /// Round 3b: words that make "Find λ such that …" a maths condition.
+    static let conditionTerms: Set<String> = [
+        "intersect", "intersects", "parallel", "perpendicular", "root", "roots", "inverse", "solution",
+        "solutions", "converges", "tangent", "continuous", "differentiable", "maximum", "minimum",
+        "integer", "positive", "negative", "zero", "points", "point", "lines", "vectors", "angle", "area",
+        "triangle", "circle", "curve", "graph", "function", "sum", "product", "series", "sequence",
+    ]
+    static let timeUnits: Set<String> = ["seconds", "second", "secs", "ms", "minutes", "minute", "hours", "hour"]
+    /// "θ is 30 degrees WARMER", "the ω is 300 m WATER resistant": a weather or product value.
+    static let everydayComparatives: Set<String> = [
+        "warmer", "colder", "hotter", "cooler", "outside", "today", "tonight", "inside", "water", "deep",
+        "tall", "high", "long", "wide", "away", "warm", "hot", "cold",
+    ]
+
     /// An expression whisper wrote with no relation is evidence after these commands ("Expand (x
     /// + λ)^2.", "Factorise λ² - 5λ + 6.") — or when it holds a bracket with a power ("(x + λ)²").
     static let expressionVerbs: Set<String> = [
@@ -607,14 +697,24 @@ enum MathContext {
         if deliberateCapital { return true }
         if afterTrig { return true }
         if cueNouns.contains(at(0)) { return true }
+        // Round 3b: "The mean μ is 12." — "mean" is an adjective too, so only with a value.
+        if at(0) == "mean" && valueStated { return true }
         if let qualified = qualifiedCues[at(1)], qualified.contains(at(0)) { return true }
         // "For which λ does the system …?", "for what values of λ …"
         if at(0) == "which" && at(1) == "for" { return true }
         // "What is λ in this equation?", "the λ of the system": a name in/of a maths noun.
-        if let first = a.first, first == "in" || first == "of" {
-            let rest = a.dropFirst().drop { ["this", "the", "that", "our", "each", "every", "my"].contains($0) }
+        // Round 3b: "Plug λ back into the first equation.", "Substitute θ into the second equation."
+        let placed = a.first == "back" ? Array(a.dropFirst()) : a
+        if let first = placed.first, first == "in" || first == "of" || first == "into" {
+            let rest = placed.dropFirst().drop { ["this", "the", "that", "our", "each", "every", "my", "first", "second",
+                                                  "third", "other", "same", "last", "both"].contains($0) }
             if let noun = rest.first, mathsNouns.contains(noun) { return true }
+            // "The μ of the distribution is 50." — a statistics noun only with a value
+            if first == "of", let noun = rest.first, statsNouns.contains(noun), valueStated { return true }
         }
+        // Round 3b: "Find λ such that the lines intersect.", "Find μ given that the box doesn't move."
+        if stretchStartsClause, !b.isEmpty, b.count <= 2, b.allSatisfy({ commands.contains($0) }),
+           a.count >= 2, ["such", "given", "so"].contains(a[0]), a[1] == "that" { return true }
         // "let λ be 3", "let λ equal 3" — a number must follow; "let beta be honest" is English.
         if at(0) == "let", let first = a.first, ["be", "equal", "equals"].contains(first),
            afterAfterIsNumber { return true }
@@ -705,10 +805,19 @@ enum MathContext {
         // suffix (it needs an apostrophe, "=", "-", "(", or a non-ASCII character).
         // Round 3 adds "/" ("pi/4"), ")" and "^" ("lambda)^2", "lambda^2") and a digit ("3pi/2").
         guard core.utf8.contains(where: { $0 >= 0x80 || $0 == 0x27 || $0 == 0x3D || $0 == 0x2D || $0 == 0x28
-                                          || $0 == 0x2F || $0 == 0x29 || $0 == 0x5E || (0x30...0x39).contains($0) })
+                                          || $0 == 0x2F || $0 == 0x29 || $0 == 0x5E || $0 == 0x7C
+                                          || (0x30...0x39).contains($0) })
         else { return nil }
+        if let found = gluedName(core, prefixPattern: gluedPrefix) { return found }
+        // Round 3b: a fraction's denominator — "c/lambda", "hc/lambda", "2pi/omega" (whisper's
+        // physics formulas); tried second so "pi/4" stays π with the suffix "/4".
+        guard core.utf8.contains(0x2F) else { return nil }
+        return gluedName(core, prefixPattern: gluedSlashPrefix)
+    }
+
+    private static func gluedName(_ core: String, prefixPattern: NSRegularExpression) -> (name: String, prefix: String, suffix: String)? {
         var prefix = ""
-        if let m = whole(gluedPrefix, core), let r = Range(m.range, in: core) { prefix = String(core[r]) }
+        if let m = whole(prefixPattern, core), let r = Range(m.range, in: core) { prefix = String(core[r]) }
         let body = String(core.dropFirst(prefix.count))
         let lower = body.lowercased()
         for name in lowerNames where lower.hasPrefix(name) {
@@ -718,7 +827,8 @@ enum MathContext {
             if suffix.allSatisfy({ "⁰¹²³⁴⁵⁶⁷⁸⁹ⁿ₀₁₂₃₄₅₆₇₈₉".contains($0) }) { return (name, prefix, suffix) }
             // round 3: a closing bracket and/or a power ("(x + lambda)^2", "lambda)²", "lambda^2"),
             // a slash and a number or one letter ("pi/4", "3pi/2", "pi/T" — never "alpha/beta")
-            if whole(gluedPowerSuffix, suffix) != nil || whole(gluedSlashSuffix, suffix) != nil {
+            if whole(gluedPowerSuffix, suffix) != nil || whole(gluedSlashSuffix, suffix) != nil
+                || whole(gluedBracketSuffix, suffix) != nil {
                 return (name, prefix, suffix)
             }
             if suffix.first == "=", suffix.count >= 2, !everydayLetters.contains(name),
@@ -731,15 +841,55 @@ enum MathContext {
 
     /// Whisper's minus, or an opening bracket after at most a short function name ("sin(", "N(",
     /// "e^(-") — what may stand glued before a name.
-    private static let gluedPrefix = regex("^([-−]|[0-9]+(?=[a-z])|[A-Za-z]{0,4}\\^?\\([-−]?)")
+    /// Round 3b adds an absolute-value bar ("|lambda|") and a bracket product or quotient
+    /// ("1)(lambda", "1)/(lambda").
+    private static let gluedPrefix = regex("^(\\||[-−]|[0-9A-Za-z]{0,3}\\)/?\\([-−]?|[0-9]+(?=[a-z])|[A-Za-z]{0,4}\\^?\\([-−]?)")
+    /// Round 3b: a numerator and a slash ("c/", "hc/", "2pi/").
+    private static let gluedSlashPrefix = regex("^(?![wW]/)([0-9]+([A-Za-z]|pi)?|[A-Za-z]|hc|pi)/")
+    /// Round 3b: "alpha)(x", "pi)/2", "lambda|".
+    private static let gluedBracketSuffix = regex("^\\)(/[0-9A-Za-z]+|\\([-−]?[0-9A-Za-z]*)$|^\\|$")
     private static let gluedPowerSuffix = regex("^\\)?(\\^[-−]?[0-9]+|\\^\\([^)]*\\)|[²³⁴⁵⁶⁷⁸⁹ⁿ]+)$|^\\)[²³⁴⁵⁶⁷⁸⁹ⁿ]*$")
     private static let gluedSlashSuffix = regex("^/([0-9]+|[A-Za-z])$")
 
     /// "pi/4", "3pi/2": whisper's fraction of π is its own evidence (round 3) — nobody writes it
     /// outside mathematics. Other letters' slash forms ("beta/2", "alpha/1") need evidence.
-    static func isPiFraction(name: String, suffix: String?) -> Bool {
+    /// Round 3b: also "2pi/T", and any name UNDER a slash ("c/lambda", "2pi/omega") or in an
+    /// exponent ("e^(-lambda").
+    static func isPiFraction(name: String, suffix: String?, prefix: String = "") -> Bool {
+        if prefix.hasSuffix("/") || prefix.contains("^(") { return true }
         guard name == "pi", let suffix else { return false }
-        return suffix.range(of: "^/[0-9]+$", options: .regularExpression) != nil
+        return suffix.range(of: "^/([0-9]+|[A-Za-z])$", options: .regularExpression) != nil
+    }
+
+    /// Round 3b: whisper's glued text around a promoted name, with the other Greek names in it
+    /// written as letters too ("2pi/" → "2π/", in "2pi/omega" → "2π/ω").
+    static func greekified(_ text: String) -> String {
+        guard text.contains(where: { $0.isLetter }) else { return text }
+        var out = ""
+        var run = ""
+        func flushRun() {
+            if lowerNames.contains(run.lowercased()), let symbol = MathSymbols.phrases[run.lowercased()]?.text {
+                out += symbol
+            } else {
+                out += run
+            }
+            run = ""
+        }
+        for c in text {
+            if c.isASCII && c.isLetter { run.append(c) } else { flushRun(); out.append(c) }
+        }
+        flushRun()
+        return out
+    }
+
+    /// Round 3b: the glued text around a name holds a term of its own ("2pi/T", "c/", "1)(") — so a
+    /// written window made of such names is still an equation ("omega = 2pi/T").
+    static func gluedOwnTerm(prefix: String, suffix: String) -> Bool {
+        if prefix.isEmpty && suffix.isEmpty { return false }
+        if (prefix + suffix).contains(where: { $0.isASCII && $0.isNumber }) { return true }
+        var rest = prefix + "|" + suffix
+        for name in lowerNames where rest.contains(name) { rest = rest.replacingOccurrences(of: name, with: "") }
+        return rest.contains { ($0.isASCII && $0.isLetter) }
     }
 
     /// Whisper's signed coefficient: "-2", "−0.5".
@@ -923,7 +1073,8 @@ enum MathContext {
     /// `ends[k]`: token k ends with punctuation, which closes a window. `letters`: tokens of the
     /// Greek NAMES in the dictation, each a letter term here ("lambda = -3", "lambda² - 4 = 0",
     /// "sin(theta) = 0.5"). Linear in the dictation.
-    static func writtenEquations(cores: [String], ends: [Bool], letters: Set<Int> = []) -> Written {
+    static func writtenEquations(cores: [String], ends: [Bool], letters: Set<Int> = [],
+                                 termNames: Set<Int> = []) -> Written {
         var out = Written()
         var window: [Character] = []
         var start = 0
@@ -936,9 +1087,13 @@ enum MathContext {
             // Round 3: a window holding a Greek name needs a term of its own besides it — a number,
             // a letter, a function, a two-letter product: "lambda = -3", "theta = h/p", "lambda = mg",
             // never "Lambda = arn".
+            // Round 3b: a name with glued terms ("2pi/T", "1)(lambda") is a term of its own, and
+            // algebra after a command or with a powered bracket ("Expand (alpha + beta)².") needs none.
+            let commanded = start >= 1 && !ends[start - 1] && expressionVerbs.contains(cores[start - 1].lowercased())
             if window.indices.contains(where: { letters.contains(start + $0) }),
+               !commanded, !window.indices.contains(where: { closesPoweredBracket(cores[start + $0]) }),
                !window.indices.contains(where: { k in
-                   !letters.contains(start + k)
+                   (!letters.contains(start + k) || termNames.contains(start + k))
                        && ("NLGF".contains(window[k]) || (window[k] == "l" && cores[start + k].count <= 2))
                }) {
                 return
