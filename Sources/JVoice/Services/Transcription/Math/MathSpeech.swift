@@ -1138,7 +1138,13 @@ public enum MathSpeech {
                 // it says what is differentiated or integrated ("We did it with respect to lambda."
                 // is English).
                 if wordsBefore(it.start, max: 3).map({ $0.lowercased() }) == ["to", "respect", "with"],
-                   toks[it.start + it.count - 1].trail.contains(where: { ".?!".contains($0) }) || it.start + it.count == toks.count,
+                   toks[it.start + it.count - 1].trail.contains(where: { ".?!".contains($0) }) || it.start + it.count == toks.count
+                    // round 3b (verify 2): "The derivative with respect to λ is 0."
+                    || ({ () -> Bool in
+                        let a = wordsAfter(it, max: 2)
+                        return a.count == 2 && ["is", "equals", "=", "gives"].contains(a[0].lowercased())
+                            && MathContext.isValueToken(a[1]) && a[1] != "a"
+                    })(),
                    calculusBefore(it.start) {
                     return true
                 }
