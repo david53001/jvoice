@@ -399,3 +399,4 @@ from nothing can pick up the work.
   - Still not done: the Windows mirror, and merging into `main` and a release.
   - WIP branches `wip/math-context-round3b-partial(-2)` were superseded by `832464a..ae8716f` and can
     be deleted.
+- 2026-10-05: reinstalled from `1f93a5a`, so the installed app matches the pushed HEAD exactly; CHANGELOG [Unreleased] now covers rounds 2–3.
