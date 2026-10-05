@@ -343,3 +343,10 @@ from nothing can pick up the work.
     1. `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/run-logic-tests.sh`
     2. `SDKROOT=… ./scripts/dev-install.sh` (this quits and relaunches JVoice)
     3. `git push`
+- 2026-10-05, correction: commit `243e166` ("pause note") accidentally also swept in the fix agent's
+  PARTIAL, unverified round-3b edits. Those were uncommitted in the tree when the run was stopped.
+  - The edits are kept on branch `wip/math-context-round3b-partial` (pushed).
+  - The next commit restores the four source/test files to `27e5760` (verified round 3).
+  - The branch tip is round 3 (`27e5760`) plus docs.
+  - Resuming the workflow re-runs the fix stage from scratch. The verify findings are already cached
+    in the run.
