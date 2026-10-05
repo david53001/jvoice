@@ -1019,7 +1019,7 @@ public enum MathSpeech {
                    evidenceSentences.contains(sentenceAt[it.start]) { return true }
                 // "And then the λ drops out when you subtract the two equations." — strong maths
                 // vocabulary in the name's own stretch (round 3b).
-                if kind == .article, !everyday, termStretches.contains(stretchAt[it.start]) { return true }
+                if kind == .article, !everyday, termStretches.contains(stretchAt[it.start]), !actsAsPerson(it) { return true }
                 let termSentence = termSentences.contains(sentenceAt[it.start])
                 if kind == .article, convertedLetters.contains(letter),
                    valueStatement(it, items, itemAt, evidenceStarts) || inMaths(it, evidenceStarts)
@@ -1120,7 +1120,10 @@ public enum MathSpeech {
                     // round 3b: "Find λ such that …" needs maths after it ("… the lines intersect",
                     // never "Find omega such that he is happy")
                     let a = wordsAfter(it, max: 2).map { $0.lowercased() }
-                    if a.count == 2, ["such", "given", "so"].contains(a[0]), a[1] == "that" {
+                    // round 3b (verify 2): only "Find λ such that" — "Find the value of ω such that the
+                    // period is 2 seconds." is anchored by "the value of" itself
+                    if a.count == 2, ["such", "given", "so"].contains(a[0]), a[1] == "that",
+                       wordsBefore(it.start, max: 1).first.map({ !["of", "for"].contains($0.lowercased()) }) ?? true {
                         return conditionHasMaths(from: it.start + it.count + 2)
                     }
                     return true
@@ -1162,12 +1165,19 @@ public enum MathSpeech {
                 let alone = !joinedLeft(it.start) && wordAfter(it) == nil
                 // A name in a maths position (in/of a maths noun, a value, a definition) still takes the
                 // sentence's vocabulary: "… the right hand side, k + 1, and the λ was in the bracket".
-                let termed = !alone && (termStretches.contains(stretchAt[it.start])
+                // Round 3b (verify 2): never a name that acts as a person ("Theta went home after the
+                // eigenvalue quiz", "Omega has the expected value I wanted"); a coefficient ("2θ")
+                // or a letter this dictation converts takes the sentence's vocabulary ("In the double
+                // angle formula, is it θ or 2θ?").
+                let index = itemAt[it.start]
+                let coefficient = index > 0 && joinedLeft(it.start) && items[index - 1].kind == .number
+                let termed = !alone && !actsAsPerson(it) && (termStretches.contains(stretchAt[it.start])
                     || (termSentences.contains(sentenceAt[it.start])
-                        && (inMaths(it, evidenceStarts) || valueStatement(it, items, itemAt, evidenceStarts) || definesMaths(it))))
+                        && (inMaths(it, evidenceStarts) || valueStatement(it, items, itemAt, evidenceStarts) || definesMaths(it)
+                            || coefficient || convertedLetters.contains(MathContext.letter(of: MathSpeech.phrase(it, toks))))))
                 guard evidence || termed else { return false }
                 // "x = 2. ω is the best.", "… and μ is fine": away from the equation, a thing's status.
-                if !evidenceStretches.contains(stretchAt[it.start]) && describesThing(it) { return false }
+                if !evidenceStretches.contains(stretchAt[it.start]) && (describesThing(it) || predicatesThing(it)) { return false }
                 // "Just let θ be, she's grumpy": "let … be" with no value is English.
                 if joinedLeft(it.start), toks[it.start - 1].core.lowercased() == "let",
                    wordAfter(it)?.lowercased() == "be", !valueStatement(it, items, itemAt, evidenceStarts) {
@@ -1184,7 +1194,6 @@ public enum MathSpeech {
                 // "Alpha is 0.05, so we reject the null hypothesis." (round 3).
                 if valueStatement(it, items, itemAt, evidenceStarts)
                     && (near(it.start) || termSentences.contains(sentenceAt[it.start])) { return true }
-                let index = itemAt[it.start]
                 return index > 0 && joinedLeft(it.start) && items[index - 1].kind == .number
             }
             return Set(unvetoed.filter { k in
@@ -1589,8 +1598,9 @@ public enum MathSpeech {
             if let w = word(t), MathContext.mathsCompounds[letter]?.contains(w) ?? false { t += 1; compound = true }
             if let s = word(t), MathContext.clauseSubjects.contains(s), let v = word(t + 1), MathContext.clauseVerbs.contains(v) {
                 t += 2
-            } else if let o = word(t), ["of", "between", "for", "in"].contains(o) {
-                // "the ρ of water is …": a short phrase, then "is"
+            } else if !compound, let o = word(t), ["of", "between", "for", "in"].contains(o) {
+                // "the ρ of water is …": a short phrase, then "is" (never for a compound: "The
+                // gamma factor in the game is 2.2." is a display setting, round 3b)
                 var k = t + 1
                 while k <= t + 5, let w = word(k), !["is", "was", "="].contains(w) { k += 1 }
                 guard word(k) != nil else { return false }
@@ -1612,7 +1622,9 @@ public enum MathSpeech {
             var end: Int
             // Round 3b: whisper's glued unit ("600nm", "5rad/s").
             if core.first?.isNumber == true, let unitStart = core.firstIndex(where: { !$0.isNumber && $0 != "." }),
-               (MathContext.quantityUnits[letter] ?? []).contains(String(core[unitStart...]).lowercased()) {
+               (MathContext.quantityUnits[letter] ?? []).contains(String(core[unitStart...]).lowercased()),
+               !(letter == "tau" && String(core[unitStart...]) == "nm") {
+                if MathContext.scientificUnits.contains(String(core[unitStart...]).lowercased()) { return true }
                 return quantityEnds(it, at: t + 1)
             }
             // "The γ factor is 1/sqrt(1 - v²/c²)." — whisper's formula
@@ -1630,12 +1642,26 @@ public enum MathSpeech {
                 guard MathContext.quantityUnits[letter]?.contains("°") ?? false else { return false }
             } else if !change || (end < toks.count && joinedLeft(end) && !MathContext.connectives.contains(toks[end].core.lowercased())) {
                 var matched = false
+                var scientific = false
                 for n in stride(from: 3, through: 1, by: -1) where end + n <= toks.count && (end..<(end + n)).allSatisfy({ joinedLeft($0) }) {
-                    let unit = toks[end..<(end + n)].map { $0.core.lowercased() }.joined(separator: " ")
+                    let raw = toks[end..<(end + n)].map { $0.core }.joined(separator: " ")
+                    let unit = raw.lowercased()
+                    // round 3b (verify 2): τ's "Nm" is case-sensitive — "The tau is 1 nm." is a nanometre
+                    if letter == "tau", raw == "nm" { continue }
                     if (MathContext.quantityUnits[letter] ?? []).contains(unit)
-                        || (change && MathContext.valueUnits.contains(unit)) { end += n; matched = true; break }
+                        || (change && MathContext.valueUnits.contains(unit)) {
+                        end += n; matched = true
+                        scientific = !change && MathContext.scientificUnits.contains(unit)
+                        break
+                    }
                 }
                 guard matched else { return false }
+                // Round 3b (verify 2): a unit only science writes stands on its own — "λ is 700 nm,
+                // so it's red." (a temperature or a walk still needs `quantityEnds`).
+                if scientific, end >= toks.count || toks[end - 1].trail.contains(where: { ".?!".contains($0) })
+                    || MathContext.connectives.contains(toks[end].core.lowercased()) {
+                    return true
+                }
             }
             return quantityEnds(it, at: end)
         }
@@ -1655,6 +1681,10 @@ public enum MathSpeech {
                 k += 1
             }
             if sentenceEndsBefore(k) { return true }
+            // round 3b (verify 2): a tag question — "So θ is 60 degrees, right?"
+            if k < toks.count, toks[k - 1].trail.hasPrefix(","),
+               ["right", "ok", "okay", "yeah", "yes", "correct", "yep", "no"].contains(toks[k].core.lowercased()),
+               sentenceEndsBefore(k + 1) { return true }
             if k < toks.count, joinedLeft(k), toks[k].core.lowercased() == "for" {
                 var f = k + 1
                 while f < toks.count, f <= k + 3, joinedLeft(f) { f += 1 }
@@ -1787,6 +1817,9 @@ public enum MathSpeech {
             if end >= toks.count || toks[end - 1].trail.contains(where: { ".?!".contains($0) }) { return true }
             return end + 1 < toks.count && ["and", "but"].contains(toks[end].core.lowercased())
                 && toks[end + 1].core.lowercased() == "for" && candidateToks.contains(end + 2)
+                // round 3b (verify 2): …and that report is one too ("…, and for ω I got 3, at the
+                // raffle." is a score)
+                && items.map({ solvedFor($0[itemIndex[end + 2]]) }) ?? false
         }
 
         /// Round 3b (verify) — the sentence before token `t` says what is differentiated or
@@ -1796,7 +1829,11 @@ public enum MathSpeech {
             while k >= 0, sentenceAt[k] == sentenceAt[t] {
                 let w = toks[k].core.lowercased()
                 if w.hasPrefix("differentiat") || w.hasPrefix("integrat") || w.hasPrefix("derivative")
-                    || w == "partial" || w == "partially" { return true }
+                    || w == "partial" || w == "partially" {
+                    // round 3b (verify 2): "Differentiate yourself with respect to θ." is advice
+                    let next = k + 1 < toks.count ? toks[k + 1].core.lowercased() : ""
+                    return !["yourself", "myself", "himself", "herself", "themselves", "ourselves", "yourselves", "itself"].contains(next)
+                }
                 k -= 1
             }
             return false
@@ -1853,6 +1890,47 @@ public enum MathSpeech {
 
         /// Round 3b — a PERSON: the name coordinated with a personal pronoun ("θ and I went to lunch",
         /// "between us and θ", "me and ω").
+        /// Round 3b (verify 2) — the name does what a PERSON does: "θ went home", "λ cried", "ω has
+        /// the expected value I wanted" (`MathContext.personVerbs`; "has/had" + a determiner).
+        private func actsAsPerson(_ it: Item) -> Bool {
+            let a = wordsAfter(it, max: 2).map { $0.lowercased() }
+            guard let first = a.first else { return false }
+            if MathContext.personVerbs.contains(first) { return true }
+            return ["has", "had", "have"].contains(first) && a.count == 2
+                && ["the", "a", "an", "my", "our", "your", "his", "her", "their", "no"].contains(a[1])
+        }
+
+        /// Round 3b (verify 2) — the name (or a list it heads: "λ, ω and θ are …") is said to BE an
+        /// everyday thing: "ω is the restaurant we go to", "λ, ω and θ are the groups". Only the
+        /// nouns no maths sentence uses as a definition count (`MathContext.mathsish`).
+        private func predicatesThing(_ it: Item) -> Bool {
+            var t = it.start + it.count
+            // walk a list of names: ", ω", "and θ", ", and θ"
+            var steps = 0
+            while steps < 6, t < toks.count {
+                if candidateToks.contains(t) { t += 1; steps += 1; continue }
+                let w = toks[t].core.lowercased()
+                if (w == "and" || w == "or"), t + 1 < toks.count, candidateToks.contains(t + 1) { t += 2; steps += 1; continue }
+                break
+            }
+            func word(_ k: Int) -> String? { k < toks.count && joinedLeft(k) ? toks[k].core.lowercased() : nil }
+            // a list may cross commas; the predicate itself is joined
+            guard t < toks.count, ["is", "are", "was", "were"].contains(toks[t].core.lowercased()) else { return false }
+            guard let det = word(t + 1), ["the", "a", "an", "my", "our", "your", "his", "her", "their"].contains(det) else { return false }
+            var k = t + 2
+            var head: String?
+            while k < t + 5, let w = word(k) {
+                head = w
+                if toks[k].trail.contains(where: { ",.;:!?".contains($0) }) { break }
+                if let next = word(k + 1), ["we", "i", "you", "they", "he", "she", "that", "which", "who", "of", "for",
+                                              "in", "at", "on", "with", "to", "from", "and", "or", "but"].contains(next)
+                    || MathContext.connectives.contains(next) { break }
+                k += 1
+            }
+            guard let head else { return false }
+            return !MathContext.mathsish(head)
+        }
+
         private func personal(_ it: Item) -> Bool {
             // "Beta, solve 2x + 3 = 7 first, then play." — an everyday letter called by name at a
             // sentence start, then an order or a question to that person (Indian-English "beta").
@@ -2026,6 +2104,12 @@ public enum MathSpeech {
             // too ("the power of 2", "the interval from 0 to 90", "the formula for v").
             if k < toks.count, joinedLeft(k), ["of", "for", "from"].contains(toks[k].core.lowercased()) {
                 return !mathsTail(after: k)
+            }
+            // Round 3b (verify 2): "the sum we paid", "the term you picked" — a relative clause
+            // makes an everyday-sounding place noun a thing ("the equation we wrote" stays maths).
+            if !MathContext.mathsNouns.contains(head), k < toks.count, joinedLeft(k),
+               ["we", "i", "you", "they", "he", "she"].contains(toks[k].core.lowercased()) {
+                return true
             }
             // "the system now" — a computer's system unless something maths follows
             if head == "system" || head == "question" {

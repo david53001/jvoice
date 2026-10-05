@@ -239,6 +239,8 @@ enum MathContext {
         "sits", "sit", "sat", "belongs", "fits",
         // round 3b: "the λ drops out when you subtract the two equations"
         "drops", "drop", "dropped", "vanishes", "vanish", "factors",
+        // round 3b (verify 2): "Is λ an eigenvalue of A?" — an article opens a definition, never a compound
+        "an",
     ]
 
     /// Round 3 — a noun that makes a maths COMPOUND with one letter: "the γ factor" (Lorentz) is
@@ -475,6 +477,8 @@ enum MathContext {
         "oscillation", "oscillator", "beam", "ray", "rays", "photon", "photons", "electron", "electrons",
         "regression", "model", "equation", "equations", "variable", "variables", "decay", "fluid",
         "liquid", "gas", "material", "wire", "medium", "glass", "water", "air", "string",
+        // round 3b (verify 2): "the ω is in the argument of the sine"
+        "sine", "cosine", "sin", "cos", "tan", "log", "logarithm", "exponential",
     ]
 
     /// A name LOCATED somewhere: "the λ is in the cloud", "the ω is in my bag", "the λ lives in
@@ -528,9 +532,14 @@ enum MathContext {
             return w.first.map { $0.isNumber || $0 == "-" || $0 == "−" } == true || w.count == 1 || promotable.contains(w)
                 || lowerNames.contains(where: { w.hasPrefix($0) })
         }
+        // Round 3b (verify 2): a term that MODIFIES an everyday noun is no maths ("after the
+        // eigenvalue quiz", "the eigenvalue joke from class") — the student talks ABOUT school.
+        func modifies(_ k: Int) -> Bool {
+            !ends[k] && k + 1 < words.count && termModifiedNouns.contains(words[k + 1])
+        }
         for i in words.indices {
             var phrase = words[i]
-            if strongTerms.contains(phrase) { out.append(i); continue }
+            if strongTerms.contains(phrase) { if !modifies(i) { out.append(i) }; continue }
             // "At the 5% level α is 0.05."
             if !ends[i], i + 1 < words.count, words[i + 1] == "level",
                phrase.range(of: "^[0-9]+(\\.[0-9]+)?%$", options: .regularExpression) != nil { out.append(i); continue }
@@ -540,12 +549,71 @@ enum MathContext {
                 phrase += " " + words[k]
                 if strongTerms.contains(phrase) {
                     if phrase.hasSuffix(" by") && (ends[k] || !operandAt(k + 1)) { break }
-                    out.append(i); break
+                    if !modifies(k) { out.append(i) }
+                    break
                 }
             }
         }
         return out
     }
+
+    /// Round 3b (verify 2) — everyday nouns a strong term can modify: "the eigenvalue QUIZ", "the
+    /// double angle HOMEWORK", "the expected value LECTURE" (`strongTermStarts`).
+    static let termModifiedNouns: Set<String> = [
+        "quiz", "quizzes", "test", "tests", "exam", "exams", "lecture", "lectures", "lesson", "lessons",
+        "class", "classes", "homework", "joke", "jokes", "meme", "memes", "stuff", "video", "videos",
+        "notes", "worksheet", "worksheets", "teacher", "teachers", "club", "song", "movie", "lab", "labs",
+        "project", "projects", "assignment", "assignments", "presentation", "guy", "guys", "people",
+        "kid", "kids", "nerd", "nerds", "unit", "topic", "chapter", "grade", "grades", "mark", "marks",
+    ]
+
+    /// Round 3b (verify 2) — what a PERSON does: after a name, these make it someone, so strong
+    /// vocabulary elsewhere in its stretch never makes it a letter ("Theta went home after the
+    /// eigenvalue quiz", "The expected value is low, so lambda left").
+    static let personVerbs: Set<String> = [
+        "left", "cried", "texted", "called", "said", "says", "agrees", "agreed", "wanted",
+        "wants", "likes", "liked", "loves", "loved", "hates", "hated", "bought", "buys", "arrived",
+        "laughed", "slept", "ate", "missed", "studied", "studies", "messaged", "replied", "told",
+        "thinks", "thought", "knows", "knew", "lives", "lived", "walked", "drove", "played", "won",
+        "lost", "smiled", "joined", "quit", "skipped", "failed", "passed",
+    ]
+
+    /// Round 3b (verify 2) — units only science writes: with one of THIS letter's units the
+    /// quantity stands whatever the sentence says next ("λ is 700 nm, so it's red."). Everyday
+    /// units (degrees, m, cm) still need the sentence to end or go on in maths.
+    static let scientificUnits: Set<String> = [
+        "nm", "nanometres", "nanometers", "nanometre", "nanometer", "μm", "µm", "micrometres", "micrometers",
+        "micrometre", "micrometer", "microns", "micron", "pm", "picometres", "picometers", "rad", "rads",
+        "radians", "radian", "rad/s", "rad s⁻¹", "rads⁻¹", "rad s^-1", "radians per second", "rad per second",
+        "kg/m³", "kg m⁻³", "kgm⁻³", "g/cm³", "kg/m^3", "kilograms per cubic metre", "Ωm", "ω m",
+        "ohm metres", "ohm meters", "n m", "n·m", "newton metres", "newton meters", "rad/s²", "rad s⁻²",
+    ]
+
+    /// Round 3b (verify 2) — a noun a maths sentence may define a letter AS ("λ is the WAVELENGTH",
+    /// "θ is the ANGLE", "μ is the SAME", "λ is the ANSWER"): any maths list, a physical quantity or
+    /// a neutral noun. "ω is the restaurant", "λ, ω and θ are the groups" use none.
+    static func mathsish(_ word: String) -> Bool {
+        if mathsNouns.contains(word) || placeNouns.contains(word) || tailNouns.contains(word)
+            || statsNouns.contains(word) || definitionNouns.contains(word) || strongTerms.contains(word)
+            || cueNouns.contains(word) || definesMaths(word) || isMathsWord(word)
+            || neutralNouns.contains(word) || word.hasSuffix("est") { return true }
+        return false
+    }
+    private static let neutralNouns: Set<String> = [
+        "same", "one", "ones", "answer", "answers", "value", "values", "number", "numbers", "thing",
+        "things", "bit", "part", "solution", "solutions", "result", "unknown", "unknowns", "variable",
+        "variables", "constant", "constants", "coefficient", "key", "reason", "problem", "difference",
+        "ratio", "rate", "factor", "root", "limit", "sum", "product", "term", "power", "index", "base",
+        "mean", "mode", "median", "average", "range", "total", "size", "length", "height", "width",
+        "distance", "area", "volume", "speed", "time", "period", "weight", "mass", "force", "energy",
+        "charge", "current", "voltage", "resistance", "temperature", "pressure", "angle", "side",
+        "scale", "step", "gradient", "slope", "multiplier", "parameter", "exponent", "input", "output",
+        "argument", "first", "second", "third", "last", "opposite", "inverse", "reciprocal", "negative",
+        "positive", "other", "only", "unit", "units", "amplitude", "frequency", "phase", "displacement",
+        "velocity", "acceleration", "momentum", "wavelength", "work", "efficiency", "probability",
+        "proportion", "percentage", "fraction", "estimate", "approximation", "bound", "limit", "error",
+        "uncertainty", "gradient", "intercept", "vertex", "centre", "center", "radius", "diameter",
+    ]
 
     /// QUANTITY statement (round 3): a value with a unit THIS letter stands for is the letter —
     /// "θ is 30 degrees", "the λ is 600 nm", "ω is 3 rad/s", "the ρ of water is 1000 kg/m³". Never
@@ -562,6 +630,7 @@ enum MathContext {
             "omega": ["rad/s", "rad s⁻¹", "rads⁻¹", "rad s^-1", "radians per second", "rad per second"],
             "rho": ["kg/m³", "kg m⁻³", "kgm⁻³", "g/cm³", "kg/m^3", "kilograms per cubic metre", "Ωm", "ω m",
                     "ohm metres", "ohm meters"],
+            // "Nm" (newton metres) is checked case-sensitively: "1 nm" is a nanometre (round 3b)
             "tau": ["nm", "n m", "n·m", "newton metres", "newton meters"],
         ]
     }()
@@ -652,6 +721,10 @@ enum MathContext {
         "solutions", "converges", "tangent", "continuous", "differentiable", "maximum", "minimum",
         "integer", "positive", "negative", "zero", "points", "point", "lines", "vectors", "angle", "area",
         "triangle", "circle", "curve", "graph", "function", "sum", "product", "series", "sequence",
+        // round 3b (verify 2): physics conditions ("Find the value of ω such that the period is 2 s.")
+        "period", "frequency", "amplitude", "speed", "velocity", "acceleration", "force", "energy",
+        "momentum", "tension", "displacement", "wavelength", "equilibrium", "magnitude", "gradient",
+        "slope", "vector", "matrix", "determinant", "equation", "equations", "system",
     ]
     static let timeUnits: Set<String> = ["seconds", "second", "secs", "ms", "minutes", "minute", "hours", "hour"]
     /// "θ is 30 degrees WARMER", "the ω is 300 m WATER resistant": a weather or product value.
@@ -987,7 +1060,8 @@ enum MathContext {
         guard !core.isEmpty else { return "W" }
         let utf8 = core.utf8
         if core.unicodeScalars.count == 1, let c = core.unicodeScalars.first {
-            if "=≠<>≤≥≈".unicodeScalars.contains(c) { return "R" }
+            // round 3b (verify 2): "~" — "X ~ N(μ, 4)" (a distribution, IB statistics)
+            if "=≠<>≤≥≈~".unicodeScalars.contains(c) { return "R" }
             if "+-−×·÷±^–*/".unicodeScalars.contains(c) { return "O" }
             // "I" is the pronoun — except as a factor after notation ("λ I", "A - λ I")
             if c == "I" { return previous.map { "ORL".contains($0) } == true ? "L" : "W" }
