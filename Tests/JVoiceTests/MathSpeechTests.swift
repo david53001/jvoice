@@ -44,7 +44,7 @@ private let mathConverts: [(String, String)] = [
     ("x equals two thirds", "x = ⅔"),
     ("two million five hundred thousand divided by 2", "2500000 ÷ 2"),
     // ── implicit multiplication ──
-    ("delta x equals 5", "δx = 5"),
+    ("delta x equals 5", "Δx = 5"),  // capital Δ = "change in x" (math-context round 2)
     ("x y equals 12", "xy = 12"),
     ("f of x equals a x squared plus b x plus c", "f(x) = ax² + bx + c"),
     // ── greek, constants, sets ──
