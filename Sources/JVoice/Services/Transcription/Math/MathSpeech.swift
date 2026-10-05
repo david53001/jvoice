@@ -912,7 +912,7 @@ public enum MathSpeech {
                 for t in it.start..<(it.start + it.count) { itemAt[t] = index }
             }
             let cores = toks.map(\.core)
-            var blocked = MathContext.dictationVetoes(cores: cores)
+            let blocked = MathContext.dictationVetoes(cores: cores)
             let indexed = indexedLetters(items)
 
             // Equations whisper already wrote as symbols are evidence like spoken ones ("x = 5",
