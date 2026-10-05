@@ -1624,7 +1624,9 @@ public enum MathSpeech {
             if core.first?.isNumber == true, let unitStart = core.firstIndex(where: { !$0.isNumber && $0 != "." }),
                (MathContext.quantityUnits[letter] ?? []).contains(String(core[unitStart...]).lowercased()),
                !(letter == "tau" && String(core[unitStart...]) == "nm") {
-                if MathContext.scientificUnits.contains(String(core[unitStart...]).lowercased()) { return true }
+                if MathContext.scientificUnits.contains(String(core[unitStart...]).lowercased()),
+                   t + 1 >= toks.count || toks[t].trail.contains(where: { ".?!".contains($0) })
+                    || MathContext.connectives.contains(toks[t + 1].core.lowercased()) { return true }
                 return quantityEnds(it, at: t + 1)
             }
             // "The γ factor is 1/sqrt(1 - v²/c²)." — whisper's formula
