@@ -1,7 +1,33 @@
-# HANDOFF — state as of 2026-10-04 (branch `feat/math-context` = `feat/math-format` + context-aware Greek letters, merged with the installed `feat/tour-opacity`; pushed as a branch and installed; v1.1.4 is the last release)
+# HANDOFF — state as of 2026-10-05 (branch `feat/math-context` = `feat/math-format` + context-aware Greek letters, merged with the installed `feat/tour-opacity`; pushed as a branch and installed; v1.1.4 is the last release)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+
+## 2026-10-05 — context-aware Greek letters, rounds 2–3 (branch `feat/math-context`, pushed, CI green, INSTALLED; not merged into `main`, not released)
+
+**What happened.** David's first real dictation on the 2026-10-04 build was "Where's the lambda in this equation for x = 5?", and it pasted unchanged. Two causes:
+- "the" before the name vetoed it.
+- An equation Whisper had already written as symbols (`x = 5`) did not count as evidence.
+
+**What was done.** Three more workflow rounds, all committed and pushed, now cover these wordings:
+- symbol-written evidence;
+- determiners;
+- units (θ with degrees, λ with nm, …);
+- strong maths vocabulary (eigenvalue, "both sides by", …);
+- `pi/4` and `(x + λ)²`;
+- one meaning per dictation;
+- places ("the λ is in the menu" stays as words).
+
+**Result.**
+- Everyday corpora (about 2,300 lines): byte-identical to before.
+- Fresh maths dictations: 72.5 % fully correct, against 45 % for round 2 and 11 % for the engine before any context work.
+- Logic tests: 2539/2539. CI swift-testing: 517/517.
+
+**Details.**
+- `docs/math-context-progress.md`: the latest entries, open items 1–6, and a question for David about "sigma = 4".
+- `docs/math-context-design.md`: §10–§12.
+
+**Install.** `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/dev-install.sh`, from the worktree `.claude/worktrees/math-context`.
 
 ## 2026-10-04 session — context-aware Greek letters in Math Notation (branch `feat/math-context`; merged with the installed `feat/tour-opacity`; PUSHED as a branch, INSTALLED; not merged into `main`, not released)
 

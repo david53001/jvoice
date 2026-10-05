@@ -370,3 +370,32 @@ from nothing can pick up the work.
     `greekNamesRoundThreeBHeldOutWordings` mirrored in `Tests/JVoiceTests/MathSpeechTests.swift`, parse-checked);
     10k lines median 0.799 s vs v3-installed 0.770 s (+3.8 %).
   - **Open**: design §12.5; Windows mirror; install + push are the lead's.
+- 2026-10-05: **round 3 + 3b SHIPPED to David's Mac.**
+  - Workflow #3 finished, and its final check said SHIP. The lead also verified it:
+    - logic tests 2539/2539;
+    - the four everyday corpora are byte-identical to baseline;
+    - David's sentence converts; "Theta is 30 degrees." → `θ is 30 degrees.`; "Theta is the slope at
+      the ski resort." stays as words.
+  - Installed with `SDKROOT=…/MacOSX26.5.sdk ./scripts/dev-install.sh`, which quit and relaunched JVoice.
+    `--settings-smoke` OK, signature OK.
+  - CI fixes made afterwards:
+    - `486af43`: `String(…)` around a `dropLast`. Xcode 16's compiler (the CI one) rejects
+      String + Substring, which Swift 6.4 accepts.
+    - `ecc8d6e`: the swift-testing case "delta x equals 5" now expects `Δx = 5` (the round-2 decision).
+    - Probe output is identical on all 5,275 corpus lines, so the installed binary behaves the same as
+      HEAD.
+  - CI Test run `37325107768`: 517/517 passed. A clipboard test (`failedPasteRestoresOriginalClipboard`)
+    failed once and passed on re-run; it is flaky on the CI runner and unrelated to maths.
+  - Final check, fresh maths dictations: 58/80 fully correct (60/80 after two label fixes), against
+    36/80 for round 2. 0 of 80 fresh everyday lines changed.
+  - **Open items, none of them a bleed:**
+    1. "pi r² … 9 pi" converts half (not idempotent).
+    2. Whisper's "2 pi/3" prints `2 π/3`, not `2π/3`.
+    3. A trailing ", so …" clause blocks the quantity rule ("gamma factor is 1.25 so …").
+    4. "λ = 4 and mu equals minus 2": the mu stays a word.
+    5. Vector lines "r = a + lambda(2, 0, 1)" are not read as evidence.
+    6. Question for David: should "sigma = 4" (Whisper-written) become σ? Bare "sigma" is ∑ by his
+       2026-09-29 decision.
+  - Still not done: the Windows mirror, and merging into `main` and a release.
+  - WIP branches `wip/math-context-round3b-partial(-2)` were superseded by `832464a..ae8716f` and can
+    be deleted.
