@@ -775,3 +775,102 @@ a comment. On the original labels: S 142 → 141 because of that row only.
   "sin 2θ/g", "2πrad"), "3/10 pie" without evidence, "the same as" converted to "=" in "Is λ the same as t",
   indexed families with no evidence, and the determiner rows §10.7 traded away.
 - Windows mirror: not ported (now also §11).
+
+## 12. Round 3b (2026-10-05, workflow #3 fix stage) — the round-3 verify findings
+
+**Why.** The adversarial verify of round 3 (`27e5760`) reported 12 bleed families and 12 recall families
+(inputs saved as `.build/math-context/verify3-bleed.txt` / `verify3-recall.txt`, gitignored). Two earlier fix
+attempts were interrupted (the Mac slept); their edits were taken from `wip/math-context-round3b-partial-2`,
+re-verified, and extended. Code: `MathContext.swift` (word lists marked "round 3b") and `MathSpeech.Emitter`
+(`quantityEnds`, `restHasMaths`, `mathsTail`, `tailEnds`, `everydayValue`, `conditionHasMaths`, `solvedFor`,
+`calculusVerdict`, `everydayLetDefinition`, `rangeStatement`, `personal`, `actsAsPerson`, `predicatesThing`,
+`inInterval`, and the head-noun rewrite of `located`). Commits `832464a` … (branch `feat/math-context`).
+
+Terms: *everyday definition noun* = a definition noun that is also ordinary English (angle, slope, gradient,
+mean, multiplier, coefficient, parameter, exponent, variance, density, frequency); *maths tail* = a preposition
+followed, within four words, by a letter, a number, a Greek name or a maths noun that ends its phrase ("between
+the two vectors", "at B", "of the distribution"); *scientific unit* = a unit only science writes (nm, μm, rad,
+rad/s, kg/m³, N m).
+
+### 12.1 Bleeds closed
+
+| Finding | Rule | Stays now |
+|---|---|---|
+| definitions | an everyday definition noun anchors only with a maths tail; in "Let λ be the …" it may also end the sentence | "Theta is the slope at the ski resort.", "Lambda is the parameter in the URL.", "Let θ be the angle of the story." |
+| temperatures, walks | a quantity must end the sentence (after "here/now/then", "for ⟨≤3 words⟩", or a tag "…, right?") or go on in maths after a connective; a scientific unit stands before any connective ("λ is 700 nm, so it's red.") | "Beta is 38 degrees, he has a fever.", "Lambda is 500 m, so we can walk.", "Tau is 5 nm, lol." (τ's "Nm" is case-sensitive) |
+| strong terms across clauses | strong vocabulary counts in the name's own STRETCH (sentence scope only for a name in a maths position, a coefficient "2θ", or a letter converted elsewhere); a term that modifies an everyday noun ("eigenvalue quiz", `termModifiedNouns`) is none; a name that acts as a person ("went home", "θ and I", "has the …", `personVerbs`) takes none; "both sides by" needs an operand | "The quadratic was easy, so theta and I went to lunch.", "Theta went home after the eigenvalue quiz.", "Both sides by now want omega gone." |
+| statistics nouns | distribution/population/sample are maths only when the name gets a value through them ("the μ of the distribution is 50") | "The alpha of the population is the leader." |
+| "divide it by ω" | the operand of a maths verb must end the sentence or be followed by maths | "Divide it by omega, the new tier." |
+| γ factor | a maths compound only with a number (never through an of/in phrase) or with evidence near | "The gamma factor is huge in this game.", "The gamma factor in the game is 2.2." |
+| places | the place's noun phrase is judged by its HEAD: a maths word only modifying it ("graph database", "power bank", "sample folder") is everyday; a number after an everyday noun is a label ("room 5", "gate 12"); a number alone is a time ("in 2027"); idioms without an article ("in power", "in question", "in series"); an of/for/from tail must be maths ("the circle of friends"); a relative clause makes an everyday-sounding place noun a thing ("the sum we paid") | "…, also the lambda is in room 5.", "…, the theta is in the distribution list." |
+| one meaning vs everyday values | an everyday unit (price, %, time, size, score — `everydayUnits`) or a person stops that occurrence even when the letter is converted elsewhere | "x + β = 5, and the beta is 2 weeks away.", "2λ = 6. The lambda is 30 seconds on cold start." |
+| headings | a colon after a sentence-initial name is a heading unless an equation follows it | "Find α: 2α = 6. Alpha: the team meets at 5." |
+| pi/4 of | "pi/N of …" is a portion, no evidence | "I ate pi/4 of the pizza." |
+| vocative | an everyday letter called at a sentence start, then an order or a question (`vocativeFollowers`) | "Beta, solve 2x + 3 = 7 first, then play." |
+| everyday predicates | away from the evidence's stretch, "⟨name(s)⟩ is/are the ⟨noun⟩" with a noun no maths sentence uses (`MathContext.mathsish`) is a thing | "Solve 2x + 3 = 7, then omega is the restaurant we go to.", "…, then lambda, omega and theta are the groups." |
+
+### 12.2 Recall added
+
+- Maths places v3 converted are back: row, column, form, limit, root, function, side, answer, range, solution,
+  quadratic, coefficient, product, quotient, result ("…, also the λ is in the second row").
+- Whisper notation: a name under a slash ("c/λ", "hc/λ", "2π/ω"), inside bars ("|λ| < 1"), in a bracket product
+  or quotient ("(x - α)(x - β)", "(λ² - 1)/(λ - 1)"), in an exponent ("e^(-λt)"), in an interval ("[0, 2π]"),
+  "2pi/T", and "X ~ N(μ, 4)" ("~" is a written relation). Glued names in the glued text are converted too.
+- One meaning per dictation, PROMOTE direction: a converted (non-everyday) letter converts after an article
+  wherever its sentence holds evidence ("So the ω, it's 2π/T, so ω = 2π/4."); vetoes are per occurrence — a
+  term of a written equation is the letter whatever stands before it ("The α is wrong, α = 30°.", "I said
+  θ = 35°."); sentence openers before a coefficient ("Because 2λ = -4.").
+- Anchors: "Find λ such that / given that ⟨maths condition⟩" (`conditionTerms`); "with respect to λ" after a
+  calculus word, ending the sentence or with a value; "Let θ be the angle at B."; ranges "θ goes from 0 to 2π"
+  (a bound only maths writes); "for λ I got 3 and for μ I got -1" (the chain must end the sentence); "Plug λ
+  back into / substitute θ into the … equation"; "The mean μ is 12."; "At the 5% level"; "reject the null";
+  glued units ("600nm", "5rad/s"); "Is λ an eigenvalue of A?" ("an" may follow a name).
+- Strong terms added: characteristic equation/polynomial, reject the null, line of best fit, divide/multiply
+  both sides, two equations, add/subtract the equations; definition nouns: density, frequency, resistivity,
+  permittivity, wavelengths.
+
+### 12.3 Engine-wide changes (lines with no Greek name can change)
+
+- "the one" / "this one" / "which one" is a pronoun, not the number 1 ("Is x the same as the one in part a?"
+  used to become "Is x = 1 in part a?").
+- "is the same as" never chains onto an equation the parser already holds ("r = a + λb is the same as t" keeps
+  the words); "such that"/"given that" is the bar `∣` only when the condition ends the run ("Find k such that
+  x = 2 is a root." keeps the words).
+- A powered single letter multiplies by juxtaposition (spec §1.3): `ω²r`, `πr²h`, `a = -ω²x`; Whisper's "2pi f"
+  → `2πf`. Labels relabelled for this: three `wordings.tsv` rows ("ω² x" → "ω²x") and one `context.tsv` row
+  ("λ ∣ 5 = k" → "λ such that 5 = k").
+- All four everyday corpora stay byte-identical to the baseline probe.
+
+### 12.4 Results (probe `.build/math-context/probe-r3b`)
+
+| Measure | probe-v3-installed | round 3 (`probe-r3`) | round 3b |
+|---|---|---|---|
+| verify findings (175 inputs: 76 bleed, 99 recall) | — | — | **175/175** |
+| `verify3-bleed.txt` lines differing from baseline | 51 | 126 | 13 (below) |
+| `verify3-recall.txt` exact | 104/311 | 233/311 | **311/311** |
+| held-out sets written after the rules (scratch) | — | — | promote 158/158; 246 everyday lines: 8 changed (1 correct "Find α: 2α = 6. Alpha: …"; 7 are §12.5 shapes, 3 of them already in v3) |
+| `round3.tsv` (now 484 rows: + family R3b, 213 P / 12 S) | 148/484 | — | **484/484** |
+| `wordings.tsv` | 569/597 (new labels) | 576/597 | **576/597** (P 435/456, S 141/141) |
+| `context.tsv` | — | 137/137 | 137/137 (one row relabelled) |
+| everyday / -adversarial / -whisper (now 816 lines) / -fresh vs baseline | 0 / 0 / 49 / 0 | — | **0 / 0 / 0 / 0** |
+| `verify2-bleed.txt` differing from baseline | 44 | 43 | 42 |
+| maths corpora vs v3 | — | 0 losses | **0 losses**; math 7 gains + 6 spacing, math-fresh 19 + 1, verify2-recall 15 + 5 |
+| idempotence (labelled + verify inputs, second pass) | — | 8 of 1,736 change | **0 of 1,961** |
+| logic tests | — | 1662 total | **2539/2539** total (logic section 2059) |
+| 10,000 lines, 10 runs (median) | 0.770 s | 0.790 s | 0.799 s (+3.8 %) |
+
+The 13 `verify3-bleed` lines that still differ: 4 are correct conversions the bleed probe also contained ("θ =
+30°, but theta waves …", "Find α: 2α = 6. Alpha: …", "Solve for lambda: 3λ - 6 = 0. Lambda Legal …", "x = π/4 is
+the answer."); the rest are accepted ambiguities: "in the circle", "in this term", "in the system", "in the third
+row" (maths places — the recall findings ask for "in the second row"), "Find the value of ω in the menu/deal"
+(the strongest anchor), "The φ is 3 rads.", "The λ is 2 m …" (their own units), "β = 2x the users of α".
+
+### 12.5 Still not covered / risks
+
+- A Greek name with its own unit and the sentence ending converts even when it is a person or a place: "Phi is
+  39 degrees.", "Gamma is 38 degrees, right?", "Theta is 90 degrees, right?" (P6 asked for "Theta is 30 degrees.").
+- "Gamma factor is 1.8." converts (a Lorentz factor and a display gamma read the same).
+- Whisper's "Beta = 2x faster" / "Alpha = 3x the sales of beta" (v3 already did this).
+- Strong-term modifiers are a list (`termModifiedNouns`); an unlisted one ("the eigenvalue meetup") still counts.
+- The `wordings.tsv` misses of §11.3 are unchanged (spacing "ω A", "I ω", "mc ΔT"; determiner rows; "pie").
+- Windows mirror: not ported (§10–§12).

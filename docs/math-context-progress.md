@@ -350,3 +350,23 @@ from nothing can pick up the work.
   - The branch tip is round 3 (`27e5760`) plus docs.
   - Resuming the workflow re-runs the fix stage from scratch. The verify findings are already cached
     in the run.
+- 2026-10-05: the fix stage stalled again while the Mac slept. Its partial edits are saved on `wip/math-context-round3b-partial-2` (`8864dc1`) and the tree was reset clean. The run was resumed with `caffeinate` keeping the Mac awake; the fix prompt now points at both WIP branches and asks for a commit after each family.
+- 2026-10-05, workflow #3 fix stage — **round 3b** (design §12), commits `832464a` … on `feat/math-context`
+  (not pushed, not installed):
+  - **Start**: the partial edits on `wip/math-context-round3b-partial-2` were taken over (debug prints removed),
+    re-verified against every corpus and committed as `832464a`; then extended: strong-term modifiers ("the
+    eigenvalue quiz"), a name acting as a person, "⟨name⟩ is the ⟨everyday noun⟩", relative clauses after a place
+    noun, τ's case-sensitive "Nm", scientific units before a connective, tag questions, let-definitions with a
+    tail, ranges past V3, "X ~ N(μ, 4)", "Is λ an eigenvalue of A?", linear `solvedFor`/`calculusBefore`.
+  - **Corpora** (gitignored): `everyday-whisper.txt` now 816 lines (+305 bleed inputs: the verify findings and
+    the held-out everyday lines, each byte-identical to baseline); `round3.tsv` now 484 rows (+ family "R3b":
+    213 P, 12 S); `wordings.tsv` 3 rows and `context.tsv` 1 row relabelled (design §12.3); the verify inputs
+    are `verify3-bleed.txt` / `verify3-recall.txt`.
+  - **Numbers** (probe `.build/math-context/probe-r3b`; eval scripts in the session scratchpad, `r3b/ev3b.py`
+    = round-3 `ev3.py` + verify3 sets + idempotence): verify findings 175/175; verify3-recall 311/311 (r3 233);
+    verify3-bleed 13 differ from baseline (r3 126; all 13 explained in §12.4); everyday ×4 0 differ;
+    round3.tsv 484/484; wordings.tsv 576/597 (S 141/141); context.tsv 137/137; maths corpora 0 losses vs v3;
+    idempotence 0 of 1,961; logic tests 2539/2539 total (`greekNamesRoundThreeBVerifyFindings` +
+    `greekNamesRoundThreeBHeldOutWordings` mirrored in `Tests/JVoiceTests/MathSpeechTests.swift`, parse-checked);
+    10k lines median 0.799 s vs v3-installed 0.770 s (+3.8 %).
+  - **Open**: design §12.5; Windows mirror; install + push are the lead's.

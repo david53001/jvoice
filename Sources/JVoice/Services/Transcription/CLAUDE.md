@@ -161,6 +161,15 @@ pinned to version 1.0.0). To work in this area, read the files below.
     evidence for the names of its own sentence; "multiply/divide ⟨maths object⟩ by λ" and "λ is an eigenvalue
     of A" anchor; whisper's "|x - 2|", "(x + λ)²", "arctan(3/4)", "pi/4" are read as notation; bare "delta"
     promotes only as a term of such an equation (`windowOnlyNames`). Corpus `.build/math-context/round3.tsv`.
+    **Round 3b (design §12):** an everyday definition noun (angle, slope, mean, parameter…) needs a maths tail
+    ("θ is the angle between the vectors", never "the slope at the ski resort"); a quantity must end the
+    sentence or go on in maths (never "Beta is 38 degrees, he has a fever"); strong vocabulary counts in the
+    name's own stretch, never when it modifies an everyday noun ("the eigenvalue quiz") or the name acts as a
+    person; places are judged by the head noun ("the graph database", "room 5" stay); vetoes are per
+    occurrence (a written equation's term converts; "the beta is 2 weeks away" stays even when β is written
+    elsewhere); notation under a slash, in bars, bracket products, exponents, intervals ("c/λ", "|λ|",
+    "(x - α)(x - β)", "e^(-λt)", "[0, 2π]"). Engine-wide: "the one" is a pronoun, "is the same as" never chains
+    an equation, a powered letter juxtaposes (`ω²r`).
     Design + rejected alternatives:
     `docs/math-context-design.md` (§10, with §10.7 the current V2/evidence rules and §11 round 3); log:
     `docs/math-context-progress.md`. Related, run-only: whisper's "pie" is a weak π after a number or
