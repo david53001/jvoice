@@ -1239,9 +1239,9 @@ public enum MathSpeech {
                         let run = at + last - from
                         let letter = toks[last].core
                         if run < parts.count, parts[run].hasPrefix(letter) {
-                            parts.replaceSubrange(at...run, with: [toks[from].lead + text.dropLast(letter.count) + parts[run]])
+                            parts.replaceSubrange(at...run, with: [toks[from].lead + String(text.dropLast(letter.count)) + parts[run]])
                         } else {
-                            parts.replaceSubrange(at..<run, with: [toks[from].lead + text.dropLast(letter.count) + toks[last - 1].trail])
+                            parts.replaceSubrange(at..<run, with: [toks[from].lead + String(text.dropLast(letter.count)) + toks[last - 1].trail])
                         }
                         continue
                     }
