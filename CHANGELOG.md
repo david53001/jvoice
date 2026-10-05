@@ -11,6 +11,10 @@ All notable changes to JVoice — a free, source-available macOS menu-bar voice-
 - **Opacity setting.** Settings → **Appearance** → **Opacity**: a slider from *Transparent* to *Opaque* that sets how much of what's behind JVoice shows through its windows, tour tags and the recording pill. It applies instantly; **Default** puts it back. The same setting exists in MacStats and BetterScreenshot.
 - **The Settings tour shows the Opacity slider in action.** A new "Opacity" step glides the real slider down to *Transparent*, up to *Opaque* and back to your value while the window follows it live, with a readout in the tour tag ("Watch: 37 % ↓"). It never changes your saved setting, and touching the slider hands it back to you.
 - **Math Notation decides Greek letters from the whole dictation.** Say "lambda" in a maths dictation and you get λ: "Lambda is the unknown, and 5 equals K and X equals 5" pastes `λ is the unknown, and 5 = K and X = 5`. Question wording counts too ("find the value of lambda" → `find the value of λ`). Without any maths nearby it stays a word ("lambda, the pie is really tasty" is untouched), and names like "AWS Lambda", "beta access" or "Delta" the airline are never converted. Works for every Greek letter; Whisper's "lamda" and "pie" (π next to a number) are understood.
+  - It also reads what Whisper already wrote: "Where's the lambda in this equation for x = 5?" pastes `Where's the λ in this equation for x = 5?`.
+  - Typical maths wording counts: "Theta is 30 degrees." → `θ is 30 degrees.`, "Multiply both sides by lambda." → `Multiply both sides by λ.`, "Solve for lambda: 3 lambda - 6 = 0." → `Solve for λ: 3λ - 6 = 0.`, "x = pi/4" → `x = π/4`.
+  - Everyday phrases stay as words: "the lambda function", "the beta is out", "Theta is the slope at the ski resort".
+  - "delta" before a letter is now the change Δx (was δx).
 - **Spoken maths: the engine package and the shared notation format.** `x² = 4`, `(x² - 9)/(x - 3)`, `sin θ`, `√(b² - 4ac)` — the same notation as BetterScreenshot's Capture Text (see `docs/math-notation-format.md`).
 
 ### Fixed
