@@ -20,7 +20,10 @@ import SwiftUI
 ///
 /// Like `--settings-smoke` it never calls `VoiceCoordinator.start()` and never writes a setting:
 /// appearances are forced on the windows directly, not through `appTheme`. Run it from an assembled
-/// `.app` (recipe in `UI/CLAUDE.md`). The windows really appear on screen for about a second each.
+/// `.app` (recipe in `UI/CLAUDE.md`). The windows really appear on screen for about a second each, but
+/// parked just above the desktop — BEHIND every real window — and the app never activates, so a run
+/// doesn't cover or steal focus from whatever the owner is working in (2026-10-17). Each capture is
+/// the topmost preview window and everything below it, so the owner's windows never show up in it.
 @MainActor
 enum UIPreviewRunner {
     static func shouldRun(arguments: [String]) -> Bool {
@@ -43,6 +46,8 @@ enum UIPreviewRunner {
             UIOpacityStore.shared.value = UIOpacity.clamped(value)
         }
         WindowMaterial.forcesActiveState = arguments.contains("--active")
+        TagOverlayController.probeLevel = Self.behindLevel
+        WelcomeWindow.activatesOnShow = false
         let backdrop = option("--backdrop").flatMap(Self.backdropWindow)
         backdrop?.orderFrontRegardless()
         let coordinator = VoiceCoordinator()
@@ -50,10 +55,10 @@ enum UIPreviewRunner {
 
         func capture(_ window: NSWindow, _ name: String, after delay: TimeInterval = 0.8) {
             window.displayIfNeeded()
-            capture(window.frame, name, after: delay)
+            capture(window.frame, name, after: delay, windows: [window])
         }
 
-        func capture(_ frame: NSRect, _ name: String, after delay: TimeInterval = 0.8) {
+        func capture(_ frame: NSRect, _ name: String, after delay: TimeInterval = 0.8, windows: [NSWindow]) {
             RunLoop.main.run(until: Date().addingTimeInterval(delay))
             let out = dir.appendingPathComponent("\(name).png")
             // The screen region under the window, not the window alone: a single-window capture has no
@@ -61,7 +66,7 @@ enum UIPreviewRunner {
             let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
             let r = frame.insetBy(dx: -12, dy: -12)
             let region = CGRect(x: r.minX, y: primaryHeight - r.maxY, width: r.width, height: r.height)
-            guard let image = Self.captureRegion(region),
+            guard let image = Self.captureRegion(region, below: Self.topmost(windows)),
                   let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]),
                   (try? png.write(to: out)) != nil else { return }
             saved += 1
@@ -73,6 +78,7 @@ enum UIPreviewRunner {
         for (label, name) in appearances {
             let settings = SettingsWindow(coordinator: coordinator)
             settings.appearance = NSAppearance(named: name)
+            settings.level = Self.behindLevel
             settings.orderFrontRegardless()
             capture(settings, "settings-\(label)")
             // Scrolled to the bottom: the Appearance (Opacity) card.
@@ -90,7 +96,7 @@ enum UIPreviewRunner {
                 let tag = TagOverlayController()
                 tag.show(step: step, body: step.body, number: 2, total: TourCatalog.settings.steps.count,
                          anchor: anchor, host: settings)
-                capture(settings.frame.union(tag.tagPanel.frame), "tour-tag-\(label)")
+                capture(settings.frame.union(tag.tagPanel.frame), "tour-tag-\(label)", windows: [settings] + tag.windows)
                 tag.hide()
             }
             // The Opacity step with its demo playing: falling, at Transparent, rising, at Opaque.
@@ -107,7 +113,7 @@ enum UIPreviewRunner {
                 var elapsed = 0.0
                 for (t, name) in [(1.0, "falling"), (2.4, "transparent"), (4.3, "rising"), (5.8, "opaque")] {
                     capture(settings.frame.union(tag.tagPanel.frame), "tour-opacity-\(name)-\(label)",
-                            after: t - elapsed)
+                            after: t - elapsed, windows: [settings] + tag.windows)
                     elapsed = t + 0.05
                 }
                 demo.stop()
@@ -118,6 +124,7 @@ enum UIPreviewRunner {
 
             let welcome = WelcomeWindow(coordinator: coordinator)
             welcome.appearance = NSAppearance(named: name)
+            welcome.level = Self.behindLevel
             welcome.show(page: .permissions, askTourQuestion: true)
             capture(welcome, "welcome-permissions-\(label)")
             welcome.show(page: .allSet)
@@ -126,6 +133,7 @@ enum UIPreviewRunner {
         }
 
         let hud = HUDWindow()
+        hud.level = Self.behindLevel
         hud.onStop = {}   // show the stop button
         let states: [(String, HUDState)] = [
             ("recording", .recording),
@@ -160,7 +168,7 @@ enum UIPreviewRunner {
                let step = TourCatalog.recordingPill.steps.first {
                 let tag = TagOverlayController()
                 tag.show(step: step, body: step.body, number: 1, total: 1, anchor: anchor, host: hud)
-                capture(hud.frame.union(tag.tagPanel.frame), "tour-pill-\(label)")
+                capture(hud.frame.union(tag.tagPanel.frame), "tour-pill-\(label)", windows: [hud] + tag.windows)
                 tag.hide()
             }
             // Half-way through the transcribing → Pasted morph (`HUDLayout.morph`, 0.3 s).
@@ -192,13 +200,27 @@ enum UIPreviewRunner {
     /// `CGWindowListCreateImage` (on-screen windows in `rect`, global top-left coordinates), looked up at
     /// run time: the macOS 15 SDK marks it unavailable to Swift in favour of ScreenCaptureKit, which
     /// needs Screen Recording permission even for the app's own windows.
-    private static func captureRegion(_ rect: CGRect) -> CGImage? {
+    /// Just above the desktop: behind every real window (the tour probes' `probeLevel` trick).
+    static let behindLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
+
+    /// The front-most of `windows` that is on screen (window-server order), for `captureRegion`.
+    private static func topmost(_ windows: [NSWindow]) -> CGWindowID {
+        let ours = Set(windows.filter(\.isVisible).map { CGWindowID($0.windowNumber) })
+        let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+        for info in list {   // front to back
+            if let number = info[kCGWindowNumber as String] as? CGWindowID, ours.contains(number) { return number }
+        }
+        return ours.first ?? kCGNullWindowID
+    }
+
+    private static func captureRegion(_ rect: CGRect, below window: CGWindowID) -> CGImage? {
         typealias CreateImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
         guard let handle = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW),
               let symbol = dlsym(handle, "CGWindowListCreateImage") else { return nil }
         let create = unsafeBitCast(symbol, to: CreateImage.self)
-        // kCGWindowListOptionOnScreenOnly, kCGNullWindowID, kCGWindowImageBestResolution
-        return create(rect, 1 << 0, 0, 1 << 3)?.takeRetainedValue()
+        // kCGWindowListOptionOnScreenBelowWindow | kCGWindowListOptionIncludingWindow (that window and
+        // everything under it — never the owner's windows above), kCGWindowImageBestResolution
+        return create(rect, (1 << 2) | (1 << 3), window, 1 << 3)?.takeRetainedValue()
     }
 
     /// A full-screen borderless window under every preview window: `white`, `black`, or `wallpaper` (a
@@ -206,7 +228,7 @@ enum UIPreviewRunner {
     private static func backdropWindow(_ kind: String) -> NSWindow? {
         guard let screen = NSScreen.main else { return nil }
         let window = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
-        window.level = .normal
+        window.level = behindLevel
         window.isReleasedWhenClosed = false
         switch kind {
         case "white": window.backgroundColor = .white

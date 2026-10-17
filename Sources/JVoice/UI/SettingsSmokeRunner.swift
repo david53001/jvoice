@@ -40,6 +40,8 @@ enum SettingsSmokeRunner {
         // window server still drives that pass — the same trick
         // `HUDWindow.prewarm()` uses.
         window.alphaValue = 0
+        // Parked behind every real window too, so the invisible window can't swallow the owner's clicks.
+        window.level = UIPreviewRunner.behindLevel
         window.orderFrontRegardless()
         contentView.layoutSubtreeIfNeeded()
         window.displayIfNeeded()
