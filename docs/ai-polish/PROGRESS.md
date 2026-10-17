@@ -42,6 +42,7 @@ fields in the eval; whether Code tone should skip polish entirely (David's call)
 | [98](https://github.com/david53001/jvoice/actions/runs/39026141872) | `e1a7b9b` eval harness, logic section, docs, CI smoke step | green — swift-testing 545/545 executed, logic scripts incl. the AI Polish section, new `--settings-smoke` step: "OK — Settings built, laid out and drawn (700×588)" |
 
 | [99](https://github.com/david53001/jvoice/actions/runs/39026550700) | `c8b562c` docs only | red — `PasteManagerTests.failedPasteRestoresOriginalClipboard` (pre-existing: it uses the shared `NSPasteboard.general` with a fixed 600 ms wait under the parallel suite; the identical code was green in run 98). AI Polish's own stall fakes were changed to wait on a timer instead of blocking a test thread, so they can't add to such timing flakes |
+| [100](https://github.com/david53001/jvoice/actions/runs/39027435380) | `2634a37` review fixes | red twice: attempt 1 the test process aborted (signal 6, no test named — not reproduced); attempt 2 a REAL finding — `theDeadlineAlsoCoversABlockingKeychainRead` took 1.8 s instead of ~0.2 s, because the deadline timer was a `Task.sleep` and the blocking key read ran on a cooperative thread, so a busy pool made the timer late. Fixed next commit: GCD timer + the Keychain read on a GCD queue |
 
 Note: the base branch `feat/math-context` is red at its head ([run 95](https://github.com/david53001/jvoice/actions/runs/37328496182))
 on a timing-sensitive `verify-streaming.sh` assertion ("the chunk cut reused the speculative decode",
@@ -72,7 +73,9 @@ AI Polish code; it passed on run 97. If it shows up again, it is that flake, not
    refused by it and reset his settings).
 2. **The deadline is a continuation race, not a task group**, and it covers the Keychain read too:
    a task group waits for every child, so a transport (or a Keychain permission prompt) that
-   ignored cancellation could hold the paste past 3 s.
+   ignored cancellation could hold the paste past 3 s. Its timer is a GCD timer and the
+   synchronous Keychain read runs on a GCD queue, so a busy Swift cooperative pool can't delay it
+   (CI run 100 caught exactly that with a `Task.sleep` timer).
 3. **The key hint "••••abcd" is the Keychain item's `kSecAttrComment`**, so Settings can say "Key
    saved" by reading attributes only — the secret is read only for a dictation, Test Key or the eye.
 4. **`--thinking low` adds 2048 to `max_tokens`** (thinking spends tokens inside the budget; without

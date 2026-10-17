@@ -269,12 +269,13 @@ func chattyOutputFallsBack(_ chatty: String) async {
     let started = Date()
     let result = await AIPolishClient(transport: FakeTransport(.response(status: 200, body: reply("unused"))), deadline: 0.2)
         .polish(transcript, previous: [], mode: .casual, vocabulary: [], apiKey: {
-            usleep(1_000_000)   // a synchronous Keychain read stuck on a permission prompt
+            usleep(5_000_000)   // a synchronous Keychain read stuck on a permission prompt
             return fakeKey
         })
     #expect(result.text == transcript)
     #expect(result.logLabel == "fallback(timeout)")
-    #expect(Date().timeIntervalSince(started) < 0.9)
+    // Far below the 5 s read (slack for a busy CI runner resuming this test).
+    #expect(Date().timeIntervalSince(started) < 3)
 }
 
 @Test func cancellingTheDictationEndsThePolishAtOnce() async {

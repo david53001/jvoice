@@ -73,7 +73,12 @@ struct AIPolishClient: Sendable {
             timedOut: (.fallback(.timeout), nil),
             cancelled: (.fallback(.cancelled), nil)
         ) {
-            guard let key = apiKey(), !key.isEmpty else { return (.fallback(.noKey), nil) }
+            // The Keychain read is synchronous (and can sit on a permission prompt): do it on a GCD
+            // thread, never on one of Swift's few cooperative threads.
+            let key = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
+                DispatchQueue.global(qos: .userInitiated).async { continuation.resume(returning: apiKey()) }
+            }
+            guard let key, !key.isEmpty else { return (.fallback(.noKey), nil) }
             let body = AIPolishRequest.body(transcript: text, previous: previous, mode: mode,
                                             vocabulary: vocabulary, options: options)
             let request = AIPolishRequest.urlRequest(body: body, apiKey: key, timeout: deadline)
@@ -99,7 +104,8 @@ struct AIPolishClient: Sendable {
     /// Runs `operation`, but returns `timedOut` once `seconds` have passed and `cancelled` as soon as
     /// the calling task is cancelled — WITHOUT waiting for `operation` to notice (it is cancelled and
     /// left to wind down). A task group can't promise that: it waits for every child before it
-    /// returns, so one transport that ignores cancellation would hold the paste hostage.
+    /// returns, so one transport that ignores cancellation would hold the paste hostage. The timer is
+    /// a GCD timer, not a `Task.sleep`, so a busy cooperative thread pool can't make it late.
     static func withDeadline<T: Sendable>(_ seconds: TimeInterval, timedOut: T, cancelled: T,
                                           _ operation: @escaping @Sendable () async -> T) async -> T {
         let race = DeadlineRace<T>()
@@ -107,10 +113,9 @@ struct AIPolishClient: Sendable {
             await withCheckedContinuation { (continuation: CheckedContinuation<T, Never>) in
                 race.attach(continuation)
                 race.track(Task { race.finish(await operation()) })
-                race.track(Task {
-                    try? await Task.sleep(nanoseconds: UInt64(max(0, seconds) * 1_000_000_000))
-                    race.finish(timedOut)
-                })
+                let timer = DispatchWorkItem { race.finish(timedOut) }
+                race.track(timer)
+                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now() + max(0, seconds), execute: timer)
             }
         } onCancel: {
             race.finish(cancelled)
@@ -119,12 +124,13 @@ struct AIPolishClient: Sendable {
 }
 
 /// The first `finish` wins: it resumes the continuation (or holds the value until one is attached)
-/// and cancels the other tasks.
+/// and cancels the other tasks and the timer.
 private final class DeadlineRace<T: Sendable>: @unchecked Sendable {
     private let lock = NSLock()
     private var continuation: CheckedContinuation<T, Never>?
     private var result: T?
     private var tasks: [Task<Void, Never>] = []
+    private var timers: [DispatchWorkItem] = []
 
     func attach(_ continuation: CheckedContinuation<T, Never>) {
         lock.lock()
@@ -145,6 +151,14 @@ private final class DeadlineRace<T: Sendable>: @unchecked Sendable {
         if finished { task.cancel() }
     }
 
+    func track(_ timer: DispatchWorkItem) {
+        lock.lock()
+        let finished = result != nil
+        if !finished { timers.append(timer) }
+        lock.unlock()
+        if finished { timer.cancel() }
+    }
+
     func finish(_ value: T) {
         lock.lock()
         guard result == nil else {
@@ -155,9 +169,12 @@ private final class DeadlineRace<T: Sendable>: @unchecked Sendable {
         let continuation = self.continuation
         self.continuation = nil
         let tasks = self.tasks
+        let timers = self.timers
         self.tasks = []
+        self.timers = []
         lock.unlock()
         continuation?.resume(returning: value)
         tasks.forEach { $0.cancel() }
+        timers.forEach { $0.cancel() }
     }
 }
