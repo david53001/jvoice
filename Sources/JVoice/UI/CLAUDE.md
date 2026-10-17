@@ -70,10 +70,14 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   pending prewarm hide, so an early press takes the realized panel over.
 - `SettingsView.swift` / `SettingsWindow.swift` — the Settings window: **resizable since 2026-10-17** (drag
   edges/corners, double-click the title bar or the green button to fill the screen; opens at 700 × 560,
-  minimum 700 × 420). The window's real width picks the layout on every pass (`GeometryReader`, not
-  `ViewThatFits` — long transcript lines make every ideal width "too wide"): 2 columns up to a
-  1000-pt content width, 3 above it, content capped at 1400 pt and centred; `hosting.sizingOptions =
-  [.minSize]` so the SwiftUI ideal size never pins the window. `--ui-preview` adds `settings-wide-*` /
+  minimum 700 × 420). The cards sit in `MasonryColumns` (a `Layout`: each card, in order, goes into the
+  currently shortest column, so no column keeps a hole); the window's real width picks 2 columns, or 3
+  from a 1000-pt content width (`GeometryReader`, not `ViewThatFits` — long transcript lines make every
+  ideal width "too wide"); content capped at 1400 pt and centred; `hosting.sizingOptions = [.minSize]`
+  so the SwiftUI ideal size never pins the window. AI Polish is a normal card (stacked: switch, key,
+  balance). Title-bar double-click and the green button run `SettingsWindow.toggleFill` (fill the
+  visible screen ↔ back to the previous frame) — AppKit's own zoom never fired under the transparent
+  full-size-content title bar; the double-click honours `AppleActionOnDoubleClick` ("None"/"Minimize"). `--ui-preview` adds `settings-wide-*` /
   `settings-small-*` shots. Default layout: a 700-wide, 2-column layout of
   MacStats-style cards (`.caption2` semibold section labels, no dots) on a translucent `.sidebar`
   window material (controls on the left — Whisper Model, Processing, Voice Style, Language, App Modes,

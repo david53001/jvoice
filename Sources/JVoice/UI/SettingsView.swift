@@ -32,6 +32,43 @@ private struct SettingsSection<Content: View>: View {
     }
 }
 
+// MARK: - Masonry
+
+/// Cards in `columns` equal columns, each placed in the column that is shortest so far (in order), so
+/// the columns end up nearly the same height at any window width — no holes under a short column.
+/// Re-laid out on every pass, so a live window resize reflows instantly.
+private struct MasonryColumns: Layout {
+    var columns: Int
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 660
+        return CGSize(width: width, height: arrange(width: width, subviews: subviews).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let (origins, _, columnWidth) = arrange(width: bounds.width, subviews: subviews)
+        for (subview, origin) in zip(subviews, origins) {
+            subview.place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                          proposal: ProposedViewSize(width: columnWidth, height: nil))
+        }
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> (origins: [CGPoint], height: CGFloat, columnWidth: CGFloat) {
+        let count = max(1, columns)
+        let columnWidth = max(0, (width - spacing * CGFloat(count - 1)) / CGFloat(count))
+        var heights = Array(repeating: CGFloat(0), count: count)
+        var origins: [CGPoint] = []
+        for subview in subviews {
+            let column = heights.indices.min { heights[$0] < heights[$1] } ?? 0
+            origins.append(CGPoint(x: CGFloat(column) * (columnWidth + spacing), y: heights[column]))
+            let height = subview.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil)).height
+            heights[column] += height + spacing
+        }
+        return (origins, max(0, (heights.max() ?? 0) - spacing), columnWidth)
+    }
+}
+
 // MARK: - Appearance picker
 
 /// System / Light / Dark, as a native segmented control (SF Symbols, like Control Center's).
@@ -166,15 +203,21 @@ struct SettingsView: View {
                 // Stats — full width
                 statsSection
 
-                // The cards: two columns that stretch with the window, three once it's wide enough.
-                if contentWidth >= Self.threeColumnMinWidth {
-                    threeColumns(theme)
-                } else {
-                    twoColumns(theme)
+                // The cards, masonry-style: each goes into the column that is currently shortest, so no
+                // column is left with a hole whatever the width. Two columns, three once it's wide enough.
+                MasonryColumns(columns: contentWidth >= Self.threeColumnMinWidth ? 3 : 2, spacing: 12) {
+                    modelSection
+                    recentTranscriptsSection
+                    processingSection
+                    customWordsSection(theme)
+                    voiceStyleSection
+                    languageSection
+                    appModesSection(theme)
+                    shortcutSection(theme)
+                    aiPolishSection(theme)
+                    toursSection
+                    appearanceSection
                 }
-
-                // AI Polish — full width at the very bottom (it is opt-in, paid, and the widest card).
-                aiPolishSection(theme)
 
                 footer
             }
@@ -195,57 +238,6 @@ struct SettingsView: View {
     /// Below this the three columns would be narrower than the two-column cards were designed for.
     static let threeColumnMinWidth: CGFloat = 1000
     static let maxContentWidth: CGFloat = 1400
-
-    /// Controls (left) · your data (right) — the original layout, columns stretch with the window.
-    private func twoColumns(_ theme: Theme) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 12) {
-                modelSection
-                processingSection
-                voiceStyleSection
-                languageSection
-                appModesSection(theme)
-                shortcutSection(theme)
-            }
-            .frame(maxWidth: .infinity, alignment: .top)
-
-            VStack(spacing: 12) {
-                recentTranscriptsSection
-                customWordsSection(theme)
-                // The right column is the shorter one, so these cards cost no height.
-                toursSection
-                appearanceSection
-            }
-            .frame(maxWidth: .infinity, alignment: .top)
-        }
-    }
-
-    /// Wide windows: the controls split over two columns, your data stays on the right.
-    private func threeColumns(_ theme: Theme) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            VStack(spacing: 12) {
-                modelSection
-                processingSection
-                voiceStyleSection
-            }
-            .frame(maxWidth: .infinity, alignment: .top)
-
-            VStack(spacing: 12) {
-                languageSection
-                appModesSection(theme)
-                shortcutSection(theme)
-            }
-            .frame(maxWidth: .infinity, alignment: .top)
-
-            VStack(spacing: 12) {
-                recentTranscriptsSection
-                customWordsSection(theme)
-                toursSection
-                appearanceSection
-            }
-            .frame(maxWidth: .infinity, alignment: .top)
-        }
-    }
 
     // MARK: Sections
 
@@ -334,13 +326,11 @@ struct SettingsView: View {
     /// Save clears the field.
     private func aiPolishSection(_ theme: Theme) -> some View {
         SettingsSection("AI Polish") {
-            HStack(alignment: .top, spacing: 16) {
-                // The key row (hint + three buttons) needs ~350 pt, so the balance side is fixed.
+            // A normal card in the masonry columns: switch + key on top, the balance under it.
+            VStack(alignment: .leading, spacing: 10) {
                 aiPolishKeyColumn
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 Divider()
                 polishBalanceColumn(theme)
-                    .frame(width: 240, alignment: .topLeading)
             }
         }
         .onAppear {
@@ -383,9 +373,10 @@ struct SettingsView: View {
             HStack(spacing: 6) {
                 Group {
                     if revealKey {
-                        TextField("sk-ant-…", text: draft)
+                        TextField(coordinator.apiKeyHint ?? "sk-ant-…", text: draft)
                     } else {
-                        SecureField("sk-ant-…", text: draft)
+                        // A saved key shows as dots + its last 4 — never the key itself.
+                        SecureField(coordinator.apiKeyHint ?? "sk-ant-…", text: draft)
                     }
                 }
                 .inputFieldStyle()
@@ -405,13 +396,9 @@ struct SettingsView: View {
                 .accessibilityLabel(revealKey ? "Hide key" : "Show key")
             }
 
+            // The buttons get their own row and the status goes under them, so the card works at
+            // any column width (the hint + three buttons on one line needed ~350 pt).
             HStack(spacing: 6) {
-                Text(coordinator.apiKeyHint.map { "Key saved \($0)" } ?? "No key saved")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .fixedSize()
-                Spacer(minLength: 0)
                 Button("Save") { saveKey() }
                     .buttonStyle(SubtleButtonStyle())
                     .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draftIsSavedKey)
@@ -422,7 +409,11 @@ struct SettingsView: View {
                 Button("Remove Key", role: .destructive) { removeKey() }
                     .buttonStyle(SubtleButtonStyle(destructive: true))
                     .disabled(coordinator.apiKeyHint == nil)
+                Spacer(minLength: 0)
             }
+            Text(coordinator.apiKeyHint == nil ? "No key saved" : "Key saved")
+                .font(.caption)
+                .foregroundStyle(.secondary)
 
             if let keyStatus {
                 Text(keyStatus)

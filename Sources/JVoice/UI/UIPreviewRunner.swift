@@ -86,6 +86,7 @@ enum UIPreviewRunner {
             let designed = settings.frame
             let area = settings.screen?.visibleFrame ?? designed
             for (shot, size) in [("wide", NSSize(width: min(1240, area.width - 40), height: min(860, area.height - 40))),
+                                 ("fill", NSSize(width: area.width - 40, height: area.height - 40)),
                                  ("small", settings.minSize)] {
                 // Inside the visible screen, top-left, so nothing is cut off.
                 settings.setFrame(NSRect(x: area.minX + 20, y: area.maxY - size.height - 20,
