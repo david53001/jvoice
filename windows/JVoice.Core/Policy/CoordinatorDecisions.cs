@@ -64,6 +64,12 @@ public static class CoordinatorDecisions
             : $"Recording was interrupted — {deviceName.Trim()} stopped.";
 
     /// Ports scheduleHUDReset default delays.
+    /// WINDOWS-HANDOFF §9.5: when JVoice.exe is launched while a copy already runs, does the new launch ask
+    /// the running copy to open Settings? Only a launch by the user: never the logon (--autostart) entry
+    /// stepping aside, never JVoice's own elevated relaunch waiting for the handoff.
+    public static bool SecondLaunchOpensSettings(bool isAutostart, bool isElevatedRelaunch) =>
+        !isAutostart && !isElevatedRelaunch;
+
     public static int HudResetDelayMs(HudStateKind kind) => kind switch
     {
         HudStateKind.Error => 3000,

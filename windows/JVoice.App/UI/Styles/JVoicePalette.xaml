@@ -62,8 +62,9 @@
     <!-- ===== Card (a section of Settings) — implicit style =====
          MacStats inset card: a .caption2 semibold secondary label over the content, on a 4 % tint with
          an 8 % hairline, radius 10. No dot, no divider. -->
+    <!-- Cards sit in the Settings MasonryPanel, which owns the spacing between them (12): no own margin. -->
     <Style TargetType="ui:SettingsCard">
-        <Setter Property="Margin" Value="0,0,0,10" />
+        <Setter Property="Margin" Value="0" />
         <Setter Property="Focusable" Value="False" />
         <Setter Property="Template">
             <Setter.Value>
@@ -72,12 +73,22 @@
                             BorderBrush="{DynamicResource Card.Hairline}" BorderThickness="1"
                             Padding="12" SnapsToDevicePixels="True">
                         <StackPanel>
-                            <TextBlock Text="{TemplateBinding HeaderText}" FontSize="11" FontWeight="SemiBold"
+                            <TextBlock x:Name="Header" Text="{TemplateBinding HeaderText}" FontSize="11" FontWeight="SemiBold"
                                        Foreground="{DynamicResource Text.Secondary}" Margin="0,0,0,8"
                                        AutomationProperties.HeadingLevel="Level2" />
+                            <ui:ClaudeGlowText x:Name="GlowHeader" Text="{TemplateBinding HeaderText}" Subtle="True"
+                                               FontSize="11" FontWeight="SemiBold" BaseBrush="{DynamicResource Text.Secondary}"
+                                               HorizontalAlignment="Left" Margin="0,0,0,8" Visibility="Collapsed"
+                                               AutomationProperties.HeadingLevel="Level2" />
                             <ContentPresenter />
                         </StackPanel>
                     </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="GlowHeader" Value="True">
+                            <Setter TargetName="Header" Property="Visibility" Value="Collapsed" />
+                            <Setter TargetName="GlowHeader" Property="Visibility" Value="Visible" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
                 </ControlTemplate>
             </Setter.Value>
         </Setter>

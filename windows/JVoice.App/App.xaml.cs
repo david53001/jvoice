@@ -85,7 +85,13 @@ public partial class App : Application
             // (handoff); a normal launch keeps the original single-shot "already running → exit".
             int acquireTimeoutMs = Elevation.IsRelaunch(args) ? 5000 : 0;
             if (!SingleInstance.TryAcquire(acquireTimeoutMs))
+            {
+                // JVoice is already running: a launch by the user (not the logon entry, not our own
+                // elevated relaunch) asks it to open its real Settings window (WINDOWS-HANDOFF §9.5).
+                if (CoordinatorDecisions.SecondLaunchOpensSettings(isAutostart, Elevation.IsRelaunch(args)))
+                    ShowSettingsSignal.Signal();
                 return 0;
+            }
         }
 
         if (!preview)
@@ -212,6 +218,9 @@ public partial class App : Application
         _coordinator.Tray = _tray;
         _tray.RebuildMenu();
 
+        // 3b) A second launch of JVoice.exe opens the real Settings here (§9.5).
+        ShowSettingsSignal.Listen(() => Dispatcher.BeginInvoke(() => _coordinator.ShowSettings()));
+
         // 4) Start the pipeline (sweep orphans, hooks, hotkey, prewarm).
         _coordinator.Start();
         _coordinator.BootstrapLaunchAtLogin();
@@ -267,6 +276,22 @@ public partial class App : Application
         var aiPolishStates = new[] { "aipolish-nokey", "aipolish-zero", "aipolish-on", "aipolish-revealed", "aipolish-usedup" };
         var known = new[] { "checking", "available", "downloading", "uptodate", "error", "light", "dark" }.Concat(aiPolishStates).ToArray();
         var rest = idx >= 0 ? args.Skip(idx + 1).ToArray() : Array.Empty<string>();
+        // `--size WxH` renders the window's client area at that size (the visible viewport, scrolled to the
+        // top, exactly what a window of that size shows); `--size Wxfull` renders the whole content at that
+        // width. Default: the designed width (SettingsWindow.DesignedWidth) at full height.
+        double renderWidth = UI.SettingsWindow.DesignedWidth, renderHeight = double.PositiveInfinity;
+        int sizeIdx = Array.FindIndex(rest, a => string.Equals(a, "--size", StringComparison.OrdinalIgnoreCase));
+        if (sizeIdx >= 0 && sizeIdx + 1 < rest.Length)
+        {
+            var parts = rest[sizeIdx + 1].ToLowerInvariant().Split('x');
+            if (parts.Length == 2 && double.TryParse(parts[0], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var w))
+            {
+                renderWidth = w;
+                if (parts[1] != "full" && double.TryParse(parts[1], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var h))
+                    renderHeight = h;
+            }
+            rest = rest.Where((_, i) => i != sizeIdx && i != sizeIdx + 1).ToArray();
+        }
         string? updateState = rest.FirstOrDefault(a => known.Contains(a.ToLowerInvariant()) && !aiPolishStates.Contains(a.ToLowerInvariant())
             && a.ToLowerInvariant() is not ("light" or "dark"));
         string? aiPolishState = rest.Select(a => a.ToLowerInvariant()).FirstOrDefault(aiPolishStates.Contains);
@@ -296,20 +321,28 @@ public partial class App : Application
             view.PreviewKeyField("test-key-not-real-0000", revealed: aiPolishState == "aipolish-revealed");
 
         const double scale = 2.0;
-        // The view declares a fixed Width but sizes its Height to content (SettingsView.xaml has
-        // no Height — the live SizeToContent window does the same). Measure at that width with
-        // unbounded height to get the natural size, then render exactly that, so this harness
-        // tracks the panel's real on-screen size and never goes stale when the panel is resized.
-        //
-        // Two full layout passes are REQUIRED: the panel's outer ScrollViewer settles its
-        // Auto scrollbar / content extent only after a Measure→Arrange→UpdateLayout cycle, so
-        // DesiredSize.Height read straight after the first Measure is under-reported (it would
-        // clip the tallest column). Re-measure after the first cycle to get the settled height.
-        view.Measure(new Size(view.Width, double.PositiveInfinity));
-        view.Arrange(new Rect(view.DesiredSize));
-        view.UpdateLayout();
-        view.Measure(new Size(view.Width, double.PositiveInfinity));
-        var size = new Size(view.Width, view.DesiredSize.Height);
+        // The view has no fixed size (the window is resizable): lay it out at the requested client size.
+        // Full height: measure at that width with unbounded height to get the natural size, then render
+        // exactly that. Two full layout passes are REQUIRED either way: the outer ScrollViewer settles its
+        // Auto scrollbar / content extent only after a Measure→Arrange→UpdateLayout cycle, so a height read
+        // straight after the first Measure is under-reported (it would clip the tallest column).
+        Size size;
+        if (double.IsInfinity(renderHeight))
+        {
+            view.Measure(new Size(renderWidth, double.PositiveInfinity));
+            view.Arrange(new Rect(new Size(renderWidth, view.DesiredSize.Height)));
+            view.UpdateLayout();
+            view.Measure(new Size(renderWidth, double.PositiveInfinity));
+            size = new Size(renderWidth, view.DesiredSize.Height);
+        }
+        else
+        {
+            size = new Size(renderWidth, renderHeight);
+            view.Measure(size);
+            view.Arrange(new Rect(size));
+            view.UpdateLayout();
+            view.Measure(size);
+        }
         view.Arrange(new Rect(size));
         view.UpdateLayout();
 

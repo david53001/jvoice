@@ -1,6 +1,7 @@
 <UserControl x:Class="JVoice.App.UI.HudView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:ui="clr-namespace:JVoice.App.UI"
              Background="Transparent"
              UseLayoutRounding="True" SnapsToDevicePixels="True"
              TextOptions.TextFormattingMode="Ideal"
@@ -96,29 +97,14 @@
 
                     <!-- AI Polish (opt-in): "AI refining" while Claude cleans the transcript. The one coloured
                          element of the pill: a Claude-orange (#D97757) highlight sweeps through the letters
-                         (1.6 s period, driven by the render loop in code) over a soft orange glow — the Mac's
-                         RefiningPill. Same 240-wide minimum as the transcribing row it replaces. -->
+                         (1.6 s) over a breathing orange glow — the Mac's RefiningPill. ClaudeGlowText is the
+                         ONE shared control (the AI Polish card title uses it too, subtler). Same 240-wide minimum as the transcribing row it replaces. -->
                     <Grid x:Name="RefiningPanel" Visibility="Collapsed" Opacity="0"
                           HorizontalAlignment="Center" VerticalAlignment="Center" Margin="24,0">
-                        <TextBlock x:Name="RefiningText" Text="AI refining" FontFamily="Segoe UI Variable Text, Segoe UI"
-                                   FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center"
-                                   AutomationProperties.Name="AI refining">
-                            <TextBlock.Foreground>
-                                <LinearGradientBrush StartPoint="0,0.5" EndPoint="1,0.5" SpreadMethod="Pad">
-                                    <LinearGradientBrush.RelativeTransform>
-                                        <TranslateTransform x:Name="RefiningSweep" X="0" />
-                                    </LinearGradientBrush.RelativeTransform>
-                                    <GradientStop Color="#FFFFFFFF" Offset="0" />
-                                    <GradientStop Color="#FFFFFFFF" Offset="0.32" />
-                                    <GradientStop Color="#FFD97757" Offset="0.5" />
-                                    <GradientStop Color="#FFFFFFFF" Offset="0.68" />
-                                    <GradientStop Color="#FFFFFFFF" Offset="1" />
-                                </LinearGradientBrush>
-                            </TextBlock.Foreground>
-                            <TextBlock.Effect>
-                                <DropShadowEffect x:Name="RefiningGlow" Color="#D97757" BlurRadius="14" ShadowDepth="0" Opacity="0.55" />
-                            </TextBlock.Effect>
-                        </TextBlock>
+                        <ui:ClaudeGlowText x:Name="RefiningText" Text="AI refining" FontFamily="Segoe UI Variable Text, Segoe UI"
+                                           FontSize="15" FontWeight="SemiBold" BaseBrush="White"
+                                           VerticalAlignment="Center" HorizontalAlignment="Center"
+                                           AutomationProperties.Name="AI refining" />
                     </Grid>
 
                     <!-- Model work (preparing / downloading): blue icon · title · detail · progress -->

@@ -21,6 +21,17 @@ public sealed class SettingsCard : ContentControl
         set => SetValue(HeaderTextProperty, value);
     }
 
+    public static readonly DependencyProperty GlowHeaderProperty =
+        DependencyProperty.Register(nameof(GlowHeader), typeof(bool), typeof(SettingsCard), new PropertyMetadata(false));
+
+    /// The title gets the subtle Claude-orange glow sweep (the AI Polish card — WINDOWS-HANDOFF §9.4):
+    /// the template swaps its TextBlock for a ClaudeGlowText in Subtle strength.
+    public bool GlowHeader
+    {
+        get => (bool)GetValue(GlowHeaderProperty);
+        set => SetValue(GlowHeaderProperty, value);
+    }
+
     private static object CoerceUpper(DependencyObject d, object value)
         => ((string)value).ToUpperInvariant();
 }

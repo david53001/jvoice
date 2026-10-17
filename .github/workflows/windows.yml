@@ -12,7 +12,8 @@ on:
       - "windows/**"
       - ".github/workflows/windows.yml"
 
-# No special permissions — this workflow never writes to the repo, never releases.
+# No special permissions — this workflow never releases, and writes to the repo only in the opt-in
+# ui-snapshot job below (feat/ai-polish-windows + "[ui-snapshot]" in the commit message).
 permissions:
   contents: read
 
@@ -106,6 +107,54 @@ jobs:
           name: windows-ui-preview
           path: "${{ github.workspace }}/ui-preview"
           if-no-files-found: warn
+
+  # UI snapshots IN THE REPO, for reviewing the UI from an environment that can't download artifacts
+  # (the cloud Claude sessions: their proxy blocks the artifact blob host). Runs ONLY for a push to
+  # feat/ai-polish-windows whose commit message contains "[ui-snapshot]": takes the windows-ui-preview
+  # PNGs, scales them to 1x (a quarter of the bytes), and commits them to
+  # docs/ai-polish/windows-ui/ci/ on that same branch. Its commit touches only docs/, so it can't
+  # re-trigger this workflow (paths filter). Every other run stays read-only.
+  ui-snapshot:
+    name: commit UI preview PNGs (feat/ai-polish-windows, [ui-snapshot] only)
+    needs: build-test
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/feat/ai-polish-windows' && contains(github.event.head_commit.message, '[ui-snapshot]')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/ai-polish-windows
+      - uses: actions/download-artifact@v4
+        with:
+          name: windows-ui-preview
+          path: ${{ github.workspace }}/ui-preview
+      - name: Scale to 1x and commit
+        shell: pwsh
+        run: |
+          Add-Type -AssemblyName System.Drawing
+          $dest = 'docs/ai-polish/windows-ui/ci'
+          if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+          New-Item -ItemType Directory -Force $dest | Out-Null
+          Get-ChildItem "${{ github.workspace }}/ui-preview" -Filter *.png | ForEach-Object {
+            $img = [System.Drawing.Image]::FromFile($_.FullName)
+            # Settings renders are 2x, HUD renders 3x: bring both to roughly 1x.
+            $div = if ($_.Name -like 'hud-*') { 3 } else { 2 }
+            $w = [int]($img.Width / $div); $h = [int]($img.Height / $div)
+            $bmp = New-Object System.Drawing.Bitmap $w, $h
+            $g = [System.Drawing.Graphics]::FromImage($bmp)
+            $g.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+            $g.DrawImage($img, 0, 0, $w, $h)
+            $bmp.Save((Join-Path $dest $_.Name), [System.Drawing.Imaging.ImageFormat]::Png)
+            $g.Dispose(); $bmp.Dispose(); $img.Dispose()
+          }
+          Copy-Item "${{ github.workspace }}/ui-preview/_preview-log.txt" $dest -ErrorAction SilentlyContinue
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add $dest
+          if (-not (git status --porcelain $dest)) { Write-Host 'No change in the snapshots.'; exit 0 }
+          git commit -m "UI preview snapshots for ${{ github.sha }} (CI)"
+          git push origin HEAD:feat/ai-polish-windows
 
   # OPTIONAL, OFF BY DEFAULT: produce the CPU build as a CI artifact for inspection.
   # It does NOT create a Release, does NOT push, does NOT run on PRs/forks.

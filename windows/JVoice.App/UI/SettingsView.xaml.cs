@@ -29,6 +29,7 @@ public partial class SettingsView : UserControl
         {
             if (DataContext is VoiceCoordinator vm)
                 InfoHost.Content = new JVoice.App.Tours.InfoButton(JVoice.Core.Tours.TourId.Settings, () => WelcomeWindow.Shortcuts(vm));
+            ShowKeyStatus(_keyMessage);
         };
         Loaded += (_, _) =>
         {
@@ -69,6 +70,7 @@ public partial class SettingsView : UserControl
                 if (e.PropertyName == nameof(VoiceCoordinator.Hotkey)) Recorder.Chord = Vm.Hotkey;
                 else if (e.PropertyName == nameof(VoiceCoordinator.UndoHotkey)) SyncUndoRecorder();
                 else if (e.PropertyName == nameof(VoiceCoordinator.HasApiKey)) UpdateKeyControls();
+                else if (e.PropertyName == nameof(VoiceCoordinator.ApiKeyStatusText) && _keyMessage is null) ShowKeyStatus(null);
             };
         };
     }
@@ -275,6 +277,15 @@ public partial class SettingsView : UserControl
     private bool _syncingKeyFields;
     private bool _testingKey;
 
+    private string? _keyMessage;   // the last Save / Test / Remove message; null = "Key saved" / "No key saved"
+
+    /// The status line under the key buttons: the last message, else whether a key is saved.
+    private void ShowKeyStatus(string? message)
+    {
+        _keyMessage = message;
+        KeyStatus.Text = message ?? (DataContext as VoiceCoordinator)?.ApiKeyStatusText ?? "";
+    }
+
     private string KeyDraft => _revealKey ? KeyRevealed.Text : KeyMasked.Password;
 
     private void SetKeyDraft(string text)
@@ -294,7 +305,7 @@ public partial class SettingsView : UserControl
     {
         if (_syncingKeyFields) return;
         _draftIsSavedKey = false;
-        ShowNotice(KeyStatus, null);
+        ShowKeyStatus(null);
         UpdateKeyControls();
     }
 
@@ -355,9 +366,9 @@ public partial class SettingsView : UserControl
         {
             _revealKey = false;
             SetKeyDraft("");
-            ShowNotice(KeyStatus, "Saved on this PC, encrypted for your Windows account.");
+            ShowKeyStatus("Saved on this PC, encrypted for your Windows account.");
         }
-        else ShowNotice(KeyStatus, "Couldn't save the key.");
+        else ShowKeyStatus("Couldn't save the key.");
     }
 
     private void OnRemoveKey(object sender, RoutedEventArgs e)
@@ -366,21 +377,21 @@ public partial class SettingsView : UserControl
         _revealKey = false;
         _draftIsSavedKey = false;
         SetKeyDraft("");
-        ShowNotice(KeyStatus, "Key removed. AI Polish is off.");
+        ShowKeyStatus("Key removed. AI Polish is off.");
     }
 
     private async void OnTestKey(object sender, RoutedEventArgs e)
     {
         string candidate = _draftIsSavedKey ? "" : KeyDraft;
         _testingKey = true;
-        ShowNotice(KeyStatus, null);
+        ShowKeyStatus(null);
         UpdateKeyControls();
         string message;
         try { message = await Vm.TestApiKeyAsync(candidate); }
         catch (Exception) { message = "Couldn't reach Anthropic. Check your internet connection."; }
         _testingKey = false;
         UpdateKeyControls();
-        ShowNotice(KeyStatus, message);
+        ShowKeyStatus(message);
     }
 
     /// "5", "$5", "2.50" or "2,50" (either decimal mark, no thousands separators); null otherwise.

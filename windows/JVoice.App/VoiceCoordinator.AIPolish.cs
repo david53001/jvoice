@@ -60,7 +60,12 @@ public sealed partial class VoiceCoordinator
 
     public bool CanToggleAiPolish => HasApiKey && _polishBalance > 0;
     public bool HasApiKey => _apiKeyHint is not null;
-    public string ApiKeyStatusText => _apiKeyHint is { } hint ? $"Key saved {hint}" : "No key saved";
+    /// "Key saved" / "No key saved" — the hint itself sits in the empty key field (WINDOWS-HANDOFF §2.1).
+    public string ApiKeyStatusText => _apiKeyHint is not null ? "Key saved" : "No key saved";
+
+    /// The empty key field's placeholder: the saved key's hint ("••••abcd" — dots + last 4, never the
+    /// key), or the key format when none is saved.
+    public string ApiKeyPlaceholder => _apiKeyHint ?? "sk-ant-\u2026";
 
     /// The caption under the switch, or null when it can be used.
     public string? AiPolishCaption =>
@@ -85,7 +90,7 @@ public sealed partial class VoiceCoordinator
         foreach (var name in new[]
                  {
                      nameof(AiPolish), nameof(AiPolishSwitch), nameof(CanToggleAiPolish), nameof(HasApiKey),
-                     nameof(ApiKeyStatusText), nameof(AiPolishCaption), nameof(HasAiPolishCaption), nameof(PolishBalance),
+                     nameof(ApiKeyStatusText), nameof(ApiKeyPlaceholder), nameof(AiPolishCaption), nameof(HasAiPolishCaption), nameof(PolishBalance),
                      nameof(PolishBalanceText), nameof(PolishFraction), nameof(PolishUsedUp), nameof(CanRemoveBalance),
                      nameof(PolishMonthText), nameof(PolishAllTimeText),
                  })

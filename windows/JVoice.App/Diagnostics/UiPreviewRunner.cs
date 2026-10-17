@@ -37,6 +37,19 @@ internal static class UiPreviewRunner
             ("welcome-question-light", new[] { "--welcome-render", P("welcome-question-light"), "allset", "question", "light" }),
             ("tour-tags-dark", new[] { "--tour-render", P("tour-tags-dark"), "dark" }),
             ("tour-tags-light", new[] { "--tour-render", P("tour-tags-light"), "light" }),
+            // The resizable window (WINDOWS-HANDOFF §9.1/9.7): the masonry layout at its sizes, both themes.
+            // wide = 4 columns at full height; fill = maximized on a 1920x1080 screen (content capped at
+            // 1440 and centred) and on David's 1600x1080 desktop; small = the minimum window (700x420, the
+            // visible viewport) plus the same 2-column width at full height to check for holes.
+            ("settings-wide-dark", new[] { "--settings-render", P("settings-wide-dark"), "--size", "1400xfull", "dark" }),
+            ("settings-wide-light", new[] { "--settings-render", P("settings-wide-light"), "--size", "1400xfull", "light" }),
+            ("settings-fill-dark", new[] { "--settings-render", P("settings-fill-dark"), "--size", "1920x1009", "dark" }),
+            ("settings-fill-light", new[] { "--settings-render", P("settings-fill-light"), "--size", "1920x1009", "light" }),
+            ("settings-fill1600-dark", new[] { "--settings-render", P("settings-fill1600-dark"), "--size", "1600x1009", "dark" }),
+            ("settings-small-dark", new[] { "--settings-render", P("settings-small-dark"), "--size", "684x381", "dark" }),
+            ("settings-small-light", new[] { "--settings-render", P("settings-small-light"), "--size", "684x381", "light" }),
+            ("settings-small-full-dark", new[] { "--settings-render", P("settings-small-full-dark"), "--size", "684xfull", "dark" }),
+            ("settings-small-full-light", new[] { "--settings-render", P("settings-small-full-light"), "--size", "684xfull", "light" }),
             // AI Polish card states (staged in memory; the key field only ever shows a placeholder).
             ("settings-aipolish-nokey", new[] { "--settings-render", P("settings-aipolish-nokey"), "aipolish-nokey", "dark" }),
             ("settings-aipolish-zero", new[] { "--settings-render", P("settings-aipolish-zero"), "aipolish-zero", "dark" }),
