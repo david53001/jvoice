@@ -237,7 +237,9 @@ Task {
         expect(events.contains("started"), "speculation started (1.5 s pending, no cut candidate yet)")
         let more = wavSegments([(0.5, 0.0)]).dropFirst(44) // more silence → a cut candidate appears
         let h = try FileHandle(forWritingTo: url); try h.seekToEnd(); try h.write(contentsOf: more); try h.close()
-        try await Task.sleep(nanoseconds: 120_000_000)
+        // Wait for the cut (bounded) instead of a fixed 120 ms: on a loaded CI runner the poll
+        // that sees the appended silence could land after a fixed sleep (red on the base branch).
+        for _ in 0..<100 where !events.contains("reuses") { try await Task.sleep(nanoseconds: 20_000_000) }
         expect(events.contains("reuses"), "the chunk cut reused the speculative decode")
         let r = await s.finish()
         expect(r == "p", "one piece, from the single decode")
