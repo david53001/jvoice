@@ -77,7 +77,7 @@ public class CoordinatorDecisionsTests
             int ms = CoordinatorDecisions.HudResetDelayMs(k);
             Assert.True(ms is 1000 or 3000);
             bool busy = k is HudStateKind.Recording or HudStateKind.PreparingModel
-                or HudStateKind.DownloadingModel or HudStateKind.Transcribing;
+                or HudStateKind.DownloadingModel or HudStateKind.Transcribing or HudStateKind.Refining;
             Assert.Equal(busy, tray != TrayIconActivity.Idle);
         }
     }

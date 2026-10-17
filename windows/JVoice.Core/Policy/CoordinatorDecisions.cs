@@ -51,7 +51,7 @@ public static class CoordinatorDecisions
     {
         HudStateKind.Recording => TrayIconActivity.Recording,
         HudStateKind.PreparingModel or HudStateKind.DownloadingModel or HudStateKind.Transcribing
-            => TrayIconActivity.Transcribing,
+            or HudStateKind.Refining => TrayIconActivity.Transcribing,
         _ => TrayIconActivity.Idle, // Idle, Done, Error
     };
 

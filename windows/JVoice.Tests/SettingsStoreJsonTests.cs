@@ -131,7 +131,7 @@ public class SettingsStoreJsonTests
         using var doc = JsonDocument.Parse(SettingsStateJson.Serialize(SettingsState.Default));
         var keys = doc.RootElement.EnumerateObject().Select(p => p.Name).OrderBy(n => n).ToArray();
         Assert.Equal(
-            new[] { "appAwareModes", "appearance", "appModeRules", "checkForUpdates", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "inputDeviceId", "inputDeviceName", "language", "mathNotation", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "uiOpacity", "undoHotkey" },
+            new[] { "aiPolish", "appAwareModes", "appearance", "appModeRules", "checkForUpdates", "copyToClipboardOnly", "corrections", "customWords", "developerTerms", "gameMode", "hotkey", "inputDeviceId", "inputDeviceName", "language", "mathNotation", "mode", "model", "removeFillerWords", "schemaVersion", "translateToEnglish", "uiOpacity", "undoHotkey" },
             keys);
     }
 

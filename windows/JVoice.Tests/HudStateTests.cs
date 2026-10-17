@@ -13,6 +13,7 @@ public class HudStateTests
         HudStateKind.PreparingModel => HudState.PreparingModel,
         HudStateKind.DownloadingModel => HudState.DownloadingModel(0.5),
         HudStateKind.Transcribing => HudState.Transcribing,
+        HudStateKind.Refining => HudState.Refining,
         HudStateKind.Done => HudState.Done("x"),
         HudStateKind.Copied => HudState.Copied("x"),
         HudStateKind.Error => HudState.Error("e"),

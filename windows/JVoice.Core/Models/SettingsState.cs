@@ -51,7 +51,12 @@ public sealed record SettingsState(
     // System / Light / Dark; System follows Windows' app mode.
     AppAppearance Appearance = AppAppearance.System,
     // Settings → Appearance → Opacity, 0…1 (UiOpacity), default 0.5.
-    double UiOpacity = 0.5)
+    double UiOpacity = 0.5,
+    // ── AI Polish (opt-in, bring your own Anthropic key) — a NEW key with the schema left at v6,
+    // like `appearance`, so an older build still reads the file and ignores it (the Mac did the
+    // same). OFF by default: nothing is ever sent to Anthropic until the user turns it on, saves a
+    // key and adds a balance. The key itself NEVER lives here (see ApiKeyStore). ──
+    bool AiPolish = false)
 {
     public const int CurrentSchemaVersion = 6;
 
@@ -91,5 +96,6 @@ public sealed record SettingsState(
         // Spoken-mathematics notation ON by default (v6) — opt-out, like DeveloperTerms.
         MathNotation: true,
         Appearance: AppAppearance.System,
-        UiOpacity: JVoice.Core.UiOpacity.Default);
+        UiOpacity: JVoice.Core.UiOpacity.Default,
+        AiPolish: false);
 }

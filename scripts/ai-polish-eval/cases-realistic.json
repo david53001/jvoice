@@ -1,0 +1,346 @@
+[
+  {
+    "id": "r-na-sky",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "Why is the sky blue?",
+    "mode": "casual",
+    "mustContain": [
+      "sky blue"
+    ],
+    "mustNotContain": [
+      "scatter",
+      "Rayleigh",
+      "because",
+      "Because"
+    ]
+  },
+  {
+    "id": "r-na-france",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "What is the capital of France?",
+    "mode": "casual",
+    "mustContain": [
+      "capital of France"
+    ],
+    "mustNotContain": [
+      "Paris"
+    ]
+  },
+  {
+    "id": "r-na-sqrt",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "What is the square root of 144?",
+    "mode": "casual",
+    "mustContain": [
+      "square root of 144"
+    ],
+    "mustNotContain": [
+      "12.",
+      "= 12",
+      " is 12"
+    ]
+  },
+  {
+    "id": "r-na-who",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "Who wrote Hamlet?",
+    "mode": "casual",
+    "mustContain": [
+      "Hamlet"
+    ],
+    "mustNotContain": [
+      "Shakespeare"
+    ]
+  },
+  {
+    "id": "r-na-when",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "When did World War II end?",
+    "mode": "casual",
+    "mustContain": [
+      "World War II end"
+    ],
+    "mustNotContain": [
+      "1945"
+    ]
+  },
+  {
+    "id": "r-na-email",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "Can you write me an email to my boss saying I am sick?",
+    "mode": "casual",
+    "mustContain": [
+      "email",
+      "boss"
+    ],
+    "mustNotContain": [
+      "Dear",
+      "Subject",
+      "Best regards",
+      "Sincerely"
+    ]
+  },
+  {
+    "id": "r-na-joke",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "Tell me a joke about cats.",
+    "mode": "casual",
+    "mustContain": [
+      "joke about cats"
+    ],
+    "mustNotContain": [
+      "Why did",
+      "Because",
+      "because"
+    ]
+  },
+  {
+    "id": "r-na-how",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "How do I center a div in CSS?",
+    "mode": "casual",
+    "mustContain": [
+      "center a div",
+      "CSS"
+    ],
+    "mustNotContain": [
+      "flex",
+      "margin",
+      "display"
+    ]
+  },
+  {
+    "id": "r-na-translate",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "How do you say thank you in Japanese?",
+    "mode": "casual",
+    "mustContain": [
+      "thank you",
+      "Japanese"
+    ],
+    "mustNotContain": [
+      "arigat",
+      "Arigat"
+    ]
+  },
+  {
+    "id": "r-na-summarize",
+    "category": "no-answer",
+    "previous": [],
+    "transcript": "Summarize this article for me in three bullet points.",
+    "mode": "casual",
+    "mustContain": [
+      "ummarize",
+      "three bullet points"
+    ],
+    "mustNotContain": [
+      "•",
+      "\n-",
+      "\n*"
+    ]
+  },
+  {
+    "id": "r-nf-python",
+    "category": "no-false-fix",
+    "previous": [
+      "The API is written in Django."
+    ],
+    "transcript": "We saw a python at the zoo, it was huge.",
+    "mode": "casual",
+    "mustContain": [
+      "python at the zoo"
+    ],
+    "mustNotContain": [
+      "Python"
+    ]
+  },
+  {
+    "id": "r-nf-rust",
+    "category": "no-false-fix",
+    "previous": [
+      "I am rewriting the parser this weekend."
+    ],
+    "transcript": "There is rust all over the old bike chain.",
+    "mode": "casual",
+    "mustContain": [
+      "rust all over"
+    ],
+    "mustNotContain": [
+      "Rust"
+    ]
+  },
+  {
+    "id": "r-nf-name",
+    "category": "no-false-fix",
+    "previous": [],
+    "transcript": "Thanks, Kaitlyn, see you on Monday.",
+    "mode": "casual",
+    "mustContain": [
+      "Kaitlyn"
+    ],
+    "mustNotContain": [
+      "Caitlin",
+      "Katelyn"
+    ]
+  },
+  {
+    "id": "r-nf-slang",
+    "category": "no-false-fix",
+    "previous": [],
+    "transcript": "That demo was lowkey fire, ngl.",
+    "mode": "casual",
+    "mustContain": [
+      "lowkey",
+      "ngl"
+    ],
+    "mustNotContain": [
+      "low-key",
+      "not gonna lie"
+    ]
+  },
+  {
+    "id": "r-cf-kubernetes",
+    "category": "context-fix",
+    "previous": [],
+    "transcript": "We need to scale the pods in Cooper Netties before the launch.",
+    "mode": "casual",
+    "mustContain": [
+      "Kubernetes"
+    ],
+    "mustNotContain": [
+      "Cooper Netties"
+    ],
+    "holdout": true
+  },
+  {
+    "id": "r-cf-postgres",
+    "category": "context-fix",
+    "previous": [],
+    "transcript": "The data lives in post grass, and we back it up every night.",
+    "mode": "casual",
+    "mustContain": [
+      "Postgres"
+    ],
+    "mustNotContain": [
+      "post grass"
+    ],
+    "holdout": true
+  },
+  {
+    "id": "r-cf-mitochondria",
+    "category": "context-fix",
+    "previous": [],
+    "transcript": "In biology today we learned that the mighty Kondria is the powerhouse of the cell.",
+    "mode": "casual",
+    "mustContain": [
+      "itochondria"
+    ],
+    "mustNotContain": [
+      "mighty Kondria"
+    ],
+    "holdout": true
+  },
+  {
+    "id": "r-cp-vercel",
+    "category": "context-from-previous",
+    "previous": [
+      "We're moving the marketing site to a new host."
+    ],
+    "transcript": "Okay, deploy it to Versails tonight.",
+    "mode": "casual",
+    "mustContain": [
+      "Vercel"
+    ],
+    "mustNotContain": [
+      "Versails"
+    ]
+  },
+  {
+    "id": "r-cp-flour",
+    "category": "context-from-previous",
+    "previous": [
+      "I'm baking banana bread this afternoon."
+    ],
+    "transcript": "Then add two cups of flower and mix it well.",
+    "mode": "casual",
+    "mustContain": [
+      "flour"
+    ],
+    "mustNotContain": [
+      "flower"
+    ]
+  },
+  {
+    "id": "r-cp-react",
+    "category": "context-from-previous",
+    "previous": [
+      "In our React app the cart lives in a custom hook."
+    ],
+    "transcript": "The use cart hook keeps the items in state.",
+    "mode": "code",
+    "mustContain": [
+      "useCart"
+    ],
+    "mustNotContain": [
+      "use cart"
+    ]
+  },
+  {
+    "id": "r-pr-clean",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "I'll call you after the meeting, probably around 3:30.",
+    "mode": "casual",
+    "mustContain": [
+      "I'll call you after the meeting",
+      "3:30"
+    ],
+    "mustNotContain": [],
+    "lengthTolerance": 0.15
+  },
+  {
+    "id": "r-pr-math",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "So the slope is 2, and y = 2x + 1.",
+    "mode": "casual",
+    "mustContain": [
+      "y = 2x + 1"
+    ],
+    "mustNotContain": [],
+    "lengthTolerance": 0.2
+  },
+  {
+    "id": "r-pr-formal",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "Please find the updated report attached to this email.",
+    "mode": "formal",
+    "mustContain": [
+      "Please find the updated report attached"
+    ],
+    "mustNotContain": [],
+    "lengthTolerance": 0.15
+  },
+  {
+    "id": "r-pr-url",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "The docs are at github.com/david53001/jvoice if you want to look.",
+    "mode": "casual",
+    "mustContain": [
+      "github.com/david53001/jvoice"
+    ],
+    "mustNotContain": [],
+    "lengthTolerance": 0.2
+  }
+]

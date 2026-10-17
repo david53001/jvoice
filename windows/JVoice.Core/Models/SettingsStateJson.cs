@@ -80,6 +80,8 @@ public static class SettingsStateJson
             // them. Absent / unknown => System and 0.5.
             appearance = state.Appearance.ToString().ToLowerInvariant(),
             uiOpacity = JVoice.Core.UiOpacity.Clamp(state.UiOpacity),
+            // AI Polish: a new key without a schema bump (like appearance). Absent => false (OFF).
+            aiPolish = state.AiPolish,
         };
         return JsonSerializer.Serialize(dto, WriteOptions);
     }
@@ -123,7 +125,9 @@ public static class SettingsStateJson
             // v6: absent (a pre-v6 / macOS file) or wrong-typed => true = spoken maths ON.
             MathNotation: TryGetBool(root, "mathNotation") ?? true,
             Appearance: ParseAppearance(TryGetString(root, "appearance")),
-            UiOpacity: JVoice.Core.UiOpacity.Clamp(TryGetDouble(root, "uiOpacity") ?? JVoice.Core.UiOpacity.Default));
+            UiOpacity: JVoice.Core.UiOpacity.Clamp(TryGetDouble(root, "uiOpacity") ?? JVoice.Core.UiOpacity.Default),
+            // Absent (older / macOS file) or wrong-typed => false: AI Polish stays OFF unless chosen.
+            AiPolish: TryGetBool(root, "aiPolish") ?? false);
     }
 
     private static AppAppearance ParseAppearance(string? raw)
