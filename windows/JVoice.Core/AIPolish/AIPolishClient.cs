@@ -66,11 +66,14 @@ public sealed class AIPolishClient
     {
         options ??= AIPolishOptions.Standard;
         var clock = Stopwatch.StartNew();
-        // The attempt's own token: the caller's cancellation (the dictation was abandoned) ends it at
-        // once; the late-reply cap ends it eventually. The deadline alone does NOT cancel it.
-        var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        // The attempt's own token: the late-reply cap ends it eventually; the caller's cancellation (the
+        // dictation was abandoned) ends it at once — but only until the race is decided. The coordinator
+        // cancels a dictation's token on the NEXT press, and that must not kill a reply that already
+        // missed the deadline and is still coming in to be billed.
+        var attemptCts = new CancellationTokenSource();
         attemptCts.CancelAfter(_deadline + LateReplyCap);
         var token = attemptCts.Token;
+        var forwardCancel = ct.Register(() => { try { attemptCts.Cancel(); } catch (ObjectDisposedException) { } });
 
         // Task.Run: the key read is synchronous file I/O + DPAPI and must be inside the deadline too.
         var attempt = Task.Run(() => AttemptAsync(text, previous, mode, vocabulary, apiKey, options, ct, token), CancellationToken.None);
@@ -78,6 +81,7 @@ public sealed class AIPolishClient
         var cancelled = Task.Delay(Timeout.Infinite, ct);
 
         var first = await Task.WhenAny(attempt, timer, cancelled).ConfigureAwait(false);
+        forwardCancel.Dispose(); // decided: later cancellation of the dictation no longer reaches the request
         (AIPolishOutcome Outcome, AIPolishUsage? Usage) result;
         if (first == attempt)
         {
@@ -160,7 +164,21 @@ public static class AIPolishGate
 
     public static bool IsWorthPolishing(string text) =>
         text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries).Length >= MinWords;
+
+    /// <summary>What the coordinator does with a finished dictation, in the Mac's order: off → nothing
+    /// (no log); at $0 → <c>skipped(balance)</c>; under 3 words → <c>skipped(short)</c>; else send.</summary>
+    public static PolishStep Plan(bool enabled, double balance, string text) =>
+        !enabled ? PolishStep.Off
+        : !AIPolishUsageStore.ShouldPolish(enabled, hasKey: true, balance) ? PolishStep.SkipBalance
+        : !IsWorthPolishing(text) ? PolishStep.SkipShort
+        : PolishStep.Send;
+
+    /// <summary>Show the ONE "used up" pill after this paste? Only while a reply emptied the balance AND
+    /// it is still empty (a user who already topped up never sees a stale warning).</summary>
+    public static bool ShouldShowUsedUp(bool pending, double balance) => pending && balance <= 0;
 }
+
+public enum PolishStep { Off, SkipBalance, SkipShort, Send }
 
 /// <summary>Settings → Test Key: the outcome of one tiny request.</summary>
 public enum KeyCheckKind { Works, InvalidKey, RateLimited, Unreachable, Failed }

@@ -260,6 +260,24 @@ public class AIPolishTests
     }
 
     [Fact]
+    public async Task ALateReply_IsStillBilled_EvenWhenTheNextDictationCancelsTheOldToken()
+    {
+        // Review fix: the coordinator cancels a dictation's token on the NEXT press. Once the deadline has
+        // decided, that must not reach the background request still coming in to be billed.
+        using var cts = new CancellationTokenSource();
+        var late = new TaskCompletionSource<AIPolishUsage>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var transport = new FakeTransport(async (_, token) =>
+        {
+            await Task.Delay(600, token);   // HONOURS cancellation: a cancelled request is never billed
+            return new PolishHttpResponse(200, Reply("Late reply.", input: 700, output: 60));
+        });
+        var result = await Run(transport, deadline: 0.2, ct: cts.Token, onLateUsage: u => late.TrySetResult(u));
+        Assert.Equal("fallback(timeout)", result.LogLabel);
+        cts.Cancel();                        // the user dictates again
+        Assert.Equal(new AIPolishUsage(700, 60), await late.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
     public async Task CancellingTheDictation_EndsThePolishAtOnce()
     {
         using var cts = new CancellationTokenSource();
@@ -440,6 +458,61 @@ public class AIPolishTests
         Assert.Equal(1, AIPolishRequest.Length("👍🏽"));
         Assert.Equal(3, AIPolishRequest.Length("é👍🏽a"));
     }
+
+    [Fact]
+    public void ThePlan_FollowsTheMacsOrder()
+    {
+        Assert.Equal(PolishStep.Off, AIPolishGate.Plan(false, 5, "deploy it to versails"));
+        Assert.Equal(PolishStep.Off, AIPolishGate.Plan(false, 0, "ok"));                       // off: not even a log line
+        Assert.Equal(PolishStep.SkipBalance, AIPolishGate.Plan(true, 0, "ok"));                // balance is checked before length
+        Assert.Equal(PolishStep.SkipBalance, AIPolishGate.Plan(true, 0, "deploy it to versails"));
+        Assert.Equal(PolishStep.SkipShort, AIPolishGate.Plan(true, 5, "ok thanks"));
+        Assert.Equal(PolishStep.Send, AIPolishGate.Plan(true, 0.0001, "deploy it to versails"));
+    }
+
+    [Fact]
+    public void TheUsedUpPill_ShowsOnlyWhileTheBalanceIsStillEmpty()
+    {
+        Assert.True(AIPolishGate.ShouldShowUsedUp(pending: true, balance: 0));
+        Assert.False(AIPolishGate.ShouldShowUsedUp(pending: true, balance: 5));   // topped up since: stale
+        Assert.False(AIPolishGate.ShouldShowUsedUp(pending: false, balance: 0));  // shown once already
+    }
+
+    [Theory]
+    [InlineData("5", 5.0)]
+    [InlineData("$5", 5.0)]
+    [InlineData(" $ 5 ", 5.0)]
+    [InlineData("2.50", 2.5)]
+    [InlineData("2,50", 2.5)]
+    [InlineData("4.99", 4.99)]
+    [InlineData("4,99", 4.99)]
+    [InlineData("0.01", 0.01)]
+    [InlineData(".5", 0.5)]
+    public void TopUpAmounts_ReadTheSameOnEveryPcLanguage(string typed, double expected)
+    {
+        foreach (var culture in new[] { "en-US", "ro-RO", "de-DE" })
+        {
+            var saved = System.Globalization.CultureInfo.CurrentCulture;
+            try
+            {
+                System.Globalization.CultureInfo.CurrentCulture = new System.Globalization.CultureInfo(culture);
+                Assert.Equal(expected, AIPolishUsageStore.ParseAmount(typed)!.Value, 12);
+            }
+            finally { System.Globalization.CultureInfo.CurrentCulture = saved; }
+        }
+    }
+
+    [Theory]
+    [InlineData("1,000.00")]   // thousands separators are refused — never $1 or $1000 by accident
+    [InlineData("1.000,00")]
+    [InlineData("")]
+    [InlineData("$")]
+    [InlineData("five")]
+    [InlineData("-5")]
+    [InlineData("1e3")]
+    [InlineData(null)]
+    public void TopUpAmounts_ThatAreNotOnePlainNumber_AreRefused(string? typed) =>
+        Assert.Null(AIPolishUsageStore.ParseAmount(typed));
 
     [Fact]
     public void ShortDictations_AreNotSent()
@@ -706,9 +779,15 @@ public class AIPolishTests
             Assert.DoesNotContain(FakeKey, File.ReadAllText(store.FilePath));   // never stored in the clear
             Assert.True(store.Save("test-key-replaced-1111"));
             Assert.Equal("test-key-replaced-1111", store.Read());
-            Assert.Equal(new[] { ApiKeyStore.FileName }, Directory.GetFiles(dir).Select(Path.GetFileName)); // no temp copies left
+            // The blob + its 4-character hint; no temp copies left behind.
+            Assert.Equal(new[] { ApiKeyStore.FileName, ApiKeyStore.FileName + ".hint" },
+                Directory.GetFiles(dir).Select(Path.GetFileName).OrderBy(n => n, StringComparer.Ordinal));
+            Assert.Equal("••••1111", File.ReadAllText(store.HintPath));
+            Assert.Equal("••••1111", store.SavedHint());
             Assert.True(store.Delete());
             Assert.Null(store.Read());
+            Assert.Null(store.SavedHint());
+            Assert.Empty(Directory.GetFiles(dir));   // Remove Key leaves nothing behind, hint included
             Assert.True(store.Delete());   // deleting nothing is fine
             Assert.False(store.Save("   "));
         }
@@ -726,6 +805,7 @@ public class AIPolishTests
             _ => throw new System.Security.Cryptography.CryptographicException("another user"));
         Assert.True(store.Save(FakeKey));
         Assert.Null(store.Read());
+        File.Delete(store.HintPath);         // without its hint, the hint falls back to decrypting
         Assert.Null(store.SavedHint());
         Directory.Delete(dir, recursive: true);
     }

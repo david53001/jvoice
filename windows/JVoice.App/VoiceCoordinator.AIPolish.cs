@@ -175,25 +175,25 @@ public sealed partial class VoiceCoordinator
 
     /// The text to paste: <paramref name="processed"/> polished by Claude, or unchanged on ANY failure,
     /// when AI Polish is off, at $0, or for a dictation under 3 words. Shows "AI refining" meanwhile.
-    /// Runs off the UI thread (FinishTranscriptionAsync); never throws.
+    /// Called from FinishTranscriptionAsync, which runs on the UI thread between awaits; the key read
+    /// and the HTTP call run on the pool (AIPolishClient). Never throws.
     private async Task<string> PolishAsync(string processed, string? targetApp, ToneStyle tone,
         IReadOnlyList<string> vocabulary, CancellationToken ct)
     {
         try
         {
-            if (!_aiPolish) return processed;
-            // hasKey: true — the key isn't read here (a file read + DPAPI on every dictation); a missing
+            // The key's presence isn't checked here (a file read + DPAPI on every dictation): a missing
             // key is the client's own fallback(no-key), and the switch can't be turned on without one.
-            bool canPolish = AIPolishUsageStore.ShouldPolish(_aiPolish, hasKey: true, _polishUsage.Balance);
-            if (!canPolish)
+            switch (AIPolishGate.Plan(_aiPolish, _polishUsage.Balance, processed))
             {
-                DiagnosticLog.Write("AIPolish skipped(balance)");
-                return processed;
-            }
-            if (!AIPolishGate.IsWorthPolishing(processed))
-            {
-                DiagnosticLog.Write("AIPolish skipped(short)");
-                return processed;
+                case PolishStep.Off:
+                    return processed;
+                case PolishStep.SkipBalance:
+                    DiagnosticLog.Write("AIPolish skipped(balance)");
+                    return processed;
+                case PolishStep.SkipShort:
+                    DiagnosticLog.Write("AIPolish skipped(short)");
+                    return processed;
             }
 
             await _dispatcher.InvokeAsync(() => UpdateHud(HudState.Refining));
@@ -230,8 +230,9 @@ public sealed partial class VoiceCoordinator
     /// hides — when a reply emptied the balance. One timer chain, so a new recording cancels it.
     private bool TryShowPolishUsedUpAfterPaste()
     {
-        if (!_polishUsedUpPending) return false;
-        _polishUsedUpPending = false;
+        bool show = AIPolishGate.ShouldShowUsedUp(_polishUsedUpPending, _polishUsage.Balance);
+        _polishUsedUpPending = false;   // shown now, or stale (topped up since): either way it's done
+        if (!show) return false;
         _hudResetTimer?.Stop();
         _hudResetTimer = new DispatcherTimer { Interval = AppTimings.HudResetDelay };
         _hudResetTimer.Tick += (_, _) =>

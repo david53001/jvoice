@@ -22,6 +22,7 @@ public class AIPolishDpapiTests
             Assert.True(store.Save(AIPolishTests.FakeKey));
             Assert.Equal(AIPolishTests.FakeKey, store.Read());
             Assert.Equal("••••0000", store.SavedHint());
+            Assert.Equal("••••0000", File.ReadAllText(store.HintPath));   // only the last 4 characters in the clear
             byte[] onDisk = File.ReadAllBytes(store.FilePath);
             Assert.DoesNotContain(AIPolishTests.FakeKey, System.Text.Encoding.UTF8.GetString(onDisk));
             Assert.DoesNotContain(AIPolishTests.FakeKey, System.Text.Encoding.Unicode.GetString(onDisk));

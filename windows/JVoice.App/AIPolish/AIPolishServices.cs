@@ -30,7 +30,10 @@ public sealed class HttpPolishTransport : IPolishTransport
             DefaultProxyCredentials = null,
             PreAuthenticate = false,
             AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+            // Keep the TLS connection warm between dictations a few minutes apart (the default idle
+            // timeout is 1 min, so most dictations would otherwise pay a fresh handshake).
             PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+            PooledConnectionIdleTimeout = TimeSpan.FromMinutes(5),
             ConnectTimeout = TimeSpan.FromSeconds(10),
         };
         _http = new HttpClient(handler, disposeHandler: true) { Timeout = Timeout.InfiniteTimeSpan };

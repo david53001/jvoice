@@ -14,7 +14,7 @@ Newest entries first. Updated after every step, so a new session can resume from
 | CI UI preview artifact | done — run 43 rendered **all 24 shots `ok`** (incl. 6 AI Polish Settings states + `hud-refining`), artifact `windows-ui-preview` uploaded. **Not yet looked at:** this cloud container's proxy blocks the artifact host (`productionresultssa2.blob.core.windows.net`), so the PNGs have NOT been opened by Claude — David: see "Look at the UI" below |
 | Docs (PRIVACY, HANDOFF §7 #70, briefs, windows/README) | done |
 | Live dictation + eval with a real key | **David** (steps below) |
-| Independent review | see log |
+| Independent review | done — `WINDOWS-REVIEW.md`, **8/10 (provisional: no Windows eval or screenshot check yet)**; fixes 1, 2, 5 (idle timeout), 6–10 done in step 4; 3 + 4 are David's (look at the PNGs, run the eval) |
 
 ## David: try it on your PC (PowerShell, from your jvoice clone)
 
@@ -87,7 +87,8 @@ wait for JVoice.exe (it is a windowed app) and prints nothing — the report fil
    `String.count`; tokens/words split on letters+marks+numbers like `CharacterSet.alphanumerics`.
 5. **Late replies are billed** (Mac review item): when the 3 s deadline wins, the request is NOT
    cancelled; it may finish in the background for up to 30 s and its usage is then subtracted from
-   the balance. Its text is never used. Cancelling the dictation still cancels the request.
+   the balance. Its text is never used. The dictation's cancellation reaches the request only until
+   the race is decided (the coordinator cancels the old token on the NEXT press — review fix 2).
 6. **Key storage: DPAPI** (`ProtectedData`, CurrentUser, app-specific entropy
    `JVoice.AIPolish.AnthropicApiKey.v1`) in `%LOCALAPPDATA%\JVoice\anthropic-api-key.bin`, written via
    temp file + replace. No prompts. Another Windows user, another machine, or a program calling
@@ -100,6 +101,29 @@ wait for JVoice.exe (it is a windowed app) and prints nothing — the report fil
 10. **Eval report default path** `docs/ai-polish/eval-results/<date>-windows-<model>-<thinking>.md`.
 
 ## Log
+
+### 2026-10-17 — step 4: independent review + fixes
+- ONE reviewer sub-agent (§5.7) wrote `docs/ai-polish/WINDOWS-REVIEW.md` on `e9effd6`: Accuracy 8 and
+  Speed 8 (both provisional — no Windows eval yet), Usefulness 7, Never lose a dictation 9, Key security
+  9, Balance + usage 7, Code fit 8; **overall 8/10 provisional**. It found no porting differences in the
+  prompt/request/validator and no path that loses a dictation.
+- Fixed from its ranked list:
+  1. **Bug — top-up amount off by 100×:** "2,50" on an English PC read as $250 (thousands separator).
+     Now `AIPolishUsageStore.ParseAmount`: either decimal mark, no thousands separators, same on every
+     PC language; tested in en-US / ro-RO / de-DE.
+  2. **Bug — the next dictation cancelled late billing:** the client's request token was linked to the
+     dictation's token, which the coordinator cancels on the next press. Now forwarded only until the
+     race is decided; test `ALateReply_IsStillBilled_EvenWhenTheNextDictationCancelsTheOldToken`.
+  5. `PooledConnectionIdleTimeout` 5 min (TLS stays warm between dictations; the default is 1 min).
+  6. A stale "used up" pill is never shown after a top-up (`AIPolishGate.ShouldShowUsedUp`).
+  7. Hint file `anthropic-api-key.bin.hint` (last 4 chars): opening Settings no longer decrypts the key.
+  8. Exact security wording (entropy is public: casual readers only; PRIVACY "another Windows account
+     or another PC"); comment on which thread `PolishAsync` runs; stale "1933 tests" counts.
+  9. Coordinator gating as pure `AIPolishGate.Plan` (off → skipped(balance) → skipped(short) → send), tested.
+  10. Renders outside a throwaway profile stage "no key" (never decrypt the real key); placeholder is
+      `test-key-not-real-0000`.
+- Not done (David): fix 3 (open the PNGs), fix 4 (the eval). Fix 5's `--cold` latency flag: skipped
+  until the eval shows cold calls matter.
 
 ### 2026-10-17 — step 3: CI green + docs
 - CI run 43 (`6105855`): build OK, **2052/2052 tests**, `--ui-preview` 24/24 shots `ok`, artifact

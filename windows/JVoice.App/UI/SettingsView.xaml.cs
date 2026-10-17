@@ -383,14 +383,8 @@ public partial class SettingsView : UserControl
         ShowNotice(KeyStatus, message);
     }
 
-    /// "5", "$5", "2.50" or "2,50" (either decimal mark); null when it isn't a number.
-    private double? TopUpAmount()
-    {
-        string text = TopUpBox.Text.Trim().TrimStart('$').Trim();
-        if (double.TryParse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.CurrentCulture, out var v)) return v;
-        if (double.TryParse(text.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out v)) return v;
-        return null;
-    }
+    /// "5", "$5", "2.50" or "2,50" (either decimal mark, no thousands separators); null otherwise.
+    private double? TopUpAmount() => JVoice.Core.AIPolish.AIPolishUsageStore.ParseAmount(TopUpBox.Text);
 
     private void OnTopUpKeyDown(object sender, KeyEventArgs e)
     {

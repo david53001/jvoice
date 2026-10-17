@@ -25,7 +25,7 @@ unless that's the explicit task, and update the matching test in the same commit
   run/activation rules that keep ordinary speech byte-identical.
 
 ## Verify changes
-- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 1933 tests, must stay green.
+- `dotnet test windows/JVoice.Tests/JVoice.Tests.csproj` — 2052+ tests, must stay green.
 - `dotnet build windows/JVoice.sln -c Release` — 0 errors.
 
 ## Layout note

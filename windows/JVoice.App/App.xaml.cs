@@ -277,8 +277,12 @@ public partial class App : Application
         if (updateState is not null) coordinator.Updates.EnterPreviewState(updateState);
         // AI Polish card states are staged in memory (never the real key/balance — and the render runs
         // under a throwaway profile anyway); otherwise read what this profile has, like opening Settings.
+        // Outside a throwaway profile (a dev running --settings-render by hand) the card is staged as
+        // "no key", so a render never decrypts the real key.
         if (aiPolishState is not null) coordinator.EnterAiPolishPreviewState(aiPolishState);
-        else coordinator.RefreshAiPolishStatus();
+        else if (Environment.GetEnvironmentVariable(JVoice.App.Platform.PlatformPaths.ProfileOverrideVariable) is { Length: > 0 })
+            coordinator.RefreshAiPolishStatus();
+        else coordinator.EnterAiPolishPreviewState("aipolish-nokey");
         // `light` / `dark` force an appearance for the shot (default: the stored one); Mica can't be
         // captured off-screen, so the panel is rendered over the solid window colour.
         var forced = rest.Any(a => a.Equals("light", StringComparison.OrdinalIgnoreCase)) ? AppAppearance.Light
@@ -289,7 +293,7 @@ public partial class App : Application
         view.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "Window.Solid");
         // An obvious placeholder in the key field — never a real key.
         if (aiPolishState is "aipolish-on" or "aipolish-revealed")
-            view.PreviewKeyField("sk-ant-example-not-a-real-key-0000", revealed: aiPolishState == "aipolish-revealed");
+            view.PreviewKeyField("test-key-not-real-0000", revealed: aiPolishState == "aipolish-revealed");
 
         const double scale = 2.0;
         // The view declares a fixed Width but sizes its Height to content (SettingsView.xaml has

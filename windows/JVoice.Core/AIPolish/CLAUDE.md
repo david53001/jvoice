@@ -21,14 +21,17 @@ It is the one opt-in exception to "zero network at runtime", so these rules hold
   user-perceived characters like Swift `String.count`.
 - `AIPolishClient.cs` — `IPolishTransport` seam, `AIPolishResult`, the deadline (`Task.WhenAny` against a
   timer — wins even if the transport ignores cancellation; the key read is inside it). Windows-only: a
-  reply that misses the deadline is left to finish (≤ 30 s) and `onLateUsage` bills it. Also
+  reply that misses the deadline is left to finish (≤ 30 s) and `onLateUsage` bills it — the caller's
+  cancellation reaches the request only until the race is decided, so the next dictation can't cancel it. Also
   `AIPolishGate` (≥ 3 words, 3.0 s) and `AIPolishKeyCheck` (Settings → Test Key).
 - `AIPolishContext.cs` — in-memory ring: last 3 pasted results, same exe (case-insensitive), 10 min,
   ≤ 1,500 chars, oldest first. Never persisted.
 - `AIPolishUsageStore.cs` — balance (starts $0, top-up ≤ $1000, clamps at $0, `Record` returns true for
   the ONE reply that empties it) + this-month / all-time totals in a JSON file. No Reset.
 - `ApiKeyStore.cs` — the key file with an injected protector (the app passes DPAPI, CurrentUser +
-  `Entropy`); temp file + replace; unreadable ⇒ "no key".
+  `Entropy` — public, so it only stops casual same-user readers); temp file + replace; unreadable ⇒
+  "no key". The hint (last 4 chars) sits in `<file>.hint` so opening Settings doesn't decrypt.
+  `AIPolishGate.Plan` / `ShouldShowUsedUp` are the coordinator's gating decisions, kept pure.
 - `PolishEval.cs` — eval cases, grading, `ParseArgs` (refuses unknown arguments), `RunAsync` (the same
   client/validator as the app) and the Markdown report. The CLI is `JVoice.App/AIPolish/PolishEvalCli.cs`.
 

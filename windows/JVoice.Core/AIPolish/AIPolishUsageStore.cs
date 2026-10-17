@@ -139,6 +139,20 @@ public sealed class AIPolishUsageStore
         }
     }
 
+    /// <summary>What the user typed in Settings' Amount field, in USD: "5", "$5", "2.50" or "2,50" (either
+    /// decimal mark, whatever the PC's language). No thousands separators — "1,000.00" is refused rather
+    /// than read as $1 or $1000. null when it isn't one plain number.</summary>
+    public static double? ParseAmount(string? text)
+    {
+        if (text is null) return null;
+        string t = text.Trim();
+        if (t.StartsWith('$')) t = t[1..].Trim();
+        t = t.Replace(',', '.');
+        if (t.Length == 0 || t.Count(c => c == '.') > 1) return null;
+        return double.TryParse(t, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out var v) && double.IsFinite(v)
+            ? v : null;
+    }
+
     /// <summary>"$0.42", or four decimals under a cent so a few polishes don't read as "$0.00".</summary>
     public static string Dollars(double amount) =>
         amount > 0 && amount < 0.01

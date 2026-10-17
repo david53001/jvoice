@@ -100,9 +100,10 @@ Everything JVoice keeps lives in your normal per-user app-data location and neve
 - **Windows:** settings, stats, and the recent-transcript history in `%APPDATA%\JVoice`;
   the downloaded model cache in `%LOCALAPPDATA%\JVoice\models`. If you use AI Polish: your
   Anthropic key in `%LOCALAPPDATA%\JVoice\anthropic-api-key.bin`, **encrypted with Windows'
-  Data Protection API** for your Windows account (another Windows user, another computer, or
-  a copy of the file can't decrypt it; it is never in the settings file, the log, the history
-  or the clipboard; **Remove Key** deletes it), and the AI Polish spending totals and balance
+  Data Protection API** for your Windows account (it can't be decrypted by another Windows account or
+  on another PC; it is never in the settings file, the log, the history or the clipboard; only
+  its last four characters are kept in the clear beside it, for the "Key saved ••••abcd" line;
+  **Remove Key** deletes both), and the AI Polish spending totals and balance
   (numbers only) in `%APPDATA%\JVoice\ai-polish-usage.json`. The previous-dictation context
   is never written to disk.
 
