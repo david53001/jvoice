@@ -122,6 +122,10 @@ wait for JVoice.exe (it is a windowed app) and prints nothing — the report fil
   9. Coordinator gating as pure `AIPolishGate.Plan` (off → skipped(balance) → skipped(short) → send), tested.
   10. Renders outside a throwaway profile stage "no key" (never decrypt the real key); placeholder is
       `test-key-not-real-0000`.
+- CI run 39041792556 on `ac7ca5a`: build, all tests and `--ui-preview` (24/24 `ok`) green; artifact
+  https://github.com/david53001/jvoice/actions/runs/39041792556/artifacts/12104062518 (not opened by Claude).
+- **Next:** David runs steps 1–4 above; the next session reads his eval reports and the PNGs, and
+  re-runs the review if anything moves.
 - Not done (David): fix 3 (open the PNGs), fix 4 (the eval). Fix 5's `--cold` latency flag: skipped
   until the eval shows cold calls matter.
 
