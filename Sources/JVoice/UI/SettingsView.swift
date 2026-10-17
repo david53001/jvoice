@@ -126,6 +126,13 @@ struct SettingsView: View {
     @State private var toursEnabled = false
     /// Settings → Appearance → Opacity; shared with every window and pill, which follow it live.
     @ObservedObject private var opacity = UIOpacityStore.shared
+    /// AI Polish key field. `revealKey` is never persisted and resets whenever Settings closes;
+    /// `draftIsSavedKey` marks a field filled by the eye button, which hiding clears again.
+    @State private var apiKeyDraft = ""
+    @State private var revealKey = false
+    @State private var draftIsSavedKey = false
+    @State private var keyStatus: String?
+    @State private var testingKey = false
 
     var body: some View {
         let theme = coordinator.appTheme.theme
@@ -156,6 +163,7 @@ struct SettingsView: View {
                     VStack(spacing: 12) {
                         modelSection
                         processingSection
+                        aiPolishSection(theme)
                         voiceStyleSection
                         languageSection
                         appModesSection(theme)
@@ -259,6 +267,135 @@ struct SettingsView: View {
             }
         }
         .tourAnchor("settings.processing")
+    }
+
+    /// AI Polish (opt-in, bring your own Anthropic key). The key lives only in the Keychain: the
+    /// field is masked, the eye button is the only thing that reads it back, Save clears the field.
+    private func aiPolishSection(_ theme: Theme) -> some View {
+        SettingsSection("AI Polish") {
+            VStack(alignment: .leading, spacing: 8) {
+                toggleRow("Polish with Claude",
+                          "Sends each dictation to Anthropic to fix punctuation and mistakes. Off = nothing leaves your Mac.",
+                          isOn: $coordinator.aiPolish)
+                    .disabled(coordinator.apiKeyHint == nil)
+
+                if coordinator.apiKeyHint == nil {
+                    Text("Save your Anthropic API key below to turn this on.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                // Typing clears the last status line and makes the field a NEW key (not the revealed one).
+                let draft = Binding(get: { apiKeyDraft },
+                                    set: { apiKeyDraft = $0; draftIsSavedKey = false; keyStatus = nil })
+                HStack(spacing: 6) {
+                    Group {
+                        if revealKey {
+                            TextField("sk-ant-…", text: draft)
+                        } else {
+                            SecureField("sk-ant-…", text: draft)
+                        }
+                    }
+                    .inputFieldStyle()
+                    .onSubmit { saveKey() }
+
+                    Button {
+                        toggleReveal()
+                    } label: {
+                        Image(systemName: revealKey ? "eye.slash" : "eye")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 18, height: 18)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(PanelPressableButtonStyle())
+                    .help(revealKey ? "Hide key" : "Show key")
+                    .accessibilityLabel(revealKey ? "Hide key" : "Show key")
+                }
+
+                HStack(spacing: 6) {
+                    Text(coordinator.apiKeyHint.map { "Key saved \($0)" } ?? "No key saved")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 0)
+                    Button("Save") { saveKey() }
+                        .buttonStyle(SubtleButtonStyle())
+                        .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draftIsSavedKey)
+                    Button(testingKey ? "Testing…" : "Test Key") { testKey() }
+                        .buttonStyle(SubtleButtonStyle())
+                        .disabled(testingKey || (coordinator.apiKeyHint == nil
+                                                 && apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                    Button("Remove Key", role: .destructive) { removeKey() }
+                        .buttonStyle(SubtleButtonStyle(destructive: true))
+                        .disabled(coordinator.apiKeyHint == nil)
+                }
+
+                if let keyStatus {
+                    Text(keyStatus)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+        .onAppear { coordinator.refreshAPIKeyStatus() }
+        // Reveal never outlives the window: hidden again (and a revealed key cleared) on close.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
+            if note.object is SettingsWindow { hideKey() }
+        }
+        .onDisappear { hideKey() }
+    }
+
+    private func toggleReveal() {
+        if revealKey {
+            hideKey()
+        } else {
+            // Only an empty field is filled from the Keychain; a key being typed is just unmasked.
+            if apiKeyDraft.isEmpty, let saved = coordinator.revealAPIKey() {
+                apiKeyDraft = saved
+                draftIsSavedKey = true
+            }
+            revealKey = true
+        }
+    }
+
+    private func hideKey() {
+        revealKey = false
+        if draftIsSavedKey {
+            apiKeyDraft = ""
+            draftIsSavedKey = false
+        }
+    }
+
+    private func saveKey() {
+        let key = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !draftIsSavedKey else { return }
+        if coordinator.saveAPIKey(key) {
+            apiKeyDraft = ""
+            revealKey = false
+            keyStatus = "Saved to your Keychain."
+        } else {
+            keyStatus = "Couldn't save the key to your Keychain."
+        }
+    }
+
+    private func removeKey() {
+        coordinator.removeAPIKey()
+        hideKey()
+        apiKeyDraft = ""
+        keyStatus = "Key removed. AI Polish is off."
+    }
+
+    private func testKey() {
+        let candidate = draftIsSavedKey ? "" : apiKeyDraft
+        testingKey = true
+        keyStatus = nil
+        Task {
+            let check = await coordinator.testAPIKey(candidate)
+            testingKey = false
+            keyStatus = check.message
+        }
     }
 
     /// A labelled switch row, System-Settings style: `.callout` title, `.caption` secondary subtitle,
