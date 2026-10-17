@@ -650,8 +650,127 @@
                 </StackPanel>
             </Grid>
 
-            <!-- 3. Footer: the destructive actions as small red buttons (MacStats footer) -->
-            <Grid Grid.Row="2" Margin="0,2,0,0">
+            <!-- 3. AI Polish (opt-in, bring your own Anthropic key) — full width, the LAST section, above the
+                 footer (Mac SettingsView.aiPolishSection). Left: the switch, the masked key field + eye,
+                 Save / Test Key / Remove Key. Right (300): the prepaid balance, its bar, Add / Remove, and
+                 what AI Polish has cost. The key itself is never bound: the code-behind moves it between the
+                 PasswordBox / TextBox and the coordinator (DPAPI file), and reveal resets when Settings hides. -->
+            <ui:SettingsCard Grid.Row="2" HeaderText="AI Polish" AutomationProperties.AutomationId="settings.aiPolish">
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="300" />
+                    </Grid.ColumnDefinitions>
+
+                    <!-- left: switch + key -->
+                    <StackPanel Grid.Column="0">
+                        <Grid>
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel Margin="0,0,12,0">
+                                <TextBlock Text="Polish with Claude" Style="{StaticResource RowTitle}" />
+                                <TextBlock Text="Sends dictations to Claude to fix mistakes." Style="{StaticResource Note}" />
+                            </StackPanel>
+                            <CheckBox Grid.Column="1" VerticalAlignment="Center" Style="{StaticResource MonoSwitch}"
+                                      AutomationProperties.Name="Polish with Claude"
+                                      IsEnabled="{Binding CanToggleAiPolish}" IsChecked="{Binding AiPolishSwitch, Mode=TwoWay}" />
+                        </Grid>
+                        <TextBlock Text="{Binding AiPolishCaption}" Style="{StaticResource Note}" Margin="0,4,0,0"
+                                   Visibility="{Binding HasAiPolishCaption, Converter={StaticResource BoolToVis}}" />
+
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <Grid>
+                                <PasswordBox x:Name="KeyMasked" Style="{StaticResource InputPasswordBox}" PasswordChar="&#x2022;"
+                                             AutomationProperties.Name="Anthropic API key"
+                                             PasswordChanged="OnKeyMaskedChanged" KeyDown="OnKeyFieldKeyDown" />
+                                <TextBox x:Name="KeyRevealed" Style="{StaticResource InputBox}" Visibility="Collapsed"
+                                         AutomationProperties.Name="Anthropic API key (shown)"
+                                         TextChanged="OnKeyRevealedChanged" KeyDown="OnKeyFieldKeyDown" />
+                                <TextBlock x:Name="KeyPlaceholder" Text="sk-ant-&#8230;" FontSize="13" Foreground="{DynamicResource Text.Tertiary}"
+                                           Margin="10,0,0,0" IsHitTestVisible="False" VerticalAlignment="Center" Tag="empty">
+                                    <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Visibility" Value="Collapsed" />
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource Self}}" Value="empty">
+                                                        <Setter Property="Visibility" Value="Visible" />
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                </TextBlock>
+                            </Grid>
+                            <Button x:Name="RevealButton" Grid.Column="1" Style="{StaticResource PressableButton}" Margin="6,0,0,0"
+                                    Width="28" Height="26" Click="OnToggleReveal" ToolTip="Show key" AutomationProperties.Name="Show key">
+                                <TextBlock x:Name="RevealGlyph" FontFamily="{StaticResource IconFont}" Text="&#xE890;" FontSize="14" />
+                            </Button>
+                        </Grid>
+
+                        <Grid Margin="0,8,0,0">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <TextBlock Text="{Binding ApiKeyStatusText}" Style="{StaticResource Note}" VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" TextWrapping="NoWrap" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                <Button x:Name="SaveKeyButton" Content="Save" Style="{StaticResource SubtleButton}" Click="OnSaveKey" IsEnabled="False" />
+                                <Button x:Name="TestKeyButton" Content="Test Key" Style="{StaticResource SubtleButton}" Margin="6,0,0,0" Click="OnTestKey" />
+                                <Button Content="Remove Key" Style="{StaticResource SubtleDestructiveButton}" Margin="6,0,0,0" Click="OnRemoveKey"
+                                        IsEnabled="{Binding HasApiKey}" />
+                            </StackPanel>
+                        </Grid>
+                        <TextBlock x:Name="KeyStatus" Visibility="Collapsed" Style="{StaticResource Note}" Margin="0,6,0,0"
+                                   AutomationProperties.LiveSetting="Polite" />
+                    </StackPanel>
+
+                    <Rectangle Grid.Column="1" Width="1" Margin="16,0" Fill="{DynamicResource Card.Hairline}" />
+
+                    <!-- right: the prepaid balance + what it has cost -->
+                    <StackPanel Grid.Column="2">
+                        <TextBlock Text="{Binding PolishBalanceText}" FontSize="13" Typography.NumeralAlignment="Tabular" />
+                        <Border x:Name="BalanceTrack" Height="4" CornerRadius="2" Margin="0,8,0,0"
+                                Background="{DynamicResource Button.Pressed}" ClipToBounds="True"
+                                AutomationProperties.Name="Share of the last top-up left">
+                            <Border HorizontalAlignment="Left" CornerRadius="2" Background="{DynamicResource Accent}">
+                                <Border.Width>
+                                    <MultiBinding Converter="{StaticResource FractionToWidth}">
+                                        <Binding Path="PolishFraction" />
+                                        <Binding Path="ActualWidth" ElementName="BalanceTrack" />
+                                    </MultiBinding>
+                                </Border.Width>
+                            </Border>
+                        </Border>
+                        <Grid Margin="0,10,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Amount" Style="{StaticResource Note}" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Text="$" Style="{StaticResource Note}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                            <TextBox x:Name="TopUpBox" Grid.Column="2" Style="{StaticResource InputBox}" Width="60" Text="5"
+                                     TextAlignment="Right" AutomationProperties.Name="Amount to add or remove, in dollars"
+                                     KeyDown="OnTopUpKeyDown" />
+                            <Button Grid.Column="3" Content="Add" Style="{StaticResource SubtleButton}" Margin="6,0,0,0" Click="OnAddBalance"
+                                    ToolTip="Adds this many dollars to what AI Polish may spend. Anthropic bills your own account." />
+                            <Button Grid.Column="4" Content="Remove" Style="{StaticResource SubtleButton}" Margin="6,0,0,0" Click="OnRemoveBalance"
+                                    IsEnabled="{Binding CanRemoveBalance}" ToolTip="Takes this many dollars off the balance (never below $0)." />
+                        </Grid>
+                        <TextBlock x:Name="TopUpNotice" Visibility="Collapsed" Style="{StaticResource Note}" Margin="0,6,0,0"
+                                   Foreground="{DynamicResource Danger}" AutomationProperties.LiveSetting="Assertive" />
+                        <TextBlock x:Name="UsedUpLine" Text="Balance used up &#8212; add more to keep polishing." Style="{StaticResource Note}"
+                                   Margin="0,6,0,0" Foreground="{DynamicResource Danger}"
+                                   Visibility="{Binding PolishUsedUp, Converter={StaticResource BoolToVis}}" />
+                        <Rectangle Height="1" Margin="0,10,0,8" Fill="{DynamicResource Card.Hairline}" />
+                        <TextBlock Text="{Binding PolishMonthText}" Style="{StaticResource Note}" Typography.NumeralAlignment="Tabular" />
+                        <TextBlock Text="{Binding PolishAllTimeText}" Style="{StaticResource Note}" Typography.NumeralAlignment="Tabular" />
+                    </StackPanel>
+                </Grid>
+            </ui:SettingsCard>
+
+            <!-- 4. Footer: the destructive actions as small red buttons (MacStats footer) -->
+            <Grid Grid.Row="3" Margin="0,2,0,0">
                 <Button Content="Restore Default Settings&#8230;" Style="{StaticResource SubtleDestructiveButton}"
                         HorizontalAlignment="Left" Click="OnRestoreDefaults" />
                 <Button Content="Quit JVoice" Style="{StaticResource SubtleDestructiveButton}"

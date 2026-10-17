@@ -37,8 +37,15 @@ internal static class UiPreviewRunner
             ("welcome-question-light", new[] { "--welcome-render", P("welcome-question-light"), "allset", "question", "light" }),
             ("tour-tags-dark", new[] { "--tour-render", P("tour-tags-dark"), "dark" }),
             ("tour-tags-light", new[] { "--tour-render", P("tour-tags-light"), "light" }),
+            // AI Polish card states (staged in memory; the key field only ever shows a placeholder).
+            ("settings-aipolish-nokey", new[] { "--settings-render", P("settings-aipolish-nokey"), "aipolish-nokey", "dark" }),
+            ("settings-aipolish-zero", new[] { "--settings-render", P("settings-aipolish-zero"), "aipolish-zero", "dark" }),
+            ("settings-aipolish-on", new[] { "--settings-render", P("settings-aipolish-on"), "aipolish-on", "dark" }),
+            ("settings-aipolish-on-light", new[] { "--settings-render", P("settings-aipolish-on-light"), "aipolish-on", "light" }),
+            ("settings-aipolish-revealed", new[] { "--settings-render", P("settings-aipolish-revealed"), "aipolish-revealed", "light" }),
+            ("settings-aipolish-usedup", new[] { "--settings-render", P("settings-aipolish-usedup"), "aipolish-usedup", "dark" }),
         };
-        foreach (var state in new[] { "transcribing", "preparing", "downloading", "error", "copied", "unpasted", "done" })
+        foreach (var state in new[] { "transcribing", "refining", "preparing", "downloading", "error", "copied", "unpasted", "done" })
             shots.Add(("hud-" + state, new[] { "--hud-render", P("hud-" + state), state }));
 
         var log = new List<string>();

@@ -23,6 +23,8 @@ public partial class SettingsView : UserControl
     public SettingsView()
     {
         InitializeComponent();
+        // AI Polish: a revealed key never outlives the window (it is hidden, not closed).
+        IsVisibleChanged += (_, e) => { if (e.NewValue is false) HideKey(); };
         DataContextChanged += (_, _) =>
         {
             if (DataContext is VoiceCoordinator vm)
@@ -55,6 +57,8 @@ public partial class SettingsView : UserControl
             // App-rule mode chip: seed its label from the default add-mode.
             AppRuleModeButton.Content = _appRuleMode.DisplayName();
 
+            UpdateKeyControls();
+
             // Keep the recorders in sync when the coordinator changes a hotkey itself (e.g. Restore
             // Defaults). Setting HotkeyRecorder.Chord only updates its display — it does NOT raise
             // ChordChanged — so this can't loop back into SetHotkey/SetUndoHotkey. One SettingsView
@@ -64,6 +68,7 @@ public partial class SettingsView : UserControl
             {
                 if (e.PropertyName == nameof(VoiceCoordinator.Hotkey)) Recorder.Chord = Vm.Hotkey;
                 else if (e.PropertyName == nameof(VoiceCoordinator.UndoHotkey)) SyncUndoRecorder();
+                else if (e.PropertyName == nameof(VoiceCoordinator.HasApiKey)) UpdateKeyControls();
             };
         };
     }
@@ -260,4 +265,159 @@ public partial class SettingsView : UserControl
     private void OnReplayWelcomeTour(object sender, RoutedEventArgs e) => Vm.ReplayWelcomeTour();
 
     private void OnResetAllTours(object sender, RoutedEventArgs e) => Vm.ResetAllTours();
+
+    // ===================== AI Polish (key field, Test Key, balance) =====================
+    // The key is never data-bound: it moves between the PasswordBox (masked, the default), the TextBox
+    // (revealed by the eye) and the coordinator's DPAPI file. Save clears the field.
+
+    private bool _revealKey;
+    private bool _draftIsSavedKey;   // the field holds the SAVED key (revealed by the eye), not a new one
+    private bool _syncingKeyFields;
+    private bool _testingKey;
+
+    private string KeyDraft => _revealKey ? KeyRevealed.Text : KeyMasked.Password;
+
+    private void SetKeyDraft(string text)
+    {
+        _syncingKeyFields = true;
+        KeyMasked.Password = text;
+        KeyRevealed.Text = text;
+        _syncingKeyFields = false;
+        UpdateKeyControls();
+    }
+
+    private void OnKeyMaskedChanged(object sender, RoutedEventArgs e) => OnKeyDraftEdited();
+    private void OnKeyRevealedChanged(object sender, TextChangedEventArgs e) => OnKeyDraftEdited();
+
+    /// Typing clears the last status line and makes the field a NEW key (not the revealed one).
+    private void OnKeyDraftEdited()
+    {
+        if (_syncingKeyFields) return;
+        _draftIsSavedKey = false;
+        ShowNotice(KeyStatus, null);
+        UpdateKeyControls();
+    }
+
+    private void UpdateKeyControls()
+    {
+        bool empty = KeyDraft.Trim().Length == 0;
+        KeyPlaceholder.Tag = KeyDraft.Length == 0 ? "empty" : "";
+        SaveKeyButton.IsEnabled = !empty && !_draftIsSavedKey;
+        TestKeyButton.IsEnabled = !_testingKey && ((DataContext as VoiceCoordinator)?.HasApiKey == true || !empty);
+        TestKeyButton.Content = _testingKey ? "Testing\u2026" : "Test Key";
+        KeyMasked.Visibility = _revealKey ? Visibility.Collapsed : Visibility.Visible;
+        KeyRevealed.Visibility = _revealKey ? Visibility.Visible : Visibility.Collapsed;
+        RevealGlyph.Text = _revealKey ? "\uED1A" : "\uE890";
+        string tip = _revealKey ? "Hide key" : "Show key";
+        RevealButton.ToolTip = tip;
+        System.Windows.Automation.AutomationProperties.SetName(RevealButton, tip);
+    }
+
+    private void OnToggleReveal(object sender, RoutedEventArgs e)
+    {
+        if (_revealKey) { HideKey(); return; }
+        // Only an empty field is filled from the saved key; a key being typed is just unmasked.
+        if (KeyDraft.Length == 0 && Vm.RevealApiKey() is { } saved)
+        {
+            SetKeyDraft(saved);
+            _draftIsSavedKey = true;
+        }
+        else SetKeyDraft(KeyDraft);
+        _revealKey = true;
+        UpdateKeyControls();
+        KeyRevealed.CaretIndex = KeyRevealed.Text.Length;
+    }
+
+    private void HideKey()
+    {
+        string draft = KeyDraft;
+        _revealKey = false;
+        if (_draftIsSavedKey)
+        {
+            _draftIsSavedKey = false;
+            SetKeyDraft("");
+        }
+        else SetKeyDraft(draft);
+    }
+
+    private void OnKeyFieldKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { SaveKey(); e.Handled = true; }
+    }
+
+    private void OnSaveKey(object sender, RoutedEventArgs e) => SaveKey();
+
+    private void SaveKey()
+    {
+        string key = KeyDraft.Trim();
+        if (key.Length == 0 || _draftIsSavedKey) return;
+        if (Vm.SaveApiKey(key))
+        {
+            _revealKey = false;
+            SetKeyDraft("");
+            ShowNotice(KeyStatus, "Saved on this PC, encrypted for your Windows account.");
+        }
+        else ShowNotice(KeyStatus, "Couldn't save the key.");
+    }
+
+    private void OnRemoveKey(object sender, RoutedEventArgs e)
+    {
+        Vm.RemoveApiKey();
+        _revealKey = false;
+        _draftIsSavedKey = false;
+        SetKeyDraft("");
+        ShowNotice(KeyStatus, "Key removed. AI Polish is off.");
+    }
+
+    private async void OnTestKey(object sender, RoutedEventArgs e)
+    {
+        string candidate = _draftIsSavedKey ? "" : KeyDraft;
+        _testingKey = true;
+        ShowNotice(KeyStatus, null);
+        UpdateKeyControls();
+        string message;
+        try { message = await Vm.TestApiKeyAsync(candidate); }
+        catch (Exception) { message = "Couldn't reach Anthropic. Check your internet connection."; }
+        _testingKey = false;
+        UpdateKeyControls();
+        ShowNotice(KeyStatus, message);
+    }
+
+    /// "5", "$5", "2.50" or "2,50" (either decimal mark); null when it isn't a number.
+    private double? TopUpAmount()
+    {
+        string text = TopUpBox.Text.Trim().TrimStart('$').Trim();
+        if (double.TryParse(text, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.CurrentCulture, out var v)) return v;
+        if (double.TryParse(text.Replace(',', '.'), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out v)) return v;
+        return null;
+    }
+
+    private void OnTopUpKeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter) { AddBalance(); e.Handled = true; }
+        else ShowNotice(TopUpNotice, null);
+    }
+
+    private void OnAddBalance(object sender, RoutedEventArgs e) => AddBalance();
+
+    private void AddBalance()
+    {
+        bool ok = TopUpAmount() is { } amount && Vm.AddPolishBalance(amount);
+        ShowNotice(TopUpNotice, ok ? null
+            : $"Enter an amount between $0.01 and {JVoice.Core.AIPolish.AIPolishUsageStore.Dollars(JVoice.Core.AIPolish.AIPolishUsageStore.MaxTopUp)}.");
+    }
+
+    private void OnRemoveBalance(object sender, RoutedEventArgs e)
+    {
+        bool ok = TopUpAmount() is { } amount && Vm.RemovePolishBalance(amount);
+        ShowNotice(TopUpNotice, ok ? null : "Enter an amount above $0 to remove.");
+    }
+
+    /// Renders only: put a placeholder (never a real key) in the field, masked or revealed.
+    internal void PreviewKeyField(string placeholderKey, bool revealed)
+    {
+        SetKeyDraft(placeholderKey);
+        _revealKey = revealed;
+        UpdateKeyControls();
+    }
 }

@@ -9,9 +9,9 @@ Newest entries first. Updated after every step, so a new session can resume from
 | Area | State |
 |---|---|
 | Core logic (`windows/JVoice.Core/AIPolish/`) | done — request, prompt v2, validate, client + deadline, context ring, usage/balance, key file, eval |
-| xUnit tests (`AIPolishTests`, `AIPolishDpapiTests`) | written; 219/219 pass locally on Linux (Core-only subset); CI pending |
-| App wiring (HTTP transport, DPAPI, coordinator, HUD, Settings, `--polish-eval`) | not started |
-| CI UI preview artifact | not started |
+| xUnit tests (`AIPolishTests`, `AIPolishDpapiTests`) | written; Core-only subset 219/219 locally; CI run 1 failed to COMPILE the test project (missing `using System.Net.Http` under UseWPF) — fixed in step 2 |
+| App wiring (HTTP transport, DPAPI, coordinator, HUD, Settings, `--polish-eval`) | written; whole solution compiles locally (`-p:EnableWindowsTargeting=true`); CI pending |
+| CI UI preview artifact | step added to `windows.yml` (`windows-ui-preview`); first run pending |
 | Docs (PRIVACY, HANDOFF §7 #70, briefs) | not started |
 | Independent review | not started |
 
@@ -42,6 +42,28 @@ Newest entries first. Updated after every step, so a new session can resume from
 10. **Eval report default path** `docs/ai-polish/eval-results/<date>-windows-<model>-<thinking>.md`.
 
 ## Log
+
+### 2026-10-17 — step 2: App wiring + CI UI preview
+- Local build trick: the cloud container has .NET 10 SDK (apt, Microsoft repo); `dotnet build
+  windows/JVoice.sln -c Release -p:EnableWindowsTargeting=true` compiles the WPF app and the test
+  project (XAML included) on Linux — catches compile errors before CI. Tests still RUN only on CI.
+- `JVoice.App/AIPolish/`: `HttpPolishTransport` (one `SocketsHttpHandler`: no cookies, no credentials,
+  no redirects — a redirect would re-send `x-api-key` — infinite HttpClient timeout, the client's
+  deadline rules), `DpapiKeyProtector` (+ `PlatformPaths.ApiKeyFile` / `AiPolishUsageFile`),
+  `PolishEvalCli` (`--polish-eval`, routed first in `App.Main`).
+- `VoiceCoordinator.AIPolish.cs` (partial): Settings state, key/balance actions, `PolishAsync` (runs
+  after maths + the empty check, before paste/copy; the result replaces the local text everywhere),
+  context ring append after each paste/copy, the ONE "used up" pill after "Pasted" — kept PENDING when
+  that paste fails (Mac review item), late-reply billing, preview states for renders.
+- HUD: `RefiningPanel` — "AI refining", white text with a #D97757 band swept by the render loop
+  (1.6 s), soft orange glow, same 240 minimum width as the transcribing row; holds still when Windows
+  animations are off (`SystemParameters.ClientAreaAnimation`).
+- Settings: full-width "AI Polish" card (grid row 2, footer moved to row 3): switch + caption, masked
+  PasswordBox / revealed TextBox + eye (reveal resets when the window hides), Save / Test Key / Remove
+  Key; right 300 px: balance, bar, Amount $ [5] Add / Remove, red used-up line, This month / All time.
+- Renders: `--settings-render <png> aipolish-nokey|aipolish-zero|aipolish-on|aipolish-revealed|aipolish-usedup [light|dark]`
+  (staged in memory, placeholder key only), `--hud-render <png> refining`, `--hud-preview refining`;
+  `--ui-preview` takes 7 new shots. CI renders them and uploads `windows-ui-preview`.
 
 ### 2026-10-17 — step 1: Core logic + tests
 - Branch created from `origin/main`; brought over `scripts/ai-polish-eval/` and `docs/ai-polish/`

@@ -17,7 +17,7 @@ using JVoice.Core.Tours;
 
 namespace JVoice.App;
 
-public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
+public sealed partial class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 {
     private readonly Dispatcher _dispatcher = Dispatcher.CurrentDispatcher;
 
@@ -120,6 +120,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _removeFillerWords = s.RemoveFillerWords;
         _developerTermsEnabled = s.DeveloperTerms;
         _mathNotationEnabled = s.MathNotation;
+        _aiPolish = s.AiPolish;
         _appearance = s.Appearance;
         _uiOpacity = s.UiOpacity;
         _hotkeyChord = s.Hotkey;
@@ -142,6 +143,10 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         _totalWordsSpoken = _statsStore.TotalWords;
         _averageWpm = _statsStore.AverageWpm;
         _timeSavedMinutes = StatsMath.EstimatedMinutesSaved(_statsStore.TotalWords, _statsStore.TotalSeconds);
+        // AI Polish: the balance + totals are a tiny JSON read; the key hint is read lazily by Settings.
+        _polishBalance = _polishUsage.Balance;
+        _polishLastTopUp = _polishUsage.LastTopUp;
+        _polishTotals = _polishUsage.GetTotals();
         _lastTranscript = _lastTranscriptStore.Transcript;
         EditedTranscript = _lastTranscript;
         LaunchAtLoginEnabled = LaunchAtLogin.IsEnabled;
@@ -735,6 +740,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
 
     public void ShowSettings()
     {
+        RefreshAiPolishStatus();
         // Re-enumerate microphones every time Settings opens — endpoints are plugged, unplugged
         // and enabled/disabled while the app runs, so a list captured at startup goes stale.
         RefreshInputDevices();
@@ -813,6 +819,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             MathNotation = _mathNotationEnabled,
             Appearance = _appearance,
             UiOpacity = _opacityHold ?? _uiOpacity,
+            AiPolish = _aiPolish,
         });
     }
 
@@ -832,6 +839,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         foreach (var c in s.Corrections) Corrections.Add(c);
         RemoveFillerWords = s.RemoveFillerWords;
         DeveloperTermsEnabled = s.DeveloperTerms;
+        // AI Polish back to OFF (the key and the balance are not settings: they stay).
+        _aiPolish = s.AiPolish;
+        _polishContext.Clear();
         MathNotationEnabled = s.MathNotation;
         GameMode = s.GameMode;
         // v3 dictation features — set the backing fields directly (not the properties) to avoid an
@@ -870,6 +880,7 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
         Raise(nameof(CopyToClipboardOnly)); Raise(nameof(TranslateToEnglish)); Raise(nameof(AppAwareModes)); Raise(nameof(HasAppModeRules));
         Raise(nameof(CheckForUpdatesAutomatically));
         Raise(nameof(InputDeviceName)); Raise(nameof(SelectedInputDevice));
+        RaiseAiPolishFlags();
         _engine = MakeEngine(_whisperModel, _language, CustomWords.ToList());
         _ = _engine.PrewarmAsync();
     }
@@ -1304,9 +1315,11 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
             // dictate under that tone instead of the global one; otherwise keep _toneMode. Gated on
             // the master toggle so the (read-only) foreground-exe probe is skipped entirely when off.
             ToneStyle effectiveTone = _toneMode;
+            // The paste window's exe (read-only): app-aware modes pick a tone by it, AI Polish keys its
+            // context ring by it. Probed only when one of them is on.
+            string? targetExe = _appAwareModes || _aiPolish ? ForegroundApp.ExeName(target) : null;
             if (_appAwareModes)
             {
-                string? targetExe = ForegroundApp.ExeName(target); // read-only; target is the paste window
                 effectiveTone = AppModeResolver.Resolve(targetExe, AppModeRules.ToList(), enabled: true) ?? _toneMode;
             }
             string processed = TextProcessor.RemoveWhisperHallucinations(
@@ -1324,6 +1337,12 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 await _dispatcher.InvokeAsync(() => { UpdateHud(HudState.Error(message)); ScheduleHudReset(AppTimings.HudResetDelay); });
                 return;
             }
+
+            // AI Polish (opt-in): the pill says "AI refining" meanwhile. ANY failure — no key, offline,
+            // a bad key, the 3 s deadline, an odd reply — hands back `processed` unchanged. The result
+            // replaces the local text everywhere below: paste, copy-only, HUD, history, stats, undo.
+            processed = await PolishAsync(processed, targetExe, effectiveTone, vocab, ct);
+            if (ct.IsCancellationRequested) return;
 
             if (_copyToClipboardOnly)
             {
@@ -1391,7 +1410,9 @@ public sealed class VoiceCoordinator : INotifyPropertyChanged, IDisposable
                 // history) used to run before the pill changed.
                 UpdateHud(_copyToClipboardOnly ? HudState.Copied(processed) : HudState.Done(processed));
                 TourEvents.PostAction(TourEventName.DictationPasted);
-                ScheduleHudReset(AppTimings.HudResetDelay);
+                // A reply emptied the AI Polish balance: "Pasted" first, then ONE "used up" pill.
+                if (!TryShowPolishUsedUpAfterPaste()) ScheduleHudReset(AppTimings.HudResetDelay);
+                RememberForPolish(processed, targetExe);
                 DiagnosticLog.Write($"Timing  stop->transcript={transcribedMs}ms  stop->pasted={pastedMs}ms  " +
                     $"stop->idle={_pressStopwatch?.ElapsedMilliseconds ?? -1}ms  recSecs={_lastRecordingSeconds:0.00}");
                 KeepTranscript(processed, wordCount);

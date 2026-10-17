@@ -16,7 +16,7 @@ public partial class HudView : UserControl
     // Mac's TimelineView): a storyboard started while the layered window is hidden doesn't reliably
     // drive it, and writing the bars each frame forces the layered window to repaint. The loop runs
     // ONLY while a live pill is showing; a hidden or prewarmed pill draws nothing (row 20).
-    private enum BarMode { Hidden, Live, Shimmer }
+    private enum BarMode { Hidden, Live, Shimmer, Refining }
 
     // ---- shared bar geometry (Mac HUDView.Bars): thin capsules that rest as a flat line ----
     private const int BarCount = 15;
@@ -28,6 +28,7 @@ public partial class HudView : UserControl
 
     // ---- capsule geometry (Mac HUDLayout) ----
     private const double PillMinWidth = 240;     // the recording / transcribing row
+    private const double RefiningPeriod = 1.6;   // seconds per sweep of the "AI refining" highlight (Mac)
     private static readonly Duration Morph = TimeSpan.FromMilliseconds(300);
 
     private readonly Stopwatch _clock = Stopwatch.StartNew();
@@ -124,6 +125,7 @@ public partial class HudView : UserControl
         {
             HudStateKind.Recording => ShowLive(stop: true),
             HudStateKind.Transcribing => ShowLive(stop: false),
+            HudStateKind.Refining => RefiningPanel,
             HudStateKind.PreparingModel => ShowModel(downloading: false, 0),
             HudStateKind.DownloadingModel => ShowModel(downloading: true, state.Progress ?? 0),
             HudStateKind.Done => ShowStatus("", Accent.Green, "Pasted"),
@@ -138,6 +140,8 @@ public partial class HudView : UserControl
         {
             HudStateKind.Recording => BarMode.Live,
             HudStateKind.Transcribing => BarMode.Shimmer,
+            // The sweep runs on the same per-frame loop; with Windows' animations off it holds still.
+            HudStateKind.Refining => SystemParameters.ClientAreaAnimation ? BarMode.Refining : BarMode.Hidden,
             _ => BarMode.Hidden,
         });
         SetElapsedTimer(state.Kind == HudStateKind.PreparingModel);
@@ -221,14 +225,15 @@ public partial class HudView : UserControl
     {
         Capsule.BeginAnimation(WidthProperty, null);
         Capsule.Width = double.NaN;
-        foreach (var panel in new FrameworkElement[] { LivePanel, StatusPanel, ModelPanel })
+        if (next == RefiningPanel) RefiningSweep.X = 0; // static pose: the highlight mid-word
+        foreach (var panel in new FrameworkElement[] { LivePanel, StatusPanel, ModelPanel, RefiningPanel })
         {
             panel.BeginAnimation(OpacityProperty, null);
             bool on = panel == next;
             panel.Opacity = on ? 1 : 0;
             panel.Visibility = on ? Visibility.Visible : Visibility.Collapsed;
         }
-        Capsule.MinWidth = next == LivePanel ? PillMinWidth : 56;
+        Capsule.MinWidth = MinWidthFor(next);
         _shown = next;
     }
 
@@ -243,7 +248,7 @@ public partial class HudView : UserControl
         next.Opacity = 0;
         next.Visibility = Visibility.Visible;
         next.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        double min = next == LivePanel ? PillMinWidth : 56;
+        double min = MinWidthFor(next);
         double to = Math.Max(min, next.DesiredSize.Width + 2); // + the 1 px hairline each side
 
         Capsule.MinWidth = 0;
@@ -266,6 +271,11 @@ public partial class HudView : UserControl
         });
         _shown = next;
     }
+
+    /// The live row and the refining pill share the 240 minimum, so going from one to the other never
+    /// changes the capsule's size; status pills hug their text.
+    private double MinWidthFor(FrameworkElement? panel) =>
+        panel == LivePanel || panel == RefiningPanel ? PillMinWidth : 56;
 
     private void OnStopClick(object sender, RoutedEventArgs e) => StopRequested?.Invoke();
 
@@ -318,6 +328,14 @@ public partial class HudView : UserControl
         if (!JVoice.Core.FramePacer.ShouldApply(t, _lastAppliedFrame)) return;
         _lastAppliedFrame = t;
         FramesDrawn++;
+
+        if (_mode == BarMode.Refining)
+        {
+            // The highlight crosses the word every 1.6 s (from just off the left edge to just off the right).
+            double phase = t % RefiningPeriod / RefiningPeriod;
+            RefiningSweep.X = -0.7 + 1.4 * phase;
+            return;
+        }
 
         double max = _mode == BarMode.Live ? LiveMaxHeight : ShimmerMaxHeight;
         for (int i = 0; i < _bars.Length; i++)

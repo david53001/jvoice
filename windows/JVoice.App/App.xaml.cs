@@ -39,6 +39,9 @@ public partial class App : Application
         if (BenchRunner.ShouldRun(args))
             return BenchRunner.RunAndExit(args);
 
+        if (JVoice.App.AIPolish.PolishEvalCli.ShouldRun(args))
+            return JVoice.App.AIPolish.PolishEvalCli.RunAndExit(args);
+
         if (Diagnostics.UiPreviewRunner.ShouldRun(args))
             return Diagnostics.UiPreviewRunner.RunAndExit(args);
 
@@ -238,6 +241,7 @@ public partial class App : Application
             "downloading"  => HudState.DownloadingModel(0.42),
             "error"        => HudState.Error("Something went wrong"),
             "done"         => HudState.Done("Pasted"),
+            "refining"     => HudState.Refining,
             "copied"       => HudState.Copied("Copied"),
             _              => HudState.Recording,
         };
@@ -260,14 +264,21 @@ public partial class App : Application
         // Args after the flag: an optional output path and an optional Updates-card state token
         // (so `--settings-render out.png available` screenshots the card mid-update). Tell them
         // apart by the known state names rather than position.
-        var known = new[] { "checking", "available", "downloading", "uptodate", "error", "light", "dark" };
+        var aiPolishStates = new[] { "aipolish-nokey", "aipolish-zero", "aipolish-on", "aipolish-revealed", "aipolish-usedup" };
+        var known = new[] { "checking", "available", "downloading", "uptodate", "error", "light", "dark" }.Concat(aiPolishStates).ToArray();
         var rest = idx >= 0 ? args.Skip(idx + 1).ToArray() : Array.Empty<string>();
-        string? updateState = rest.FirstOrDefault(a => known.Contains(a.ToLowerInvariant()));
+        string? updateState = rest.FirstOrDefault(a => known.Contains(a.ToLowerInvariant()) && !aiPolishStates.Contains(a.ToLowerInvariant())
+            && a.ToLowerInvariant() is not ("light" or "dark"));
+        string? aiPolishState = rest.Select(a => a.ToLowerInvariant()).FirstOrDefault(aiPolishStates.Contains);
         string? pathArg = rest.FirstOrDefault(a => !known.Contains(a.ToLowerInvariant()));
         var path = pathArg ?? Path.Combine(Path.GetTempPath(), "jvoice-settings.png");
 
         var coordinator = new VoiceCoordinator();
         if (updateState is not null) coordinator.Updates.EnterPreviewState(updateState);
+        // AI Polish card states are staged in memory (never the real key/balance — and the render runs
+        // under a throwaway profile anyway); otherwise read what this profile has, like opening Settings.
+        if (aiPolishState is not null) coordinator.EnterAiPolishPreviewState(aiPolishState);
+        else coordinator.RefreshAiPolishStatus();
         // `light` / `dark` force an appearance for the shot (default: the stored one); Mica can't be
         // captured off-screen, so the panel is rendered over the solid window colour.
         var forced = rest.Any(a => a.Equals("light", StringComparison.OrdinalIgnoreCase)) ? AppAppearance.Light
@@ -276,6 +287,9 @@ public partial class App : Application
         Theme.Initialize(forced, coordinator.UiOpacity);
         var view = new SettingsView { DataContext = coordinator };
         view.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "Window.Solid");
+        // An obvious placeholder in the key field — never a real key.
+        if (aiPolishState is "aipolish-on" or "aipolish-revealed")
+            view.PreviewKeyField("sk-ant-example-not-a-real-key-0000", revealed: aiPolishState == "aipolish-revealed");
 
         const double scale = 2.0;
         // The view declares a fixed Width but sizes its Height to content (SettingsView.xaml has
@@ -319,7 +333,7 @@ public partial class App : Application
 
         // Args after the flag: an optional output path and an optional state token, told apart by
         // the known state names (mirrors --settings-render's path/state disambiguation).
-        var known = new[] { "recording", "transcribing", "preparing", "downloading", "error", "copied", "unpasted", "done" };
+        var known = new[] { "recording", "transcribing", "refining", "preparing", "downloading", "error", "copied", "unpasted", "done" };
         var rest = idx >= 0 ? args.Skip(idx + 1).ToArray() : Array.Empty<string>();
         string? stateArg = rest.FirstOrDefault(a => known.Contains(a.ToLowerInvariant()));
         string? pathArg = rest.FirstOrDefault(a => !known.Contains(a.ToLowerInvariant()));
@@ -334,6 +348,8 @@ public partial class App : Application
             view.Apply(HudState.Done("x"));
         else if (string.Equals(stateArg, "transcribing", StringComparison.OrdinalIgnoreCase))
             view.Apply(HudState.Transcribing);
+        else if (string.Equals(stateArg, "refining", StringComparison.OrdinalIgnoreCase))
+            view.Apply(HudState.Refining);   // static pose: the orange highlight mid-word
         else if (string.Equals(stateArg, "preparing", StringComparison.OrdinalIgnoreCase))
             view.Apply(HudState.PreparingModel);
         else if (string.Equals(stateArg, "downloading", StringComparison.OrdinalIgnoreCase))

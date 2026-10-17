@@ -79,6 +79,34 @@ jobs:
           path: "${{ github.workspace }}/test-results/*.trx"
           if-no-files-found: warn
 
+      # Look at the UI without a Windows PC: render every surface (Settings incl. the AI Polish card
+      # states, every HUD pill incl. "AI refining", Welcome, tour tags) off-screen with a throwaway
+      # profile (never a real key or setting) and upload the PNGs. --ui-preview writes
+      # _preview-log.txt (ok / FAIL per shot); a failed shot fails this step, but the artifact is
+      # still uploaded so the failure can be seen.
+      - name: Render UI preview (--ui-preview)
+        if: always()
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem windows/JVoice.App/bin -Recurse -Filter JVoice.exe | Where-Object { $_.FullName -match 'Release' } | Select-Object -First 1
+          if (-not $exe) { Write-Error "JVoice.exe not found under windows/JVoice.App/bin"; exit 1 }
+          Write-Host "Using $($exe.FullName)"
+          $out = Join-Path "${{ github.workspace }}" "ui-preview"
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList @('--ui-preview', $out) -Wait -PassThru
+          if (Test-Path (Join-Path $out '_preview-log.txt')) { Get-Content (Join-Path $out '_preview-log.txt') }
+          $err = Join-Path $env:TEMP 'jvoice-render-error.txt'
+          if (Test-Path $err) { Write-Host '--- render error ---'; Get-Content $err }
+          Write-Host "ui-preview exit code: $($p.ExitCode)"
+          exit $p.ExitCode
+
+      - name: Upload UI preview
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ui-preview
+          path: "${{ github.workspace }}/ui-preview"
+          if-no-files-found: warn
+
   # OPTIONAL, OFF BY DEFAULT: produce the CPU build as a CI artifact for inspection.
   # It does NOT create a Release, does NOT push, does NOT run on PRs/forks.
   # Manually triggered via the Actions "Run workflow" UI (workflow_dispatch) only.

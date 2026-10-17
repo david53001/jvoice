@@ -44,6 +44,24 @@ public static class PlatformPaths
     public static string LastTranscriptFile => Path.Combine(AppDataDirectory, "last-transcript.txt");
     public static string TranscriptHistoryFile => Path.Combine(AppDataDirectory, "transcript-history.json");
 
+    /// AI Polish's spent totals + prepaid balance (numbers only — never text or the key).
+    public static string AiPolishUsageFile => Path.Combine(AppDataDirectory, "ai-polish-usage.json");
+
+    /// The user's Anthropic key, DPAPI-encrypted (CurrentUser): %LOCALAPPDATA%\JVoice\anthropic-api-key.bin.
+    /// Local, not Roaming — a DPAPI blob only decrypts on this machine anyway. Under a preview profile
+    /// (JVOICE_PROFILE_DIR) it lives in that throwaway folder, so a render can never read the real key.
+    public static string ApiKeyFile
+    {
+        get
+        {
+            string dir = Environment.GetEnvironmentVariable(ProfileOverrideVariable) is { Length: > 0 } overridden
+                ? overridden
+                : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "JVoice");
+            Directory.CreateDirectory(dir);
+            return Path.Combine(dir, JVoice.Core.AIPolish.ApiKeyStore.FileName);
+        }
+    }
+
     /// %APPDATA%\JVoice\capture — recordings kept for no-speech threshold calibration
     /// when the JVOICE_KEEP_WAV env var is set. Outside the jvoice-*.wav sweep pattern,
     /// so kept clips survive app restarts. Empty/unused in normal operation.

@@ -286,6 +286,32 @@
         </Setter>
     </Style>
 
+    <!-- ===== masked input (the AI Polish key): the InputBox look on a PasswordBox ===== -->
+    <Style x:Key="InputPasswordBox" TargetType="PasswordBox">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Foreground" Value="{DynamicResource Text.Primary}" />
+        <Setter Property="CaretBrush" Value="{DynamicResource Text.Primary}" />
+        <Setter Property="SelectionBrush" Value="{DynamicResource Accent}" />
+        <Setter Property="Padding" Value="8,4" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="PasswordBox">
+                    <Border x:Name="Chrome" CornerRadius="6" Background="{DynamicResource Input.Fill}"
+                            BorderBrush="{DynamicResource Card.Hairline}" BorderThickness="1" SnapsToDevicePixels="True">
+                        <ScrollViewer x:Name="PART_ContentHost" Margin="{TemplateBinding Padding}"
+                                      VerticalAlignment="Center" Focusable="False"
+                                      HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Chrome" Property="BorderBrush" Value="{DynamicResource Accent}" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
     <!-- ===== the shortcut recorder (a Button subclass) — looks like an input ===== -->
     <Style TargetType="ui:HotkeyRecorder">
         <Setter Property="FontSize" Value="13" />
