@@ -3655,5 +3655,165 @@ xcrun swiftc -O \
 "$TMP_DIR/tour-tests" | tee -a "$TMP_DIR/all.log"
 # ---- END: Tours ----
 
+# ---- BEGIN: AI Polish (added 2026-10-17, docs/ai-polish/PROTOTYPE-PLAN.md §6) ----
+# Own main, own source list: the pure request/parser + context ring (AIPolishRequest) and the
+# client's fallback paths + hard deadline (AIPolishClient), driven by a fake transport — no network,
+# no Keychain. Canonical suite: Tests/JVoiceTests/AIPolishTests.swift.
+mkdir -p "$TMP_DIR/aipolish"
+cat > "$TMP_DIR/aipolish/main.swift" <<'EOF'
+import Foundation
+
+var failures = 0
+func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+    if condition() {
+        print("  ✓ \(message)")
+    } else {
+        print("  ✗ FAIL: \(message)")
+        failures += 1
+    }
+}
+func expectEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String) {
+    if actual == expected {
+        print("  ✓ \(message)")
+    } else {
+        print("  ✗ FAIL: \(message) — got \(actual), expected \(expected)")
+        failures += 1
+    }
+}
+
+final class FakeTransport: AIPolishTransport, @unchecked Sendable {
+    let status: Int
+    let body: String
+    let error: Error?
+    let stallSeconds: Double
+    private let lock = NSLock()
+    private var count = 0
+    var requestCount: Int { lock.lock(); defer { lock.unlock() }; return count }
+    init(status: Int = 200, body: String = "", error: Error? = nil, stallSeconds: Double = 0) {
+        self.status = status; self.body = body; self.error = error; self.stallSeconds = stallSeconds
+    }
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        lock.lock(); count += 1; lock.unlock()
+        if stallSeconds > 0 { usleep(UInt32(stallSeconds * 1_000_000)) }   // ignores cancellation
+        if let error { throw error }
+        return (Data(body.utf8), HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: nil)!)
+    }
+}
+
+func reply(_ text: String, stop: String = "end_turn") -> String {
+    let object: [String: Any] = ["stop_reason": stop,
+                                 "content": [["type": "thinking", "thinking": ""], ["type": "text", "text": text]],
+                                 "usage": ["input_tokens": 100, "output_tokens": 10]]
+    return String(decoding: try! JSONSerialization.data(withJSONObject: object), as: UTF8.self)
+}
+
+enum Fixture { static let original = "so we pushed it to versails and it worked" }
+let original = Fixture.original
+func polish(_ t: FakeTransport, text: String = Fixture.original, previous: [String] = [], key: String? = "test-key-not-real",
+            deadline: Double = 3) async -> AIPolishResult {
+    await AIPolishClient(transport: t, deadline: deadline)
+        .polish(text, previous: previous, mode: .casual, vocabulary: ["JVoice"], apiKey: { key })
+}
+
+print("AIPolishRequest — request shape")
+do {
+    let body = AIPolishRequest.body(transcript: original, previous: ["We build the site."], mode: .formal, vocabulary: ["JVoice"])
+    expectEqual(body["model"] as? String, "claude-haiku-5-5", "model is claude-haiku-5-5")
+    expectEqual((body["thinking"] as? [String: Any])?["type"] as? String, "disabled", "thinking disabled")
+    expect(body["temperature"] == nil && body["top_p"] == nil && body["top_k"] == nil, "no sampling params")
+    let messages = body["messages"] as? [[String: Any]] ?? []
+    expect(messages.count == 1 && messages[0]["role"] as? String == "user", "one user turn, no prefill")
+    expectEqual(messages.first?["content"] as? String,
+                "<previous>\nWe build the site.\n</previous>\n<transcript>\n\(original)\n</transcript>", "context then transcript, in tags")
+    let system = body["system"] as? String ?? ""
+    expect(system.contains("Tone: formal"), "tone line")
+    expect(system.contains("when they occur: JVoice."), "custom words line")
+    expect(AIPolishRequest.systemPrompt(mode: .casual, vocabulary: []).contains("when they occur: none."), "no custom words → none")
+    expectEqual(AIPolishRequest.maxTokens(for: "hi", thinking: .off), 256, "max_tokens floor 256")
+    expectEqual(AIPolishRequest.maxTokens(for: String(repeating: "a", count: 99_999), thinking: .off), 4096, "max_tokens cap 4096")
+    let low = AIPolishRequest.body(transcript: "x", previous: [], mode: .casual, vocabulary: [], options: .init(model: "m", thinking: .low))
+    expectEqual((low["output_config"] as? [String: Any])?["effort"] as? String, "low", "thinking .low → effort low")
+    let request = AIPolishRequest.urlRequest(body: body, apiKey: "test-key-not-real", timeout: 3)
+    expectEqual(request.value(forHTTPHeaderField: "x-api-key"), "test-key-not-real", "x-api-key header")
+    expectEqual(request.value(forHTTPHeaderField: "anthropic-version"), "2023-06-01", "anthropic-version header")
+    expectEqual(request.value(forHTTPHeaderField: "content-type"), "application/json", "content-type header")
+}
+
+print("AIPolishRequest — reply judging")
+do {
+    func judge(_ status: Int, _ body: String, original: String = Fixture.original, previous: [String] = []) -> AIPolishRequest.Outcome {
+        AIPolishRequest.outcome(status: status, data: Data(body.utf8), original: original, previous: previous)
+    }
+    expectEqual(judge(200, reply("So we pushed it to Vercel, and it worked.")), .polished("So we pushed it to Vercel, and it worked."), "end_turn → polished")
+    expectEqual(judge(401, "{}"), .fallback(.http(401)), "401 → fallback")
+    expectEqual(judge(200, "not json"), .fallback(.malformed), "malformed → fallback")
+    expectEqual(judge(200, reply("So we", stop: "max_tokens")), .fallback(.stopReason("max_tokens")), "max_tokens → fallback")
+    expectEqual(judge(200, reply("", stop: "refusal")), .fallback(.stopReason("refusal")), "refusal → fallback")
+    expectEqual(judge(200, reply("  ")), .fallback(.empty), "empty → fallback")
+    expectEqual(judge(200, reply(String(repeating: "word ", count: 40))), .fallback(.tooLong), "over-long → fallback")
+    expectEqual(judge(200, reply("Here is the cleaned text: So we pushed it.")), .fallback(.chatty), "\"Here is\" → fallback")
+    expectEqual(judge(200, reply("Sure, see you at five."), original: "sure see you at five"), .polished("Sure, see you at five."), "a real \"sure\" dictation is kept")
+    expectEqual(judge(200, reply("<transcript>\nFixed.\n</transcript>"), original: "fixed"), .polished("Fixed."), "tags unwrapped")
+    expectEqual(judge(200, reply("We are moving the marketing site. Deploy it to Vercel."), original: "deploy it to versails",
+                      previous: ["We are moving the marketing site."]), .fallback(.leakedContext), "echoed context → fallback")
+    expectEqual(AIPolishRequest.FallbackReason.stopReason("weird new value").logLabel, "stop:other", "unknown stop reasons are not echoed")
+}
+
+print("AIPolishContext")
+do {
+    var context = AIPolishContext()
+    let now = Date()
+    context.append("Older.", bundleId: "a", at: now.addingTimeInterval(-700))
+    context.append("First.", bundleId: "a", at: now.addingTimeInterval(-60))
+    context.append("Other app.", bundleId: "b", at: now.addingTimeInterval(-30))
+    context.append("Second.", bundleId: "a", at: now.addingTimeInterval(-10))
+    expectEqual(context.entries.count, 3, "ring keeps the last 3")
+    expectEqual(context.previous(for: "a", now: now), ["First.", "Second."], "same app, last 10 min, oldest first")
+    expectEqual(context.previous(for: nil, now: now), [], "unknown target → no context")
+    context.append(String(repeating: "x", count: 2_000), bundleId: "a", at: now)
+    expectEqual(context.previous(for: "a", now: now).joined().count, 1_500, "capped at 1,500 characters")
+    context.clear()
+    expectEqual(context.previous(for: "a", now: now), [], "clear empties it")
+}
+
+print("AIPolishClient — every failure pastes the local text")
+do {
+    let ok = await polish(FakeTransport(body: reply("So we pushed it to Vercel.")))
+    expectEqual(ok.text, "So we pushed it to Vercel.", "200 end_turn → polished text")
+    expectEqual(ok.logLabel, "ok", "log label ok")
+    for status in [401, 429, 500] {
+        let r = await polish(FakeTransport(status: status, body: "{}"))
+        expect(r.text == original && r.logLabel == "fallback(http\(status))", "\(status) → local text")
+    }
+    let offline = await polish(FakeTransport(error: URLError(.notConnectedToInternet)))
+    expect(offline.text == original && offline.logLabel == "fallback(network)", "offline → local text")
+    let started = Date()
+    let stalled = await polish(FakeTransport(body: reply("late"), stallSeconds: 2), deadline: 0.3)
+    expect(stalled.text == original && stalled.logLabel == "fallback(timeout)", "stalled transport → local text")
+    expect(Date().timeIntervalSince(started) < 1.5, "the deadline does not wait for the transport")
+    let noKeyTransport = FakeTransport(body: reply("unused"))
+    let noKey = await polish(noKeyTransport, key: nil)
+    expect(noKey.text == original && noKey.logLabel == "fallback(no-key)", "no key → local text")
+    expectEqual(noKeyTransport.requestCount, 0, "no key → no request")
+    expect(!ok.logLabel.contains("Vercel") && !noKey.logLabel.contains("test-key"), "log labels carry no text or key")
+}
+
+if failures > 0 {
+    print("\n\(failures) FAILURE(S) in AI Polish")
+    exit(1)
+}
+print("\nAll AI Polish tests passed.")
+EOF
+
+xcrun swiftc -O \
+    "$REPO_ROOT/Sources/JVoice/Models/AppMode.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/AIPolish/AIPolishRequest.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/AIPolish/AIPolishClient.swift" \
+    "$TMP_DIR/aipolish/main.swift" \
+    -o "$TMP_DIR/aipolish-tests"
+
+"$TMP_DIR/aipolish-tests" | tee -a "$TMP_DIR/all.log"
+# ---- END: AI Polish ----
+
 echo
-echo "TOTAL: $(grep -c '✓' "$TMP_DIR/all.log") assertions passed across 4 sections (logic, orchestration/audio, Settings UI, Tours)."
+echo "TOTAL: $(grep -c '✓' "$TMP_DIR/all.log") assertions passed across 5 sections (logic, orchestration/audio, Settings UI, Tours, AI Polish)."

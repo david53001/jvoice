@@ -19,6 +19,11 @@ enum JVoiceMain {
         if MathProbe.shouldRun(arguments: CommandLine.arguments) {
             MathProbe.runAndExit(arguments: CommandLine.arguments)
         }
+        // Hidden dev mode: `JVoice --polish-eval <cases.json> [--model …] [--thinking off|low]` runs
+        // the AI Polish eval against the real API (the user's own key) — accuracy + latency + cost.
+        if PolishEvalRunner.shouldRun(arguments: CommandLine.arguments) {
+            PolishEvalRunner.runAndExit(arguments: CommandLine.arguments)
+        }
         // Hidden dev mode: `JVoice --settings-smoke` builds the Settings
         // window and exits — the only way to catch an AppKit/SwiftUI crash in
         // Settings on a machine that cannot execute the test suite.

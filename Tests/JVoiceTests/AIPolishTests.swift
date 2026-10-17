@@ -284,4 +284,37 @@ func chattyOutputFallsBack(_ chatty: String) async {
     context.append(String(repeating: "c", count: 2_000), bundleId: "app", at: now.addingTimeInterval(-1))
     #expect(context.previous(for: "app", now: now) == [String(repeating: "c", count: AIPolishContext.maxCharacters)])
 }
+// MARK: - Eval harness (grading only — the eval itself needs a real key and runs on David's Mac)
+
+@Test func evalGradingIsCaseSensitiveSubstringsPlusLengthTolerance() {
+    let testCase = PolishEvalCase(id: "x", category: "preserve", previous: nil, transcript: String(repeating: "a", count: 100),
+                                  mode: nil, mustContain: ["Vercel"], mustNotContain: ["versails"], holdout: nil,
+                                  customWords: nil, lengthTolerance: 0.25)
+    #expect(PolishEval.failures(of: "Deploy to Vercel" + String(repeating: "a", count: 84), for: testCase).isEmpty)
+    #expect(PolishEval.failures(of: "deploy to vercel" + String(repeating: "a", count: 84), for: testCase) == ["missing “Vercel”"])
+    #expect(PolishEval.failures(of: "Vercel versails" + String(repeating: "a", count: 85), for: testCase) == ["contains “versails”"])
+    #expect(PolishEval.failures(of: "Vercel", for: testCase) == ["length 6% of the transcript"])
+    #expect(testCase.appMode == .casual)
+}
+
+@Test func evalPercentilesAreNearestRank() {
+    #expect(PolishEval.percentile([], 50) == 0)
+    #expect(PolishEval.percentile([300, 100, 200], 50) == 200)
+    #expect(PolishEval.percentile(Array(1...100), 95) == 95)
+    #expect(PolishEval.percentile(Array(1...100), 100) == 100)
+}
+
+@Test func evalCaseFileCoversEveryCategoryWithAHoldOutMajority() throws {
+    let root = URL(fileURLWithPath: #filePath).deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    let data = try Data(contentsOf: root.appendingPathComponent("scripts/ai-polish-eval/cases.json"))
+    let cases = try JSONDecoder().decode([PolishEvalCase].self, from: data)
+    #expect(cases.count >= 55)
+    #expect(Set(cases.map(\.id)).count == cases.count)
+    let categories = Set(cases.map(\.category))
+    #expect(categories == ["context-fix", "context-from-previous", "no-false-fix", "no-answer", "preserve"])
+    let contextFix = cases.filter { $0.category == "context-fix" }
+    #expect(contextFix.filter { $0.holdout == true }.count * 2 >= contextFix.count)
+    #expect(cases.filter { $0.category == "context-from-previous" }.allSatisfy { !($0.previous ?? []).isEmpty })
+    #expect(cases.allSatisfy { ($0.mode ?? "casual").isEmpty == false && AppMode(rawValue: $0.mode ?? "casual") != nil })
+}
 #endif
