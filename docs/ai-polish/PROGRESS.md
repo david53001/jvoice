@@ -16,19 +16,23 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
 | Settings UI section | done |
 | swift-testing `AIPolishTests` + SettingsState tests | done |
 | Logic harness section (`scripts/run-logic-tests.sh`, 5th section) | done |
-| Eval harness (`--polish-eval`) + 64 cases | done |
+| Eval harness (`--polish-eval`) + 78 cases (22 hold-out) | done |
 | Docs (PRIVACY.md, root CLAUDE.md, `Services/AIPolish/CLAUDE.md`) | done |
 | CI green on `feat/ai-polish` | done (runs 97, 98) |
 | **David runs the eval** | **todo — commands below** |
 | Default model chosen by the §6b rule | pending — no eval data |
-| Final review (`docs/ai-polish/REVIEW.md`) | first pass done without eval data; re-run after the eval |
+| Final review (`docs/ai-polish/REVIEW.md`) | done without eval data: **7/10 provisional**; top fixes applied (table at the end of REVIEW.md); re-run after the eval |
 
 **Accuracy / speed: pending — no eval data yet.** The cloud session has no API key (by design), so
 nothing has been measured against the real API. Targets (plan §9): ≥ 90 % overall, ≥ 80 % on the
 hold-out `context-fix` cases, 100 % on `no-answer`, p95 ≤ 1.5 s.
 
 **Next step:** David runs the eval (below) and commits the results file(s); then the next session
-picks the default config by the §6b rule, re-runs the final review, and tunes the prompt if needed.
+picks the default config by the §6b rule, re-runs the final review (same brief, plan §10), and
+tunes the prompt if needed. Open items from the review, not done yet: pre-connect to
+`api.anthropic.com` when recording starts + a `--cold` eval option (if the eval shows cold-start
+latency); a "paste original (unpolished)" action; `SecItemUpdate` instead of delete+add; tone-check
+fields in the eval; whether Code tone should skip polish entirely (David's call).
 
 ## CI
 
@@ -53,8 +57,9 @@ AI Polish code; it passed on run 97. If it shows up again, it is that flake, not
   `saveAPIKey`, `removeAPIKey` (also turns AI Polish off), `revealAPIKey`, `testAPIKey`.
 - `SettingsState.aiPolish` (default false), `AppTimings.aiPolishTimeout = 3.0`.
 - Settings → "AI Polish" card after Processing.
-- `JVoice --polish-eval` + `scripts/ai-polish-eval/cases.json` (64 cases: context-fix 15 of which
-  11 hold-out, context-from-previous 12, no-false-fix 12, no-answer 12, preserve 13).
+- `JVoice --polish-eval` + `scripts/ai-polish-eval/cases.json` (78 cases: context-fix 26 of which
+  22 hold-out, context-from-previous 12, no-false-fix 12, no-answer 12, preserve 16 incl. 3 long
+  dictations). Doing nothing scores 5/78, so a run's accuracy is real lift.
 - Tests: `Tests/JVoiceTests/AIPolishTests.swift`, 2 new cases in `SettingsStateMigrationTests`,
   "AI Polish" section in `scripts/run-logic-tests.sh`. CI also runs `--settings-smoke` now.
 
@@ -81,8 +86,12 @@ AI Polish code; it passed on run 97. If it shows up again, it is that flake, not
 7. **Restore Default Settings turns AI Polish off but keeps the key** in the Keychain (Remove Key
    deletes it). Easy to change if David prefers the reset to delete it too.
 8. **Eval latency** is measured with a 30 s per-call deadline (the app's is 3 s) so slow calls are
-   measured, not cut; the report counts how many the app would have abandoned. A fallback counts as
-   PASS/FAIL by what the user would get (the local text), and fallbacks are counted separately.
+   measured, not cut; a call past 3 s is graded as the local text (what the app would paste). Each
+   summary line shows accuracy (what the user gets), accuracy by a real polish, the do-nothing
+   baseline and the fallback count.
+10. **After the review:** a content-retention floor (`too-short` / `dropped-words` fallbacks), the
+   tone's formatting re-applied to the reply, and dictations under 3 words not sent at all
+   (none of these are in the plan; all keep the "never lose a dictation" rule).
 9. `PRIVACY.md`'s effective date was not bumped (feature is unreleased) — bump it when it ships.
 
 ## David: run the eval (on the Mac — a cloud session never gets the key)
@@ -126,6 +135,8 @@ Default = the most accurate config whose p95 ≤ 1.5 s; ties → the cheaper one
 
 ## Log
 
+- 2026-10-17 — Final reviewer (one fresh sub-agent, plan §10) scored 7/10 provisional (no eval
+  data). Applied its fixes 1–4 and parts of 6, 8, 9, 10; the rest are listed under "Next step".
 - 2026-10-17 — Prototype implemented in one session: all code, tests, eval harness, cases, docs.
   No local Swift toolchain in the cloud container (download.swift.org blocked, no apt package), so
   CI on the macOS runner is the compiler. First push green (run 97).

@@ -841,14 +841,18 @@ final class VoiceCoordinator: ObservableObject {
             // AI Polish (opt-in): the pill keeps saying "transcribing" meanwhile. ANY failure —
             // no key, offline, a bad key, the 3 s deadline, an odd reply — hands back `processed`.
             var finalText = processed
-            if aiPolish {
+            if aiPolish, AIPolish.isWorthPolishing(processed) {
                 let previous = polishContext.previous(for: targetBundleId)
                 let polish = await AIPolish.polish(processed, previous: previous, mode: effectiveMode,
                                                    vocabulary: customWords)
                 if Task.isCancelled { return }
-                finalText = polish.text
+                // The tone the user chose wins: its formatting (Casual's missing final period,
+                // Formal's capital + period) is applied to the reply as it was to the local text.
+                if polish.isPolished { finalText = TextProcessor.format(polish.text, mode: effectiveMode) }
                 // The reason only — never the text or the key.
-                Self.latencyLog.info("AIPolish \(polish.logLabel, privacy: .public) \(polish.milliseconds, privacy: .public)ms context=\(previous.count, privacy: .public)")
+                Self.latencyLog.info("AIPolish \(polish.logLabel, privacy: .public) \(polish.milliseconds, privacy: .public)ms context=\(previous.count, privacy: .public) changed=\(finalText != processed, privacy: .public)")
+            } else if aiPolish {
+                Self.latencyLog.info("AIPolish skipped(short)")
             }
 
             var completedState: HUDState = .done(finalText)

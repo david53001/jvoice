@@ -3757,6 +3757,9 @@ do {
     expectEqual(judge(200, reply("We are moving the marketing site. Deploy it to Vercel."), original: "deploy it to versails",
                       previous: ["We are moving the marketing site."]), .fallback(.leakedContext), "echoed context → fallback")
     expectEqual(AIPolishRequest.FallbackReason.stopReason("weird new value").logLabel, "stop:other", "unknown stop reasons are not echoed")
+    expectEqual(judge(200, reply("Paris."), original: "what's the capital of france"), .fallback(.tooShort), "a short answer → fallback (too short)")
+    expectEqual(judge(200, reply("We pushed it and it went great overall, honestly, truly."), original: original), .fallback(.droppedWords), "the user's words replaced → fallback (dropped words)")
+    expectEqual(judge(200, reply("\"Fixed it.\""), original: "fixed it"), .polished("Fixed it."), "surrounding quotes stripped")
 }
 
 print("AIPolishContext")
@@ -3778,8 +3781,8 @@ do {
 
 print("AIPolishClient — every failure pastes the local text")
 do {
-    let ok = await polish(FakeTransport(body: reply("So we pushed it to Vercel.")))
-    expectEqual(ok.text, "So we pushed it to Vercel.", "200 end_turn → polished text")
+    let ok = await polish(FakeTransport(body: reply("So we pushed it to Vercel and it worked.")))
+    expectEqual(ok.text, "So we pushed it to Vercel and it worked.", "200 end_turn → polished text")
     expectEqual(ok.logLabel, "ok", "log label ok")
     for status in [401, 429, 500] {
         let r = await polish(FakeTransport(status: status, body: "{}"))

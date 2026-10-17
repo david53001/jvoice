@@ -11,9 +11,14 @@ It is the ONE exception to "zero network calls at runtime", so three rules hold 
   only in the Keychain (`APIKeyStore`); never in UserDefaults, `SettingsState`, history, files, the
   clipboard or a log line. Tests use a fake transport and a placeholder key.
 - **Never lose a dictation.** ANY failure — no key, offline, HTTP ≠ 200, the 3 s deadline, a stop
-  reason other than `end_turn`, empty/over-long/chatty output, the context echoed back — returns
-  the local text unchanged.
-- **Log the reason only:** `AIPolish ok|fallback(<reason>) <ms>ms context=<n>` (category `latency`).
+  reason other than `end_turn`, empty/over-long/chatty output, the context echoed back, or the
+  user's words gone (< 60 % of the length, or < 60 % of its 3+-letter words kept — a short answer,
+  a summary, a cut-off reply) — returns the local text unchanged.
+- **The user's tone wins.** The prompt spells out each tone, and the coordinator re-applies
+  `TextProcessor.format(_, mode:)` to the reply (Casual's missing final period, Formal's capital +
+  period). Dictations under 3 words are not sent at all (`AIPolish.isWorthPolishing`).
+- **Log the reason only:** `AIPolish ok|fallback(<reason>) <ms>ms context=<n> changed=<bool>` or
+  `AIPolish skipped(short)` (category `latency`).
 
 ## Files
 - `AIPolishRequest.swift` — **pure Foundation.** System prompt (tone + custom-words lines), the
@@ -33,7 +38,9 @@ It is the ONE exception to "zero network calls at runtime", so three rules hold 
   transport, Keychain) + `checkKey` (Settings → Test Key: a 1-token request).
 - `PolishEvalRunner.swift` — `PolishEvalCase` + pure `PolishEval` grading, and the hidden
   `--polish-eval` CLI: runs `scripts/ai-polish-eval/cases.json` against the REAL API through the
-  same builder/parser/client (30 s per-call deadline so real latency is measured), writes
+  same builder/parser/client (30 s per-call deadline so real latency is measured; a call past the
+  app's 3 s is graded as the local text, the tone formatting is re-applied as in the app, and each
+  line reports accuracy, accuracy by a real polish, the do-nothing baseline and fallbacks), writes
   `docs/ai-polish/eval-results/<date>-<model>-<thinking>.md`. Needs a real key: David's Mac only.
 
 ## Where it plugs in

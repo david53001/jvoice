@@ -237,6 +237,61 @@ func chattyOutputFallsBack(_ chatty: String) async {
     }
 }
 
+@Test func aShortAnswerOrASummaryLosesTheUsersWordsAndFallsBack() async {
+    let answer = await run(FakeTransport(.response(status: 200, body: reply("Paris."))), text: "what's the capital of france")
+    #expect(answer.text == "what's the capital of france")
+    #expect(answer.logLabel == "fallback(too-short)")
+    let runOn = "so on saturday we need to get groceries and then pick up the kids from practice and after that we visit grandma"
+    let summary = await run(FakeTransport(.response(status: 200, body: reply("Saturday: groceries, then the kids, then a visit, all in one long and busy day out."))), text: runOn)
+    #expect(summary.text == runOn)
+    #expect(summary.logLabel == "fallback(dropped-words)")
+    // Sound-alike fixes and number words turned into digits are not "dropped words".
+    #expect((AIPolishRequest.wordRetention(of: "The sine wave repeats every 2π.", original: "the sign wave repeats every two pi") ?? 0) >= AIPolishRequest.minWordRetention)
+}
+
+@Test func surroundingQuotesAreStrippedUnlessTheDictationHasThem() {
+    #expect(AIPolishRequest.validate("\"Fixed it.\"", original: "fixed it", previous: []) == .polished("Fixed it."))
+    #expect(AIPolishRequest.validate("“Fixed it.”", original: "fixed it", previous: []) == .polished("Fixed it."))
+    #expect(AIPolishRequest.validate("He said \"hi\".", original: "he said \"hi\"", previous: []) == .polished("He said \"hi\"."))
+}
+
+@Test func saying_the_previous_sentence_again_is_not_a_leak() {
+    let previous = ["We're moving the marketing site off the old server."]
+    #expect(AIPolishRequest.validate("We're moving the marketing site off the old server.",
+                                     original: "we're moving the marketing site off the old server", previous: previous)
+            == .polished("We're moving the marketing site off the old server."))
+}
+
+@Test func theDeadlineAlsoCoversABlockingKeychainRead() async {
+    let started = Date()
+    let result = await AIPolishClient(transport: FakeTransport(.response(status: 200, body: reply("unused"))), deadline: 0.3)
+        .polish(transcript, previous: [], mode: .casual, vocabulary: [], apiKey: {
+            usleep(3_000_000)   // a Keychain permission prompt nobody answers
+            return fakeKey
+        })
+    #expect(result.text == transcript)
+    #expect(result.logLabel == "fallback(timeout)")
+    #expect(Date().timeIntervalSince(started) < 2)
+}
+
+@Test func cancellingTheDictationEndsThePolishAtOnce() async {
+    let task = Task { await run(FakeTransport(.stall), deadline: 10) }
+    try? await Task.sleep(nanoseconds: 100_000_000)
+    let started = Date()
+    task.cancel()
+    let result = await task.value
+    #expect(result.text == transcript)
+    #expect(result.logLabel == "fallback(cancelled)")
+    #expect(Date().timeIntervalSince(started) < 2)
+}
+
+@Test func shortDictationsAreNotSentAndEachToneIsSpelledOut() {
+    #expect(!AIPolish.isWorthPolishing("ok thanks"))
+    #expect(AIPolish.isWorthPolishing("deploy it now"))
+    #expect(AIPolishRequest.systemPrompt(mode: .casual, vocabulary: []).contains("no period at the very end"))
+    #expect(AIPolishRequest.systemPrompt(mode: .veryCasual, vocabulary: []).contains("all lowercase"))
+}
+
 // MARK: - Test key
 
 @Test func keyCheckMapsStatusesToPlainWords() {

@@ -27,6 +27,8 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
 - `Services/Transcription/` — WhisperKit engine, streaming-while-recording, custom-word accuracy.
 - `Services/Audio/` — recording + microphone routing.
 - `Services/Orchestration/` — system glue: paste, hotkey, settings/stats/transcript stores.
+- `Services/AIPolish/` — the opt-in Claude polish step (BYOK key in the Keychain, hard 3 s
+  deadline, any failure pastes the local text) + the `--polish-eval` harness.
 - `UI/` — the HUD, the Settings window, the Welcome window, the menu-bar status item.
 - `Tours/` — the first-run guided tour (ported from BetterScreenshot): who gets it, the tour
   catalog, the on-screen tag.

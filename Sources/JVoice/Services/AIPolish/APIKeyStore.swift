@@ -4,10 +4,14 @@ import Security
 /// The user's Anthropic API key, in the macOS Keychain as a generic password — the ONLY place it is
 /// ever stored (never UserDefaults, `SettingsState`, history, files, the clipboard or a log line).
 ///
-/// `WhenUnlockedThisDeviceOnly` and not synchronizable: it never syncs to iCloud and never comes
-/// back from a backup on another Mac. Next to the secret the item carries a `kSecAttrComment` hint
-/// ("••••abcd", last 4 at most) so Settings can say a key is saved by reading attributes only — the
-/// secret itself is read for a dictation, a Test, or when the user presses the eye button.
+/// Not synchronizable, so it never syncs to iCloud, and `WhenUnlockedThisDeviceOnly` as the plan
+/// asks — but without the data-protection keychain (which an unsigned app can't use: it needs a
+/// keychain-access-groups entitlement) macOS stores it in the file-based login keychain, where that
+/// accessibility class is probably not enforced. So don't promise "this Mac only" in user docs.
+///
+/// Next to the secret the item carries a `kSecAttrComment` hint ("••••abcd", last 4 at most) so
+/// Settings can say a key is saved by reading attributes only — the secret itself is read for a
+/// dictation, a Test, or when the user presses the eye button.
 enum APIKeyStore {
     static let service = "com.jvoice.app.anthropic"
     static let account = "api-key"

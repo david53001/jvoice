@@ -19,6 +19,26 @@ struct PolishEvalCase: Decodable, Sendable {
     var appMode: AppMode { mode.flatMap(AppMode.init(rawValue:)) ?? .casual }
 }
 
+/// One line of the eval summary.
+struct Tally: Equatable, Sendable {
+    var total = 0
+    /// Passed, graded on what the app would paste.
+    var pass = 0
+    /// Passed with a real polish pasted — a fallback's local text can pass a case for free.
+    var polishedPass = 0
+    /// The local text alone passes (what doing nothing scores).
+    var baseline = 0
+    var fallbacks = 0
+
+    mutating func add(pass ok: Bool, polished: Bool, baseline local: Bool) {
+        total += 1
+        if ok { pass += 1 }
+        if ok && polished { polishedPass += 1 }
+        if local { baseline += 1 }
+        if !polished { fallbacks += 1 }
+    }
+}
+
 /// The pure half of the eval: grading and the summary numbers (unit-tested; no network).
 enum PolishEval {
     /// Why `output` fails `testCase`; empty = PASS.
@@ -124,55 +144,66 @@ enum PolishEvalRunner {
 
         let client = AIPolishClient(transport: EphemeralTransport.shared, deadline: evalDeadline)
         var rows: [String] = []
-        var passed: [String: (pass: Int, total: Int)] = [:]
-        var holdout = (pass: 0, total: 0)
-        var fallbacks = 0
+        /// Per category: graded passes (what the app would paste), passes by a REAL polish (a
+        /// fallback's local text can pass a case for free), the do-nothing baseline, fallbacks.
+        var tallies: [String: Tally] = [:]
+        var holdout = Tally()
+        var overall = Tally()
         var latencies: [Int] = []
         var overDeadline = 0
         var inputTokens = 0
         var outputTokens = 0
+        let deadlineMs = Int(AppTimings.aiPolishTimeout * 1000)
 
         print("AI Polish eval — \(cases.count) cases, model \(options.model), thinking \(options.thinking.rawValue)\n")
         for testCase in cases {
-            let result = await client.polish(testCase.transcript, previous: testCase.previous ?? [],
-                                             mode: testCase.appMode, vocabulary: testCase.customWords ?? [],
+            let mode = testCase.appMode
+            let result: AIPolishResult
+            let skipped = !AIPolish.isWorthPolishing(testCase.transcript)
+            if !skipped {
+                result = await client.polish(testCase.transcript, previous: testCase.previous ?? [],
+                                             mode: mode, vocabulary: testCase.customWords ?? [],
                                              options: options, apiKey: { key })
-            let reasons = PolishEval.failures(of: result.text, for: testCase)
-            let ok = reasons.isEmpty
-            var tally = passed[testCase.category] ?? (pass: 0, total: 0)
-            tally.total += 1
-            if ok { tally.pass += 1 }
-            passed[testCase.category] = tally
-            if testCase.holdout == true {
-                holdout.total += 1
-                if ok { holdout.pass += 1 }
+                latencies.append(result.milliseconds)
+                inputTokens += result.usage?.inputTokens ?? 0
+                outputTokens += result.usage?.outputTokens ?? 0
+            } else {
+                result = AIPolishResult(text: testCase.transcript, outcome: .fallback(.empty), milliseconds: 0, usage: nil)
             }
-            if !result.isPolished { fallbacks += 1 }
-            latencies.append(result.milliseconds)
-            if Double(result.milliseconds) > AppTimings.aiPolishTimeout * 1000 { overDeadline += 1 }
-            inputTokens += result.usage?.inputTokens ?? 0
-            outputTokens += result.usage?.outputTokens ?? 0
+            // Grade exactly what the app would paste: past its deadline the local text, else the
+            // reply with the tone's formatting re-applied (VoiceCoordinator.finishTranscription).
+            let late = result.milliseconds > deadlineMs
+            if late { overDeadline += 1 }
+            let polished = result.isPolished && !late
+            let pasted = polished ? TextProcessor.format(result.text, mode: mode) : testCase.transcript
+            let reasons = PolishEval.failures(of: pasted, for: testCase)
+            let ok = reasons.isEmpty
+            let baseline = PolishEval.failures(of: testCase.transcript, for: testCase).isEmpty
+            let outcome = skipped ? "skipped(short)" : late ? "late(\(result.logLabel))" : result.logLabel
+
+            tallies[testCase.category, default: Tally()].add(pass: ok, polished: polished, baseline: baseline)
+            overall.add(pass: ok, polished: polished, baseline: baseline)
+            if testCase.holdout == true { holdout.add(pass: ok, polished: polished, baseline: baseline) }
 
             let verdict = ok ? "PASS" : "FAIL"
             let detail = ok ? "" : " — " + reasons.joined(separator: "; ")
-            print("\(verdict) \(testCase.id) [\(testCase.category)] \(result.milliseconds) ms \(result.logLabel)\(detail)")
+            print("\(verdict) \(testCase.id) [\(testCase.category)] \(result.milliseconds) ms \(outcome)\(detail)")
             print("     in:  \(testCase.transcript)")
-            print("     out: \(result.text)")
-            rows.append("| \(cell(testCase.id)) | \(testCase.category)\(testCase.holdout == true ? " (hold-out)" : "") | \(verdict) | \(result.milliseconds) | \(result.logLabel) | \(cell(testCase.transcript)) | \(cell(result.text)) | \(cell(reasons.joined(separator: "; "))) |")
+            print("     out: \(pasted)")
+            rows.append("| \(cell(testCase.id)) | \(testCase.category)\(testCase.holdout == true ? " (hold-out)" : "") | \(verdict) | \(result.milliseconds) | \(outcome) | \(cell(testCase.transcript)) | \(cell(pasted)) | \(cell(reasons.joined(separator: "; "))) |")
         }
 
-        let total = passed.values.reduce(0) { $0 + $1.total }
-        let pass = passed.values.reduce(0) { $0 + $1.pass }
         func percent(_ a: Int, _ b: Int) -> String { b == 0 ? "—" : String(format: "%.1f%% (%d/%d)", 100 * Double(a) / Double(b), a, b) }
-        var summary: [String] = []
-        summary.append("- **Overall accuracy:** \(percent(pass, total))")
-        for category in passed.keys.sorted() {
-            let t = passed[category]!
-            summary.append("- \(category): \(percent(t.pass, t.total))")
+        func line(_ name: String, _ t: Tally) -> String {
+            "\(name): \(percent(t.pass, t.total)) — by a real polish \(percent(t.polishedPass, t.total)); do-nothing baseline \(percent(t.baseline, t.total)); fallbacks \(t.fallbacks)"
         }
-        summary.append("- context-fix hold-out (words not in the prompt): \(percent(holdout.pass, holdout.total))")
-        summary.append("- Fallbacks (local text returned): \(fallbacks) of \(cases.count)")
-        summary.append("- **Latency:** p50 \(PolishEval.percentile(latencies, 50)) ms, p95 \(PolishEval.percentile(latencies, 95)) ms, max \(latencies.max() ?? 0) ms; over the app's \(Int(AppTimings.aiPolishTimeout)) s deadline: \(overDeadline)")
+        var summary: [String] = []
+        summary.append("- **" + line("Overall accuracy", overall) + "**")
+        for category in tallies.keys.sorted() {
+            summary.append("- " + line(category, tallies[category]!))
+        }
+        summary.append("- " + line("context-fix hold-out (words not in the prompt)", holdout))
+        summary.append("- **Latency:** p50 \(PolishEval.percentile(latencies, 50)) ms, p95 \(PolishEval.percentile(latencies, 95)) ms, max \(latencies.max() ?? 0) ms; over the app's \(Int(AppTimings.aiPolishTimeout)) s deadline (graded as the local text): \(overDeadline)")
         var tokens = "- Tokens: \(inputTokens) in / \(outputTokens) out"
         if let price = PolishEval.pricePerMillion(model: options.model) {
             let cost = Double(inputTokens) * price.input / 1_000_000 + Double(outputTokens) * price.output / 1_000_000

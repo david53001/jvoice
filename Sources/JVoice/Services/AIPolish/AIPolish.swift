@@ -12,6 +12,14 @@ enum AIPolish {
             .polish(text, previous: previous, mode: mode, vocabulary: vocabulary, apiKey: apiKey)
     }
 
+    /// Dictations shorter than this many words go out unpolished: "ok", "thanks", "sounds good" have
+    /// nothing to fix that is worth a round trip.
+    static let minWords = 3
+
+    static func isWorthPolishing(_ text: String) -> Bool {
+        text.split(whereSeparator: { $0.isWhitespace }).count >= minWords
+    }
+
     // MARK: - Test key
 
     enum KeyCheck: Equatable, Sendable {

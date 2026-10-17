@@ -23,7 +23,8 @@ text, and pastes the result into whatever app has focus.
   your CPU or GPU. It is **not** uploaded, streamed, or sent to us or to any third party.
 - **The recording is temporary.** JVoice writes the audio to a temporary WAV file only long
   enough to transcribe it, then deletes it. It sweeps up any leftover recordings on startup.
-- **Transcripts stay on your machine.** On Windows, JVoice keeps a short **local history**
+- **Transcripts stay on your machine** — unless you turn on AI Polish (below), which sends the
+  text of each dictation to Anthropic. On Windows, JVoice keeps a short **local history**
   of your recent transcripts (the last few dozen) so you can copy one back — this is stored
   only on your computer and you can clear it any time from Settings. It is never transmitted.
 
@@ -72,8 +73,8 @@ send none of your data; the third sends your dictated text, and only if you turn
    <https://www.anthropic.com/legal/privacy>. The request goes straight from your Mac to
    Anthropic with your key — the JVoice authors never see it. If anything goes wrong (offline,
    bad key, no reply within 3 seconds) JVoice pastes its own local text instead. Your key is
-   stored only in your Mac's **Keychain**, for this Mac only (it never syncs to iCloud), and is
-   never written to settings, history, logs or the clipboard. Two honest limits: anyone using
+   stored only in your Mac's **Keychain** (marked not to sync to iCloud), and is never written
+   to settings, history, logs or the clipboard. Two honest limits: anyone using
    your unlocked Mac can open Settings and reveal the key with the eye button, and while AI
    Polish is on, what you dictate is read by Anthropic. Turn it off and nothing leaves your Mac.
 
