@@ -18,7 +18,7 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
 | Logic harness section (`scripts/run-logic-tests.sh`, 5th section) | done |
 | Eval harness (`--polish-eval`) + 78 cases (22 hold-out) | done |
 | Docs (PRIVACY.md, root CLAUDE.md, `Services/AIPolish/CLAUDE.md`) | done |
-| CI green on `feat/ai-polish` | done (runs 97, 98) |
+| CI green on `feat/ai-polish` | done — latest code commit green in run 103 |
 | **David runs the eval** | **todo — commands below** |
 | Default model chosen by the §6b rule | pending — no eval data |
 | Final review (`docs/ai-polish/REVIEW.md`) | done without eval data: **7/10 provisional**; top fixes applied (table at the end of REVIEW.md); re-run after the eval |
@@ -45,6 +45,7 @@ fields in the eval; whether Code tone should skip polish entirely (David's call)
 | [100](https://github.com/david53001/jvoice/actions/runs/39027435380) | `2634a37` review fixes | red twice: attempt 1 the test process aborted (signal 6, no test named — not reproduced); attempt 2 a REAL finding — `theDeadlineAlsoCoversABlockingKeychainRead` took 1.8 s instead of ~0.2 s, because the deadline timer was a `Task.sleep` and the blocking key read ran on a cooperative thread, so a busy pool made the timer late. Fixed next commit: GCD timer + the Keychain read on a GCD queue |
 | [101](https://github.com/david53001/jvoice/actions/runs/39028075439) | `bd8fe0d` deadline on GCD | the AI Polish deadline test now passes; red only on `PasteManagerTests.failedPasteRestoresOriginalClipboard` again. Root cause (pre-existing test-isolation bug): it was the one async test on the shared `NSPasteboard.general`, so another test's write during its 600 ms wait made PasteManager rightly skip the restore as a user copy. Fixed next commit: isolated named pasteboard + injected AX trust, like its neighbours |
 | [102](https://github.com/david53001/jvoice/actions/runs/39028393044) | `1439125` isolated pasteboard | swift-testing suite green (551 tests); logic harness green (2584 assertions, 5 sections incl. AI Polish); red only on the known `verify-streaming.sh` scenario 12 flake. `257fdea` makes that check wait (bounded, ≤ 2 s) for the cut instead of a fixed 120 ms sleep |
+| [103](https://github.com/david53001/jvoice/actions/runs/39028801562) | `3a82a0d` streaming-flake fix + docs | **green** — build, swift-testing suite, logic scripts (incl. AI Polish section), verify-streaming, Settings smoke |
 
 Note: the base branch `feat/math-context` is red at its head ([run 95](https://github.com/david53001/jvoice/actions/runs/37328496182))
 on a timing-sensitive `verify-streaming.sh` assertion ("the chunk cut reused the speculative decode",
