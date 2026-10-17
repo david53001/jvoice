@@ -14,6 +14,7 @@ Newest entries first. Updated after every step, so a new session can resume from
 | CI UI preview artifact | done — run 43 rendered **all 24 shots `ok`** (incl. 6 AI Polish Settings states + `hud-refining`), artifact `windows-ui-preview` uploaded. **Not yet looked at:** this cloud container's proxy blocks the artifact host (`productionresultssa2.blob.core.windows.net`), so the PNGs have NOT been opened by Claude — David: see "Look at the UI" below |
 | Docs (PRIVACY, HANDOFF §7 #70, briefs, windows/README) | done |
 | Live dictation + eval with a real key | **David** (steps below) |
+| Handoff §9 (resizable masonry Settings, AI Polish card, shared glow, second launch) | done — CI green on `f2c30bc`; every PNG opened and checked (step 5) |
 | Independent review | done — `WINDOWS-REVIEW.md`, **8/10 (provisional: no Windows eval or screenshot check yet)**; fixes 1, 2, 5 (idle timeout), 6–10 done in step 4; 3 + 4 are David's (look at the PNGs, run the eval) |
 
 ## David: try it on your PC (PowerShell, from your jvoice clone)
@@ -101,6 +102,61 @@ wait for JVoice.exe (it is a windowed app) and prints nothing — the report fil
 10. **Eval report default path** `docs/ai-polish/eval-results/<date>-windows-<model>-<thinking>.md`.
 
 ## Log
+
+### 2026-10-17 — step 5: handoff §9 (the Mac's evening changes)
+- **1. Resizable Settings** (`UI/SettingsWindow.cs`): `SizeToContent.Manual`, `ResizeMode.CanResize`, min
+  700 × 420 (Mac minimum; two ~316-DIP columns), no Max* caps — edge/corner drag and title-bar
+  double-click / Maximize (fill + restore) are native Win32 and nothing blocks them. Opens at 1080 × the
+  content's height at that width, capped to the work area − 16 (the §7 #33 "X never off-screen" guard is
+  now a starting size, not a cap). Hide/show keeps the user's size and a maximized state (`ShowOrActivate`
+  no longer forces `WindowState.Normal` — it used to un-maximize on every reopen).
+- **2. Masonry** (`UI/MasonryPanel.cs` + pure `Core/Policy/MasonryLayout.cs`): content width picks 2 / 3 / 4
+  columns at 560 / 900 / 1360 DIP (every column ≥ ~290 DIP, about today's card width); each card, in
+  order, goes into the currently shortest column (tie → leftmost); WPF re-measures on every size change, so
+  it reflows live while dragging. Content capped at 1440 and centred. Header + Stats full width on top,
+  footer at the bottom. Order = the Mac's (Whisper Model, Recent Transcripts, Processing, Custom Words,
+  Voice Style, Language, App Modes, Keyboard Shortcut, AI Polish, Tours & Tips, Appearance) with the
+  Windows-only cards next to their neighbours: Corrections after Custom Words, Microphone after Language,
+  Gaming after Keyboard Shortcut, Updates last. Cards lost their own bottom margin (the panel owns the
+  12-DIP spacing).
+- **3. AI Polish card** is a normal stacked card: switch + caption, key field + eye, Save · Test Key ·
+  Remove Key (a WrapPanel so it never clips), status line "Key saved" / "No key saved" (or the last
+  message), divider, balance + bar, Amount row, red used-up line, This month / All time. With a key
+  saved, the empty field's placeholder is the hint "••••abcd" (`ApiKeyPlaceholder`), never the key.
+- **4. One shared glow** (`UI/ClaudeGlowText.cs`, numbers in pure `Core/Policy/ClaudeGlow.cs`): a #D97757
+  band swept through the letters + a breathing orange DropShadow. Full on the "AI refining" pill (1.6 s,
+  0.2–0.7, blur 6) — the pill's own sweep code is gone; Subtle on the "AI POLISH" card title (3.2 s,
+  0.12–0.35, blur 4, over Text.Secondary) via `SettingsCard.GlowHeader`. Animates only while visible
+  (hidden pill / closed Settings cost nothing); still pose when Windows animations are off or off-screen.
+- **5. Second launch** (`Platform/System/ShowSettingsSignal.cs`): before, launching `JVoice.exe` while it ran
+  exited silently. Now the running copy listens on a per-session named event; a user launch that loses
+  the single-instance race sets it and the running copy opens its real `SettingsWindow` (the same one the
+  tray opens — never an empty window). The event's ACL is this user + SYSTEM with a Medium mandatory label,
+  so a normal double-click also reaches an ELEVATED running copy. The `--autostart` step-aside and the
+  elevated relaunch never signal (`CoordinatorDecisions.SecondLaunchOpensSettings`, tested).
+- **6. Key folder**: the DPAPI blob lives in `%LOCALAPPDATA%\JVoice`, which inherits the user profile's
+  owner-only ACL; JVoice never sets a wider ACL and never uses a shared location (renders use the
+  throwaway profile).
+- **7. Screenshots**: `--settings-render` takes `--size WxH|Wxfull`; `--ui-preview` adds settings-wide
+  (1400 × full, both themes), settings-fill (maximized client area on 1920 × 1080, both themes; and on
+  David's 1600 × 1080), settings-small (the 700 × 420 minimum's client area, both themes) and
+  settings-small-full (2 columns at full height, both themes).
+- **Seeing the PNGs from the cloud:** the artifact host is blocked here, so a new opt-in CI job
+  `ui-snapshot` (only `feat/ai-polish-windows`, only when the commit message has `[ui-snapshot]`) commits 1x
+  copies to `docs/ai-polish/windows-ui/ci/`; the session `git pull`s them. Normal CI runs stay read-only.
+- **CI run on `f2c30bc`: green** (build, all tests, 33/33 previews `ok`). **Every PNG opened and checked:**
+  - default 1080 (dark/light): 3 columns, no holes, nothing clipped; AI Polish card stacks cleanly with the
+    orange title; footer reachable (the window scrolls when the work area is shorter);
+  - wide 1400 (dark/light): 4 columns, shortest-column placement visible, no holes;
+  - maximized 1920 and 1600: content capped at 1440 and centred, 4 columns, no holes;
+  - minimum 700 × 420: 2 columns, scrollbar shown; at full height no holes or clipping (dark/light);
+  - AI Polish states: no key (`sk-ant-…`, "No key saved"), $0 (hint `••••0000`, "Add a balance…"), on
+    ($3.20 of $5 bar), on-light, revealed (placeholder key, eye-slash), used up (red line) — all correct;
+    one tweak made: the `on` render now shows the empty field with the hint instead of a typed draft;
+  - `hud-refining`: same size as the transcribing pill, orange band + glow mid-word; the other 8 pill
+    states, Welcome (4) and tour tags (2) unchanged and clean; settings-update-available fine.
+- Tests: `SettingsLayoutTests` (column thresholds, shortest-column placement + a 200-run random no-hole
+  check, the glow values/pose, the second-launch rule). Local Core subset 255/255.
 
 ### 2026-10-17 — step 4: independent review + fixes
 - ONE reviewer sub-agent (§5.7) wrote `docs/ai-polish/WINDOWS-REVIEW.md` on `e9effd6`: Accuracy 8 and

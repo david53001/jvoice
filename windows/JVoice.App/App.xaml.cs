@@ -316,9 +316,10 @@ public partial class App : Application
         Theme.Initialize(forced, coordinator.UiOpacity);
         var view = new SettingsView { DataContext = coordinator };
         view.SetResourceReference(System.Windows.Controls.Control.BackgroundProperty, "Window.Solid");
-        // An obvious placeholder in the key field — never a real key.
-        if (aiPolishState is "aipolish-on" or "aipolish-revealed")
-            view.PreviewKeyField("test-key-not-real-0000", revealed: aiPolishState == "aipolish-revealed");
+        // aipolish-on shows the empty field with the saved key's hint ("••••0000"); aipolish-revealed shows
+        // the eye's view of the key — an obvious placeholder, never a real key.
+        if (aiPolishState == "aipolish-revealed")
+            view.PreviewKeyField("test-key-not-real-0000", revealed: true);
 
         const double scale = 2.0;
         // The view has no fixed size (the window is resizable): lay it out at the requested client size.

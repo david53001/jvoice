@@ -2384,6 +2384,30 @@ context=<n> changed=<bool>` — never text or key.
   `windows-ui-preview` artifact (Settings AI Polish states + `hud-refining`).
 - Tests: `AIPolishTests` (Mac suite translated + Windows additions), `AIPolishDpapiTests` (real DPAPI).
 
+## §7 #71 — Resizable masonry Settings, shared Claude glow, second launch opens Settings (2026-10-17, branch `feat/ai-polish-windows`)
+
+Port of the Mac's evening changes (`docs/ai-polish/WINDOWS-HANDOFF.md` §9; Mac `bf23aa9`…`0cd6027`). Log:
+`docs/ai-polish/WINDOWS-PROGRESS.md` step 5.
+- **Settings is resizable** (`UI/SettingsWindow.cs`): `SizeToContent.Manual`, `CanResize`, min 700 × 420, no
+  Max* caps, so edge drags and title-bar double-click / Maximize (fill + restore) are plain Win32. Opens at
+  1080 × content height capped to the work area (the §7 #33 guard becomes a starting size). Maximized state
+  and the user's size survive hide/show (`ShowOrActivate` no longer forces `WindowState.Normal`).
+- **Masonry cards** (`UI/MasonryPanel.cs` + pure `Core/Policy/MasonryLayout.cs`): 2/3/4 columns from the
+  real content width (560/900/1360), each card in order into the shortest column, reflowing live; content
+  capped at 1440 and centred; Stats full width under the header. Mac card order kept.
+- **AI Polish card** is a normal stacked card; the key field's empty placeholder is the saved key's hint.
+- **One shared glow** (`UI/ClaudeGlowText.cs` + `Core/Policy/ClaudeGlow.cs`): Full on the pill (1.6 s,
+  0.2–0.7, blur 6), Subtle on the "AI POLISH" title (3.2 s, 0.12–0.35, blur 4).
+- **Second launch** (`Platform/System/ShowSettingsSignal.cs`): a user launch of `JVoice.exe` while it runs sets
+  a per-session named event (user + SYSTEM ACL, Medium label so a normal launch reaches an elevated copy) and
+  the running copy opens its real Settings. Before, a second launch exited silently. The `--autostart` step-aside
+  and the elevated relaunch never signal (`CoordinatorDecisions.SecondLaunchOpensSettings`).
+- **Key folder** (§9.6): the DPAPI blob lives in `%LOCALAPPDATA%\JVoice`, which inherits the user profile's
+  owner-only ACL; JVoice never widens it and never uses a shared location.
+- **CI:** `--ui-preview` adds settings-wide/fill/fill1600/small/small-full shots; an opt-in `ui-snapshot`
+  job (only `feat/ai-polish-windows`, only with `[ui-snapshot]` in the commit message) commits 1x copies to
+  `docs/ai-polish/windows-ui/ci/` so a session that can't download artifacts can still look at them.
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
