@@ -20,6 +20,9 @@ Swift's `@testable import`).
 - **Tours** (parity rows 31/32) → TourTests (audience, rules, engine, layout, Opacity demo, catalog lint incl. the
   2-line body fit measured with WPF `FormattedText` — the reason this project is `net9.0-windows` + `UseWPF`),
   TourCoordinatorTests (fake hosts/tag/clock).
+- **AI Polish** (§7 #70) → AIPolishTests (the Mac suite translated: request shape, prompt byte-identical to
+  `minimal-edit.txt`, every fallback, the deadline, context ring, pricing, balance, key file, eval grading +
+  case files), AIPolishDpapiTests (the real DPAPI round trip; Windows only).
 - **Spoken mathematics** (Windows-only, §7 #47) → MathSpeechTests (the SPEC: conversions plus the
   prose that must come back byte-identical), MathSymbolsTests, SpokenNumbersTests.
 

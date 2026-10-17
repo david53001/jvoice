@@ -5,7 +5,9 @@
 > **In one sentence:** JVoice does its speech recognition **entirely on your own device**,
 > collects **no personal data**, has **no accounts, telemetry, or analytics**, and the only
 > times it ever touches the network are a one-time model download and an optional update
-> check — neither of which sends any of your data anywhere.
+> check — neither of which sends any of your data anywhere — plus, only if you turn it on
+> with your own Anthropic key, the opt-in **AI Polish** step on Windows, which sends the
+> finished text of a dictation to Anthropic.
 
 This is the whole policy. It's short because JVoice is built to keep your voice on your
 machine.
@@ -40,8 +42,9 @@ words, or the fact that you used the app at all.
 
 ## The only times JVoice uses the network
 
-JVoice is designed to run fully offline. There are exactly two exceptions, and neither sends
-your personal data:
+JVoice is designed to run fully offline. There are exactly two exceptions that are part of
+normal use, and neither sends your personal data — plus one opt-in feature (3) that you have to
+switch on yourself:
 
 1. **One-time model download (required, first run).** The first time you pick a Whisper
    model, JVoice downloads that model file from **Hugging Face**, a public file host:
@@ -62,6 +65,20 @@ your personal data:
    makes this call **never**. GitHub's privacy statement applies to that request; see
    <https://docs.github.com/site-policy/privacy-policies/github-privacy-statement>.
 
+3. **AI Polish (Windows, optional, OFF by default, your own key).** If you save your own
+   Anthropic API key in **Settings → AI Polish**, add a balance and switch it on, JVoice
+   sends each finished dictation of three words or more to Anthropic's Claude API
+   (`api.anthropic.com`) so Claude can fix punctuation and misheard words, then pastes the
+   result. What is sent, per dictation: the **text** of that dictation (never audio), up to
+   your three previous dictations into the same app from the last 10 minutes (as context,
+   kept only in memory), your tone setting and your custom words, plus your key in the
+   request header. Nothing is sent while it is off, without a key, or once your AI Polish
+   balance reaches $0. Anthropic bills your own Anthropic account for these requests; the
+   "balance" in Settings is only a local spending limit JVoice counts down. If anything goes
+   wrong (no network, a bad key, more than 3 seconds) JVoice pastes its own local text.
+   JVoice never logs your text or your key — only whether polishing worked. Anthropic's
+   privacy policy applies to those requests; see <https://www.anthropic.com/legal/privacy>.
+
 That's it. There are no other outbound connections during normal use.
 
 ## Permissions JVoice asks for, and why
@@ -81,7 +98,13 @@ Everything JVoice keeps lives in your normal per-user app-data location and neve
 - **macOS:** the app's preferences (system `UserDefaults`, namespace `jvoice.app.*`) and
   the downloaded Whisper model cache under `~/Documents/huggingface/`.
 - **Windows:** settings, stats, and the recent-transcript history in `%APPDATA%\JVoice`;
-  the downloaded model cache in `%LOCALAPPDATA%\JVoice\models`.
+  the downloaded model cache in `%LOCALAPPDATA%\JVoice\models`. If you use AI Polish: your
+  Anthropic key in `%LOCALAPPDATA%\JVoice\anthropic-api-key.bin`, **encrypted with Windows'
+  Data Protection API** for your Windows account (another Windows user, another computer, or
+  a copy of the file can't decrypt it; it is never in the settings file, the log, the history
+  or the clipboard; **Remove Key** deletes it), and the AI Polish spending totals and balance
+  (numbers only) in `%APPDATA%\JVoice\ai-polish-usage.json`. The previous-dictation context
+  is never written to disk.
 
 Deleting the app and these folders removes everything JVoice stored.
 

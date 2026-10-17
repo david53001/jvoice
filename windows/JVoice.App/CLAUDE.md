@@ -15,6 +15,8 @@ slow back in front of `UpdateHud(HudState.Recording)`.
 - `Diagnostics/` — `LatencyProbe.cs`, the hidden `--latency-probe` CLI (HANDOFF §7 #49): times the
   hotkey→HUD→mic→stop→paste stages and decode-time UI stalls, headless (off-screen HUD, seconds-short
   mic use, clipboard read-only). Run it BEFORE changing anything for a latency report.
+- `AIPolish/` — AI Polish's HTTP transport, DPAPI key protector and the `--polish-eval` CLI; the
+  coordinator half is `VoiceCoordinator.AIPolish.cs` (§7 #70).
 - `Whisper/` — the real Whisper.net engine + model store (the ONE network call).
 - `Tours/` — the guided tours' WPF side (parity rows 31/32): `TourStore` (tours.json + the read-only audience
   probes, run in `App.Main` BEFORE anything writes settings), `TourService` (wiring), `TourHosts` (window / pill /

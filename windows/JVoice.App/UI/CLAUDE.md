@@ -45,6 +45,13 @@ gives a window Mica + rounded corners + a themed title bar. The HUD bars stay a 
 - `Converters.cs`, `SettingsCard.cs`, `Theme.cs`, `HotkeyRecorder.cs`, `TranscriptRow.cs`,
   `Styles/JVoicePalette.xaml` — support + palette.
 
+- **AI Polish (§7 #70):** the HUD's `RefiningPanel` ("AI refining", a #D97757 band swept by the render
+  loop, soft orange glow — the one coloured pill, David's ask; still when Windows animations are off) and
+  the full-width Settings "AI Polish" card (grid row 2, above the footer). The key field is NEVER
+  data-bound: code-behind moves it between the PasswordBox/TextBox and the coordinator; reveal resets when
+  the window hides. Renders: `--settings-render <png> aipolish-nokey|zero|on|revealed|usedup [light|dark]`,
+  `--hud-render <png> refining`.
+
 ## Trap
 The HUD bars are a generated animation, **not** a microphone level meter — David preferred a steady
 flow over reactive bars that stuttered on his words (root `CLAUDE.md` §7 #23). Don't wire them to

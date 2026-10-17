@@ -2360,6 +2360,30 @@ David: "push that to GitHub, update the documentation and the download link... r
 - **Release `windows-v1.1.0`** (published with `--latest=false`, so the Mac v1.1.4 stays Latest): `JVoice-Setup.exe` (70 MB), `JVoice-Setup-GPU.exe` (383 MB) and `LICENSE.txt`, built from `d256ddc` via the IExpress flow. Sandbox smoke test passed for both (CPU 5 s, GPU 8 s, v1.1.0, 2 shortcuts, ARP entry, `--math-probe` OK).
 - **Verified from GitHub:** the raw one-liner in Windows PowerShell 5.1 installs the GPU build into a sandbox in 32 s including the download, re-runs report "already the newest version" in 2 s, `JVOICE_FLAVOR=cpu` installs in 11 s, and the uninstaller cleans the sandbox completely. **David's real install was updated with the one-liner itself:** 1.0.0 → 1.1.0 in 18 s, relaunched elevated through the task, `Tours: audience=existing`.
 
+## §7 #70 — AI Polish (opt-in Claude cleanup, bring your own key) (2026-10-17, branch `feat/ai-polish-windows`)
+
+Port of the macOS AI Polish (branch `feat/ai-polish`, not merged) per `docs/ai-polish/WINDOWS-HANDOFF.md`;
+full log, decisions and David's try-it steps in **`docs/ai-polish/WINDOWS-PROGRESS.md`**. After the local
+cleanup + Math Notation and the empty check, a dictation of ≥ 3 words is sent to `claude-haiku-5-5`
+(thinking disabled, prompt v2 byte-identical to `scripts/ai-polish-eval/prompts/minimal-edit.txt`) with
+the last ≤ 3 pasted results into the same exe from the last 10 min as context; the reply passes every
+Mac `validate` rule or the local text is pasted. HUD: "AI refining" with a Claude-orange sweep (the only
+colour in the pill). **Off by default; BYOK; never loses a dictation** (any failure or the 3.0 s deadline
+→ local text); prepaid local balance (starts $0); log line `AIPolish ok|fallback(<reason>) <ms>ms
+context=<n> changed=<bool>` — never text or key.
+- **Core** `JVoice.Core/AIPolish/` (pure, tested): `AIPolishRequest`, `AIPolishClient` (+ `AIPolishGate`,
+  `AIPolishKeyCheck`), `AIPolishContext`, `AIPolishUsageStore`, `ApiKeyStore`, `PolishEval`.
+- **App** `JVoice.App/AIPolish/` (`HttpPolishTransport`, `DpapiKeyProtector`, `PolishEvalCli`),
+  `VoiceCoordinator.AIPolish.cs` (partial), `HudView` `RefiningPanel`, Settings "AI Polish" card
+  (full width, last, above the footer).
+- **Windows improvements over the Mac:** key DPAPI-encrypted (no Keychain prompts problem to work around);
+  a reply after the deadline is still billed to the balance; the "used up" pill stays pending when its
+  paste fails; `cp-django` eval case fixed; `cases-realistic.json` (cased/punctuated inputs, 10 short questions).
+- **Settings key `aiPolish` added WITHOUT a schema bump** (still v6), like `appearance`.
+- **Look at it from CI:** `.github/workflows/windows.yml` now renders `--ui-preview` and uploads the
+  `windows-ui-preview` artifact (Settings AI Polish states + `hud-refining`).
+- Tests: `AIPolishTests` (Mac suite translated + Windows additions), `AIPolishDpapiTests` (real DPAPI).
+
 ### Persistence paths (overview §4.9)
 `%APPDATA%\JVoice\settings.json` (+ `settings.corrupt.bak`; **schemaVersion 6** — v2 added `gameMode`
 (§7 #27); v3 added `copyToClipboardOnly`/`undoHotkey`/`translateToEnglish`/`appAwareModes`/`appModeRules`
@@ -2368,7 +2392,9 @@ David: "push that to GitHub, update the documentation and the download link... r
 registry `HKCU\Software\JVoice` (`LaunchAtLoginInitialized`, `UiFirstRunShown`) + `HKCU\…\Run\JVoice`
 (value now ends in `--autostart`, §7 #25); a Task Scheduler task **"JVoice Elevated Autostart"** when
 "Run as Administrator at Login" is on (§7 #25); temp recordings `%TEMP%\jvoice-<guid>.wav` (swept on
-launch); models `%LOCALAPPDATA%\JVoice\models\`.
+launch); models `%LOCALAPPDATA%\JVoice\models\`. AI Polish (§7 #70): `settings.json` key `aiPolish` (no schema
+bump), `%APPDATA%\JVoice\ai-polish-usage.json` (spent totals + balance, numbers only), and the user's
+Anthropic key DPAPI-encrypted in `%LOCALAPPDATA%\JVoice\anthropic-api-key.bin`.
 
 ---
 

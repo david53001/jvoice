@@ -19,6 +19,8 @@ unless that's the explicit task, and update the matching test in the same commit
 - `Diagnostics/` — `RollingLog`: the diagnostic log's file handling (background writes, 1 MB cap, Clear, and
   `Redact` — dictated text is logged as its length unless `JVOICE_LOG_TEXT=1`; review round 3 #1).
 - `Tours/` — the first-run guided tours (parity rows 31/32): audience, engine, catalog, coordinator. New users only.
+- `AIPolish/` — the opt-in Claude cleanup's pure half (prompt, validate, deadline client, context ring,
+  balance, encrypted key file, eval; HANDOFF §7 #70). Its own brief lists the never-lose-a-dictation rules.
 - `Math/` — spoken mathematics → real notation (Windows-only, §7 #47). Its own brief explains the
   run/activation rules that keep ordinary speech byte-identical.
 

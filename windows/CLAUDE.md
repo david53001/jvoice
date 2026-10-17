@@ -10,9 +10,10 @@ Full as-built state, pinned versions, and every deviation live in
 
 ## Projects & `@`-mentionable areas (each has its own `CLAUDE.md`)
 - `JVoice.Core/` — the portable brain (no Win32). Sub-areas: `Text/`, `Audio/`,
-  `Transcription/`, `Models/`, `Policy/`, `Math/`, `Diagnostics/`.
+  `Transcription/`, `Models/`, `Policy/`, `Math/`, `Diagnostics/`, `AIPolish/`.
 - `JVoice.App/` — the WPF Windows shell. Sub-areas: `Whisper/`, `UI/`,
-  `Platform/{Capture,Persistence,System}/`. Orchestrator: `VoiceCoordinator.cs`.
+  `Platform/{Capture,Persistence,System}/`, `AIPolish/`. Orchestrator: `VoiceCoordinator.cs`
+  (+ `VoiceCoordinator.AIPolish.cs`).
 - `JVoice.Tests/` — xUnit suite (1933 tests) translated from the Swift tests; locks the brain.
 - `tools/` — standalone probe/utility CLIs (whisper-smoke, hotkey-probe, nospeech-probe,
   capture-stop-probe, generate-icon).

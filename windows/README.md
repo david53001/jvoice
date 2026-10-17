@@ -4,7 +4,9 @@ A native **Windows** port of JVoice — a hotkey-driven, on-device voice-dictati
 Press **Ctrl+Shift+Space** anywhere → record → transcribe locally with Whisper
 (whisper.cpp via Whisper.net, GPU-accelerated when available) → tone-styled,
 custom-word-accurate text pasted into the focused app. Free, source-available (PolyForm Strict License 1.0.0),
-privacy-first: **zero network calls at runtime except the one-time speech-model download**. Works in
+privacy-first: **zero network calls at runtime except the one-time speech-model download** (and the
+optional update check, and the opt-in **AI Polish** — Claude cleans up a dictation with your own
+Anthropic key, off by default; see `../docs/ai-polish/WINDOWS-PROGRESS.md`). Works in
 elevated/admin windows too when run as administrator (tray → Restart / Run as Administrator at Login — §7 #25).
 
 This is the Windows sibling of the macOS Swift app (under `../Sources/`), which remains the
@@ -59,6 +61,8 @@ dotnet run   --project windows/JVoice.App            # launches to the tray (+ f
 - **Spoken-maths probe:** `JVoice.exe --math-probe "a subscript n equals 1 plus 7n"` (or pipe a file of
   transcripts through stdin) — prints `CHANGED | before | after` / `same | text` for the Math Notation
   converter, so a whole corpus can be swept for false positives (§7 #47)
+- **AI Polish eval** (needs your own key; pipe it so PowerShell waits and shows the output):
+  `JVoice.exe --polish-eval scripts\ai-polish-eval\cases-test.json [--model …] [--thinking off|low] [--prompt-file <t.txt>] [--out <r.md>] | Out-Host`
 - **Regenerate icons:** `dotnet run --project windows/tools/generate-icon`
 
 The bench/smoke tools need a 16 kHz / mono / 16-bit PCM WAV. Generate one with Windows TTS:
@@ -112,7 +116,7 @@ dotnet publish windows/JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=cpu \
 
 - **.NET 9**, C# latest, nullable + implicit usings. Primary RID `win-x64` (CUDA is x64-only).
 - **PolyForm Strict License 1.0.0** (free for noncommercial use, source-available; no redistribution, modification, or resale); all NuGet deps MIT-compatible (Whisper.net, NAudio, H.NotifyIcon.Wpf, SkiaSharp).
-- **Privacy:** no runtime network except the one-time model download. No telemetry. WAVs deleted after use + swept on launch.
+- **Privacy:** no runtime network except the one-time model download, the optional update check, and the opt-in AI Polish call (user's own Anthropic key, DPAPI-encrypted, off by default; only the dictation's text is sent). No telemetry. WAVs deleted after use + swept on launch.
 - **Default hotkey Ctrl+Shift+Space** (Alt+Space is the Windows window menu). Rebindable in Settings. The global hook **swallows** the chord's main key on a match, so no stray space leaks into the focused app (§7 #25).
 - **Elevated (admin) windows:** a non-elevated process's keyboard hook can't see keys going to an admin window (UIPI), so the hotkey is dead there until JVoice runs elevated. Tray → **Restart as Administrator** (this session) or **Run as Administrator at Login** (a HIGHEST Task-Scheduler logon task, no per-boot UAC). The manifest stays `asInvoker`; elevation is opt-in. See `../docs/HANDOFF-WINDOWS.md` §7 #25.
 - **$0 / unsigned** — document the SmartScreen "More info → Run anyway" step. Do NOT push/publish without David's go-ahead.
