@@ -8,12 +8,70 @@ Newest entries first. Updated after every step, so a new session can resume from
 
 | Area | State |
 |---|---|
-| Core logic (`windows/JVoice.Core/AIPolish/`) | done — request, prompt v2, validate, client + deadline, context ring, usage/balance, key file, eval |
-| xUnit tests (`AIPolishTests`, `AIPolishDpapiTests`) | written; Core-only subset 219/219 locally; CI run 1 failed to COMPILE the test project (missing `using System.Net.Http` under UseWPF) — fixed in step 2 |
-| App wiring (HTTP transport, DPAPI, coordinator, HUD, Settings, `--polish-eval`) | written; whole solution compiles locally (`-p:EnableWindowsTargeting=true`); CI pending |
-| CI UI preview artifact | step added to `windows.yml` (`windows-ui-preview`); first run pending |
-| Docs (PRIVACY, HANDOFF §7 #70, briefs) | not started |
-| Independent review | not started |
+| Core logic (`windows/JVoice.Core/AIPolish/`) | done |
+| xUnit tests (`AIPolishTests`, `AIPolishDpapiTests`) | done — **CI run 43: 2052/2052 passed** on windows-latest (70 new incl. the real-DPAPI round trip) |
+| App wiring (HTTP transport, DPAPI, coordinator, HUD, Settings, `--polish-eval`) | done — builds on CI (run 43, `6105855`) |
+| CI UI preview artifact | done — run 43 rendered **all 24 shots `ok`** (incl. 6 AI Polish Settings states + `hud-refining`), artifact `windows-ui-preview` uploaded. **Not yet looked at:** this cloud container's proxy blocks the artifact host (`productionresultssa2.blob.core.windows.net`), so the PNGs have NOT been opened by Claude — David: see "Look at the UI" below |
+| Docs (PRIVACY, HANDOFF §7 #70, briefs, windows/README) | done |
+| Live dictation + eval with a real key | **David** (steps below) |
+| Independent review | see log |
+
+## David: try it on your PC (PowerShell, from your jvoice clone)
+
+**1. Get the branch, test, build, refresh the install** (quit JVoice first: it locks its files).
+```powershell
+cd $HOME\jvoice                      # wherever your clone is
+git fetch origin feat/ai-polish-windows
+git switch feat/ai-polish-windows     # first time: git switch -c feat/ai-polish-windows --track origin/feat/ai-polish-windows
+git pull
+dotnet test windows\JVoice.Tests\JVoice.Tests.csproj -c Release        # expect 2052/2052
+Stop-ScheduledTask 'JVoice Elevated Autostart' -ErrorAction SilentlyContinue
+Stop-Process -Name JVoice -ErrorAction SilentlyContinue
+dotnet publish windows\JVoice.App -c Release -r win-x64 -p:JVoiceFlavor=gpu -p:SelfContained=true `
+  -p:PublishTrimmed=false -p:PublishReadyToRun=true -o windows\artifacts\gpu-folder
+robocopy windows\artifacts\gpu-folder "$env:LOCALAPPDATA\Programs\JVoice" /MIR /XF uninstall.ps1 LICENSE.txt   # exit code < 8 = OK
+Start-ScheduledTask 'JVoice Elevated Autostart'      # or: Start-Process "$env:LOCALAPPDATA\Programs\JVoice\JVoice.exe"
+```
+
+**2. Look at the UI** (Claude could not open the CI PNGs). Either download the `windows-ui-preview`
+artifact from the latest "Windows" run of this branch on GitHub Actions, or render locally:
+```powershell
+$exe = "$env:LOCALAPPDATA\Programs\JVoice\JVoice.exe"
+& $exe --ui-preview $env:TEMP\jvoice-ui | Out-Host; Invoke-Item $env:TEMP\jvoice-ui
+```
+Check `settings-aipolish-*.png` (nokey, zero, on, on-light, revealed, usedup) and `hud-refining.png`.
+If anything looks off, copy the PNGs into `docs/ai-polish/windows-ui/` and commit them so the next
+session can see them.
+
+**3. In the app** — Settings → AI Polish:
+- paste your key → **Save** → the field clears and the line reads "Key saved ••••abcd"; the eye shows /
+  hides it (and it is hidden again after closing Settings); **Test Key** → "Key works.";
+- Amount `5` → **Add** → "Balance: $5.00 left", full bar; switch **Polish with Claude** on.
+- Dictate (watch for the orange "AI refining" pill): a run-on sentence; a question ("what is the
+  capital of france" must paste as a question, never "Paris"); something with maths ("x squared plus 1
+  equals 5"); then in the SAME app "we're moving the site to a new host" followed by "deploy it to
+  versails" → should paste "Vercel".
+- Pull the network cable / turn Wi-Fi off → dictate → the local text pastes within ~3 s.
+- Amount `4.99` → **Remove**, dictate until the balance hits $0 → ONE "AI Polish balance used up — add
+  more in Settings" pill after "Pasted"; later dictations paste unpolished with no pill; the red line
+  shows in Settings.
+- Log check (reason only, never text): `Select-String AIPolish "$env:APPDATA\JVoice\diagnostic.log" | Select-Object -Last 10`
+
+**4. The eval** (from the repo root; ≈ $0.005 per run; the key never lands in history):
+```powershell
+$s = Read-Host "Anthropic key" -AsSecureString
+$env:ANTHROPIC_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR([Runtime.InteropServices.Marshal]::SecureStringToBSTR($s))
+$exe = "$env:LOCALAPPDATA\Programs\JVoice\JVoice.exe"
+& $exe --polish-eval scripts\ai-polish-eval\cases.json --out docs\ai-polish\eval-results\windows-train-1.md | Out-Host
+1..3 | ForEach-Object { & $exe --polish-eval scripts\ai-polish-eval\cases-test.json --out "docs\ai-polish\eval-results\windows-test-$_.md" | Out-Host }
+& $exe --polish-eval scripts\ai-polish-eval\cases-realistic.json --out docs\ai-polish\eval-results\windows-realistic-1.md | Out-Host
+Remove-Item Env:ANTHROPIC_API_KEY
+git add docs\ai-polish\eval-results; git commit -m "AI Polish (Windows): eval results"; git push
+```
+(Once the key is saved in Settings you can skip the `$env:` lines.) Expect roughly the Mac's numbers
+(test ≈ 96 %, p50 ≈ 0.8 s); a big gap points at a porting bug. Without `| Out-Host` PowerShell does not
+wait for JVoice.exe (it is a windowed app) and prints nothing — the report file is still written.
+
 
 ## Decisions (Windows-specific)
 
@@ -42,6 +100,14 @@ Newest entries first. Updated after every step, so a new session can resume from
 10. **Eval report default path** `docs/ai-polish/eval-results/<date>-windows-<model>-<thinking>.md`.
 
 ## Log
+
+### 2026-10-17 — step 3: CI green + docs
+- CI run 43 (`6105855`): build OK, **2052/2052 tests**, `--ui-preview` 24/24 shots `ok`, artifact
+  uploaded. The artifact can't be downloaded from this cloud container (proxy blocks the blob host) —
+  David opens it (step 2 above).
+- Docs: `PRIVACY.md` (AI Polish = the opt-in third network call: what is sent, DPAPI key location,
+  usage file), `docs/HANDOFF-WINDOWS.md` §7 #70 + persistence paths, `windows/README.md`, new briefs
+  `JVoice.Core/AIPolish/CLAUDE.md` + `JVoice.App/AIPolish/CLAUDE.md`, index lines in the other briefs.
 
 ### 2026-10-17 — step 2: App wiring + CI UI preview
 - Local build trick: the cloud container has .NET 10 SDK (apt, Microsoft repo); `dotnet build
