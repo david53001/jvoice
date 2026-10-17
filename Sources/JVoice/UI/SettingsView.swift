@@ -133,6 +133,9 @@ struct SettingsView: View {
     @State private var draftIsSavedKey = false
     @State private var keyStatus: String?
     @State private var testingKey = false
+    /// AI Polish top-up amount (USD) typed next to "Add"; `topUpNotice` explains a refused amount.
+    @State private var topUpDraft: Double? = 5
+    @State private var topUpNotice: String?
 
     var body: some View {
         let theme = coordinator.appTheme.theme
@@ -163,7 +166,6 @@ struct SettingsView: View {
                     VStack(spacing: 12) {
                         modelSection
                         processingSection
-                        aiPolishSection(theme)
                         voiceStyleSection
                         languageSection
                         appModesSection(theme)
@@ -180,6 +182,9 @@ struct SettingsView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
+
+                // AI Polish — full width at the very bottom (it is opt-in, paid, and the widest card).
+                aiPolishSection(theme)
 
                 footer
             }
@@ -269,79 +274,19 @@ struct SettingsView: View {
         .tourAnchor("settings.processing")
     }
 
-    /// AI Polish (opt-in, bring your own Anthropic key). The key lives only in the Keychain: the
-    /// field is masked, the eye button is the only thing that reads it back, Save clears the field.
+    /// AI Polish (opt-in, bring your own Anthropic key, paid from a prepaid balance). Full width:
+    /// the switch + key on the left, the balance + what it has cost on the right. The key lives only
+    /// in the Keychain: the field is masked, the eye button is the only thing that reads it back,
+    /// Save clears the field.
     private func aiPolishSection(_ theme: Theme) -> some View {
         SettingsSection("AI Polish") {
-            VStack(alignment: .leading, spacing: 8) {
-                toggleRow("Polish with Claude",
-                          "Sends dictations to Claude to fix mistakes.",
-                          isOn: $coordinator.aiPolish)
-                    .disabled(coordinator.apiKeyHint == nil)
-
-                if coordinator.apiKeyHint == nil {
-                    Text("Save your Anthropic API key below to turn this on.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                // Typing clears the last status line and makes the field a NEW key (not the revealed one).
-                let draft = Binding(get: { apiKeyDraft },
-                                    set: { apiKeyDraft = $0; draftIsSavedKey = false; keyStatus = nil })
-                HStack(spacing: 6) {
-                    Group {
-                        if revealKey {
-                            TextField("sk-ant-…", text: draft)
-                        } else {
-                            SecureField("sk-ant-…", text: draft)
-                        }
-                    }
-                    .inputFieldStyle()
-                    .onSubmit { saveKey() }
-
-                    Button {
-                        toggleReveal()
-                    } label: {
-                        Image(systemName: revealKey ? "eye.slash" : "eye")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .frame(width: 18, height: 18)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(PanelPressableButtonStyle())
-                    .help(revealKey ? "Hide key" : "Show key")
-                    .accessibilityLabel(revealKey ? "Hide key" : "Show key")
-                }
-
-                HStack(spacing: 6) {
-                    Text(coordinator.apiKeyHint.map { "Key saved \($0)" } ?? "No key saved")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 0)
-                    Button("Save") { saveKey() }
-                        .buttonStyle(SubtleButtonStyle())
-                        .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draftIsSavedKey)
-                    Button(testingKey ? "Testing…" : "Test Key") { testKey() }
-                        .buttonStyle(SubtleButtonStyle())
-                        .disabled(testingKey || (coordinator.apiKeyHint == nil
-                                                 && apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
-                    Button("Remove Key", role: .destructive) { removeKey() }
-                        .buttonStyle(SubtleButtonStyle(destructive: true))
-                        .disabled(coordinator.apiKeyHint == nil)
-                }
-
-                if let keyStatus {
-                    Text(keyStatus)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                if coordinator.apiKeyHint != nil || coordinator.polishUsage.totalPolishes > 0 {
-                    Divider()
-                    polishUsageRows
-                }
+            HStack(alignment: .top, spacing: 16) {
+                // The key row (hint + three buttons) needs ~350 pt, so the balance side is fixed.
+                aiPolishKeyColumn
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                Divider()
+                polishBalanceColumn(theme)
+                    .frame(width: 240, alignment: .topLeading)
             }
         }
         .onAppear {
@@ -355,32 +300,96 @@ struct SettingsView: View {
         .onDisappear { hideKey() }
     }
 
-    /// What AI Polish has cost: this month against the budget (with a bar), and all time.
-    private var polishUsageRows: some View {
-        let usage = coordinator.polishUsage
-        let budget = coordinator.polishMonthlyBudget
-        let fraction = budget > 0 ? min(1, usage.monthCost / budget) : 0
-        return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                Text("This month")
+    /// The switch, the key field (masked + eye) and Save / Test Key / Remove Key.
+    private var aiPolishKeyColumn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            toggleRow("Polish with Claude",
+                      "Sends dictations to Claude to fix mistakes.",
+                      isOn: $coordinator.aiPolish)
+                // Needs a key and money to turn ON; turning it OFF always works.
+                .disabled(coordinator.apiKeyHint == nil
+                          || (coordinator.polishBalance <= 0 && !coordinator.aiPolish))
+
+            if coordinator.apiKeyHint == nil {
+                Text("Save your Anthropic API key below to turn this on.")
                     .font(.caption)
-                Spacer(minLength: 0)
-                Text("\(AIPolishUsageStore.dollars(usage.monthCost)) of $")
-                    .font(.caption)
-                    .monospacedDigit()
                     .foregroundStyle(.secondary)
-                TextField("Budget", value: $coordinator.polishMonthlyBudget, format: .number)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if coordinator.polishBalance <= 0 {
+                Text("Add a balance to turn this on.")
                     .font(.caption)
-                    .monospacedDigit()
-                    .multilineTextAlignment(.trailing)
-                    .textFieldStyle(.plain)
-                    .frame(width: 34)
-                    .help("Monthly budget the bar fills toward. Set the real limit in the Anthropic console.")
-                Text("· \(usage.monthPolishes) \(usage.monthPolishes == 1 ? "polish" : "polishes")")
-                    .font(.caption)
-                    .monospacedDigit()
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
+
+            // Typing clears the last status line and makes the field a NEW key (not the revealed one).
+            let draft = Binding(get: { apiKeyDraft },
+                                set: { apiKeyDraft = $0; draftIsSavedKey = false; keyStatus = nil })
+            HStack(spacing: 6) {
+                Group {
+                    if revealKey {
+                        TextField("sk-ant-…", text: draft)
+                    } else {
+                        SecureField("sk-ant-…", text: draft)
+                    }
+                }
+                .inputFieldStyle()
+                .onSubmit { saveKey() }
+
+                Button {
+                    toggleReveal()
+                } label: {
+                    Image(systemName: revealKey ? "eye.slash" : "eye")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PanelPressableButtonStyle())
+                .help(revealKey ? "Hide key" : "Show key")
+                .accessibilityLabel(revealKey ? "Hide key" : "Show key")
+            }
+
+            HStack(spacing: 6) {
+                Text(coordinator.apiKeyHint.map { "Key saved \($0)" } ?? "No key saved")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .fixedSize()
+                Spacer(minLength: 0)
+                Button("Save") { saveKey() }
+                    .buttonStyle(SubtleButtonStyle())
+                    .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draftIsSavedKey)
+                Button(testingKey ? "Testing…" : "Test Key") { testKey() }
+                    .buttonStyle(SubtleButtonStyle())
+                    .disabled(testingKey || (coordinator.apiKeyHint == nil
+                                             && apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                Button("Remove Key", role: .destructive) { removeKey() }
+                    .buttonStyle(SubtleButtonStyle(destructive: true))
+                    .disabled(coordinator.apiKeyHint == nil)
+            }
+
+            if let keyStatus {
+                Text(keyStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The prepaid balance (what's left of the last top-up, with a bar), the "$ [5] Add" top-up, and
+    /// what AI Polish has cost this month / all time (Reset clears those, never the balance).
+    private func polishBalanceColumn(_ theme: Theme) -> some View {
+        let usage = coordinator.polishUsage
+        let balance = coordinator.polishBalance
+        let topUp = coordinator.polishLastTopUp
+        let fraction = topUp > 0 ? min(1, max(0, balance / topUp)) : 0
+        let usedUp = balance <= 0 && topUp > 0
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Balance: \(AIPolishUsageStore.dollars(balance)) left")
+                .font(.callout)
+                .monospacedDigit()
             GeometryReader { geometry in
                 ZStack(alignment: .leading) {
                     Capsule().fill(Color.primary.opacity(0.1))
@@ -390,7 +399,48 @@ struct SettingsView: View {
             }
             .frame(height: 4)
             .accessibilityElement()
-            .accessibilityLabel("Spent \(Int((fraction * 100).rounded())) percent of the monthly budget")
+            .accessibilityLabel("\(Int((fraction * 100).rounded())) percent of the last top-up left")
+            HStack(spacing: 6) {
+                Text("Top up")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text("$")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("5", value: $topUpDraft, format: .number)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                    .inputFieldStyle()
+                    .frame(width: 56)
+                    .onSubmit { addBalance() }
+                    .onChange(of: topUpDraft) { topUpNotice = nil }
+                    .accessibilityLabel("Amount to add, in dollars")
+                Button("Add") { addBalance() }
+                    .buttonStyle(SubtleButtonStyle())
+                    .disabled((topUpDraft ?? 0) <= 0)
+                    .help("Adds this many dollars to what AI Polish may spend. Anthropic bills your own account.")
+            }
+
+            if let topUpNotice {
+                Text(topUpNotice)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if usedUp {
+                Text("Balance used up — add more to keep polishing.")
+                    .font(.caption)
+                    .foregroundStyle(theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+                .padding(.vertical, 2)
+            Text("This month: \(AIPolishUsageStore.dollars(usage.monthCost)) · \(usage.monthPolishes) \(usage.monthPolishes == 1 ? "polish" : "polishes")")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
             HStack(spacing: 6) {
                 Text("All time: \(AIPolishUsageStore.dollars(usage.totalCost)) · \(usage.totalPolishes) \(usage.totalPolishes == 1 ? "polish" : "polishes")")
                     .font(.caption)
@@ -400,7 +450,17 @@ struct SettingsView: View {
                 Button("Reset") { coordinator.resetPolishUsage() }
                     .buttonStyle(SubtleButtonStyle())
                     .disabled(usage.totalPolishes == 0)
+                    .help("Clears what's been spent. Your balance stays.")
             }
+        }
+    }
+
+    private func addBalance() {
+        let amount = topUpDraft ?? 0
+        if coordinator.addPolishBalance(amount) {
+            topUpNotice = nil
+        } else {
+            topUpNotice = "Enter an amount between $0.01 and \(AIPolishUsageStore.dollars(AIPolishUsageStore.maxTopUp))."
         }
     }
 

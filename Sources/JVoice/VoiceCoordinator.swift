@@ -133,10 +133,10 @@ final class VoiceCoordinator: ObservableObject {
     /// What AI Polish has cost this month / in total (Settings → AI Polish).
     @Published private(set) var polishUsage = AIPolishUsageStore.Totals()
 
-    /// The USD/month the Settings usage bar fills toward (display only).
-    @Published var polishMonthlyBudget: Double = AIPolishUsageStore.defaultMonthlyBudget {
-        didSet { polishUsageStore.monthlyBudget = polishMonthlyBudget }
-    }
+    /// USD left on the AI Polish balance (Settings → AI Polish). At $0 nothing is sent.
+    @Published private(set) var polishBalance: Double = 0
+    /// The last top-up amount — the Settings bar shows `polishBalance` against it.
+    @Published private(set) var polishLastTopUp: Double = 0
 
     /// Copy the transcript to the clipboard instead of auto-pasting it.
     @Published var copyToClipboardOnly: Bool {
@@ -275,7 +275,8 @@ final class VoiceCoordinator: ObservableObject {
         self.averageWPM = statsStore.averageWPM
         self.minutesSaved = statsStore.estimatedMinutesSaved
         self.polishUsage = polishUsageStore.totals()
-        self.polishMonthlyBudget = polishUsageStore.monthlyBudget
+        self.polishBalance = polishUsageStore.balance
+        self.polishLastTopUp = polishUsageStore.lastTopUp
         self.lastTranscript = lastTranscriptStore.transcript
         self.recentTranscripts = transcriptHistoryStore.entries
         self.isInitializing = false
@@ -851,16 +852,26 @@ final class VoiceCoordinator: ObservableObject {
 
             // AI Polish (opt-in): the pill says "AI refining" meanwhile. ANY failure — no key,
             // offline, a bad key, the 3 s deadline, an odd reply — hands back `processed`.
+            // It only runs while the prepaid balance has money left; at $0 it is skipped silently
+            // (the one "used up" pill was shown when the balance ran out).
             var finalText = processed
-            if aiPolish, AIPolish.isWorthPolishing(processed) {
+            var polishBalanceRanOut = false
+            // `hasKey: true` — the key's presence is not read here (that would be a Keychain query
+            // on every dictation, and `apiKeyHint` is only loaded by Settings); a missing key is
+            // the façade's own `fallback(no-key)`, and the toggle can't be turned on without one.
+            let canPolish = AIPolishUsageStore.shouldPolish(enabled: aiPolish, hasKey: true,
+                                                            balance: polishUsageStore.balance)
+            if aiPolish, !canPolish {
+                Self.latencyLog.info("AIPolish skipped(balance)")
+            } else if canPolish, AIPolish.isWorthPolishing(processed) {
                 updateHUD(.refining)
                 let previous = polishContext.previous(for: targetBundleId)
                 let polish = await AIPolish.polish(processed, previous: previous, mode: effectiveMode,
                                                    vocabulary: customWords)
-                // Every reply Anthropic billed counts, used or not.
+                // Every reply Anthropic billed counts, used or not — and comes off the balance.
                 if let usage = polish.usage {
-                    polishUsageStore.record(usage, model: AIPolishRequest.Options.standard.model)
-                    polishUsage = polishUsageStore.totals()
+                    polishBalanceRanOut = polishUsageStore.record(usage, model: AIPolishRequest.Options.standard.model)
+                    refreshPolishUsage()
                 }
                 if Task.isCancelled { return }
                 // The tone the user chose wins: its formatting (Casual's missing final period,
@@ -868,7 +879,7 @@ final class VoiceCoordinator: ObservableObject {
                 if polish.isPolished { finalText = TextProcessor.format(polish.text, mode: effectiveMode) }
                 // The reason only — never the text or the key.
                 Self.latencyLog.info("AIPolish \(polish.logLabel, privacy: .public) \(polish.milliseconds, privacy: .public)ms context=\(previous.count, privacy: .public) changed=\(finalText != processed, privacy: .public)")
-            } else if aiPolish {
+            } else if canPolish {
                 Self.latencyLog.info("AIPolish skipped(short)")
             }
 
@@ -933,7 +944,13 @@ final class VoiceCoordinator: ObservableObject {
             // bookkeeping (three UserDefaults writes + history) behind it.
             let pastedMs = millisecondsSincePress
             updateHUD(completedState)
-            scheduleHUDReset()
+            if polishBalanceRanOut {
+                // ONE pill, after the paste: "Pasted" first, then the warning for the usual 3 s.
+                // A single dismiss task, so a new recording (which cancels it) is never overdrawn.
+                showAfterPaste(.error(AIPolishUsageStore.balanceUsedUpMessage))
+            } else {
+                scheduleHUDReset()
+            }
             Self.latencyLog.info("Timing stop->transcript=\(transcribedMs, privacy: .public)ms stop->pasted=\(pastedMs, privacy: .public)ms stop->done=\(self.millisecondsSincePress, privacy: .public)ms recSecs=\(self.lastRecordingDuration, format: .fixed(precision: 2), privacy: .public)")
 
             let wordCount = finalText.split(separator: " ").count
@@ -970,6 +987,20 @@ final class VoiceCoordinator: ObservableObject {
 
     private func removeBlankTranscriptPlaceholder(from text: String) -> String {
         return TextProcessor.removeWhisperHallucinations(text)
+    }
+
+    /// Keeps the current terminal pill up for the usual 1 s, then shows `next` for 3 s, then hides —
+    /// all on the one `hudDismissTask`, so a new recording's pill cancels the whole chain.
+    private func showAfterPaste(_ next: HUDState) {
+        hudDismissTask?.cancel()
+        hudDismissTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+            guard !Task.isCancelled, let self else { return }
+            self.updateHUD(next)
+            do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+            guard !Task.isCancelled else { return }
+            self.updateHUD(.idle)
+        }
     }
 
     func scheduleHUDReset(after delayNanoseconds: UInt64 = 1_000_000_000) {
@@ -1022,14 +1053,26 @@ final class VoiceCoordinator: ObservableObject {
         return saved
     }
 
-    /// Re-reads the usage totals (a new month starts at zero) — Settings calls it when shown.
+    /// Re-reads the usage totals (a new month starts at zero) and the balance — Settings calls it
+    /// when shown.
     func refreshPolishUsage() {
         polishUsage = polishUsageStore.totals()
+        polishBalance = polishUsageStore.balance
+        polishLastTopUp = polishUsageStore.lastTopUp
     }
 
+    /// Settings → AI Polish → Add. False when the amount was refused (≤ 0, or over the cap).
+    @discardableResult
+    func addPolishBalance(_ amount: Double) -> Bool {
+        let added = polishUsageStore.addBalance(amount)
+        refreshPolishUsage()
+        return added
+    }
+
+    /// Clears the spent totals; the balance stays.
     func resetPolishUsage() {
         polishUsageStore.reset()
-        polishUsage = polishUsageStore.totals()
+        refreshPolishUsage()
     }
 
     /// Removes the key and turns AI Polish off (it can't run without one).

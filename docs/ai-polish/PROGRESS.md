@@ -22,7 +22,9 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
 | David runs the eval | done 2026-10-17 on the Mac (results below + `eval-results/`) |
 | Default model chosen by the §6b rule | done — **Haiku 5.5, thinking off** (unchanged `Options.standard`) |
 | Usage stat in Settings + "AI refining" HUD pill + shorter caption (David, 2026-10-17) | done, installed on David's Mac |
-| **Prompt tuning** (no-false-fix, no-answer, preserve) | **todo — next step** |
+| Top-up **balance** replaces the monthly budget (David, 2026-10-17): $0 default, Settings "Top up $ [5] Add", each billed reply subtracts, at $0 polish is skipped (`skipped(balance)`), ONE "balance used up" pill; AI Polish card moved full-width to the bottom of Settings | done, installed on David's Mac, committed + pushed — release build + logic harness + `--settings-smoke` green |
+| **Prompt tuning** (no-false-fix, no-answer, preserve) | done — **prompt v2 "minimal-edit"** compiled into `AIPolishRequest.systemPrompt`, installed; see "Prompt v2" below |
+| Hidden test set `scripts/ai-polish-eval/cases-test.json` (50 cases) + `--prompt-file` candidates in `scripts/ai-polish-eval/prompts/` | done |
 | Final review (`docs/ai-polish/REVIEW.md`) | done without eval data: **7/10 provisional**; top fixes applied (table at the end of REVIEW.md); re-run after the eval |
 
 **Eval results (2026-10-17, David's Mac, installed app reading the Keychain key).** Targets (plan
@@ -47,13 +49,85 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
   it "corrects" words that were right), preserve ~75 %. Those three categories are what prompt tuning
   should target (never on the hold-out cases' exact words).
 
-**Next step:** tune `AIPolishRequest.systemPrompt` for no-false-fix / no-answer / preserve (read the
-FAIL lines of the results files), run (a) ≥ 3 times, then re-run the §10 review. Earlier note:
-picks the default config by the §6b rule, re-runs the final review (same brief, plan §10), and
-tunes the prompt if needed. Open items from the review, not done yet: pre-connect to
-`api.anthropic.com` when recording starts + a `--cold` eval option (if the eval shows cold-start
-latency); a "paste original (unpolished)" action; `SecItemUpdate` instead of delete+add; tone-check
-fields in the eval; whether Code tone should skip polish entirely (David's call).
+## Prompt v2 (2026-10-17)
+
+**How it was chosen.** Four candidate prompts were written as `--prompt-file` templates in
+`scripts/ai-polish-eval/prompts/` (`baseline.txt` = the v1 app prompt, `minimal-edit.txt`,
+`question-firewall.txt`, `compact-fewshot.txt`, and `merged.txt` = parts of the top two). They were
+tuned on the training set `scripts/ai-polish-eval/cases.json` (78 cases) and judged on a separate
+**hidden test set** `scripts/ai-polish-eval/cases-test.json` (50 cases, never used for tuning), each
+run 3 times, all candidates at the same time per round so they saw the same network. Template
+placeholders: `{{TONE}}`, `{{TONE_RULE}}`, `{{CUSTOM_WORDS}}` (filled exactly like the app does).
+Run a candidate: `/Applications/JVoice.app/Contents/MacOS/JVoice --polish-eval <cases.json>
+--prompt-file <template.txt> --out <file.md>` (~1.5–2 min, ~$0.005 per 78 cases; the installed app
+reads the key from the Keychain).
+
+**Decision rule** (David's priorities): (1) never change words that were already correct, (2) never
+answer a dictated question/request, (3) keep the context fixes, (4) stay fast. Gates: mean p95
+≤ 1500 ms and hold-out ≥ baseline − 5; among those, the highest mean of no-false-fix + no-answer.
+
+Judge table — means of 3 runs on the TEST set (train = 1 run; baseline train = the 3-run mean above):
+
+| Prompt | Test overall | no-false-fix | no-answer | Hold-out | p50 | p95 | Cost/dictation | Train overall |
+|---|---|---|---|---|---|---|---|---|
+| baseline (v1) | 92.0 % | 88.1 % | 90.5 % | 96.7 % | 759 ms | 1060 ms | $0.000068 | 87.6 % |
+| **minimal-edit (v2, chosen)** | 95.3 % | **97.6 %** | **100 %** | 100 % | 816 ms | 1191 ms | $0.000091 | 92.3 % |
+| question-firewall | 96.7 % | 90.5 % | 100 % | 100 % | 837 ms | 1294 ms | $0.000092 | 94.9 % |
+| compact-fewshot | 96.7 % | 92.9 % | 100 % | 96.7 % | 884 ms | 1203 ms | $0.000063 | 96.2 % |
+| merged | 94.7 % | 92.9 % | 97.6 % | 96.7 % | 920 ms | 1461 ms | $0.000083 | 93.6 % |
+
+- **Decision: minimal-edit**, now `AIPolishRequest.systemPrompt` (byte-identical to
+  `prompts/minimal-edit.txt` rendered — `scripts/run-logic-tests.sh` asserts it for every tone, so
+  edit both together). It scores 98.8 on no-false-fix + no-answer (next best 96.4): 41/42
+  no-false-fix case runs (one added "the" to t-nf-flask), 42/42 no-answer. compact-fewshot and
+  question-firewall capitalised java (the coffee) to "Java" every run; baseline answered or ignored
+  a request in 4/42 runs and changed correct words (flask, slack, could-care-less).
+- **Cost of the win:** +57 ms p50, +131 ms p95, +$0.000023 per dictation (the prompt is longer:
+  347 vs 227 words).
+- **Weak spot — context-from-previous:** 72.2 % on test (baseline 88.9 %, compact-fewshot 94.4 %).
+  It keeps "use cart" instead of `useCart` (3/3 runs) and "flower" while baking (2/3). If that
+  matters as much as the safety goals, compact-fewshot is the runner-up (shortest, cheapest, only
+  consistent miss java→Java).
+- **Test-set caveats:** compact-fewshot's "graph q l"→GraphQL example nearly matches hold-out case
+  t-cf-graphql; minimal-edit's flour/flower example overlaps t-cp-flour / t-cp-flowers. Every
+  mustContain/mustNotContain check is a case-sensitive substring. `cp-django` in `cases.json` fails
+  for every prompt ("Django" contains the forbidden "jango"), capping training context-from-previous
+  at 91.7 %.
+
+**Confirmation run with the compiled prompt** (installed app, no `--prompt-file`, 1 run each):
+
+| Set | Overall | context-fix | ctx-from-previous | no-answer | no-false-fix | preserve | Hold-out | p50 | p95 | Cost/dictation |
+|---|---|---|---|---|---|---|---|---|---|---|
+| train `cases.json` (`eval-results/2026-10-17-v2-train.md`) | 96.2 % | 92.3 % | 91.7 % | 100 % | 100 % | 100 % | 90.9 % | 766 ms | 1402 ms | $0.000093 |
+| test `cases-test.json` (`eval-results/2026-10-17-v2-test.md`) | 96.0 % | 100 % | 66.7 % | 100 % | 100 % | 100 % | 100 % | 780 ms | 1070 ms | $0.000091 |
+
+Matches the judge within noise. Fails: train — cf-mitochondria ("mighty chondria"), cf-chlorophyll
+("color fill"), cp-django (the impossible case); test — t-cp-flour, t-cp-usecart (the known weak spot).
+
+## Top-up balance (2026-10-17, David's design)
+
+The display-only monthly budget is gone. AI Polish draws from a local prepaid **balance** (a
+spending limit JVoice keeps — not money held anywhere; Anthropic still bills the user's own key):
+- Starts at $0. Settings → AI Polish (full-width card at the bottom): "Balance: $x left", a bar
+  (balance ÷ last top-up), "Top up $ [5] Add" (refuses ≤ 0, non-numbers, > $1000), a red "Balance
+  used up — add more to keep polishing." line, then This month / All time + Reset (Reset clears
+  the spent totals only, never the balance).
+- The toggle can be turned ON only with a key AND a balance > $0; turning it OFF always works.
+- Each billed reply's cost (from Anthropic's `usage` tokens) is subtracted (clamped at $0). At $0
+  nothing is sent (`AIPolish skipped(balance)` in the log) and the local text pastes.
+- The ONE reply that empties the balance: "Pasted" first, then after 1 s one orange error pill
+  "AI Polish balance used up — add more in Settings" for 3 s. No more pills while it stays at $0.
+- Stored in UserDefaults `jvoice.app.aiPolish.balance` / `.lastTopUp` (numbers only).
+- Known gap: someone who already had the toggle ON before this build starts at $0, so polish stops
+  silently (no "used up" pill, since no reply emptied it) until they open Settings and top up.
+
+**Next steps:** David dogfoods v2 + the balance on his Mac (top up, dictate a question, a
+deploy-to-"versails" pair, run the balance down with a tiny top-up to see the one "used up" pill). Optional: improve context-from-previous
+(identifier casing like `useCart`, flour/flower) without losing no-false-fix — compare on ≥ 3 runs of
+`cases-test.json`. Open items from the review, not done yet: pre-connect to `api.anthropic.com`
+when recording starts + a `--cold` eval option; a "paste original (unpolished)" action;
+`SecItemUpdate` instead of delete+add; tone-check fields in the eval; whether Code tone should skip
+polish entirely (David's call).
 
 ## CI
 
@@ -164,6 +238,8 @@ Default = the most accurate config whose p95 ≤ 1.5 s; ties → the cheaper one
 
 ## Log
 
+- 2026-10-17 — Prompt v2 ("minimal-edit") chosen on the hidden test set and compiled in; top-up
+  balance replaced the monthly budget; both installed, committed and pushed (CI in the table above).
 - 2026-10-17 — Final reviewer (one fresh sub-agent, plan §10) scored 7/10 provisional (no eval
   data). Applied its fixes 1–4 and parts of 6, 8, 9, 10; the rest are listed under "Next step".
 - 2026-10-17 — Prototype implemented in one session: all code, tests, eval harness, cases, docs.

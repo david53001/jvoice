@@ -1,8 +1,14 @@
 import Foundation
 
 /// What AI Polish has cost, from the token counts Anthropic returns with each reply (exact, not
-/// estimated) priced by `AIPolishRequest.cost`. Persisted in UserDefaults like `StatsStore` — totals
-/// only, never text or the key. "This month" restarts on the first polish of a new calendar month.
+/// estimated) priced by `AIPolishRequest.cost`, and the prepaid BALANCE it draws from. Persisted in
+/// UserDefaults like `StatsStore` — totals only, never text or the key. "This month" restarts on the
+/// first polish of a new calendar month.
+///
+/// The balance is JVoice's own spending limit: the user tops it up in Settings (it starts at $0, so
+/// AI Polish stays off until they do), every billed reply is subtracted from it, and at $0 the
+/// coordinator stops sending dictations (`shouldPolish`). It is a local counter, not money held
+/// anywhere — Anthropic bills the user's own account as before.
 final class AIPolishUsageStore {
     struct Totals: Equatable, Sendable {
         var monthCost: Double = 0
@@ -11,9 +17,16 @@ final class AIPolishUsageStore {
         var totalPolishes = 0
     }
 
-    /// The Settings bar fills toward this (USD per month). Only a display reference — JVoice never
-    /// stops polishing because of it; the real cap is the spend limit set in the Anthropic console.
-    static let defaultMonthlyBudget: Double = 10
+    /// The one HUD pill shown when a reply uses up the balance (the dictation itself still pastes).
+    static let balanceUsedUpMessage = "AI Polish balance used up — add more in Settings"
+
+    /// The largest single top-up Settings accepts (USD) — guards a typo like 5000 for 5.
+    static let maxTopUp: Double = 1000
+
+    /// True when a dictation may go to Claude: the toggle is on, a key is saved and money is left.
+    static func shouldPolish(enabled: Bool, hasKey: Bool, balance: Double) -> Bool {
+        enabled && hasKey && balance > 0
+    }
 
     private let defaults: UserDefaults
 
@@ -23,7 +36,8 @@ final class AIPolishUsageStore {
         static let monthPolishes = "jvoice.app.aiPolish.usage.monthPolishes"
         static let totalCost = "jvoice.app.aiPolish.usage.totalCost"
         static let totalPolishes = "jvoice.app.aiPolish.usage.totalPolishes"
-        static let monthlyBudget = "jvoice.app.aiPolish.monthlyBudget"
+        static let balance = "jvoice.app.aiPolish.balance"
+        static let lastTopUp = "jvoice.app.aiPolish.lastTopUp"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -36,9 +50,33 @@ final class AIPolishUsageStore {
         return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
     }
 
-    var monthlyBudget: Double {
-        get { (defaults.object(forKey: Key.monthlyBudget) as? Double) ?? Self.defaultMonthlyBudget }
-        set { defaults.set(max(0, newValue), forKey: Key.monthlyBudget) }
+    /// USD left to spend on AI Polish (never negative; $0 until the first top-up).
+    var balance: Double {
+        max(0, defaults.double(forKey: Key.balance))
+    }
+
+    /// The most recent top-up amount — the Settings bar shows `balance / lastTopUp`.
+    var lastTopUp: Double {
+        defaults.double(forKey: Key.lastTopUp)
+    }
+
+    /// Remaining share of the last top-up, 0…1 (0 when there never was one; a balance above the last
+    /// top-up — money left over from before it — reads as full).
+    var remainingFraction: Double {
+        let topUp = lastTopUp
+        guard topUp > 0 else { return 0 }
+        return min(1, max(0, balance / topUp))
+    }
+
+    /// Adds `amount` USD to the balance and remembers it as the last top-up. Non-positive, non-finite
+    /// or over-`maxTopUp` amounts are refused (returns false).
+    @discardableResult
+    func addBalance(_ amount: Double) -> Bool {
+        guard amount.isFinite, amount > 0, amount <= Self.maxTopUp else { return false }
+        let newBalance = balance + amount
+        defaults.set(newBalance, forKey: Key.balance)
+        defaults.set(amount, forKey: Key.lastTopUp)
+        return true
     }
 
     func totals(now: Date = Date()) -> Totals {
@@ -49,11 +87,17 @@ final class AIPolishUsageStore {
                       totalPolishes: defaults.integer(forKey: Key.totalPolishes))
     }
 
-    /// Adds one billed reply. A reply that came back but was not used (a fallback) still cost
-    /// tokens, so it counts too; a call that never got a reply (no key, offline, timeout) has no
-    /// usage and isn't recorded.
-    func record(_ usage: AIPolishRequest.Usage, model: String, now: Date = Date()) {
-        guard let cost = AIPolishRequest.cost(usage, model: model) else { return }
+    /// Adds one billed reply and subtracts its cost from the balance (clamped at $0). A reply that
+    /// came back but was not used (a fallback) still cost tokens, so it counts too; a call that
+    /// never got a reply (no key, offline, timeout) has no usage and isn't recorded. Returns true
+    /// when THIS reply used the balance up (it was above $0 and is now $0) — the coordinator shows
+    /// its one "used up" pill on that, never again while the balance stays at $0.
+    @discardableResult
+    func record(_ usage: AIPolishRequest.Usage, model: String, now: Date = Date()) -> Bool {
+        guard let cost = AIPolishRequest.cost(usage, model: model) else { return false }
+        let before = balance
+        let after = max(0, before - cost)
+        defaults.set(after, forKey: Key.balance)
         var current = totals(now: now)
         current.monthCost += cost
         current.monthPolishes += 1
@@ -64,9 +108,10 @@ final class AIPolishUsageStore {
         defaults.set(current.monthPolishes, forKey: Key.monthPolishes)
         defaults.set(current.totalCost, forKey: Key.totalCost)
         defaults.set(current.totalPolishes, forKey: Key.totalPolishes)
+        return before > 0 && after <= 0
     }
 
-    /// Clears the totals (the budget stays).
+    /// Clears the spent totals. The balance (and the last top-up) stays — it is money, not a stat.
     func reset() {
         for key in [Key.month, Key.monthCost, Key.monthPolishes, Key.totalCost, Key.totalPolishes] {
             defaults.removeObject(forKey: key)
