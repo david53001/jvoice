@@ -20,8 +20,12 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
   reply can no longer paste "".
 - **Windows:** `docs/ai-polish/WINDOWS-HANDOFF.md` is the zero-context brief for a cloud session to
   build the same feature on the Windows port (branch `feat/ai-polish-windows` from `origin/main`).
-- Next: David pastes the key again; re-run the eval (train 1×, hidden test 3×) to confirm the new
-  guard doesn't block real fixes; then review fixes 2–7 from REVIEW.md.
+- **Eval after the guard (key re-pasted, read from the new file):** hidden test 96.0 / 96.0 / 98.0 %
+  (no-false-fix 100 %, no-answer 100 %, hold-out 100 % on all 3), training 93.6 % (hold-out 86.4 %);
+  p95 1151–1566 ms; **0 fallbacks of any kind, 0 `added-content`** — the guard blocks no real fix.
+  Files: `eval-results/2026-10-17-v2-guard-{test-1,test-2,test-3,train}.md`.
+- Next: review fixes 2–7 from REVIEW.md (realistic cased/punctuated and short-question eval cases,
+  context-from-previous, the pending used-up pill, billed-after-deadline not deducted, `cp-django`).
 
 ## State
 
