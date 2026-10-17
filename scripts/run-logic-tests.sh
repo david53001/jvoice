@@ -3846,11 +3846,25 @@ do {
     expect(!tiny.record(usage, model: "claude-haiku-5-5"), "$0.00005 left → not used up yet")
     expect(tiny.record(usage, model: "claude-haiku-5-5") && tiny.balance == 0, "the reply that empties it is reported, balance clamped at $0")
     expect(!tiny.record(usage, model: "claude-haiku-5-5") && tiny.balance == 0, "already at $0 → no second 'used up'")
-    let balanceBeforeReset = store.balance
-    store.reset()
-    expect(store.totals() == AIPolishUsageStore.Totals() && store.balance == balanceBeforeReset && store.lastTopUp == 2.5, "reset clears spent totals, keeps the balance")
+    let before = store.balance
+    expect(store.removeBalance(2) && abs(store.balance - (before - 2)) < 1e-12 && store.lastTopUp == 2.5, "remove takes money back off, last top-up untouched")
+    expect(!store.removeBalance(0) && !store.removeBalance(.nan), "zero / NaN removals are refused")
+    expect(store.removeBalance(1000) && store.balance == 0, "removing more than is left stops at $0")
     expectEqual(AIPolishUsageStore.dollars(0.000069), "$0.0001", "under a cent → four decimals")
     expectEqual(AIPolishUsageStore.dollars(0.42), "$0.42", "two decimals otherwise")
+}
+
+print("AIPolishRequest — answers to short questions fall back")
+do {
+    for (original, reply) in [("what is pi", "Pi is approximately 3.14159."),
+                              ("who is newton", "Isaac Newton was an English physicist and mathematician."),
+                              ("what is twelve times eight", "What is twelve times eight? 96"),
+                              ("what is the boiling point of water", "What is the boiling point of water? It's 100 °C.")] {
+        expectEqual(AIPolishRequest.validate(reply, original: original, previous: []), .fallback(.addedContent), "answer → local text: \(reply)")
+    }
+    expectEqual(AIPolishRequest.validate("What is pi?", original: "what is pi", previous: []), .polished("What is pi?"), "a cleaned short question passes")
+    expectEqual(AIPolishRequest.validate("Is it working? Yes, it is.", original: "is it working yes it is", previous: []), .polished("Is it working? Yes, it is."), "spoken words after a '?' pass")
+    expectEqual(AIPolishRequest.validate("Deploy it to Vercel.", original: "deploy it to versails", previous: []), .polished("Deploy it to Vercel."), "one sound-alike swap passes")
 }
 
 if failures > 0 {

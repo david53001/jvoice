@@ -75,7 +75,7 @@ enum PolishEval {
 /// overall + per category, p50/p95 latency, tokens and cost, and writes the same report to
 /// `docs/ai-polish/eval-results/<date>-<model>-<thinking>.md`.
 ///
-/// The key comes from `ANTHROPIC_API_KEY`, else the Keychain item; it is never printed. Each call
+/// The key comes from `ANTHROPIC_API_KEY`, else the saved key file (`APIKeyStore`); it is never printed. Each call
 /// gets a 30 s deadline (not the app's 3 s) so the real latency is measured; the report counts how
 /// many calls the app would have abandoned.
 enum PolishEvalRunner {

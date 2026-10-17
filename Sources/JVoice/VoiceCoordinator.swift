@@ -126,8 +126,8 @@ final class VoiceCoordinator: ObservableObject {
         }
     }
 
-    /// "••••abcd" while an Anthropic key is saved in the Keychain, else nil. Read lazily by Settings
-    /// (`refreshAPIKeyStatus`), never at launch, and only ever the attribute — not the secret.
+    /// "••••abcd" while an Anthropic key is saved (`APIKeyStore`), else nil. Read lazily by Settings
+    /// (`refreshAPIKeyStatus`), never at launch.
     @Published private(set) var apiKeyHint: String?
 
     /// What AI Polish has cost this month / in total (Settings → AI Polish).
@@ -856,7 +856,7 @@ final class VoiceCoordinator: ObservableObject {
             // (the one "used up" pill was shown when the balance ran out).
             var finalText = processed
             var polishBalanceRanOut = false
-            // `hasKey: true` — the key's presence is not read here (that would be a Keychain query
+            // `hasKey: true` — the key's presence is not read here (that would be a file read
             // on every dictation, and `apiKeyHint` is only loaded by Settings); a missing key is
             // the façade's own `fallback(no-key)`, and the toggle can't be turned on without one.
             let canPolish = AIPolishUsageStore.shouldPolish(enabled: aiPolish, hasKey: true,
@@ -876,7 +876,11 @@ final class VoiceCoordinator: ObservableObject {
                 if Task.isCancelled { return }
                 // The tone the user chose wins: its formatting (Casual's missing final period,
                 // Formal's capital + period) is applied to the reply as it was to the local text.
-                if polish.isPolished { finalText = TextProcessor.format(polish.text, mode: effectiveMode) }
+                if polish.isPolished {
+                    // A punctuation-only reply would format to "" — never paste nothing.
+                    let formatted = TextProcessor.format(polish.text, mode: effectiveMode)
+                    if !formatted.isEmpty { finalText = formatted }
+                }
                 // The reason only — never the text or the key.
                 Self.latencyLog.info("AIPolish \(polish.logLabel, privacy: .public) \(polish.milliseconds, privacy: .public)ms context=\(previous.count, privacy: .public) changed=\(finalText != processed, privacy: .public)")
             } else if canPolish {
@@ -1037,15 +1041,15 @@ final class VoiceCoordinator: ObservableObject {
         settingsState = s
     }
 
-    // MARK: AI Polish key (Keychain only — see APIKeyStore)
+    // MARK: AI Polish key (one owner-only file — see APIKeyStore)
 
     func refreshAPIKeyStatus() {
         apiKeyHint = APIKeyStore.savedHint()
-        // A key removed outside JVoice (Keychain Access) can't leave the toggle on.
+        // A key removed outside JVoice (its file deleted) can't leave the toggle on.
         if apiKeyHint == nil, aiPolish { aiPolish = false }
     }
 
-    /// Saves `key` to the Keychain (replacing any saved one). False when the Keychain refused it.
+    /// Saves `key` (replacing any saved one). False when it couldn't be written.
     @discardableResult
     func saveAPIKey(_ key: String) -> Bool {
         let saved = APIKeyStore.save(key)
@@ -1069,10 +1073,12 @@ final class VoiceCoordinator: ObservableObject {
         return added
     }
 
-    /// Clears the spent totals; the balance stays.
-    func resetPolishUsage() {
-        polishUsageStore.reset()
+    /// Settings → AI Polish → Remove: takes an amount back off the balance (never below $0).
+    @discardableResult
+    func removePolishBalance(_ amount: Double) -> Bool {
+        let removed = polishUsageStore.removeBalance(amount)
         refreshPolishUsage()
+        return removed
     }
 
     /// Removes the key and turns AI Polish off (it can't run without one).

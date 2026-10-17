@@ -73,7 +73,7 @@ struct AIPolishClient: Sendable {
             timedOut: (.fallback(.timeout), nil),
             cancelled: (.fallback(.cancelled), nil)
         ) {
-            // The Keychain read is synchronous (and can sit on a permission prompt): do it on a GCD
+            // The key read is synchronous file I/O (it can stall on a busy disk): do it on a GCD
             // thread, never on one of Swift's few cooperative threads.
             let key = await withCheckedContinuation { (continuation: CheckedContinuation<String?, Never>) in
                 DispatchQueue.global(qos: .userInitiated).async { continuation.resume(returning: apiKey()) }

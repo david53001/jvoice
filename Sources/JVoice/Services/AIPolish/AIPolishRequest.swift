@@ -4,7 +4,7 @@ import FoundationNetworking
 #endif
 
 /// The pure half of AI Polish: builds the Messages API request and judges the reply. No network,
-/// no Keychain, no AppKit — the app, the `--polish-eval` runner and the tests all share this one
+/// no file access, no AppKit — the app, the `--polish-eval` runner and the tests all share this one
 /// prompt builder and parser (see `docs/ai-polish/PROTOTYPE-PLAN.md` §6).
 ///
 /// The rule it exists to keep: **never lose a dictation**. Anything other than a clean `end_turn`
@@ -48,6 +48,7 @@ enum AIPolishRequest {
         case droppedWords
         case chatty
         case leakedContext
+        case addedContent
 
         var logLabel: String {
             switch self {
@@ -67,6 +68,7 @@ enum AIPolishRequest {
             case .droppedWords: return "dropped-words"
             case .chatty: return "chatty"
             case .leakedContext: return "leaked-context"
+            case .addedContent: return "added-content"
             }
         }
     }
@@ -316,6 +318,20 @@ enum AIPolishRequest {
         return Double(wanted.filter { kept.contains($0) }.count) / Double(wanted.count)
     }
 
+    /// An answer ADDS words the speaker never said; a context fix swaps a sound-alike for about one.
+    /// More than `max(maxAddedWords, maxAddedShare × the transcript's words)` new words falls back.
+    static let maxAddedWords = 2
+    static let maxAddedShare = 0.2
+
+    /// Every lower-cased word or number, any length, apostrophes dropped ("It's 100 °C" → its, 100, c).
+    static func tokens(_ text: String) -> [String] {
+        text.lowercased()
+            .replacingOccurrences(of: "'", with: "")
+            .replacingOccurrences(of: "’", with: "")
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+    }
+
     /// Letters, digits and single spaces only — for "is this the same sentence" comparisons.
     static func normalized(_ text: String) -> String {
         contentWords(text).joined(separator: " ")
@@ -359,6 +375,19 @@ enum AIPolishRequest {
         }
         if let retention = wordRetention(of: text, original: original), retention < minWordRetention {
             return .fallback(.droppedWords)
+        }
+        // It answered: words the speaker never said were added — a short question's answer ("what is
+        // pi" → "Pi is approximately 3.14."), or anything new after the question mark ("What is twelve
+        // times eight? 96"). The length checks above can't see these on short dictations.
+        let spokenTokens = tokens(original)
+        let spoken = Set(spokenTokens)
+        let added = tokens(text).filter { !spoken.contains($0) }
+        if added.count > max(maxAddedWords, Int(Double(spokenTokens.count) * maxAddedShare)) {
+            return .fallback(.addedContent)
+        }
+        if let mark = text.lastIndex(of: "?"),
+           tokens(String(text[text.index(after: mark)...])).contains(where: { !spoken.contains($0) }) {
+            return .fallback(.addedContent)
         }
         return .polished(text)
     }

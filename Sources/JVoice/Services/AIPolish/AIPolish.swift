@@ -2,7 +2,7 @@ import Foundation
 
 /// The façade `VoiceCoordinator` and Settings call. Everything that decides lives in
 /// `AIPolishRequest` (pure) and `AIPolishClient` (the deadline); this file only wires in the real
-/// transport, the app's timeout and the Keychain.
+/// transport, the app's timeout and the saved key (`APIKeyStore`).
 enum AIPolish {
     /// Polishes `text`, or returns it unchanged on ANY failure within `AppTimings.aiPolishTimeout`.
     static func polish(_ text: String, previous: [String], mode: AppMode, vocabulary: [String],

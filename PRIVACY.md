@@ -73,10 +73,14 @@ send none of your data; the third sends your dictated text, and only if you turn
    <https://www.anthropic.com/legal/privacy>. The request goes straight from your Mac to
    Anthropic with your key — the JVoice authors never see it. If anything goes wrong (offline,
    bad key, no reply within 3 seconds) JVoice pastes its own local text instead. Your key is
-   stored only in your Mac's **Keychain** (marked not to sync to iCloud), and is never written
-   to settings, history, logs or the clipboard. Two honest limits: anyone using
-   your unlocked Mac can open Settings and reveal the key with the eye button, and while AI
-   Polish is on, what you dictate is read by Anthropic. Turn it off and nothing leaves your Mac.
+   stored in one file on your Mac that only your user account can open
+   (`~/Library/Application Support/JVoice/anthropic-api-key`, left out of Time Machine backups,
+   never synced), and is never written to settings, history, logs or the clipboard. Three honest
+   limits: anyone using your unlocked Mac can open Settings and reveal the key with the eye
+   button; other software running under your user account could read that file (the same way
+   developer tools such as the `aws` and `anthropic` command-line tools keep their keys), so set
+   a spend limit on the key in the Anthropic console; and while AI Polish is on, what you
+   dictate is read by Anthropic. Turn it off and nothing leaves your Mac.
 
 That's it. There are no other outbound connections during normal use.
 
@@ -96,7 +100,7 @@ Everything JVoice keeps lives in your normal per-user app-data location and neve
 
 - **macOS:** the app's preferences (system `UserDefaults`, namespace `jvoice.app.*`) and
   the downloaded Whisper model cache under `~/Documents/huggingface/`. If you saved an
-  Anthropic key for AI Polish, it is in your login Keychain (item `com.jvoice.app.anthropic`);
+  Anthropic key for AI Polish, it is in `~/Library/Application Support/JVoice/anthropic-api-key`;
   **Settings → AI Polish → Remove Key** deletes it.
 - **Windows:** settings, stats, and the recent-transcript history in `%APPDATA%\JVoice`;
   the downloaded model cache in `%LOCALAPPDATA%\JVoice\models`.

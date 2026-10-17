@@ -8,7 +8,7 @@ history lesson). Spec: `docs/ai-polish/PROTOTYPE-PLAN.md`; state and next steps:
 
 It is the ONE exception to "zero network calls at runtime", so three rules hold everywhere here:
 - **Off by default, bring your own key.** No key ships in the app or the repo. The user's key lives
-  only in the Keychain (`APIKeyStore`); never in UserDefaults, `SettingsState`, history, files, the
+  only in one owner-only file (`APIKeyStore`); never in UserDefaults, `SettingsState`, history, files, the
   clipboard or a log line. Tests use a fake transport and a placeholder key.
 - **Never lose a dictation.** ANY failure — no key, offline, HTTP ≠ 200, the 3 s deadline, a stop
   reason other than `end_turn`, empty/over-long/chatty output, the context echoed back, or the
@@ -34,12 +34,15 @@ It is the ONE exception to "zero network calls at runtime", so three rules hold 
   (`URLSessionConfiguration.ephemeral`, every cache/cookie/credential store off), `AIPolishResult`,
   and `withDeadline`: a continuation race, NOT a task group — a group waits for every child, so a
   transport that ignored cancellation would hold the paste hostage. The deadline covers the key read too.
-- `APIKeyStore.swift` — Keychain generic password (`com.jvoice.app.anthropic` / `api-key`,
-  `WhenUnlockedThisDeviceOnly`, not synchronizable). The masked hint ("••••abcd") is stored as the
-  item's `kSecAttrComment`, so Settings shows "Key saved" by reading attributes only; the secret is
-  read for a dictation, Test Key, or the eye button.
+- `APIKeyStore.swift` — the key in ONE file, `~/Library/Application Support/JVoice/anthropic-api-key`:
+  mode 0600 in a 0700 folder, written via a 0600 temp file + swap, excluded from Time Machine.
+  NOT the Keychain (David, 2026-10-17): the self-signed app's login-keychain access list follows
+  each build's code hash, so every update made macOS ask for the user's password; the
+  data-protection keychain needs a paid-ID entitlement. Trade-off (documented in PRIVACY.md): other
+  software running as the same user could read the file, like the `aws`/`anthropic` CLIs' keys.
+  The hint ("••••abcd") is computed from the file.
 - `AIPolish.swift` — the façade the coordinator calls (`AppTimings.aiPolishTimeout`, real
-  transport, Keychain) + `checkKey` (Settings → Test Key: a 1-token request).
+  transport, the saved key) + `checkKey` (Settings → Test Key: a 1-token request).
 - `AIPolishUsageStore.swift` — what AI Polish has cost AND the prepaid **balance** it draws from
   (David's design, 2026-10-17; replaced the display-only monthly budget). Every reply Anthropic
   billed (used or a fallback) is priced from its `usage` tokens by `AIPolishRequest.cost`, added to
@@ -79,7 +82,7 @@ builds keep reading the blob.
 - Prompt changes: write the candidate as a template in `scripts/ai-polish-eval/prompts/`
   (placeholders `{{TONE}}`, `{{TONE_RULE}}`, `{{CUSTOM_WORDS}}`; `baseline.txt` = v1) and run it
   WITHOUT a rebuild: `/Applications/JVoice.app/Contents/MacOS/JVoice --polish-eval <cases.json>
-  --prompt-file <template.txt> --out <file.md>` (the installed app reads the Keychain key; ~2 min,
+  --prompt-file <template.txt> --out <file.md>` (it reads the saved key file — `ANTHROPIC_API_KEY` overrides it; ~2 min,
   ~$0.005). Tune on `scripts/ai-polish-eval/cases.json` (78 cases, training); decide on the HIDDEN
   `scripts/ai-polish-eval/cases-test.json` (50 cases — never tune on its words), ≥ 3 runs each
   (run-to-run noise is several points). Only then copy the winner into `systemPrompt`, reinstall,

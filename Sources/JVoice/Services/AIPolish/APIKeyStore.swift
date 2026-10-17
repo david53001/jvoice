@@ -1,28 +1,26 @@
 import Foundation
-import Security
 
-/// The user's Anthropic API key, in the macOS Keychain as a generic password — the ONLY place it is
-/// ever stored (never UserDefaults, `SettingsState`, history, files, the clipboard or a log line).
+/// The user's Anthropic API key, in ONE owner-only file — the only place it is ever stored (never
+/// UserDefaults, `SettingsState`, history, the clipboard or a log line):
+/// `~/Library/Application Support/JVoice/anthropic-api-key`, file mode 0600 in a 0700 folder,
+/// excluded from Time Machine backups, never synced.
 ///
-/// Not synchronizable, so it never syncs to iCloud, and `WhenUnlockedThisDeviceOnly` as the plan
-/// asks — but without the data-protection keychain (which an unsigned app can't use: it needs a
-/// keychain-access-groups entitlement) macOS stores it in the file-based login keychain, where that
-/// accessibility class is probably not enforced. So don't promise "this Mac only" in user docs.
+/// Why not the Keychain (2026-10-17, David's decision): JVoice is self-signed ($0 budget, no Apple
+/// Developer ID), so the login keychain ties its access list to each build's code hash — every
+/// update made macOS ask for the user's PASSWORD again before a dictation could read the key. The
+/// data-protection keychain would fix that but needs a provisioning-profile entitlement. The cost of
+/// the file: other software running as the same macOS user could read it without a prompt (the same
+/// trade the `aws` / `anthropic` CLIs make for their keys); the user's Anthropic spend limit caps it.
 ///
-/// Next to the secret the item carries a `kSecAttrComment` hint ("••••abcd", last 4 at most) so
-/// Settings can say a key is saved by reading attributes only — the secret itself is read for a
-/// dictation, a Test, or when the user presses the eye button.
+/// The hint ("••••abcd", last 4 at most) is computed from the file, so Settings can say a key is
+/// saved without any prompt.
 enum APIKeyStore {
-    static let service = "com.jvoice.app.anthropic"
-    static let account = "api-key"
+    /// Overridable for tests; the app always uses the default.
+    static var directory: URL = FileManager.default
+        .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("JVoice", isDirectory: true)
 
-    private static var baseQuery: [String: Any] {
-        [
-            kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
-            kSecAttrAccount as String: account,
-        ]
-    }
+    static var fileURL: URL { directory.appendingPathComponent("anthropic-api-key") }
 
     /// The masked form shown in Settings: "••••" + the last 4 characters.
     static func hint(for key: String) -> String {
@@ -30,45 +28,55 @@ enum APIKeyStore {
     }
 
     static func read() -> String? {
-        var query = baseQuery
-        query[kSecReturnData as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let data = item as? Data,
-              let key = String(data: data, encoding: .utf8), !key.isEmpty else { return nil }
+        guard let data = try? Data(contentsOf: fileURL),
+              let key = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !key.isEmpty else { return nil }
         return key
     }
 
-    /// The saved key's hint, or nil when there is none. Reads attributes only, never the secret.
+    /// The saved key's hint, or nil when there is none.
     static func savedHint() -> String? {
-        var query = baseQuery
-        query[kSecReturnAttributes as String] = true
-        query[kSecMatchLimit as String] = kSecMatchLimitOne
-        var item: CFTypeRef?
-        guard SecItemCopyMatching(query as CFDictionary, &item) == errSecSuccess,
-              let attributes = item as? [String: Any] else { return nil }
-        return attributes[kSecAttrComment as String] as? String ?? "••••"
+        read().map(hint(for:))
     }
 
-    /// Replaces any saved key. False when the Keychain refused it.
+    /// Replaces any saved key. False when the file couldn't be written.
     @discardableResult
     static func save(_ key: String) -> Bool {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty, let data = trimmed.data(using: .utf8) else { return false }
-        SecItemDelete(baseQuery as CFDictionary)
-        var item = baseQuery
-        item[kSecValueData as String] = data
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        item[kSecAttrSynchronizable as String] = kCFBooleanFalse
-        item[kSecAttrLabel as String] = "JVoice — Anthropic API key"
-        item[kSecAttrComment as String] = hint(for: trimmed)
-        return SecItemAdd(item as CFDictionary, nil) == errSecSuccess
+        let fm = FileManager.default
+        do {
+            try fm.createDirectory(at: directory, withIntermediateDirectories: true,
+                                   attributes: [.posixPermissions: 0o700])
+            // Write a 0600 temp file first, then swap it in: the key never exists with wider
+            // permissions, even for a moment.
+            let temp = directory.appendingPathComponent(".anthropic-api-key-\(UUID().uuidString)")
+            guard fm.createFile(atPath: temp.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
+                return false
+            }
+            if fm.fileExists(atPath: fileURL.path) {
+                _ = try fm.replaceItemAt(fileURL, withItemAt: temp)
+            } else {
+                try fm.moveItem(at: temp, to: fileURL)
+            }
+            try fm.setAttributes([.posixPermissions: 0o600], ofItemAtPath: fileURL.path)
+            var url = fileURL
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? url.setResourceValues(values)
+            return true
+        } catch {
+            return false
+        }
     }
 
     @discardableResult
     static func delete() -> Bool {
-        let status = SecItemDelete(baseQuery as CFDictionary)
-        return status == errSecSuccess || status == errSecItemNotFound
+        do {
+            try FileManager.default.removeItem(at: fileURL)
+            return true
+        } catch {
+            return (error as NSError).code == NSFileNoSuchFileError
+        }
     }
 }

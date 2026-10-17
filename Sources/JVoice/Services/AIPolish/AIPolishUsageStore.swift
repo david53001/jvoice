@@ -111,11 +111,14 @@ final class AIPolishUsageStore {
         return before > 0 && after <= 0
     }
 
-    /// Clears the spent totals. The balance (and the last top-up) stays — it is money, not a stat.
-    func reset() {
-        for key in [Key.month, Key.monthCost, Key.monthPolishes, Key.totalCost, Key.totalPolishes] {
-            defaults.removeObject(forKey: key)
-        }
+    /// Takes `amount` USD off the balance (an accidental top-up: $10 added, $5 meant), never below $0.
+    /// The spent totals and the last top-up are untouched. Non-positive or non-finite amounts are
+    /// refused (returns false).
+    @discardableResult
+    func removeBalance(_ amount: Double) -> Bool {
+        guard amount.isFinite, amount > 0 else { return false }
+        defaults.set(max(0, balance - amount), forKey: Key.balance)
+        return true
     }
 
     /// "$0.42", or four decimals under a cent so a few polishes don't read as "$0.00".

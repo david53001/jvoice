@@ -424,18 +424,37 @@ private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
     #expect(november.monthPolishes == 1 && november.totalPolishes == 2)
 }
 
-@Test func unknownModelsAreNotCountedAndResetKeepsTheBalance() {
+@Test func unknownModelsAreNotCountedAndRemoveTakesBalanceBack() {
     let store = AIPolishUsageStore(defaults: usageDefaults())
-    store.addBalance(5)
+    store.addBalance(10)
     store.record(.init(inputTokens: 10, outputTokens: 10), model: "some-other-model")
     #expect(store.totals().totalPolishes == 0)
-    #expect(store.balance == 5)
-    store.record(.init(inputTokens: 10, outputTokens: 10), model: "claude-haiku-5-5")
-    let left = store.balance
-    store.reset()
-    #expect(store.totals() == AIPolishUsageStore.Totals())
-    #expect(store.balance == left && left < 5)
-    #expect(store.lastTopUp == 5)
+    #expect(store.balance == 10)
+    // $10 added by accident, $5 meant: remove 5.
+    #expect(store.removeBalance(5))
+    #expect(store.balance == 5 && store.lastTopUp == 10)
+    #expect(!store.removeBalance(0) && !store.removeBalance(-1) && !store.removeBalance(.nan))
+    #expect(store.removeBalance(50) && store.balance == 0)   // never below $0
+}
+
+@Test func answersToShortQuestionsFallBack() {
+    // Each is an ANSWER, not a cleanup — the reply must never be pasted.
+    let leaks: [(String, String)] = [
+        ("what is pi", "Pi is approximately 3.14159."),
+        ("who is newton", "Isaac Newton was an English physicist and mathematician."),
+        ("what is twelve times eight", "What is twelve times eight? 96"),
+        ("what is the boiling point of water", "What is the boiling point of water? It's 100 °C."),
+    ]
+    for (original, reply) in leaks {
+        #expect(AIPolishRequest.validate(reply, original: original, previous: []) == .fallback(.addedContent), "\(reply)")
+    }
+    // Cleanups and context fixes still pass.
+    #expect(AIPolishRequest.validate("What is pi?", original: "what is pi", previous: []) == .polished("What is pi?"))
+    #expect(AIPolishRequest.validate("Okay, I'm going to push this to prod on Vercel tonight.",
+                                     original: "okay i'm going to push this to prod on versails tonight",
+                                     previous: []) == .polished("Okay, I'm going to push this to prod on Vercel tonight."))
+    #expect(AIPolishRequest.validate("Is it working? Yes, it is.", original: "is it working yes it is",
+                                     previous: []) == .polished("Is it working? Yes, it is."))
 }
 
 @Test func balanceStartsAtZeroAndTopUpsAddUp() {
@@ -490,5 +509,27 @@ private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
     #expect(HUDState.refining.headline == "AI refining")
     let data = try JSONEncoder().encode(HUDState.refining)
     #expect(try JSONDecoder().decode(HUDState.self, from: data) == .refining)
+}
+@Test func theKeyLivesInOneOwnerOnlyFile() throws {
+    let saved = APIKeyStore.directory
+    let dir = FileManager.default.temporaryDirectory.appendingPathComponent("jvoice-key-\(UUID().uuidString)")
+    APIKeyStore.directory = dir
+    defer {
+        APIKeyStore.directory = saved
+        try? FileManager.default.removeItem(at: dir)
+    }
+    #expect(APIKeyStore.read() == nil && APIKeyStore.savedHint() == nil)
+    #expect(APIKeyStore.save("  \(fakeKey)\n"))
+    #expect(APIKeyStore.read() == fakeKey)
+    #expect(APIKeyStore.savedHint() == "••••0000")
+    let fileMode = try FileManager.default.attributesOfItem(atPath: APIKeyStore.fileURL.path)[.posixPermissions] as? Int
+    let dirMode = try FileManager.default.attributesOfItem(atPath: dir.path)[.posixPermissions] as? Int
+    #expect(fileMode == 0o600 && dirMode == 0o700)
+    #expect(APIKeyStore.save("test-key-replaced-1111") && APIKeyStore.read() == "test-key-replaced-1111")
+    // Only the one file — no temp copies left behind.
+    #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path) == ["anthropic-api-key"])
+    #expect(APIKeyStore.delete() && APIKeyStore.read() == nil)
+    #expect(APIKeyStore.delete())   // deleting nothing is fine
+    #expect(!APIKeyStore.save("   "))
 }
 #endif
