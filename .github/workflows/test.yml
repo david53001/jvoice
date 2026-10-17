@@ -37,6 +37,39 @@ jobs:
         run: |
           set -o pipefail
           swift test 2>&1 | tee test.log
+      - name: Print test-process crash reports (on failure)
+        # An abort of the test process (e.g. "Exited with unexpected signal code 6") prints no
+        # reason in the log; the macOS crash report has the faulting thread and the abort message.
+        if: failure()
+        run: |
+          python3 - <<'PY'
+          import glob, json, os, time
+          found = glob.glob(os.path.expanduser("~/Library/Logs/DiagnosticReports/**/*.ips"), recursive=True) \
+              + glob.glob("/Library/Logs/DiagnosticReports/**/*.ips", recursive=True)
+          paths = [p for p in found if time.time() - os.path.getmtime(p) < 3600]
+          print(f"{len(paths)} recent crash report(s)")
+          for path in paths:
+              print("=====", os.path.basename(path))
+              try:
+                  with open(path) as f:
+                      header = json.loads(f.readline())
+                      body = json.loads(f.read())
+              except Exception as error:
+                  print("unreadable:", error); continue
+              print("process:", body.get("procName"), "| exception:", body.get("exception"))
+              print("termination:", body.get("termination"))
+              print("asi:", body.get("asi"))
+              images = body.get("usedImages", [])
+              threads = body.get("threads", [])
+              fault = body.get("faultingThread", 0)
+              for index in sorted({fault} | {i for i, t in enumerate(threads) if t.get("triggered")}):
+                  if index >= len(threads): continue
+                  thread = threads[index]
+                  print(f"-- thread {index} {thread.get('name', '')} {thread.get('queue', '')}")
+                  for frame in thread.get("frames", [])[:40]:
+                      image = images[frame.get("imageIndex", 0)].get("name", "?") if images else "?"
+                      print(f"   {image:28} {frame.get('symbol', hex(frame.get('imageOffset', 0)))}")
+          PY
       - name: Run local logic verification scripts
         # These are the source of truth for the pure-logic core on a CLT-only
         # machine; running them in CI keeps them compiling/passing against
