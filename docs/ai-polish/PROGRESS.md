@@ -18,7 +18,7 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
 | Logic harness section (`scripts/run-logic-tests.sh`, 5th section) | done |
 | Eval harness (`--polish-eval`) + 64 cases | done |
 | Docs (PRIVACY.md, root CLAUDE.md, `Services/AIPolish/CLAUDE.md`) | done |
-| CI green on `feat/ai-polish` | see "CI" below |
+| CI green on `feat/ai-polish` | done (runs 97, 98) |
 | **David runs the eval** | **todo — commands below** |
 | Default model chosen by the §6b rule | pending — no eval data |
 | Final review (`docs/ai-polish/REVIEW.md`) | first pass done without eval data; re-run after the eval |
@@ -35,6 +35,7 @@ picks the default config by the §6b rule, re-runs the final review, and tunes t
 | Run | Commit | Result |
 |---|---|---|
 | [97](https://github.com/david53001/jvoice/actions/runs/39025718923) | `d0d5061` first implementation | green (build, swift-testing suite, logic scripts) |
+| [98](https://github.com/david53001/jvoice/actions/runs/39026141872) | `e1a7b9b` eval harness, logic section, docs, CI smoke step | green — swift-testing 545/545 executed, logic scripts incl. the AI Polish section, new `--settings-smoke` step: "OK — Settings built, laid out and drawn (700×588)" |
 
 Note: the base branch `feat/math-context` is red at its head ([run 95](https://github.com/david53001/jvoice/actions/runs/37328496182))
 on a timing-sensitive `verify-streaming.sh` assertion ("the chunk cut reused the speculative decode",
