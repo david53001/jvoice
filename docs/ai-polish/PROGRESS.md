@@ -3,6 +3,26 @@
 Spec: `docs/ai-polish/PROTOTYPE-PLAN.md`. Branch: `feat/ai-polish` (pushed to `origin` for CI only —
 never merged, tagged or released). "State" is always current; "Log" is newest first.
 
+## Latest (2026-10-17, Mac session, after the workflow)
+
+- **Key storage moved out of the Keychain** into one owner-only file,
+  `~/Library/Application Support/JVoice/anthropic-api-key` (0600 in a 0700 folder, excluded from
+  backups). Why: the self-signed app's login-keychain access list follows each build's code hash, so
+  every update made macOS ask for the user's password (David saw it on the first reinstall). David
+  chose this over "one prompt per update" and over a paid Developer ID; the trade-off (other software
+  running as the same user could read the file, like the `aws`/`anthropic` CLIs' keys) is in
+  PRIVACY.md. **The old Keychain item `com.jvoice.app.anthropic` is NOT read or migrated** — the key
+  must be pasted again in Settings once.
+- Settings: **Remove** takes money off the balance (never below $0); **Reset** removed; the switch
+  reads off while the balance is $0.
+- `validate`: new `added-content` fallback (more than max(2, 20 %) new tokens, or anything new after
+  the last "?") — closes the review's #1 finding (answers to short questions). A punctuation-only
+  reply can no longer paste "".
+- **Windows:** `docs/ai-polish/WINDOWS-HANDOFF.md` is the zero-context brief for a cloud session to
+  build the same feature on the Windows port (branch `feat/ai-polish-windows` from `origin/main`).
+- Next: David pastes the key again; re-run the eval (train 1×, hidden test 3×) to confirm the new
+  guard doesn't block real fixes; then review fixes 2–7 from REVIEW.md.
+
 ## State
 
 | Step (plan §10 order) | Status |
