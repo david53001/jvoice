@@ -81,6 +81,18 @@ enum UIPreviewRunner {
             settings.level = Self.behindLevel
             settings.orderFrontRegardless()
             capture(settings, "settings-\(label)")
+            // Resized (the window is resizable since 2026-10-17): wide = three columns, small = the
+            // minimum the window allows. Then back to the designed size for the shots below.
+            let designed = settings.frame
+            let area = settings.screen?.visibleFrame ?? designed
+            for (shot, size) in [("wide", NSSize(width: min(1240, area.width - 40), height: min(860, area.height - 40))),
+                                 ("small", settings.minSize)] {
+                // Inside the visible screen, top-left, so nothing is cut off.
+                settings.setFrame(NSRect(x: area.minX + 20, y: area.maxY - size.height - 20,
+                                         width: size.width, height: size.height), display: true)
+                capture(settings, "settings-\(shot)-\(label)")
+            }
+            settings.setFrame(designed, display: true)
             // Scrolled to the bottom: the Appearance (Opacity) card.
             if let scroll = Self.outermostScrollView(in: settings.contentView), let document = scroll.documentView {
                 let bottom = document.isFlipped ? max(0, document.bounds.height - scroll.contentView.bounds.height) : 0

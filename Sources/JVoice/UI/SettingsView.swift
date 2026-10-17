@@ -142,7 +142,12 @@ struct SettingsView: View {
 
         // No background of its own: the window's content view is a behind-window material
         // (`WindowMaterial`), and its appearance (System / Light / Dark) is set on the NSWindow.
-        return ScrollView {
+        // The window's real width picks the column count (re-read on every layout pass, so a live
+        // resize reflows instantly). Not `ViewThatFits`: it compares IDEAL widths, and the long
+        // Recent Transcripts lines make every layout's ideal width "too wide".
+        return GeometryReader { proxy in
+        let contentWidth = min(proxy.size.width, Self.maxContentWidth) - 40
+        ScrollView {
             VStack(alignment: .leading, spacing: 12) {
 
                 // Header: title left, appearance picker right
@@ -161,26 +166,11 @@ struct SettingsView: View {
                 // Stats — full width
                 statsSection
 
-                // Two columns: controls (left) · your data (right)
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(spacing: 12) {
-                        modelSection
-                        processingSection
-                        voiceStyleSection
-                        languageSection
-                        appModesSection(theme)
-                        shortcutSection(theme)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
-
-                    VStack(spacing: 12) {
-                        recentTranscriptsSection
-                        customWordsSection(theme)
-                        // The right column is the shorter one, so these cards cost no height.
-                        toursSection
-                        appearanceSection
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
+                // The cards: two columns that stretch with the window, three once it's wide enough.
+                if contentWidth >= Self.threeColumnMinWidth {
+                    threeColumns(theme)
+                } else {
+                    twoColumns(theme)
                 }
 
                 // AI Polish — full width at the very bottom (it is opt-in, paid, and the widest card).
@@ -189,8 +179,72 @@ struct SettingsView: View {
                 footer
             }
             .padding(20)
+            // Filling a big screen: the content stops at a readable width and stays centred.
+            .frame(maxWidth: Self.maxContentWidth)
+            .frame(maxWidth: .infinity)
         }
-        .frame(width: 700, height: 560)
+        }
+        // Resizable (2026-10-17): opens at 700 × 560, never smaller than the 2-column minimum, as big
+        // as the screen. `SettingsWindow` takes its minimum size from this frame.
+        .frame(minWidth: Self.minWindowWidth, idealWidth: 700, maxWidth: .infinity,
+               minHeight: Self.minWindowHeight, idealHeight: 560, maxHeight: .infinity)
+    }
+
+    static let minWindowWidth: CGFloat = 700
+    static let minWindowHeight: CGFloat = 420
+    /// Below this the three columns would be narrower than the two-column cards were designed for.
+    static let threeColumnMinWidth: CGFloat = 1000
+    static let maxContentWidth: CGFloat = 1400
+
+    /// Controls (left) · your data (right) — the original layout, columns stretch with the window.
+    private func twoColumns(_ theme: Theme) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 12) {
+                modelSection
+                processingSection
+                voiceStyleSection
+                languageSection
+                appModesSection(theme)
+                shortcutSection(theme)
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+
+            VStack(spacing: 12) {
+                recentTranscriptsSection
+                customWordsSection(theme)
+                // The right column is the shorter one, so these cards cost no height.
+                toursSection
+                appearanceSection
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+    }
+
+    /// Wide windows: the controls split over two columns, your data stays on the right.
+    private func threeColumns(_ theme: Theme) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(spacing: 12) {
+                modelSection
+                processingSection
+                voiceStyleSection
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+
+            VStack(spacing: 12) {
+                languageSection
+                appModesSection(theme)
+                shortcutSection(theme)
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+
+            VStack(spacing: 12) {
+                recentTranscriptsSection
+                customWordsSection(theme)
+                toursSection
+                appearanceSection
+            }
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
     }
 
     // MARK: Sections

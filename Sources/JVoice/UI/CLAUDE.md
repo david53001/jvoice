@@ -68,7 +68,13 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   transparent with the recording view, hidden 250 ms later) so the first press pays a re-show rather
   than window-server surface creation + the hosting view's first layout; `update()` cancels a
   pending prewarm hide, so an early press takes the realized panel over.
-- `SettingsView.swift` / `SettingsWindow.swift` — the Settings window: a 700-wide, 2-column layout of
+- `SettingsView.swift` / `SettingsWindow.swift` — the Settings window: **resizable since 2026-10-17** (drag
+  edges/corners, double-click the title bar or the green button to fill the screen; opens at 700 × 560,
+  minimum 700 × 420). The window's real width picks the layout on every pass (`GeometryReader`, not
+  `ViewThatFits` — long transcript lines make every ideal width "too wide"): 2 columns up to a
+  1000-pt content width, 3 above it, content capped at 1400 pt and centred; `hosting.sizingOptions =
+  [.minSize]` so the SwiftUI ideal size never pins the window. `--ui-preview` adds `settings-wide-*` /
+  `settings-small-*` shots. Default layout: a 700-wide, 2-column layout of
   MacStats-style cards (`.caption2` semibold section labels, no dots) on a translucent `.sidebar`
   window material (controls on the left — Whisper Model, Processing, Voice Style, Language, App Modes,
   Keyboard Shortcut; your data on the right — Recent Transcripts, Custom Words, Tours & Tips), Stats

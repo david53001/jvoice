@@ -18,7 +18,9 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
     init(coordinator: VoiceCoordinator) {
         super.init(
             contentRect: NSRect(x: 0, y: 0, width: 700, height: 560),
-            styleMask: [.titled, .closable, .fullSizeContentView],
+            // Resizable (David, 2026-10-17): drag any edge/corner, double-click the title bar to fill
+            // the screen (macOS "zoom", or whatever the user set in Desktop & Dock), the green button too.
+            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -27,7 +29,13 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
         isReleasedWhenClosed = false
         appearance = coordinator.appTheme.nsAppearance   // nil = follow macOS
         // A behind-window material under a transparent title bar: the desktop shows softly through.
-        WindowMaterial.install(SettingsView(coordinator: coordinator), in: self, belowTitleBar: true)
+        let hosting = WindowMaterial.install(SettingsView(coordinator: coordinator), in: self, belowTitleBar: true)
+        // Only the SwiftUI MINIMUM becomes a constraint: its intrinsic (ideal) size would pin the window
+        // and stop the user resizing it. Then open at the designed 700 × 560 (+ the title bar).
+        hosting.sizingOptions = [.minSize]
+        let titleBar = frame.height - contentLayoutRect.height
+        setContentSize(NSSize(width: 700, height: 560 + titleBar))
+        contentMinSize = NSSize(width: SettingsView.minWindowWidth, height: SettingsView.minWindowHeight + titleBar)
         center()
 
         // Title-bar row, top-right. The SwiftUI header's appearance picker sits below the title bar — the
