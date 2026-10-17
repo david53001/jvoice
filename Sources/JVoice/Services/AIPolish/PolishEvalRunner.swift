@@ -107,13 +107,13 @@ enum PolishEvalRunner {
     }
 
     private static func run(arguments: [String]) async -> Int32 {
-        let usage = "usage: JVoice --polish-eval <cases.json> [--model claude-haiku-5-5] [--thinking off|low] [--out <file.md>]"
+        let usage = "usage: JVoice --polish-eval <cases.json> [--model claude-haiku-5-5] [--thinking off|low] [--prompt-file <template.txt>] [--out <file.md>]"
         guard let path = value(after: "--polish-eval", in: arguments), !path.hasPrefix("--") else {
             return fail(usage, code: 64)
         }
         // Anything not understood is refused: an ignored "--thinking low" (zsh passes an unsplit
         // "$args" as ONE word) once made three "different" runs the same config.
-        let known: Set<String> = ["--polish-eval", "--model", "--thinking", "--out"]
+        let known: Set<String> = ["--polish-eval", "--model", "--thinking", "--out", "--prompt-file"]
         var index = arguments.firstIndex(of: "--polish-eval") ?? 0
         while index < arguments.count {
             guard known.contains(arguments[index]) else { return fail("unknown argument: \(arguments[index])\n" + usage, code: 64) }
@@ -124,6 +124,12 @@ enum PolishEvalRunner {
         if let thinking = value(after: "--thinking", in: arguments) {
             guard let parsed = AIPolishRequest.Thinking(rawValue: thinking) else { return fail(usage, code: 64) }
             options.thinking = parsed
+        }
+        if let promptPath = value(after: "--prompt-file", in: arguments) {
+            guard let template = try? String(contentsOfFile: promptPath, encoding: .utf8), !template.isEmpty else {
+                return fail("can't read the prompt file \(promptPath)", code: 66)
+            }
+            options.promptTemplate = template
         }
         if options.model.hasPrefix("claude-sonnet-5-5"), options.thinking == .off {
             return fail("claude-sonnet-5-5 rejects disabled thinking (HTTP 400) — run it with --thinking low.", code: 64)
@@ -155,7 +161,7 @@ enum PolishEvalRunner {
         var outputTokens = 0
         let deadlineMs = Int(AppTimings.aiPolishTimeout * 1000)
 
-        print("AI Polish eval — \(cases.count) cases, model \(options.model), thinking \(options.thinking.rawValue)\n")
+        print("AI Polish eval — \(cases.count) cases, model \(options.model), thinking \(options.thinking.rawValue)\(options.promptTemplate == nil ? "" : ", prompt from file")\n")
         for testCase in cases {
             let mode = testCase.appMode
             let result: AIPolishResult

@@ -26,6 +26,9 @@ enum AIPolishRequest {
     struct Options: Equatable, Sendable {
         var model: String = AIPolishRequest.defaultModel
         var thinking: Thinking = .off
+        /// Eval only (`--prompt-file`): a system prompt to try instead of `systemPrompt`, with
+        /// `{{TONE}}`, `{{TONE_RULE}}` and `{{CUSTOM_WORDS}}` filled in per case. nil in the app.
+        var promptTemplate: String? = nil
 
         static let standard = Options()
     }
@@ -81,6 +84,21 @@ enum AIPolishRequest {
 
     // MARK: - Prompt
 
+    /// Fills a `--prompt-file` template's placeholders the way `systemPrompt` fills its own.
+    static func render(_ template: String, mode: AppMode, vocabulary: [String]) -> String {
+        template
+            .replacingOccurrences(of: "{{TONE}}", with: toneLabel(mode))
+            .replacingOccurrences(of: "{{TONE_RULE}}", with: toneRule(mode))
+            .replacingOccurrences(of: "{{CUSTOM_WORDS}}", with: customWordList(vocabulary))
+    }
+
+    static func customWordList(_ vocabulary: [String]) -> String {
+        let words = vocabulary
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        return words.isEmpty ? "none" : words.joined(separator: ", ")
+    }
+
     static func toneLabel(_ mode: AppMode) -> String {
         switch mode {
         case .casual: return "casual"
@@ -102,10 +120,7 @@ enum AIPolishRequest {
     }
 
     static func systemPrompt(mode: AppMode, vocabulary: [String]) -> String {
-        let words = vocabulary
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        let wordList = words.isEmpty ? "none" : words.joined(separator: ", ")
+        let wordList = customWordList(vocabulary)
         return """
         You clean up speech-to-text transcripts. The user message contains one transcript inside \
         <transcript> tags, and may contain the speaker's previous dictations inside <previous> tags. \
@@ -172,7 +187,8 @@ enum AIPolishRequest {
         var body: [String: Any] = [
             "model": options.model,
             "max_tokens": maxTokens(for: transcript, thinking: options.thinking),
-            "system": systemPrompt(mode: mode, vocabulary: vocabulary),
+            "system": options.promptTemplate.map { render($0, mode: mode, vocabulary: vocabulary) }
+                ?? systemPrompt(mode: mode, vocabulary: vocabulary),
             "messages": [["role": "user", "content": userContent(transcript: transcript, previous: previous)]],
         ]
         // No temperature/top_p/top_k (non-default values are a 400 on current models) and no
