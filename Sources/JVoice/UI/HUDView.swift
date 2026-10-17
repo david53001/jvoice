@@ -302,30 +302,13 @@ private struct TranscribingPill: View {
 /// transcribing pill, so the capsule doesn't jump between the two.
 private struct RefiningPill: View {
     let theme: Theme
-    static let claudeOrange = Color(red: 0xD9 / 255, green: 0x77 / 255, blue: 0x57 / 255)
-    private static let label = "AI refining"
-    private static let period: TimeInterval = 1.6
 
     var body: some View {
         HStack(spacing: 14) {
             JMark(theme: theme)
-            TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
-                let t = context.date.timeIntervalSinceReferenceDate
-                // The highlight's centre runs from just before the first letter to just past the last.
-                let centre = -0.3 + 1.6 * (t.truncatingRemainder(dividingBy: Self.period) / Self.period)
-                let glow = 0.45 + 0.25 * sin(t * 2 * .pi / Self.period)
-                Text(Self.label)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(LinearGradient(
-                        stops: [
-                            .init(color: theme.textPrimary, location: Self.clamp(centre - 0.3)),
-                            .init(color: Self.claudeOrange, location: Self.clamp(centre)),
-                            .init(color: theme.textPrimary, location: Self.clamp(centre + 0.3)),
-                        ],
-                        startPoint: .leading, endPoint: .trailing))
-                    .shadow(color: Self.claudeOrange.opacity(glow), radius: 6)
-            }
-            .frame(maxWidth: .infinity)
+            ClaudeGlowText(text: "AI refining", base: theme.textPrimary)
+                .font(.callout.weight(.semibold))
+                .frame(maxWidth: .infinity)
             Color.clear.frame(width: 22) // mirror the J mark so the label stays centred
         }
         .padding(.horizontal, 16)
@@ -333,8 +316,6 @@ private struct RefiningPill: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("AI refining")
     }
-
-    private static func clamp(_ x: Double) -> Double { min(1, max(0, x)) }
 }
 
 // MARK: - Preparing-model pill (keeps a status icon + the live timer)

@@ -10,19 +10,28 @@ import KeyboardShortcuts
 /// content, on a faint tint of the window's material (`CardBackground`).
 private struct SettingsSection<Content: View>: View {
     let title: String
+    /// The AI Polish card's title gets the subtle Claude-orange sweep (David, 2026-10-17).
+    var glows = false
     let content: Content
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String, glows: Bool = false, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.glows = glows
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
+            Group {
+                if glows {
+                    ClaudeGlowText(text: title.uppercased(), base: .secondary, style: .subtle)
+                } else {
+                    Text(title.uppercased())
+                        .foregroundStyle(.secondary)
+                }
+            }
                 .font(.caption2)
                 .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
             content
         }
@@ -325,7 +334,7 @@ struct SettingsView: View {
     /// in its owner-only file (`APIKeyStore`): the field is masked, the eye button is the only thing that reads it back,
     /// Save clears the field.
     private func aiPolishSection(_ theme: Theme) -> some View {
-        SettingsSection("AI Polish") {
+        SettingsSection("AI Polish", glows: true) {
             // A normal card in the masonry columns: switch + key on top, the balance under it.
             VStack(alignment: .leading, spacing: 10) {
                 aiPolishKeyColumn
