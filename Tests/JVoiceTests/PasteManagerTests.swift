@@ -172,8 +172,13 @@ func pasteDeniedWhenAccessibilityUntrusted() {
     #expect(manager.paste("T2", targetPID: 0) == .ok)
     #expect(pasteboard.string(forType: .string) == "T2")
 
-    // Wait past pasteRestoreDelay + slack: only the second restore should run.
-    try? await Task.sleep(nanoseconds: 700_000_000)
+    // Wait (bounded) for the restore: a fixed 700 ms sleep flaked on a busy CI runner (run
+    // 39032022751, the test took 2.3 s), so poll until the clipboard leaves "T2", then give a
+    // cancelled-but-late first restore time to show up before checking.
+    for _ in 0..<50 where pasteboard.string(forType: .string) == "T2" {
+        try? await Task.sleep(nanoseconds: 100_000_000)
+    }
+    try? await Task.sleep(nanoseconds: 400_000_000)
 
     // The first restore was cancelled (would have set "FIRST"); the surviving
     // restore writes the clipboard captured before the second paste ("T1").
