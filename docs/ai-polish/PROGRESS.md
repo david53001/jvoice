@@ -41,6 +41,8 @@ fields in the eval; whether Code tone should skip polish entirely (David's call)
 | [97](https://github.com/david53001/jvoice/actions/runs/39025718923) | `d0d5061` first implementation | green (build, swift-testing suite, logic scripts) |
 | [98](https://github.com/david53001/jvoice/actions/runs/39026141872) | `e1a7b9b` eval harness, logic section, docs, CI smoke step | green — swift-testing 545/545 executed, logic scripts incl. the AI Polish section, new `--settings-smoke` step: "OK — Settings built, laid out and drawn (700×588)" |
 
+| [99](https://github.com/david53001/jvoice/actions/runs/39026550700) | `c8b562c` docs only | red — `PasteManagerTests.failedPasteRestoresOriginalClipboard` (pre-existing: it uses the shared `NSPasteboard.general` with a fixed 600 ms wait under the parallel suite; the identical code was green in run 98). AI Polish's own stall fakes were changed to wait on a timer instead of blocking a test thread, so they can't add to such timing flakes |
+
 Note: the base branch `feat/math-context` is red at its head ([run 95](https://github.com/david53001/jvoice/actions/runs/37328496182))
 on a timing-sensitive `verify-streaming.sh` assertion ("the chunk cut reused the speculative decode",
 scenario 12, fixed 120 ms sleeps); the plan-only commit on this branch hit the same one. It is not

@@ -13,7 +13,8 @@ private final class FakeTransport: AIPolishTransport, @unchecked Sendable {
     enum Reply {
         case response(status: Int, body: String)
         case failure(Error)
-        /// Blocks for 5 s ignoring cancellation — the deadline must still win.
+        /// Answers only after 5 s and ignores cancellation — the deadline must still win. Waits on a
+        /// timer, not a sleeping thread, so it never starves the other tests' cooperative threads.
         case stall
     }
 
@@ -37,7 +38,9 @@ private final class FakeTransport: AIPolishTransport, @unchecked Sendable {
         case .failure(let error):
             throw error
         case .stall:
-            for _ in 0..<50 { usleep(100_000) }
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                DispatchQueue.global().asyncAfter(deadline: .now() + 5) { continuation.resume() }
+            }
             throw URLError(.timedOut)
         }
     }
@@ -264,14 +267,14 @@ func chattyOutputFallsBack(_ chatty: String) async {
 
 @Test func theDeadlineAlsoCoversABlockingKeychainRead() async {
     let started = Date()
-    let result = await AIPolishClient(transport: FakeTransport(.response(status: 200, body: reply("unused"))), deadline: 0.3)
+    let result = await AIPolishClient(transport: FakeTransport(.response(status: 200, body: reply("unused"))), deadline: 0.2)
         .polish(transcript, previous: [], mode: .casual, vocabulary: [], apiKey: {
-            usleep(3_000_000)   // a Keychain permission prompt nobody answers
+            usleep(1_000_000)   // a synchronous Keychain read stuck on a permission prompt
             return fakeKey
         })
     #expect(result.text == transcript)
     #expect(result.logLabel == "fallback(timeout)")
-    #expect(Date().timeIntervalSince(started) < 2)
+    #expect(Date().timeIntervalSince(started) < 0.9)
 }
 
 @Test func cancellingTheDictationEndsThePolishAtOnce() async {
