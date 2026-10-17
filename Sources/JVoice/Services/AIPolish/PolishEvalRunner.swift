@@ -67,14 +67,6 @@ enum PolishEval {
         return sorted[min(max(rank, 1), sorted.count) - 1]
     }
 
-    /// USD per million input / output tokens, for the models the eval compares.
-    static func pricePerMillion(model: String) -> (input: Double, output: Double)? {
-        switch model {
-        case "claude-haiku-5-5": return (0.10, 0.50)
-        case "claude-sonnet-5-5": return (2.00, 10.00)
-        default: return nil
-        }
-    }
 }
 
 /// Hidden dev mode: `JVoice --polish-eval <cases.json> [--model claude-haiku-5-5] [--thinking off|low]
@@ -118,6 +110,14 @@ enum PolishEvalRunner {
         let usage = "usage: JVoice --polish-eval <cases.json> [--model claude-haiku-5-5] [--thinking off|low] [--out <file.md>]"
         guard let path = value(after: "--polish-eval", in: arguments), !path.hasPrefix("--") else {
             return fail(usage, code: 64)
+        }
+        // Anything not understood is refused: an ignored "--thinking low" (zsh passes an unsplit
+        // "$args" as ONE word) once made three "different" runs the same config.
+        let known: Set<String> = ["--polish-eval", "--model", "--thinking", "--out"]
+        var index = arguments.firstIndex(of: "--polish-eval") ?? 0
+        while index < arguments.count {
+            guard known.contains(arguments[index]) else { return fail("unknown argument: \(arguments[index])\n" + usage, code: 64) }
+            index += 2
         }
         var options = AIPolishRequest.Options.standard
         if let model = value(after: "--model", in: arguments) { options.model = model }
@@ -205,7 +205,7 @@ enum PolishEvalRunner {
         summary.append("- " + line("context-fix hold-out (words not in the prompt)", holdout))
         summary.append("- **Latency:** p50 \(PolishEval.percentile(latencies, 50)) ms, p95 \(PolishEval.percentile(latencies, 95)) ms, max \(latencies.max() ?? 0) ms; over the app's \(Int(AppTimings.aiPolishTimeout)) s deadline (graded as the local text): \(overDeadline)")
         var tokens = "- Tokens: \(inputTokens) in / \(outputTokens) out"
-        if let price = PolishEval.pricePerMillion(model: options.model) {
+        if let price = AIPolishRequest.pricePerMillion(model: options.model) {
             let cost = Double(inputTokens) * price.input / 1_000_000 + Double(outputTokens) * price.output / 1_000_000
             tokens += String(format: " — estimated cost $%.4f ($%.6f per dictation)", cost, cases.isEmpty ? 0 : cost / Double(cases.count))
         }

@@ -36,6 +36,11 @@ It is the ONE exception to "zero network calls at runtime", so three rules hold 
   read for a dictation, Test Key, or the eye button.
 - `AIPolish.swift` — the façade the coordinator calls (`AppTimings.aiPolishTimeout`, real
   transport, Keychain) + `checkKey` (Settings → Test Key: a 1-token request).
+- `AIPolishUsageStore.swift` — what AI Polish has cost: every reply Anthropic billed (used or a
+  fallback) is priced from its `usage` tokens by `AIPolishRequest.cost` and added to "this month"
+  (restarts each calendar month) and "all time" totals in UserDefaults (`jvoice.app.aiPolish.*`,
+  totals only). Settings shows them under the key, with a bar toward a display-only monthly budget
+  (default $10; the real cap is the Anthropic console's spend limit) and a Reset.
 - `PolishEvalRunner.swift` — `PolishEvalCase` + pure `PolishEval` grading, and the hidden
   `--polish-eval` CLI: runs `scripts/ai-polish-eval/cases.json` against the REAL API through the
   same builder/parser/client (30 s per-call deadline so real latency is measured; a call past the
@@ -45,7 +50,8 @@ It is the ONE exception to "zero network calls at runtime", so three rules hold 
 
 ## Where it plugs in
 `VoiceCoordinator.finishTranscription`, after `MathSpeech.convert` and the empty check, before the
-copy/paste branch; the HUD stays on `.transcribing`. `finalText` replaces `processed` in the paste,
+copy/paste branch; meanwhile the HUD shows `.refining` ("AI refining" with a Claude-orange glow sweeping
+through the letters, `RefiningPill` in `UI/HUDView.swift`). `finalText` replaces `processed` in the paste,
 the copy-only path, the HUD, history, stats and the undo record. Settings: the "AI Polish" card
 after Processing (`SettingsView.aiPolishSection`): masked field + eye button (reveal resets when
 Settings closes), Save / Test Key / Remove Key, toggle disabled until a key is saved.

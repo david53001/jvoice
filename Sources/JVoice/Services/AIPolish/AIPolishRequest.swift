@@ -142,6 +142,22 @@ enum AIPolishRequest {
         return "<previous>\n\(context.joined(separator: "\n"))\n</previous>\n\(transcriptBlock)"
     }
 
+    /// USD per million input / output tokens (Anthropic's first-party rates for prompts up to 100K
+    /// tokens — a dictation never comes close). nil for a model not listed here.
+    static func pricePerMillion(model: String) -> (input: Double, output: Double)? {
+        switch model {
+        case "claude-haiku-5-5": return (0.10, 0.50)
+        case "claude-sonnet-5-5": return (2.00, 10.00)
+        default: return nil
+        }
+    }
+
+    /// What one reply cost in USD, from the token counts Anthropic returned with it.
+    static func cost(_ usage: Usage, model: String) -> Double? {
+        guard let price = pricePerMillion(model: model) else { return nil }
+        return (Double(usage.inputTokens) * price.input + Double(usage.outputTokens) * price.output) / 1_000_000
+    }
+
     /// `max(256, 3 × estimated input tokens)` capped at 4096, input ≈ transcript chars / 3 — room to
     /// return the whole transcript, never so much that a runaway answer is cheap. Thinking needs its
     /// own room inside `max_tokens`, so `.low` adds 2048 on top.

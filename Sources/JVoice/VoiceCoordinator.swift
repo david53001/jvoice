@@ -130,6 +130,14 @@ final class VoiceCoordinator: ObservableObject {
     /// (`refreshAPIKeyStatus`), never at launch, and only ever the attribute — not the secret.
     @Published private(set) var apiKeyHint: String?
 
+    /// What AI Polish has cost this month / in total (Settings → AI Polish).
+    @Published private(set) var polishUsage = AIPolishUsageStore.Totals()
+
+    /// The USD/month the Settings usage bar fills toward (display only).
+    @Published var polishMonthlyBudget: Double = AIPolishUsageStore.defaultMonthlyBudget {
+        didSet { polishUsageStore.monthlyBudget = polishMonthlyBudget }
+    }
+
     /// Copy the transcript to the clipboard instead of auto-pasting it.
     @Published var copyToClipboardOnly: Bool {
         didSet {
@@ -172,6 +180,7 @@ final class VoiceCoordinator: ObservableObject {
     private let transcriptionManager: TranscriptionManager
     private let pasteManager: PasteManager
     private let statsStore = StatsStore()
+    private let polishUsageStore = AIPolishUsageStore()
     private lazy var hotKeyManager: HotKeyManager = {
         HotKeyManager(shortcutName: .toggleRecording) { [weak self] in
             // KeyboardShortcuts delivers on the main queue: take the press
@@ -265,6 +274,8 @@ final class VoiceCoordinator: ObservableObject {
         self.totalWordsSpoken = statsStore.totalWords
         self.averageWPM = statsStore.averageWPM
         self.minutesSaved = statsStore.estimatedMinutesSaved
+        self.polishUsage = polishUsageStore.totals()
+        self.polishMonthlyBudget = polishUsageStore.monthlyBudget
         self.lastTranscript = lastTranscriptStore.transcript
         self.recentTranscripts = transcriptHistoryStore.entries
         self.isInitializing = false
@@ -490,7 +501,7 @@ final class VoiceCoordinator: ObservableObject {
         switch state {
         case .recording:
             menuBarController.updateActivity(.recording)
-        case .downloadingModel, .preparingModel, .transcribing:
+        case .downloadingModel, .preparingModel, .transcribing, .refining:
             menuBarController.updateActivity(.transcribing)
         case .idle, .done, .copied, .error, .notice:
             menuBarController.updateActivity(.idle)
@@ -838,13 +849,19 @@ final class VoiceCoordinator: ObservableObject {
                 return
             }
 
-            // AI Polish (opt-in): the pill keeps saying "transcribing" meanwhile. ANY failure —
-            // no key, offline, a bad key, the 3 s deadline, an odd reply — hands back `processed`.
+            // AI Polish (opt-in): the pill says "AI refining" meanwhile. ANY failure — no key,
+            // offline, a bad key, the 3 s deadline, an odd reply — hands back `processed`.
             var finalText = processed
             if aiPolish, AIPolish.isWorthPolishing(processed) {
+                updateHUD(.refining)
                 let previous = polishContext.previous(for: targetBundleId)
                 let polish = await AIPolish.polish(processed, previous: previous, mode: effectiveMode,
                                                    vocabulary: customWords)
+                // Every reply Anthropic billed counts, used or not.
+                if let usage = polish.usage {
+                    polishUsageStore.record(usage, model: AIPolishRequest.Options.standard.model)
+                    polishUsage = polishUsageStore.totals()
+                }
                 if Task.isCancelled { return }
                 // The tone the user chose wins: its formatting (Casual's missing final period,
                 // Formal's capital + period) is applied to the reply as it was to the local text.
@@ -1003,6 +1020,16 @@ final class VoiceCoordinator: ObservableObject {
         let saved = APIKeyStore.save(key)
         refreshAPIKeyStatus()
         return saved
+    }
+
+    /// Re-reads the usage totals (a new month starts at zero) — Settings calls it when shown.
+    func refreshPolishUsage() {
+        polishUsage = polishUsageStore.totals()
+    }
+
+    func resetPolishUsage() {
+        polishUsageStore.reset()
+        polishUsage = polishUsageStore.totals()
     }
 
     /// Removes the key and turns AI Polish off (it can't run without one).

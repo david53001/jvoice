@@ -275,7 +275,7 @@ struct SettingsView: View {
         SettingsSection("AI Polish") {
             VStack(alignment: .leading, spacing: 8) {
                 toggleRow("Polish with Claude",
-                          "Sends each dictation to Anthropic to fix punctuation and mistakes. Off = nothing leaves your Mac.",
+                          "Sends dictations to Claude to fix mistakes.",
                           isOn: $coordinator.aiPolish)
                     .disabled(coordinator.apiKeyHint == nil)
 
@@ -337,14 +337,71 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                if coordinator.apiKeyHint != nil || coordinator.polishUsage.totalPolishes > 0 {
+                    Divider()
+                    polishUsageRows
+                }
             }
         }
-        .onAppear { coordinator.refreshAPIKeyStatus() }
+        .onAppear {
+            coordinator.refreshAPIKeyStatus()
+            coordinator.refreshPolishUsage()
+        }
         // Reveal never outlives the window: hidden again (and a revealed key cleared) on close.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
             if note.object is SettingsWindow { hideKey() }
         }
         .onDisappear { hideKey() }
+    }
+
+    /// What AI Polish has cost: this month against the budget (with a bar), and all time.
+    private var polishUsageRows: some View {
+        let usage = coordinator.polishUsage
+        let budget = coordinator.polishMonthlyBudget
+        let fraction = budget > 0 ? min(1, usage.monthCost / budget) : 0
+        return VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                Text("This month")
+                    .font(.caption)
+                Spacer(minLength: 0)
+                Text("\(AIPolishUsageStore.dollars(usage.monthCost)) of $")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                TextField("Budget", value: $coordinator.polishMonthlyBudget, format: .number)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                    .textFieldStyle(.plain)
+                    .frame(width: 34)
+                    .help("Monthly budget the bar fills toward. Set the real limit in the Anthropic console.")
+                Text("· \(usage.monthPolishes) \(usage.monthPolishes == 1 ? "polish" : "polishes")")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+            }
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.1))
+                    Capsule().fill(Color.accentColor)
+                        .frame(width: geometry.size.width * fraction)
+                }
+            }
+            .frame(height: 4)
+            .accessibilityElement()
+            .accessibilityLabel("Spent \(Int((fraction * 100).rounded())) percent of the monthly budget")
+            HStack(spacing: 6) {
+                Text("All time: \(AIPolishUsageStore.dollars(usage.totalCost)) · \(usage.totalPolishes) \(usage.totalPolishes == 1 ? "polish" : "polishes")")
+                    .font(.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Button("Reset") { coordinator.resetPolishUsage() }
+                    .buttonStyle(SubtleButtonStyle())
+                    .disabled(usage.totalPolishes == 0)
+            }
+        }
     }
 
     private func toggleReveal() {

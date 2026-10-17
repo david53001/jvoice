@@ -19,15 +19,36 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
 | Eval harness (`--polish-eval`) + 78 cases (22 hold-out) | done |
 | Docs (PRIVACY.md, root CLAUDE.md, `Services/AIPolish/CLAUDE.md`) | done |
 | CI green on `feat/ai-polish` | done — latest code commit green in run 103 |
-| **David runs the eval** | **todo — commands below** |
-| Default model chosen by the §6b rule | pending — no eval data |
+| David runs the eval | done 2026-10-17 on the Mac (results below + `eval-results/`) |
+| Default model chosen by the §6b rule | done — **Haiku 5.5, thinking off** (unchanged `Options.standard`) |
+| Usage stat in Settings + "AI refining" HUD pill + shorter caption (David, 2026-10-17) | done, installed on David's Mac |
+| **Prompt tuning** (no-false-fix, no-answer, preserve) | **todo — next step** |
 | Final review (`docs/ai-polish/REVIEW.md`) | done without eval data: **7/10 provisional**; top fixes applied (table at the end of REVIEW.md); re-run after the eval |
 
-**Accuracy / speed: pending — no eval data yet.** The cloud session has no API key (by design), so
-nothing has been measured against the real API. Targets (plan §9): ≥ 90 % overall, ≥ 80 % on the
-hold-out `context-fix` cases, 100 % on `no-answer`, p95 ≤ 1.5 s.
+**Eval results (2026-10-17, David's Mac, installed app reading the Keychain key).** Targets (plan
+§9): ≥ 90 % overall, ≥ 80 % on the hold-out `context-fix` cases, 100 % on `no-answer`, p95 ≤ 1.5 s.
 
-**Next step:** David runs the eval (below) and commits the results file(s); then the next session
+| Config | Overall | Hold-out | no-answer | no-false-fix | preserve | p95 | Cost/dictation |
+|---|---|---|---|---|---|---|---|
+| (a) Haiku, thinking off — run 1 | 84.6 % | 95.5 % | 91.7 % | 66.7 % | 75.0 % | 1149 ms | $0.000069 |
+| (a) run 2 | 85.9 % | 95.5 % | 91.7 % | 83.3 % | 68.8 % | 1358 ms | $0.000069 |
+| (a) run 3 (`…-haiku-5-5-off-run3.md`) | 92.3 % | 95.5 % | 100 % | 91.7 % | 81.2 % | 1307 ms | $0.000069 |
+| (b) Haiku, adaptive + effort low | 70.5 % | 81.8 % | 83.3 % | 41.7 % | 43.8 % | 1432 ms | $0.000069 |
+| (c) Sonnet 5.5, effort low | 78.2 % | 90.9 % | 75.0 % | 91.7 % | 68.8 % | **4480 ms** (16/78 past 3 s) | $0.0014 |
+
+- **Decision (§6b rule):** (a) Haiku, thinking off — most accurate AND the only configs under the
+  1.5 s p95; (c) fails the latency rule outright, (b) is worse on every category. `Options.standard`
+  unchanged.
+- **Run-to-run noise is large:** the same config (a) scored 84.6 / 85.9 / 92.3 % (runs 1–2 were meant
+  to be (b)/(c) but zsh passed `"--thinking low"` as one unsplit word, which the runner silently
+  ignored — it now refuses unknown arguments). Compare prompt changes on ≥ 3 runs each, not one.
+- **Against the targets (a, mean of 3):** hold-out ✓ (95.5 %), p95 ✓; overall ✗ (87.6 %), no-answer ✗
+  (94 % mean — it sometimes answers instead of cleaning), no-false-fix is the weakest (81 % mean —
+  it "corrects" words that were right), preserve ~75 %. Those three categories are what prompt tuning
+  should target (never on the hold-out cases' exact words).
+
+**Next step:** tune `AIPolishRequest.systemPrompt` for no-false-fix / no-answer / preserve (read the
+FAIL lines of the results files), run (a) ≥ 3 times, then re-run the §10 review. Earlier note:
 picks the default config by the §6b rule, re-runs the final review (same brief, plan §10), and
 tunes the prompt if needed. Open items from the review, not done yet: pre-connect to
 `api.anthropic.com` when recording starts + a `--cold` eval option (if the eval shows cold-start

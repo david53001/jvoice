@@ -3801,6 +3801,28 @@ do {
     expect(!ok.logLabel.contains("Vercel") && !noKey.logLabel.contains("test-key"), "log labels carry no text or key")
 }
 
+print("AIPolishUsageStore — what AI Polish has cost")
+do {
+    let defaults = UserDefaults(suiteName: "jvoice.logic.aiPolishUsage.\(UUID().uuidString)")!
+    let store = AIPolishUsageStore(defaults: defaults)
+    let calendar = Calendar.current
+    func day(_ m: Int, _ d: Int) -> Date { calendar.date(from: DateComponents(year: 2026, month: m, day: d, hour: 12))! }
+    let usage = AIPolishRequest.Usage(inputTokens: 700, outputTokens: 60)
+    expect(AIPolishRequest.cost(AIPolishRequest.Usage(inputTokens: 1_000_000, outputTokens: 1_000_000), model: "claude-haiku-5-5") == 0.60, "Haiku: $0.10 in + $0.50 out per million")
+    expect(AIPolishRequest.cost(usage, model: "nope") == nil, "unknown model → no price")
+    store.record(usage, model: "claude-haiku-5-5", now: day(10, 30))
+    store.record(usage, model: "claude-haiku-5-5", now: day(10, 31))
+    let october = store.totals(now: day(10, 31))
+    expect(october.monthPolishes == 2 && abs(october.monthCost - 0.0002) < 1e-12, "two polishes this month, $0.0002")
+    let november = store.totals(now: day(11, 1))
+    expect(november.monthPolishes == 0 && november.totalPolishes == 2, "a new month starts at zero; all time keeps counting")
+    store.monthlyBudget = 25
+    store.reset()
+    expect(store.totals() == AIPolishUsageStore.Totals() && store.monthlyBudget == 25, "reset clears totals, keeps the budget")
+    expectEqual(AIPolishUsageStore.dollars(0.000069), "$0.0001", "under a cent → four decimals")
+    expectEqual(AIPolishUsageStore.dollars(0.42), "$0.42", "two decimals otherwise")
+}
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S) in AI Polish")
     exit(1)
@@ -3812,6 +3834,7 @@ xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Models/AppMode.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/AIPolish/AIPolishRequest.swift" \
     "$REPO_ROOT/Sources/JVoice/Services/AIPolish/AIPolishClient.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/AIPolish/AIPolishUsageStore.swift" \
     "$TMP_DIR/aipolish/main.swift" \
     -o "$TMP_DIR/aipolish-tests"
 

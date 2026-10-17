@@ -376,4 +376,67 @@ func chattyOutputFallsBack(_ chatty: String) async {
     #expect(cases.filter { $0.category == "context-from-previous" }.allSatisfy { !($0.previous ?? []).isEmpty })
     #expect(cases.allSatisfy { ($0.mode ?? "casual").isEmpty == false && AppMode(rawValue: $0.mode ?? "casual") != nil })
 }
+// MARK: - Usage (what AI Polish has cost)
+
+private func usageDefaults() -> UserDefaults {
+    let suite = "jvoice.tests.aiPolishUsage.\(UUID().uuidString)"
+    return UserDefaults(suiteName: suite)!
+}
+
+private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
+    Calendar.current.date(from: DateComponents(year: y, month: m, day: d, hour: 12))!
+}
+
+@Test func replyCostUsesThePerMillionRates() {
+    let usage = AIPolishRequest.Usage(inputTokens: 1_000_000, outputTokens: 1_000_000)
+    #expect(AIPolishRequest.cost(usage, model: "claude-haiku-5-5") == 0.60)
+    #expect(AIPolishRequest.cost(usage, model: "claude-sonnet-5-5") == 12.0)
+    #expect(AIPolishRequest.cost(usage, model: "some-other-model") == nil)
+}
+
+@Test func usageAddsUpThisMonthAndAllTime() {
+    let store = AIPolishUsageStore(defaults: usageDefaults())
+    let usage = AIPolishRequest.Usage(inputTokens: 700, outputTokens: 60)   // $0.0001
+    store.record(usage, model: "claude-haiku-5-5", now: date(2026, 10, 3))
+    store.record(usage, model: "claude-haiku-5-5", now: date(2026, 10, 17))
+    let totals = store.totals(now: date(2026, 10, 20))
+    #expect(totals.monthPolishes == 2 && totals.totalPolishes == 2)
+    #expect(abs(totals.monthCost - 0.0002) < 1e-12)
+    #expect(totals.monthCost == totals.totalCost)
+}
+
+@Test func aNewMonthStartsAtZeroButAllTimeKeepsCounting() {
+    let store = AIPolishUsageStore(defaults: usageDefaults())
+    let usage = AIPolishRequest.Usage(inputTokens: 700, outputTokens: 60)
+    store.record(usage, model: "claude-haiku-5-5", now: date(2026, 10, 30))
+    #expect(store.totals(now: date(2026, 11, 1)).monthPolishes == 0)
+    store.record(usage, model: "claude-haiku-5-5", now: date(2026, 11, 2))
+    let november = store.totals(now: date(2026, 11, 3))
+    #expect(november.monthPolishes == 1 && november.totalPolishes == 2)
+}
+
+@Test func unknownModelsAreNotCountedAndResetKeepsTheBudget() {
+    let store = AIPolishUsageStore(defaults: usageDefaults())
+    store.record(.init(inputTokens: 10, outputTokens: 10), model: "some-other-model")
+    #expect(store.totals().totalPolishes == 0)
+    #expect(store.monthlyBudget == AIPolishUsageStore.defaultMonthlyBudget)
+    store.monthlyBudget = 25
+    store.record(.init(inputTokens: 10, outputTokens: 10), model: "claude-haiku-5-5")
+    store.reset()
+    #expect(store.totals() == AIPolishUsageStore.Totals())
+    #expect(store.monthlyBudget == 25)
+}
+
+@Test func dollarsShowFourDecimalsUnderACent() {
+    #expect(AIPolishUsageStore.dollars(0) == "$0.00")
+    #expect(AIPolishUsageStore.dollars(0.000069) == "$0.0001")
+    #expect(AIPolishUsageStore.dollars(0.42) == "$0.42")
+}
+
+@Test func refiningIsABusyVisibleStateThatRoundTrips() throws {
+    #expect(HUDState.refining.isVisible && HUDState.refining.isBusy && !HUDState.refining.isTerminal)
+    #expect(HUDState.refining.headline == "AI refining")
+    let data = try JSONEncoder().encode(HUDState.refining)
+    #expect(try JSONDecoder().decode(HUDState.self, from: data) == .refining)
+}
 #endif

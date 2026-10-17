@@ -130,6 +130,7 @@ enum UIPreviewRunner {
         let states: [(String, HUDState)] = [
             ("recording", .recording),
             ("transcribing", .transcribing),
+            ("refining", .refining),
             ("preparing", .preparingModel),
             ("downloading", .downloadingModel(downloadedBytes: 180_000_000, totalBytes: 600_000_000)),
             ("done", .done("Pasted")),
