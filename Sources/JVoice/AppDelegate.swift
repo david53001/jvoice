@@ -61,6 +61,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// Launching JVoice again while it runs (Finder, Spotlight, Launchpad, `open`) shows the real
+    /// Settings window — never SwiftUI's own default window.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { coordinator.openSettingsWindow() }
+        return false
+    }
+
     // MARK: - Tours
 
     private func installTours() {

@@ -10,8 +10,10 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
   `--bench` CLI mode (`BenchRunner` — measures transcription speed/accuracy on this machine, where
   the XCTest runner cannot execute); otherwise launches the SwiftUI `JVoiceApp`. The app is a
   **menu-bar accessory** (`.accessory` activation policy, no Dock icon). It declares no real SwiftUI
-  scenes — windows are managed imperatively by `AppDelegate` / `SettingsWindow`; the empty `Settings`
-  scene is only the placeholder SwiftUI requires. Right before launching the app it classifies the
+  scenes — windows are managed imperatively by `AppDelegate` / `SettingsWindow`; the one scene SwiftUI
+  requires is a `MenuBarExtra` that is never inserted (since 2026-10-17 — the old empty `Settings`
+  scene got opened by SwiftUI itself as a blank 900×450 "JVoice Settings" window). Launching the
+  running app again opens the real Settings (`AppDelegate.applicationShouldHandleReopen`). Right before launching the app it classifies the
   user as new/existing for the first-run tour (`TourCoordinator.classifyAudienceIfNeeded`) — it MUST
   stay before anything writes UserDefaults (see `Tours/CLAUDE.md`).
 - `AppDelegate.swift` (`@MainActor`) — owns the single `VoiceCoordinator`. On launch:
