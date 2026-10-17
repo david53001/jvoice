@@ -107,19 +107,22 @@ the branch out: `git fetch origin feat/ai-polish && git show origin/feat/ai-poli
   Reset** for the spent totals (David removed it).
 - **HUD:** while waiting on Claude the pill shows **"AI refining"** with a Claude-orange
   (`#D97757`) highlight sweeping through the letters (1.6 s period) and a soft orange glow — the same
-  "Claude is working" look as David's terminal dashboard. It is the one coloured element allowed in
+  "Claude is working" look as David's terminal dashboard (the same effect, softer, is on the AI Polish
+  card's title — §9). It is the one coloured element allowed in
   the otherwise monochrome Windows UI (David asked for it). Same pill size as the transcribing pill.
   When a reply uses the balance up: after the paste, ONE pill "AI Polish balance used up — add more
   in Settings"; later dictations at $0 skip polish silently (no repeated pop-ups).
-- **Settings → AI Polish** (full width, the **last** section, above the footer): left half — switch
-  "Polish with Claude" with caption "Sends dictations to Claude to fix mistakes." (the switch reads
-  **off** and is disabled while there is no key or the balance is $0; caption under it "Save your
-  Anthropic API key below to turn this on." / "Add a balance to turn this on."), the key field
-  **masked by default** with an **eye button** to reveal (reveal resets when Settings closes), Save
-  (clears the field; then "Key saved ••••abcd"), Test Key, Remove Key. Right half — "Balance: $0.73
-  left", a thin bar, "Amount $ [5] Add Remove", a red line "Balance used up — add more to keep
-  polishing." when it ran out, then "This month: $x · n polishes" and "All time: $x · n polishes"
-  (amounts under a cent show 4 decimals, e.g. "$0.0001").
+- **Settings → AI Polish** — **UPDATED, see §9** (it is a normal card in a masonry layout now, not
+  a full-width bar). Contents, top to bottom: switch "Polish with Claude" with caption "Sends
+  dictations to Claude to fix mistakes." (the switch reads **off** and is disabled while there is no
+  key or the balance is $0; caption under it "Save your Anthropic API key below to turn this on." /
+  "Add a balance to turn this on."); the key field **masked**, whose placeholder is the saved key's
+  hint "••••abcd" (or `sk-ant-…` when none) — never the key; an **eye button** to reveal (reveal
+  resets when Settings closes); a row of Save (clears the field) · Test Key · Remove Key; a status line
+  "Key saved" / "No key saved" (or the last Save/Test message); a divider; "Balance: $0.73 left" + a
+  thin bar; "Amount $ [5] Add Remove"; a red line "Balance used up — add more to keep polishing."
+  when it ran out; "This month: $x · n polishes" and "All time: $x · n polishes" (amounts under a cent
+  show 4 decimals, e.g. "$0.0001").
 - **Test Key:** a 1-token request; 200 → "Key works.", 401 → "Invalid key — Anthropic didn't accept
   it.", 429 → rate-limited message, network error → "Couldn't reach Anthropic…", other → Anthropic's
   own error message (shown in Settings only, never logged).
@@ -271,3 +274,49 @@ variants + ≥ 8 short questions); the "used up" pill can be lost when the paste
 pending and show it next time); a reply that arrives after the 3 s deadline was billed but isn't
 subtracted from the balance. Prompt changes must stay byte-identical between
 `prompts/minimal-edit.txt` and the code, on both platforms.
+
+## 9. Mac changes after this handoff was first written (2026-10-17 evening) — build these too
+
+David kept refining the Mac app after the first version of this file; the Windows port must match.
+Reference code is on `origin/feat/ai-polish` (commits `bf23aa9` … `0cd6027`).
+
+1. **Resizable Settings window** (Mac: `Sources/JVoice/UI/SettingsWindow.swift`, `SettingsView.swift`).
+   Drag any edge/corner to resize; it opens at its designed size and has a minimum (Mac: 700 × 420 pt;
+   pick the Windows equivalent of today's layout's narrowest clean width). **Double-clicking the title
+   bar fills the screen, and double-clicking again restores the previous size**; the maximize button does
+   the same (Mac: green button → fill, never a separate full-screen space). On Windows this is the native
+   Maximize/Restore — make sure nothing in the current window (`SizeToContent`, the `MaxHeight =
+   WorkArea.Height − 16` clamp from HANDOFF §7 #33, custom chrome) blocks it, and that `SizeToContent`
+   is turned off once the user resizes, or the window snaps back.
+2. **Masonry card layout, live while resizing** (Mac: `MasonryColumns` in `SettingsView.swift`). The
+   cards no longer sit in fixed columns: **each card, in order, is placed in whichever column is
+   currently shortest**, so no column keeps a hole at any width. The window's actual width picks the
+   column count — Mac: 2 columns, 3 from a 1000-pt content width; Windows has been 3 columns at 960 DIP,
+   so choose thresholds that keep every card at least about as wide as now (e.g. 2 below ~900 DIP of
+   content, 3 above, maybe 4 on very wide screens). Content stops at a readable maximum width (Mac:
+   1400 pt) and stays centred when maximized. Header + Stats stay full width on top, the footer full width
+   at the bottom. The layout must reflow **every frame while the user drags** (no snapping at mouse-up).
+   In WPF this is a small custom `Panel` (`MeasureOverride` measures each child at the column width;
+   `ArrangeOverride` drops it into the shortest column) inside the existing `ScrollViewer`. Mac card
+   order (keep it): Whisper Model, Recent Transcripts, Processing, Custom Words, Voice Style, Language,
+   App Modes, Keyboard Shortcut, **AI Polish**, Tours & Tips, Appearance — map it onto the Windows cards
+   (Windows has extra cards, e.g. Microphone, Updates; slot them where they read naturally).
+3. **AI Polish is a normal card** in that layout (not full width, not split into halves) — stacked as
+   described in §2.1. The key field is therefore normal width and shows dots + last 4 when a key is saved.
+4. **Subtle glow on the AI Polish card title** (Mac: `UI/Components/ClaudeGlowText.swift`, `.subtle`):
+   the "AI POLISH" label gets the same Claude-orange (#D97757) sweep as the "AI refining" pill but slower
+   (3.2 s per sweep) and fainter (glow opacity breathing 0.12–0.35, blur radius 4), over the label's normal
+   secondary colour. Build ONE shared control for the effect and use it in both places (pill = full:
+   1.6 s, 0.2–0.7, radius 6).
+5. **No stray empty window.** On Mac, SwiftUI's placeholder Settings scene opened by itself as a blank
+   "JVoice Settings" window; it was replaced by a scene that can't make a window, and launching the
+   running app again now opens the real Settings. On Windows: check that launching `JVoice.exe` while it
+   runs (single-instance handling) brings up the real Settings window and never an empty one.
+6. **Key file folder**: on Mac the key folder is forced to owner-only even if it already existed. On
+   Windows, if you store a DPAPI blob in a folder, the same idea applies (no wider ACL than the user's
+   profile default; never in a shared location).
+7. **Look at all of it through the CI screenshots** (§5.4): add preview shots of Settings at the
+   default size, at a wide size, maximized, and at the minimum size (Mac `--ui-preview` now saves
+   `settings-wide-*`, `settings-fill-*`, `settings-small-*`), in dark and light, and check each one for
+   holes, clipping, and the AI Polish card's look.
+
