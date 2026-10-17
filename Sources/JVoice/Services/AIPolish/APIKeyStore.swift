@@ -48,6 +48,8 @@ enum APIKeyStore {
         do {
             try fm.createDirectory(at: directory, withIntermediateDirectories: true,
                                    attributes: [.posixPermissions: 0o700])
+            // The folder may already exist (the clipboard history lives there too) with 0755.
+            try fm.setAttributes([.posixPermissions: 0o700], ofItemAtPath: directory.path)
             // Write a 0600 temp file first, then swap it in: the key never exists with wider
             // permissions, even for a moment.
             let temp = directory.appendingPathComponent(".anthropic-api-key-\(UUID().uuidString)")
