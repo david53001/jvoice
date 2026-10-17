@@ -108,16 +108,18 @@ func pasteDeniedWhenAccessibilityUntrusted() {
 
 @MainActor
 @Test func failedPasteRestoresOriginalClipboard() async {
-    let pasteboard = NSPasteboard.general
+    // Isolated named pasteboard + injected AX trust, like its neighbours: on the shared
+    // `.general` pasteboard another test's write during the wait below made PasteManager
+    // (rightly) skip the restore as a user copy — a flake in CI's parallel suite.
+    let pasteboard = NSPasteboard(name: NSPasteboard.Name("jvoice-test-\(UUID().uuidString)"))
     pasteboard.clearContents()
     pasteboard.setString("ORIGINAL", forType: .string)
 
     let failingPerformer = MockPasteActionPerformer(result: false)
-    let manager = PasteManager(performer: failingPerformer)
+    let manager = PasteManager(performer: failingPerformer, pasteboard: pasteboard,
+                               accessibilityTrusted: { true })
     let outcome = manager.paste("TRANSCRIPT", targetPID: 0)
-    // AX-trusted in CI is unknowable: failingPerformer gives .targetRejected,
-    // AX-denied short-circuits before clipboard capture.
-    #expect(outcome == .targetRejected || outcome == .accessibilityDenied)
+    #expect(outcome == .targetRejected)
 
     // Wait past the 50ms restore delay + Task scheduling slack.
     try? await Task.sleep(nanoseconds: 600_000_000)
