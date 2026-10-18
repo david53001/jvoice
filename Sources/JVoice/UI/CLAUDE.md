@@ -110,26 +110,34 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   `TourHostShaping` (the tag dims only the capsule — computed from the pill's fitting size — not its
   shadow margin or a morph's spare room). `HUDState.notice` is a neutral
   message pill (info icon) used for tour confirmations.
+- `LaunchAtLoginCard.swift` / `LaunchAtLoginPromptController.swift` (2026-10-18) — the one-time
+  "Open JVoice at login?" card, shown after the 5th completed dictation at a calm moment (rules:
+  `Services/Orchestration/LaunchAtLoginPrompt.swift`; everything in `docs/sparkle-updates/README.md`).
+  A non-activating, never-key corner panel (top-right; the HUD is bottom-centre) on the `.popover`
+  material under a 0.75 `windowBackgroundColor` tint — the tint is what keeps its text ≥ 4.5:1 over a
+  black or white desktop (`LaunchAtLoginCardColors`, checked by `run-logic-tests.sh`); don't lower it
+  or use `.secondary` text there without redoing that check. Buttons: `SubtleButtonStyle` + a
+  label-colour primary (`.borderedProminent` would draw grey in a window that is never key).
+  `--ui-preview` shows it in Light and Dark.
+- Settings → **Updates** card (right column, under Tours & Tips): "Check Automatically" switch + the
+  same "Check for Updates…" / "Update Available (X)…" button as the menu (`Services/Orchestration/Updates.swift`).
 - `MenuBarController.swift` — the menu-bar status item: a bold "J" template image when idle, a red
   microphone while recording, a tinted waveform while transcribing, plus the dropdown NSMenu.
   (Deliberately left untouched by the redesigns — it is already native.)
   The button is tour anchor `menuBar.icon`; the menu has a **Help & Tours** submenu (Welcome /
-  Recording / Settings tours, Reset All Tours).
+  Recording / Settings tours, Reset All Tours) and **Check for Updates…** (Sparkle; reads "Update
+  Available (X)…" while a found update waits). `isMenuOpen` (menu tracking) holds back the login card.
 
 ## How to verify changes here
 - `swift build` must pass; `MenuBarIconTests` runs in CI.
 - **Any change to the Settings window must be smoke-tested in a real bundle**, because a crash
   there is invisible to `swift build` and to the test suite:
   ```
-  swift build -c release
   APP=$(mktemp -d)/JVoice.app
-  mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-  cp .build/release/JVoice "$APP/Contents/MacOS/JVoice"
-  cp Resources/Info.plist "$APP/Contents/Info.plist"
+  JVOICE_APP="$APP" scripts/build-app.sh release     # the binary needs Contents/Frameworks/Sparkle.framework
   "$APP/Contents/MacOS/JVoice" --settings-smoke     # expect: settings-smoke: OK …
   ```
 - There is still **no** automated visual test (`ImageRenderer` and `CALayer.render(in:)` both come back
   blank: SwiftUI's content is drawn by the render server). To LOOK at a visual change, run
-  `"$APP/Contents/MacOS/JVoice" --ui-preview <dir>` from the assembled bundle above (copy
-  `Resources/AppIcon.icns` into `$APP/Contents/Resources/` for the Welcome icon) and open the PNGs.
+  `"$APP/Contents/MacOS/JVoice" --ui-preview <dir>` from the assembled bundle above and open the PNGs.
   Materials follow the window's active state, so the previews (never key) show the inactive look.

@@ -53,13 +53,22 @@ your personal data:
    transcription is completely offline. Hugging Face's own privacy practices apply to that
    request; see <https://huggingface.co/privacy>.
 
-2. **Update check (Windows only, optional, can be turned off).** If enabled, JVoice
-   occasionally asks GitHub whether a newer release exists, by requesting the public
-   "latest release" endpoint for the project
-   (`api.github.com/repos/david53001/jvoice/releases/latest`). This is an anonymous read
-   that sends **no user data** — just the request needed to read a public release listing.
-   You can disable it in **Settings → Updates** ("Check for updates"); when off, JVoice
-   makes this call **never**. GitHub's privacy statement applies to that request; see
+2. **Update check (optional, can be turned off).** JVoice occasionally asks GitHub whether a
+   newer release exists, and downloads it only when there is one:
+   - Windows: requests the public release listing for the project
+     (`api.github.com/repos/david53001/jvoice/releases`). Turn it off in **Settings → Updates**
+     ("Check for updates").
+   - macOS (from version 1.2.0): about once a day, the built-in updater (Sparkle) reads the public
+     file `github.com/david53001/jvoice/releases/latest/download/appcast.xml`, which names the newest
+     version. If there is a newer one and you choose to install it, the update is downloaded from the
+     same GitHub release and checked against JVoice's signing key before it is installed. Turn the
+     daily check off in **Settings → Updates** ("Check Automatically"); **Check for Updates…** in the
+     menu then checks only when you click it.
+
+   These are anonymous reads of public files. They send **no user data** — no audio, transcripts,
+   settings or system profile; only the standard request (which, like any download, includes the
+   app's name and version). When the check is off, JVoice makes this call **never** (on macOS:
+   only when you click Check for Updates…). GitHub's privacy statement applies to these requests; see
    <https://docs.github.com/site-policy/privacy-policies/github-privacy-statement>.
 
 That's it. There are no other outbound connections during normal use.

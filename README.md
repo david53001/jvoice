@@ -14,7 +14,7 @@ Needs macOS 14 or newer (Apple Silicon recommended). Paste this into Terminal:
 curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.sh | bash
 ```
 
-The same command installs JVoice and updates it to the newest version. Updating keeps your settings, custom words, stats, downloaded model and permissions. You can read the script first: [`scripts/install.sh`](scripts/install.sh).
+The same command installs JVoice and updates it to the newest version. Updating keeps your settings, custom words, stats, downloaded model and permissions. You can read the script first: [`scripts/install.sh`](scripts/install.sh). From version 1.2.0, JVoice also updates itself: it checks once a day and offers new versions in a window (menu bar > Check for Updates…, or turn the daily check off in Settings > Updates).
 
 Prefer a manual download? Get [`JVoice-1.1.4.dmg`](https://github.com/david53001/jvoice/releases/download/v1.1.4/JVoice-1.1.4.dmg) and drag JVoice into Applications.
 
@@ -73,7 +73,7 @@ You can change them in Settings.
 
 ## Privacy
 
-Your voice never leaves your computer. The only network use is the one-time model download (and, on Windows, the update check, which you can turn off). No accounts, no tracking. Details: [PRIVACY.md](PRIVACY.md).
+Your voice never leaves your computer. The only network use is the one-time model download and the update check, which you can turn off. No accounts, no tracking. Details: [PRIVACY.md](PRIVACY.md).
 
 ## Build from source
 
