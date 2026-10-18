@@ -34,6 +34,10 @@ mirrors it), and updates stats.
   Tested by `run-logic-tests.sh` (section 5) and `Tests/JVoiceTests/LaunchAtLoginPromptTests.swift`.
 - `Updates.swift` (2026-10-18) — Sparkle 2 (`SPUStandardUpdaterController`, gentle reminders): the daily
   check, "Check for Updates…", Settings → Updates. Docs: `docs/sparkle-updates/README.md`.
+- `SparkleE2EUI.swift` (2026-10-18) — compiled only with `-DSPARKLE_E2E_TEST`, active only with
+  `SPARKLE_E2E_UI=1` (`E2E_UI=1 scripts/sparkle-e2e-test.sh`): clicks through Sparkle's real update
+  windows (Install Update → Install and Relaunch) on the throwaway test copy, logging `pendingVersion`
+  and the menu title on the way. Ported from BetterScreenshot. Never in a normal build.
 - `SystemActions.swift` — small system-action helpers.
 - `PermissionError.swift` — permission-failure types surfaced to the UI.
 - `AppTimings.swift` — named timing constants: `pasteRestoreDelay`, `pasteActivationDelay` (only

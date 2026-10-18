@@ -274,9 +274,13 @@ import Testing
     @Test func cardTextKeepsWCAGContrastOverTheWorstDesktop() {
         for dark in [false, true] {
             #expect(LaunchAtLoginCardColors.worstContrast(dark: dark) >= LaunchAtLoginCardColors.minimumContrast)
-            #expect(LaunchAtLoginCardColors.worstContrast(dark: dark, onSecondaryButton: true)
-                    >= LaunchAtLoginCardColors.minimumContrast)
+            for fill in LaunchAtLoginCardColors.secondaryButtonFills {   // resting, hovered, pressed
+                #expect(LaunchAtLoginCardColors.worstContrast(dark: dark, buttonFill: fill)
+                        >= LaunchAtLoginCardColors.minimumContrast)
+            }
         }
+        #expect(LaunchAtLoginCardColors.secondaryButtonFills
+                == [Design.smallButtonFill, Design.smallButtonHoverFill, Design.smallButtonPressedFill])
         #expect(LaunchAtLoginCardColors.tintAlpha < 1)
     }
 }

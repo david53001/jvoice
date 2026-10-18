@@ -22,8 +22,11 @@ extension UserDefaults: LaunchAtLoginPromptStorage {}
 /// clipboard-only mode); a cancelled, empty ("No speech detected"), failed or refused one isn't one.
 /// Once `usesBeforeAsking` are recorded, ask at the next calm moment (`isCalmMoment`). It is answered
 /// at most once ever, never asked when launch at login is already on, and never asked of users of
-/// ≤ 1.1.4, whose first launch turned it on by itself (that build wrote `legacyAutoEnabled`): they
-/// either still have it, or turned it off on purpose. A choice made with the menu's Launch at Login
+/// ≤ 1.1.4, whose first launch tried to turn it on by itself (that build wrote `legacyAutoEnabled`
+/// before a silent `try? setEnabled(true)`). A deliberate trade-off: most of them still have it or
+/// turned it off on purpose, but the flag can't tell "turned off" from "the silent enable never
+/// succeeded" (e.g. `.requiresApproval`), so a few who never had it aren't asked either — better than
+/// asking someone who said no. A choice made with the menu's Launch at Login
 /// item also counts as answered. A card left unanswered goes away by itself after
 /// `unansweredHideSeconds`. It only counts as a showing if the user could have seen it (`Showing`):
 /// then it comes back after a later dictation at least `reshowAfterSeconds` later (or after a
@@ -305,13 +308,18 @@ struct LaunchAtLoginPrompt {
 
 /// The card's text contrast, computed for the worst backdrop (the card is translucent): a pure black
 /// desktop behind a light card, pure white behind a dark one. The card puts `tintAlpha` of the window
-/// background colour over its blur, and text is the label colour (85 % alpha). Both appearances stay at
-/// or above `minimumContrast` (WCAG AA for body text); `run-logic-tests.sh` checks the numbers.
+/// background colour over its blur, and text is the label colour (85 % alpha). Text on the card and on
+/// its secondary button — resting, under the pointer and pressed — stays at or above
+/// `minimumContrast` (WCAG AA for body text) in both appearances; `run-logic-tests.sh` checks the
+/// numbers (and that `secondaryButtonFills` are still `Design`'s small-button fills).
 enum LaunchAtLoginCardColors {
-    /// Opacity of the window-background tint over the card's `.hudWindow` blur.
-    static let tintAlpha: Double = 0.75
-    /// Opacity of the secondary button's `Color.primary` fill (the design language's small button).
-    static let secondaryButtonFill: Double = 0.08
+    /// Opacity of the window-background tint over the card's `.popover` blur. 0.8, not 0.75: at 0.75
+    /// the dark card's secondary button fell to 4.41:1 under the pointer and 4.03:1 pressed.
+    static let tintAlpha: Double = 0.8
+    /// Opacities of the secondary button's `Color.primary` fill: resting, under the pointer, pressed.
+    /// Copies of `Design.smallButtonFill` / `smallButtonHoverFill` / `smallButtonPressedFill` (this file
+    /// stays free of SwiftUI so the logic tests can compile it alone; they check the copies match).
+    static let secondaryButtonFills: [Double] = [0.08, 0.12, 0.16]
     static let minimumContrast: Double = 4.5
 
     /// sRGB grey levels (0…1) of the system colours involved (`windowBackgroundColor`: 236 in light,
@@ -319,13 +327,14 @@ enum LaunchAtLoginCardColors {
     static let lightTint = 236.0 / 255, darkTint = 30.0 / 255
     static let labelAlpha = 0.85
 
-    /// Text on the card (or on its secondary button), worst case, for one appearance.
-    static func worstContrast(dark: Bool, onSecondaryButton: Bool = false) -> Double {
+    /// Text on the card, or on a secondary button with fill opacity `buttonFill`, worst case, for one
+    /// appearance.
+    static func worstContrast(dark: Bool, buttonFill: Double? = nil) -> Double {
         let backdrop = dark ? 1.0 : 0.0                 // the brightest / darkest desktop
         let tint = dark ? darkTint : lightTint
         let label = dark ? 1.0 : 0.0
         var surface = tintAlpha * tint + (1 - tintAlpha) * backdrop
-        if onSecondaryButton { surface = secondaryButtonFill * label + (1 - secondaryButtonFill) * surface }
+        if let buttonFill { surface = buttonFill * label + (1 - buttonFill) * surface }
         let text = labelAlpha * label + (1 - labelAlpha) * surface
         return contrast(text, surface)
     }

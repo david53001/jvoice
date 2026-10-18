@@ -95,8 +95,7 @@ iexpress.exe /N /Q windows/artifacts/JVoice-gpu.sed        # writes ~/Downloads/
 > failed: Exception calling ExtractToFile … The directory name is invalid"* (see below).
 
 **Zip directory entries (2026-08-22 bug, fixed):** `Compress-Archive` writes a directory entry using a
-**backslash** separator (`JVoice
-untimes\`). `install.ps1` used to detect directories with
+**backslash** separator (`JVoice\runtimes\`). `install.ps1` used to detect directories with
 `FullName.EndsWith('/')`, so it treated that entry as a file, and `ExtractToFile` failed with *"The
 directory name is invalid"* — nothing extracted and the installer aborted. It now tests
 `[string]::IsNullOrEmpty($entry.Name)`, which is empty for **every** directory entry regardless of

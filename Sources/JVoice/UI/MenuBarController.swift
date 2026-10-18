@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
@@ -14,6 +15,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// back the button's image/tint after `updateActivity`.
     private(set) var statusItem: NSStatusItem?
     private var activity: Activity = .idle
+    /// The menu's update item, kept current while the menu is open (`observeUpdates`).
+    private weak var updatesItem: NSMenuItem?
+    private var updatesObservation: AnyCancellable?
 
     init(coordinator: VoiceCoordinator) {
         self.coordinator = coordinator
@@ -35,6 +39,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         button.toolTip = "JVoice"
         button.tourAnchor = "menuBar.icon"   // the Welcome tour's first step
         updateStatusButton(button)
+        observeUpdates()
+    }
+
+    /// The menu is rebuilt each time it opens (`menuNeedsUpdate`); this also changes the update item
+    /// while it is open (a check starting or ending, a found update). The main queue, not
+    /// `RunLoop.main`: it is serviced during menu tracking too.
+    private func observeUpdates() {
+        let updates = Updates.shared
+        updatesObservation = updates.$pendingVersion.combineLatest(updates.$canCheck)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] pending, canCheck in
+                guard let item = self?.updatesItem else { return }
+                item.title = Updates.actionTitle(pendingVersion: pending)
+                item.isEnabled = canCheck || pending != nil   // = Updates.canCheckOrShow
+            }
     }
 
     func updateActivity(_ activity: Activity) {
@@ -75,6 +94,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         let updatesItem = menuItem(Updates.shared.actionTitle, #selector(checkForUpdates))
         updatesItem.isEnabled = Updates.shared.canCheckOrShow
         menu.addItem(updatesItem)
+        self.updatesItem = updatesItem
 
         menu.addItem(.separator())
 

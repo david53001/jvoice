@@ -44,7 +44,7 @@ work is on branch **`feat/sparkle-updates`**, worktree
 | Signing, inside-out, no `--deep`: `Autoupdate`, `Updater.app`, the framework (all `-o runtime`, as Sparkle ships them), then the app with identifier = its bundle id (`com.jvoice.app`), no entitlements, no hardened runtime (as before) | `scripts/sign-app.sh` (new) |
 | SDK pin: the CLT's default MacOSX27.0 SDK can't build SwiftUI macros, so the scripts use `/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk` when present (an `SDKROOT` you set wins). Same file as the sibling apps. | `scripts/sdk-env.sh` (sourced by `build-app.sh`) |
 | One-command release | `scripts/package-release.sh` (rewritten) |
-| Real end-to-end update test (good update installs, bad signature refused) | `scripts/sparkle-e2e-test.sh`; the `#if SPARKLE_E2E_TEST` parts of `Updates.swift`, `AppDelegate.swift`, `JVoiceApp.swift` (only in that test build) |
+| Real end-to-end update test (good update installs, bad signature refused; `E2E_UI=1`: through Sparkle's own windows, the path real users take) | `scripts/sparkle-e2e-test.sh`; `Sources/JVoice/Services/Orchestration/SparkleE2EUI.swift` and the `#if SPARKLE_E2E_TEST` parts of `Updates.swift`, `AppDelegate.swift`, `JVoiceApp.swift` (only in that test build: on the release binary `nm` finds no `SparkleE2EUI` symbol and `strings` no `SPARKLE-E2E`) |
 | Privacy policy + README now mention the macOS update check | `PRIVACY.md`, `README.md` |
 
 **Not sandboxed** (checked: JVoice has no entitlements file at all, so no `com.apple.security.app-sandbox`). So
@@ -103,17 +103,20 @@ flag `jvoice.app.launchAtLogin.didInitialize`). That is **removed**. Now:
     **3rd** counted one it counts as answered "no". An uncounted one comes back after a dictation ≥ 10 min later.
   - Joins every Space but not full-screen ones (no `.fullScreenAuxiliary`).
   - **Design** (MacStats `docs/design-language/README.md`, JVoice `Sources/JVoice/UI/CLAUDE.md`): system light/dark
-    (follows JVoice's System / Light / Dark choice), the `.popover` behind-window material under a **0.75**
+    (follows JVoice's System / Light / Dark choice), the `.popover` behind-window material under a **0.8**
     `windowBackgroundColor` tint — slightly transparent — continuous 16 pt corners, a 0.5 pt hairline at 0.08, one
     system shadow, text styles (title `.body` semibold, line `.callout`, buttons `.callout`), all text `.primary`.
     **Contrast ≥ 4.5:1 is computed for the worst desktop** (pure black behind the light card, pure white behind the
-    dark one; `LaunchAtLoginCardColors`): light 8.07:1 (7.00:1 on the secondary button), dark 5.84:1 (4.84:1 on the
-    secondary button) — printed and checked by `scripts/run-logic-tests.sh`. The material's own blur/tint only
+    dark one; `LaunchAtLoginCardColors`), on the card and on the secondary button in all three of its states
+    (resting / under the pointer / pressed = fills 0.08 / 0.12 / 0.16, checked to equal `Design`'s small-button
+    fills): light 9.02:1 (button 7.81 / 7.24 / 6.69), dark 6.86:1 (button 5.59 / 5.05 / 4.57) — printed and checked
+    by `scripts/run-logic-tests.sh`. (Round 1 used a 0.75 tint, which left the dark card's button at 4.41:1 under
+    the pointer and 4.03:1 pressed.) The material's own blur/tint only
     moves the backdrop towards the tint, so real contrast is at least that. Secondary button = the design
     language's `SubtleButtonStyle`; primary = a label-colour fill with window-background text (≈ 14:1), same
     geometry — not `.borderedProminent`, which AppKit draws as an inactive grey button in a window that is never key.
-    Rendered and looked at in light + dark (2026-10-18, own-window capture from a probe; the real-app
-    `--ui-preview` could not save screenshots in this session, see STATUS).
+    Rendered and looked at in light + dark from the real app's `--ui-preview` (2026-10-18, drawn from the views
+    because the terminal has no Screen Recording, so the blur is flat): `docs/sparkle-updates/previews/login-card-*.png`.
 - **No Thanks** → card goes, never asked again. **Open at Login** → `SMAppService.mainApp.register()`, then: enabled →
   "JVoice will open at login." for 1.6 s; `.requiresApproval` → "One more step / Allow JVoice in Login Items to
   finish." + **Done** / **Open Login Items** (`SMAppService.openSystemSettingsLoginItems()`); error (e.g. an unsigned
@@ -125,9 +128,13 @@ flag `jvoice.app.launchAtLogin.didInitialize`). That is **removed**. Now:
   made with the menu item counts as answered (`setEnabled` marks it asked) and closes the card if it's up.
 - **Answered at most once ever. Never asked if launch at login is already on** (checked when it becomes due and again
   right before showing; found on → marked asked, so later dictations don't make the XPC status call again).
-- **Existing users**: if `jvoice.app.launchAtLogin.didInitialize` is set, ≤ 1.1.4 already turned it on for them; they
-  either still have it (nothing to do) or turned it off on purpose (respected): never asked, uses not counted. In
-  practice that is every existing user; the card is for new installs from 1.2.0 on.
+- **Existing users**: if `jvoice.app.launchAtLogin.didInitialize` is set, ≤ 1.1.4 tried to turn it on for them: it
+  wrote that flag *before* a silent `try? setEnabled(true)`. They are never asked and their uses aren't counted. Most
+  of them still have it or turned it off on purpose, but the call could also have failed silently (e.g.
+  `.requiresApproval`, or an unregistered copy), and the flag can't tell "turned off" from "never succeeded". So a
+  few existing users who never had it won't be asked either. **This is a deliberate trade-off**: better to miss a
+  few than to ask someone who already said no. In practice that is every existing user; the card is for new
+  installs from 1.2.0 on.
 - Same rules and wording as BetterScreenshot (5 uses, once, legacy flag, a choice elsewhere counts as an answer,
   25 s auto-hide, ≤ 3 seen showings) and MacStats (titles, "No Thanks" / "Open at Login" / "One more step" /
   "Couldn't turn it on."). Differences: a use is a dictation; the "change it later" pointer names the JVoice menu.
@@ -156,7 +163,8 @@ To see the card on a dev build without 5 dictations (only on a copy whose settin
 owner's running app — use a bundle with a different `CFBundleIdentifier`): `defaults write <id>
 jvoice.app.launchAtLoginPrompt.uses -int 5`, make sure `jvoice.app.launchAtLoginPrompt.asked` and
 `jvoice.app.launchAtLogin.didInitialize` are unset, launch at login off, dictate once, then don't type for a few
-seconds. Or just look at it: `--ui-preview <dir>` from an assembled bundle saves `login-card-{light,dark}.png`.
+seconds. Or just look at it: `--ui-preview <dir>` from an assembled bundle saves `login-card-{light,dark}.png`
+(`login-card-{light,dark}-views.png` when the terminal has no Screen Recording permission).
 
 **Unmerged related branch:** `feat/launch-at-login` (worktree `.claude/worktrees/launch-at-login`, `2aa00cc`) adds a
 Settings switch + a tour step. If it's merged after this branch, its switch must call `LaunchAtLoginManager.setEnabled`
@@ -233,6 +241,7 @@ cd /Users/davidghermansteinberg/Desktop/Home/Projects/Code/JVoice/.claude/worktr
 scripts/sparkle-e2e-test.sh                                          # ~4 min the first time (debug WhisperKit build)
 E2E_BUILD_DIR=$PWD/.build/sparkle-e2e scripts/sparkle-e2e-test.sh    # keeps the build for quicker re-runs (delete after)
 KEEP=1 scripts/sparkle-e2e-test.sh /tmp/jv-e2e                       # keep the work dir (logs, bundles, feed)
+E2E_UI=1 KEEP=1 scripts/sparkle-e2e-test.sh /tmp/jv-e2e-ui            # Sparkle's real windows (see "UI mode" below)
 ```
 
 What it does: builds once with `-DSPARKLE_E2E_TEST` (the app then starts ONLY the updater, logs each Sparkle step as
@@ -240,11 +249,14 @@ What it does: builds once with `-DSPARKLE_E2E_TEST` (the app then starts ONLY th
 "90.1") copies with bundle id `com.jvoice.app.sparkletest`, `SUFeedURL=http://127.0.0.1:8767/appcast.xml`,
 `NSAllowsLocalNetworking`, `SUAutomaticallyUpdate`, signed inside-out with the real identity; zips NEW, EdDSA-signs
 it with the real key; serves the feed with `python3 -m http.server --bind 127.0.0.1`; GOOD = real signature, BAD =
-the signature of different bytes with the right length. It never touches `/Applications/JVoice.app`, the
-`com.jvoice.app` defaults or a running JVoice; it quits what it started and deletes the test id's defaults, caches,
-Launch Services entries and (unless `KEEP=1`) the work dir. `PORT=` changes the port.
+the right length but the signature of the good zip with one byte appended (so it can never match). It never
+touches `/Applications/JVoice.app`, the `com.jvoice.app` defaults or a running JVoice; it quits what it started and
+deletes the test id's defaults, caches, Launch Services entries (the copies and the `Updater.app` inside each one's
+`Sparkle.framework`, which Sparkle launches and Launch Services registers too) and (unless `KEEP=1`) the work
+dir. `PORT=` changes the port.
 
-Result on 2026-10-18 (this branch, `3b5775b`):
+Result on 2026-10-18 (this branch, `3b5775b`; re-run after the round-1 fixes with the same result, GOOD PASS +
+BAD PASS, and no `jv-e2e` / `sparkletest` record left in `lsregister -dump` afterwards):
 
 ```
 ==> GOOD: signed update 100 -> 101
@@ -268,12 +280,71 @@ GOOD update installed (build 101): PASS
 BAD signature refused (still build 100): PASS
 ```
 
-Not covered by the script: Sparkle's own windows (the path real users take — "Install Update" / "Install and
-Relaunch"); BetterScreenshot's `E2E_UI=1` mode does that for its app and was not ported. A cross-certificate update
-was tested on BetterScreenshot (Sparkle accepts it on the EdDSA signature); JVoice keeps its certificate, so it
-doesn't need it. Manual check for the first real update (1.2.0 → 1.2.1): install 1.2.0, publish 1.2.1, then menu →
-Check for Updates… → Install Update → Install and Relaunch; afterwards dictate once (Microphone + Accessibility must
-still work without a prompt).
+### UI mode (`E2E_UI=1`): the path real users take
+
+The default run installs at once (`SUAutomaticallyUpdate` + the `immediateInstallationBlock` hook), so it never shows
+Sparkle's windows. `E2E_UI=1` runs one scenario instead of GOOD/BAD: OLD has **no** `SUAutomaticallyUpdate` and runs
+with `SPARKLE_E2E_UI=1`, which turns on `Sources/JVoice/Services/Orchestration/SparkleE2EUI.swift` and makes the
+immediate-install hook step aside (`return false`, only the logging delegate stays), exactly like a real install. It
+logs `pendingVersion` when the scheduled find sets it; waits for Sparkle's update window and logs whether it came up
+key, the frontmost app and the menu title (`Updates.actionTitle`); does what the menu item does
+(`Updates.showSparkleWindow`, minus activating the app); clicks **Install Update**; when **Install and Relaunch**
+appears logs `pendingVersion` again (must be cleared by then) and clicks it. Sparkle's `Updater.app` installs and
+relaunches; the script checks the copy is build 101, passes `codesign --verify --deep --strict` and is running again.
+Every window of the test app is transparent the moment it appears; after its first snapshot the app hands focus back
+to the app that was in front (the script prints "Don't type for about 30 s"). Snapshots (`cacheDisplay`) go to
+`<work-dir>/ui/` and show layout and buttons but drop most label text. Ported from BetterScreenshot's mode of the
+same name.
+
+Result 2026-10-18 (round-1 fixes; the Mac was locked, idle 11 098 s, so the frontmost app was
+`com.apple.loginwindow`):
+
+```
+SPARKLE-E2E found 90.1 (build 101)
+SPARKLE-E2E UI scheduled update 90.1, immediate focus 1
+SPARKLE-E2E UI will show 90.1: handled by Sparkle 1, user-initiated 0
+SPARKLE-E2E UI pending set by the scheduled find: 90.1
+SPARKLE-E2E UI update window shown: key 0, app active 0, frontmost app com.apple.loginwindow
+SPARKLE-E2E UI menu title: Update Available (90.1)…
+SPARKLE-E2E UI after the menu action: pending 90.1, menu title: Update Available (90.1)…
+SPARKLE-E2E UI focus now: app active 0
+SPARKLE-E2E UI clicking Install Update
+SPARKLE-E2E UI user attention for 90.1
+SPARKLE-E2E downloaded 101
+SPARKLE-E2E UI at Install and Relaunch: pending none, menu title: Check for Updates…
+SPARKLE-E2E UI clicking Install and Relaunch
+SPARKLE-E2E installing 101
+installed copy: codesign --verify --deep --strict OK
+Identifier=com.jvoice.app.sparkletest
+Authority=JVoice Self-Signed
+==> RESULT (UI mode)
+the scheduled find set pendingVersion (90.1): PASS
+update window shown by the scheduled check: PASS
+(SPARKLE-E2E UI scheduled update 90.1, immediate focus 1; Mac idle 11098 s)
+(the update window came up without focus: frontmost app com.apple.loginwindow)
+without focus: no keyboard taken (not key, app not active): PASS
+without focus: the menu reads Update Available (90.1)…: PASS
+Sparkle reports the user's attention: PASS
+pendingVersion cleared once the user acted (menu back to Check for Updates…): PASS
+the test app doesn't keep the keyboard (not active a second later): PASS
+Install and Relaunch was offered and clicked: PASS
+installed as build 101: PASS
+relaunched after the install (pid 60527): PASS
+```
+
+What this showed: Sparkle asked for immediate focus (the Mac was idle) but couldn't take it from the lock screen,
+so the window waited without focus and the gentle-reminder label **"Update Available (90.1)…"** was up, as
+designed. The no-activation menu action didn't clear it (Sparkle reports attention when the window is seen; the
+real menu item activates JVoice first, which this test deliberately skips); clicking Install Update did, and the
+label went back to "Check for Updates…". The other branch, the window coming up **key** (immediate focus on an
+unlocked Mac: attention reported at once, the label never shows), is checked by the script when it happens; it
+did not happen on this run. BetterScreenshot's identical code verified it there.
+
+Not covered: installing on quit (an update that was downloaded but deferred and is installed when the app quits;
+the script can't quit the app gracefully without an Apple-event permission prompt). A cross-certificate update was tested on BetterScreenshot (Sparkle
+accepts it on the EdDSA signature); JVoice keeps its certificate, so it doesn't need it. Manual check for the first
+real update (1.2.0 → 1.2.1): install 1.2.0, publish 1.2.1, then menu → Check for Updates… → Install Update →
+Install and Relaunch; afterwards dictate once (Microphone + Accessibility must still work without a prompt).
 
 ## STATUS / NEXT STEPS
 
@@ -295,15 +366,54 @@ commit after it:
 - [x] End-to-end update test: GOOD installs (build 101, codesign strict OK), BAD refused — output above
 - [x] Card rendered in light + dark and looked at (probe; folder icon there only because the probe isn't a bundle)
 
+Round 1 of the independent review (8.2/10; report `docs/sparkle-updates/REVIEW-round1.md`, not committed), fixed
+2026-10-18 in the commit after `a74c611`:
+
+- [x] **M1 real update path**: `E2E_UI=1` mode ported (`SparkleE2EUI.swift`, script, `Updates.showSparkleWindow`);
+      run: 10/10 PASS (output in "UI mode" above): pendingVersion set by the scheduled find, "Update Available
+      (90.1)…" while the window waited without focus, cleared once the user acted, Install Update → Install and
+      Relaunch through `Updater.app`, build 101 installed, codesign strict OK, relaunched.
+- [x] **M2 Settings → Updates card looked at**: `--ui-preview` now falls back to drawing windows from their views
+      (`NSView.cacheDisplay`) without Screen Recording, and also saves Settings scrolled to the Updates card, once
+      with a forced "Update Available (1.2.1)…" (`Updates.showPendingVersionForPreview`). Looked at in light + dark
+      (`docs/sparkle-updates/previews/settings-update-available-*.png`): switch row, button and "You have JVoice
+      1.2.0." fit on one line with room to spare, the caption isn't shrunk, the card lines up with the column.
+      32 PNGs saved; `UI/CLAUDE.md`'s "offscreen rendering comes back blank" corrected (true only of
+      `ImageRenderer` / `CALayer.render`). Limits of the fallback: flat materials, no tour-tag panel, and the HUD
+      pill comes out as a light capsule even in Dark (Liquid Glass) — judge the HUD with Screen Recording.
+- [x] **L1 contrast**: hover and pressed fills checked too; the tint went 0.75 → 0.8 so every state is ≥ 4.5:1
+      (dark pressed 4.57:1); the fills are asserted equal to `Design`'s (the logic test now compiles `Theme.swift`);
+      doc comment fixed (`.popover`, not `.hudWindow`).
+- [x] **L2 Launch Services**: cleanup also unregisters each copy's `Updater.app`; the stale
+      `tmp.iy67ovZvEq/…/Updater.app` record was removed (`lsregister -u`). After both runs `lsregister -dump` lists
+      no `jv-e2e` / `sparkletest` path. (Older `Updater.app` records from MacStats' and BetterScreenshot's e2e runs
+      are still listed: dead paths, harmless, out of this branch's scope; their scripts have the same gap.)
+- [x] **L3 `docs/launch/windows-distribution.md`**: restored from `origin/main` with CRLF endings, the paragraph
+      re-applied with CRLF (diff: 6 insertions, 2 deletions), and `` `JVoice\runtimes\` `` written correctly.
+- [x] **L4 root `CLAUDE.md` line 3**: now names the optional daily update check (Sparkle; `PRIVACY.md`).
+- [x] **L5 legacy-user rule**: reworded here and in `LaunchAtLoginPrompt.swift` as a deliberate trade-off.
+- [x] **L6 BAD case**: signature of the good zip + one appended byte (deterministic); comment fixed.
+- [ ] **L7 CI**: still open — can't be done without pushing (not allowed on this branch yet). After the push,
+      check the `test.yml` run on macos-15 / Xcode 16 executes the `LaunchAtLoginPromptTests` cases.
+- [x] **N1 menu item while open**: the update item now also follows `pendingVersion` / `canCheck` while the menu
+      is open (Combine on the main queue, which runs during menu tracking). Not exercised by hand. The card's lack
+      of a keyboard path and the possible overlap with a notification banner are by design / shared with the
+      sibling apps, unchanged.
+- Verification after the fixes: `swift build -c release` clean (only the warnings already on main);
+  `./scripts/run-logic-tests.sh` 1082 assertions, 0 failures; `./scripts/verify-streaming.sh` passed;
+  `--settings-smoke` OK (700×588) on a copy re-identified as `com.jvoice.app.previewtest` (its defaults domain and
+  Launch Services record removed afterwards); `scripts/sparkle-e2e-test.sh` GOOD PASS + BAD PASS;
+  `E2E_UI=1` 10/10 PASS; `/Applications/JVoice.app` (pid 4073) kept running, untouched.
+
 Not done / owner decisions:
 
 - [ ] **Not merged, pushed, tagged or released** (CLAUDE.md: needs David's go-ahead). Release steps above.
-- [ ] `--ui-preview` couldn't save screenshots in this session (`could not create image from rect`: the terminal has
-      no Screen Recording permission), so the **Settings → Updates card was not looked at**; only `--settings-smoke`
-      proved it builds and draws. Run `--ui-preview` from a terminal with Screen Recording and check
-      `settings-light.png` / `settings-dark.png` (right column, bottom) and `login-card-*.png`.
+- [ ] The Settings → Updates card and the login card were looked at drawn from their views (flat materials); a
+      look with real translucency needs `--ui-preview` from a terminal with Screen Recording.
 - [ ] The swift-testing suite (incl. the new `LaunchAtLoginPromptTests`) runs only in CI — check the CI run after pushing.
-- [ ] Not tried on a real install: the card after 5 real dictations, `.requiresApproval`, Sparkle's own update windows.
+- [ ] Not tried on a real install: the card after 5 real dictations, `.requiresApproval`. Sparkle's own windows were
+      driven on the test copy (`E2E_UI=1`), but only the "window without focus" branch ran; the "comes up key" branch
+      and installing on quit were not seen on JVoice.
 - [ ] Back up the "JVoice Self-Signed" identity (see "Where the keys live").
 - [ ] Bump `PRIVACY.md`'s effective date when 1.2.0 ships.
 - [ ] Unmerged `feat/launch-at-login`, `feat/ai-polish`, `feat/math-context`, `feat/guided-tour`… branches were not

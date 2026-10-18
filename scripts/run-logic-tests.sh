@@ -2214,10 +2214,16 @@ print("LaunchAtLoginCardColors — text contrast over the worst desktop")
 for dark in [false, true] {
     let name = dark ? "dark" : "light"
     let onCard = LaunchAtLoginCardColors.worstContrast(dark: dark)
-    let onButton = LaunchAtLoginCardColors.worstContrast(dark: dark, onSecondaryButton: true)
     expect(onCard >= LaunchAtLoginCardColors.minimumContrast, "\(name): card text \(String(format: "%.2f", onCard)):1 ≥ 4.5:1")
-    expect(onButton >= LaunchAtLoginCardColors.minimumContrast, "\(name): secondary button text \(String(format: "%.2f", onButton)):1 ≥ 4.5:1")
+    for (state, fill) in zip(["resting", "hovered", "pressed"], LaunchAtLoginCardColors.secondaryButtonFills) {
+        let onButton = LaunchAtLoginCardColors.worstContrast(dark: dark, buttonFill: fill)
+        expect(onButton >= LaunchAtLoginCardColors.minimumContrast, "\(name): secondary button text, \(state) (fill \(fill)), \(String(format: "%.2f", onButton)):1 ≥ 4.5:1")
+    }
 }
+// The copies in the pure file must be the fills SubtleButtonStyle really draws (UI/Theme.swift).
+expectEqual(LaunchAtLoginCardColors.secondaryButtonFills,
+            [Design.smallButtonFill, Design.smallButtonHoverFill, Design.smallButtonPressedFill],
+            "secondary button fills = Design's small-button fills (resting, hover, pressed)")
 expect(LaunchAtLoginCardColors.tintAlpha < 1, "the card stays slightly transparent")
 expect(abs(LaunchAtLoginCardColors.contrast(0, 1) - 21) < 0.01, "contrast formula: black on white = 21:1")
 
@@ -2230,6 +2236,8 @@ EOF
 
 xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Services/Orchestration/LaunchAtLoginPrompt.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/Theme.swift" \
+    "$REPO_ROOT/Sources/JVoice/Models/AppTheme.swift" \
     "$TMP_DIR/loginprompt/main.swift" \
     -o "$TMP_DIR/loginprompt-tests"
 
