@@ -464,14 +464,14 @@ tried and doesn't hold: cfprefsd rewrites the empty domain files after the test 
 has deleted them. They're 42-byte test-only files; clear them any time with
 `rm ~/Library/Preferences/jvoice.test.*.plist ~/Library/Preferences/jvoice.logic.*.plist`.
 
-#### CI gate for 1.3.0 (fill in after the push)
+#### CI gate for 1.3.0 (passed; v1.3.0 released 2026-10-18 from `8f5d14d`, installed in /Applications)
 
 | Attempt | Run id | Commit | Result |
 |---|---|---|---|
 | (pre) | [39161164965](https://github.com/david53001/jvoice/actions/runs/39161164965) | `fd7bef3` | red, no crash: 583/586 passed; `speculativeTailHitMakesFinishImmediate` + `chunkCutReusesSpeculativeDecode` (fixed 120–150 ms sleeps that miss on a loaded runner; tests and streaming code unchanged since 1.2.0). Fixed in the next commit with the file's own `waitUntil` (also `speculativeTailMissRedecodesWholeTail`); gate restarted |
-| 1 | | | |
-| 2 | | | |
-| 3 | | | |
+| 1 | [39161719242](https://github.com/david53001/jvoice/actions/runs/39161719242) (attempt 1) | `8f5d14d` | green |
+| 2 | [39161719242](https://github.com/david53001/jvoice/actions/runs/39161719242) (attempt 2) | `8f5d14d` | green |
+| 3 | [39161719242](https://github.com/david53001/jvoice/actions/runs/39161719242) (attempt 3) | `8f5d14d` | green |
 
 Owner's release steps (from the main checkout, after review; `--latest` rule above):
 
