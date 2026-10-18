@@ -4,6 +4,18 @@ All notable changes to JVoice — a free, source-available macOS menu-bar voice-
 
 ---
 
+## [1.2.0] — unreleased (branch `feat/sparkle-updates`)
+
+### Added
+
+- **JVoice updates itself.** Once a day it asks GitHub whether a newer version exists and, if so, offers it in a small window you can install from or put off (built on Sparkle, the standard Mac update framework; every update is checked against JVoice's signing key before it is installed). Menu bar → **Check for Updates…** looks right now; Settings → **Updates** has a **Check Automatically** switch. Nothing of yours is sent — see PRIVACY.md.
+
+### Changed
+
+- **Launch at login is now your choice.** JVoice no longer turns it on by itself at first launch. After your 5th dictation it asks once, with a small card in the corner of the screen, whether to open JVoice automatically at login (**Open at Login** / **No Thanks**); it waits until you're not typing or dictating and never takes focus. If you already use launch at login, or turned it off earlier, nothing changes and you're never asked. The menu bar's **Launch at Login** item still works as before.
+
+---
+
 ## [1.1.4] — 2026-09-29
 
 ### Changed

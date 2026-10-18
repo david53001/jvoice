@@ -38,10 +38,12 @@ enum JVoiceMain {
         // writes to UserDefaults; the dev modes above exit and are never classified. When in doubt the
         // answer is "existing" (e.g. a `.build/` binary with no bundle id): an existing user is never
         // asked and never gets a tour by itself.
+        #if !SPARKLE_E2E_TEST   // the e2e test build starts only the updater (AppDelegate)
         MainActor.assumeIsolated {
             let micGranted = AVCaptureDevice.authorizationStatus(for: .audio) == .authorized
             TourCoordinator.classifyAudienceIfNeeded(permissionGranted: micGranted || AXIsProcessTrusted())
         }
+        #endif
         JVoiceApp.main()
     }
 }

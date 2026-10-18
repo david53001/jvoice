@@ -124,6 +124,8 @@ struct SettingsView: View {
     /// Mirror of `TourSettings.firstUseToursEnabled` (a plain UserDefaults key SwiftUI can't observe):
     /// refreshed on appear and whenever a window becomes key, written through on change.
     @State private var toursEnabled = false
+    /// Sparkle (`Services/Orchestration/Updates.swift`): the daily check's switch and "Check for Updates…".
+    @ObservedObject private var updates = Updates.shared
 
     var body: some View {
         let theme = coordinator.appTheme.theme
@@ -164,8 +166,9 @@ struct SettingsView: View {
                     VStack(spacing: 12) {
                         recentTranscriptsSection
                         customWordsSection(theme)
-                        // The right column is the shorter one, so this card costs no height.
+                        // The right column is the shorter one, so these cards cost no height.
                         toursSection
+                        updatesSection
                     }
                     .frame(maxWidth: .infinity, alignment: .top)
                 }
@@ -495,6 +498,30 @@ struct SettingsView: View {
         // The Welcome window's "Show Me Around" can flip it while Settings stays open.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
             toursEnabled = TourSettings.firstUseToursEnabled
+        }
+    }
+
+    /// Sparkle: the daily check's switch, and the same "Check for Updates…" as the menu — "Update
+    /// Available (X)…" while a found update waits to be seen. Same card as BetterScreenshot's.
+    private var updatesSection: some View {
+        SettingsSection("Updates") {
+            VStack(alignment: .leading, spacing: 10) {
+                toggleRow("Check Automatically",
+                          "Look for a new version once a day.",
+                          isOn: Binding(get: { updates.automaticallyChecks },
+                                        set: { updates.automaticallyChecks = $0 }))
+                HStack(spacing: 8) {
+                    Button(updates.actionTitle) { updates.checkForUpdates() }   // same label as the menu item
+                        .buttonStyle(SubtleButtonStyle())
+                        .disabled(!updates.canCheckOrShow)
+                    // The button names a found update; this line says what's installed.
+                    Text("You have JVoice \(updates.currentVersion).")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                }
+            }
         }
     }
 

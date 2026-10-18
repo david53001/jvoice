@@ -1975,5 +1975,274 @@ xcrun swiftc -O \
 "$TMP_DIR/tour-tests" | tee -a "$TMP_DIR/all.log"
 # ---- END: Tours ----
 
+# ---- BEGIN: Launch-at-login prompt (added 2026-10-18 with Sparkle updates) ----
+# The one-time "Open JVoice at login?" decision (LaunchAtLoginPrompt): 5 completed dictations, never
+# when already enabled / already asked / a ≤ 1.1.4 user (legacy auto-enable flag), the calm moment,
+# the flow steps, the unanswered-card spacing, and the card's worst-case text contrast.
+# Canonical suite: Tests/JVoiceTests/LaunchAtLoginPromptTests.swift (same cases).
+mkdir -p "$TMP_DIR/loginprompt"
+cat > "$TMP_DIR/loginprompt/main.swift" <<'EOF'
+import CoreGraphics
+import Foundation
+
+var failures = 0
+func expect(_ condition: @autoclosure () -> Bool, _ message: String) {
+    if condition() { print("  ✓ \(message)") } else { print("  ✗ FAIL: \(message)"); failures += 1 }
+}
+func expectEqual<T: Equatable>(_ actual: T, _ expected: T, _ message: String) {
+    if actual == expected { print("  ✓ \(message)") } else { print("  ✗ FAIL: \(message) — got \(actual), expected \(expected)"); failures += 1 }
+}
+
+/// In-memory storage, so a test run never writes a preferences file.
+final class MemoryStore: LaunchAtLoginPromptStorage {
+    var values: [String: Any] = [:]
+    func integer(forKey key: String) -> Int { values[key] as? Int ?? 0 }
+    func bool(forKey key: String) -> Bool { values[key] as? Bool ?? false }
+    func double(forKey key: String) -> Double { values[key] as? Double ?? 0 }
+    func set(_ value: Int, forKey key: String) { values[key] = value }
+    func set(_ value: Bool, forKey key: String) { values[key] = value }
+    func set(_ value: Double, forKey key: String) { values[key] = value }
+}
+typealias Prompt = LaunchAtLoginPrompt
+let calm = Prompt.Moment(secondsSinceUse: 10, secondsSinceKeyPress: 10, mouseButtonDown: false,
+                         dictationActive: false, appIsActive: false, menuIsOpen: false,
+                         tourShowing: false, fullScreenInFront: false)
+func duePrompt(_ store: MemoryStore = MemoryStore()) -> Prompt {
+    let prompt = Prompt(storage: store)
+    for _ in 1...5 { prompt.recordUse() }
+    return prompt
+}
+func showing(seconds: Int, visible: (Int) -> Bool = { _ in true },
+             secondsSinceInput: (Int) -> TimeInterval) -> Prompt.Showing {
+    var s = Prompt.Showing()
+    for second in 1...seconds {
+        s.tick(seconds: 1, cardVisible: visible(second), secondsSinceInput: secondsSinceInput(second))
+    }
+    return s
+}
+let seenShowing = showing(seconds: 25, secondsSinceInput: { _ in 0.3 })
+let t0 = Date(timeIntervalSince1970: 2_000_000_000)
+
+print("LaunchAtLoginPrompt — the decision")
+expectEqual(Prompt.usesBeforeAsking, 5, "asks after 5 dictations")
+for uses in 0..<5 {
+    expect(!Prompt.shouldAsk(uses: uses, asked: false, legacyAutoEnabled: false, enabled: false), "\(uses) uses → not yet")
+}
+expect(Prompt.shouldAsk(uses: 5, asked: false, legacyAutoEnabled: false, enabled: false), "5 uses → ask")
+expect(Prompt.shouldAsk(uses: 6, asked: false, legacyAutoEnabled: false, enabled: false), "6 uses → ask")
+expect(!Prompt.shouldAsk(uses: 5, asked: false, legacyAutoEnabled: false, enabled: true), "already enabled → never")
+expect(!Prompt.shouldAsk(uses: 5, asked: true, legacyAutoEnabled: false, enabled: false), "already asked → never again")
+expect(!Prompt.shouldAsk(uses: 5, asked: false, legacyAutoEnabled: true, enabled: false), "≤ 1.1.4 user who turned it off → respected, never asked")
+expect(!Prompt.shouldAsk(uses: 5, asked: false, legacyAutoEnabled: true, enabled: true), "≤ 1.1.4 user still enabled → nothing to do")
+
+print("LaunchAtLoginPrompt — counting, persisted")
+do {
+    let prompt = Prompt(storage: MemoryStore())
+    var countedAll = true, dueEarly = false
+    for _ in 1...4 { countedAll = prompt.recordUse() && countedAll; dueEarly = dueEarly || prompt.couldAsk }
+    expect(countedAll && !dueEarly, "uses 1–4 are counted, not due yet")
+    expect(prompt.recordUse(), "the 5th is counted")
+    expectEqual(prompt.uses, 5, "5 recorded")
+    expect(prompt.couldAsk && prompt.shouldAsk(enabled: false) && !prompt.shouldAsk(enabled: true), "due unless enabled")
+    expect(!prompt.recordUse(), "the counter stops at the threshold")
+    expectEqual(prompt.uses, 5, "still 5")
+}
+do {
+    let store = MemoryStore()
+    let prompt = Prompt(storage: store)
+    prompt.recordUse()
+    prompt.cardHidUnanswered(seenShowing, now: t0)
+    prompt.markAsked()
+    expectEqual(store.values["jvoice.app.launchAtLoginPrompt.uses"] as? Int, 1, "key jvoice.app.launchAtLoginPrompt.uses")
+    expectEqual(store.values["jvoice.app.launchAtLoginPrompt.unansweredShowings"] as? Int, 1, "key …unansweredShowings")
+    expectEqual(store.values["jvoice.app.launchAtLoginPrompt.lastShownAt"] as? Double, t0.timeIntervalSince1970, "key …lastShownAt")
+    expectEqual(store.values["jvoice.app.launchAtLoginPrompt.asked"] as? Bool, true, "key …asked")
+    expectEqual(Prompt.Key.legacyAutoEnabled, "jvoice.app.launchAtLogin.didInitialize", "legacy flag = the ≤ 1.1.4 auto-enable key")
+}
+do {
+    let store = MemoryStore()
+    let prompt = duePrompt(store)
+    prompt.markAsked()
+    expect(!prompt.couldAsk && !prompt.recordUse(), "asked → not due, nothing counted any more")
+    expect(!Prompt(storage: store).couldAsk, "asked survives a relaunch")
+}
+do {
+    let store = MemoryStore()
+    store.set(true, forKey: Prompt.Key.legacyAutoEnabled)
+    let prompt = Prompt(storage: store)
+    var counted = false
+    for _ in 1...6 { counted = prompt.recordUse() || counted }
+    expect(!counted && prompt.uses == 0 && !prompt.couldAsk, "legacy flag: uses not counted, never due")
+}
+do {
+    let prompt = Prompt(storage: MemoryStore())
+    prompt.recordUse()
+    prompt.markAsked()   // what the menu's Launch at Login item does
+    for _ in 1...5 { prompt.recordUse() }
+    expect(!prompt.couldAsk, "a choice with the menu item before the 5th use → never asked")
+}
+
+print("LaunchAtLoginPrompt — calm moment")
+expect(Prompt.isCalmMoment(calm), "calm in every respect")
+var m = calm; m.secondsSinceUse = 1
+expect(!Prompt.isCalmMoment(m), "not right after the dictation")
+m = calm; m.secondsSinceKeyPress = 0.5
+expect(!Prompt.isCalmMoment(m), "not while typing")
+m = calm; m.mouseButtonDown = true
+expect(!Prompt.isCalmMoment(m), "not mid-drag")
+m = calm; m.dictationActive = true
+expect(!Prompt.isCalmMoment(m), "not while recording / transcribing / a pill is up")
+m = calm; m.appIsActive = true
+expect(!Prompt.isCalmMoment(m), "not while working in Settings / Welcome")
+m = calm; m.menuIsOpen = true
+expect(!Prompt.isCalmMoment(m), "not while the menu-bar menu is open")
+m = calm; m.tourShowing = true
+expect(!Prompt.isCalmMoment(m), "not during a guided tour")
+m = calm; m.fullScreenInFront = true
+expect(!Prompt.isCalmMoment(m), "not over a full-screen app, presentation or game")
+m = calm; m.secondsSinceUse = Prompt.settleSeconds; m.secondsSinceKeyPress = Prompt.typingQuietSeconds
+expect(Prompt.isCalmMoment(m), "thresholds are inclusive")
+do {
+    typealias W = Prompt.WindowInfo
+    let screens = [CGRect(x: 0, y: 0, width: 1512, height: 982), CGRect(x: -200, y: 982, width: 1920, height: 1080)]
+    let front: Int32 = 42
+    let full = W(ownerPID: front, layer: 0, bounds: CGRect(x: 0, y: 0, width: 1512, height: 982))
+    expect(Prompt.fullScreenInFront(frontmostPID: front, windows: [full], screenFrames: screens), "full screen on the primary")
+    expect(Prompt.fullScreenInFront(frontmostPID: front, windows: [W(ownerPID: front, layer: 0, bounds: CGRect(x: -200, y: -1080, width: 1920, height: 1080))], screenFrames: screens), "full screen on the second screen")
+    expect(Prompt.fullScreenInFront(frontmostPID: front, windows: [W(ownerPID: front, layer: 25, bounds: full.bounds)], screenFrames: screens), "a presentation above the normal layer")
+    expect(!Prompt.fullScreenInFront(frontmostPID: front, windows: [W(ownerPID: front, layer: 0, bounds: CGRect(x: 0, y: 33, width: 1512, height: 949))], screenFrames: screens), "a zoomed window isn't full screen")
+    expect(!Prompt.fullScreenInFront(frontmostPID: front, windows: [W(ownerPID: front, layer: -2147483603, bounds: full.bounds)], screenFrames: screens), "the desktop doesn't count")
+    expect(!Prompt.fullScreenInFront(frontmostPID: 7, windows: [full], screenFrames: screens), "another app's window doesn't count")
+    expect(!Prompt.fullScreenInFront(frontmostPID: nil, windows: [full], screenFrames: screens), "no frontmost app")
+    expect(!Prompt.fullScreenInFront(frontmostPID: front, windows: [full], screenFrames: []), "no screens")
+}
+
+print("LaunchAtLoginPrompt — the flow")
+do {
+    let prompt = Prompt(storage: MemoryStore())
+    var statusReads = 0
+    let off = { () -> Bool in statusReads += 1; return false }
+    var early = true
+    for _ in 1...4 { early = prompt.afterUse(cardVisible: false, shownThisLaunch: false, isEnabled: off) == .nothing && early }
+    expect(early, "dictations 1–4 → nothing")
+    expectEqual(prompt.afterUse(cardVisible: true, shownThisLaunch: false, isEnabled: off), .nothing, "card already up → nothing")
+    expectEqual(prompt.uses, 5, "every dictation was recorded by the step itself")
+    expectEqual(statusReads, 0, "no status (XPC) call unless it could be due and the card is hidden")
+    expectEqual(prompt.afterUse(cardVisible: false, shownThisLaunch: false, isEnabled: off), .startWaiting, "due → wait for a calm moment")
+    expectEqual(statusReads, 1, "one status read")
+    expect(!prompt.asked, "waiting isn't answering")
+}
+do {
+    let prompt = duePrompt()
+    expectEqual(prompt.afterUse(cardVisible: false, shownThisLaunch: false, isEnabled: { true }), .alreadyEnabled, "already enabled → alreadyEnabled")
+    expect(prompt.asked, "…and marked asked")
+    var statusReads = 0
+    expectEqual(prompt.afterUse(cardVisible: false, shownThisLaunch: false, isEnabled: { statusReads += 1; return true }), .nothing, "later dictations → nothing")
+    expectEqual(statusReads, 0, "…without a status call")
+}
+do {
+    let prompt = duePrompt()
+    var busy = calm; busy.secondsSinceKeyPress = 0
+    var statusReads = 0
+    expectEqual(prompt.waitStep(busy, isEnabled: { statusReads += 1; return false }), .keepWaiting, "not calm → keep waiting")
+    expectEqual(statusReads, 0, "status only read once calm")
+    expectEqual(prompt.waitStep(calm, isEnabled: { false }), .show, "calm → show")
+    expect(!prompt.asked, "showing isn't answering")
+    var late = calm; late.secondsSinceUse = Prompt.giveUpSeconds - 1
+    expectEqual(prompt.waitStep(late, isEnabled: { false }), .show, "just before giving up → show")
+    late.secondsSinceUse = Prompt.giveUpSeconds
+    expectEqual(prompt.waitStep(late, isEnabled: { false }), .giveUp, "after 2 minutes → give up")
+}
+do {
+    let answered = duePrompt()
+    answered.markAsked()
+    expectEqual(answered.waitStep(calm, isEnabled: { false }), .noLongerDue, "answered meanwhile → stop")
+    let turnedOn = duePrompt()
+    expectEqual(turnedOn.waitStep(calm, isEnabled: { true }), .alreadyEnabled, "turned on in System Settings meanwhile → stop")
+    expect(turnedOn.asked, "…and marked asked")
+}
+
+print("LaunchAtLoginPrompt — an unanswered card")
+expect(!Prompt.shouldHideUnanswered(secondsShown: Prompt.unansweredHideSeconds - 1, pointerOnCard: false), "stays up to 25 s")
+expect(Prompt.shouldHideUnanswered(secondsShown: Prompt.unansweredHideSeconds, pointerOnCard: false), "hides after 25 s")
+expect(!Prompt.shouldHideUnanswered(secondsShown: 600, pointerOnCard: true), "never under the pointer")
+expect(seenShowing.counts, "seen for 25 s → counts")
+expect(!showing(seconds: 25, visible: { _ in false }, secondsSinceInput: { _ in 0.3 }).counts, "never visible (other Space, locked) → doesn't count")
+expect(!showing(seconds: 25, secondsSinceInput: { 60 + TimeInterval($0) }).counts, "walked away → doesn't count")
+expect(!showing(seconds: 25, secondsSinceInput: { $0 >= 22 ? 0.5 : 60 + TimeInterval($0) }).counts, "back at second 22 (4 s seen) → doesn't count")
+expect(showing(seconds: 25, secondsSinceInput: { $0 >= 20 ? 0.5 : 60 + TimeInterval($0) }).counts, "back at second 20 (6 s seen) → counts")
+do {
+    var s = Prompt.Showing()
+    s.tick(seconds: 3600, cardVisible: true, secondsSinceInput: 0.2)
+    expect(s.secondsShown == 3600 && s.secondsSeen == Prompt.Showing.maxSecondsPerTick && !s.counts, "a late tick after sleep adds at most 2 seen seconds")
+}
+do {
+    let prompt = duePrompt()
+    let unseen = showing(seconds: 25, visible: { _ in false }, secondsSinceInput: { _ in 0.3 })
+    var counted = false
+    for _ in 1...5 { counted = prompt.cardHidUnanswered(unseen, now: t0) || counted }
+    expect(!counted && prompt.unansweredShowings == 0 && prompt.couldAsk, "unseen showings aren't counted; still due")
+    expectEqual(prompt.afterUse(cardVisible: false, shownThisLaunch: false, unseenShowingEndedAt: t0, now: t0.addingTimeInterval(60), isEnabled: { false }), .tooSoon, "unseen → not on the very next dictation")
+    expectEqual(prompt.afterUse(cardVisible: false, shownThisLaunch: false, unseenShowingEndedAt: t0, now: t0.addingTimeInterval(Prompt.reshowAfterUnseenSeconds), isEnabled: { false }), .startWaiting, "unseen → 10 minutes later")
+}
+do {
+    let store = MemoryStore()
+    let prompt = duePrompt(store)
+    expect(prompt.cardHidUnanswered(seenShowing, now: t0), "a seen showing counts")
+    var statusReads = 0
+    let off = { () -> Bool in statusReads += 1; return false }
+    var spaced = true
+    for minutes: TimeInterval in [1, 3, 60, 23 * 60] {
+        spaced = prompt.afterUse(cardVisible: false, shownThisLaunch: true, now: t0.addingTimeInterval(minutes * 60), isEnabled: off) == .tooSoon && spaced
+    }
+    expect(spaced && statusReads == 0, "same launch: not again within the day, no status calls")
+    expectEqual(prompt.afterUse(cardVisible: false, shownThisLaunch: true, now: t0.addingTimeInterval(Prompt.reshowAfterSeconds), isEnabled: off), .startWaiting, "a day later → again")
+    expectEqual(Prompt(storage: store).afterUse(cardVisible: false, shownThisLaunch: false, now: t0.addingTimeInterval(60), isEnabled: off), .startWaiting, "after a relaunch → again")
+}
+do {
+    let store = MemoryStore()
+    let prompt = duePrompt(store)
+    expectEqual(Prompt.maxShowings, 3, "at most 3 seen showings")
+    prompt.cardHidUnanswered(seenShowing, now: t0)
+    prompt.cardHidUnanswered(seenShowing, now: t0.addingTimeInterval(Prompt.reshowAfterSeconds))
+    expect(prompt.couldAsk, "after 2 → still due")
+    prompt.cardHidUnanswered(seenShowing, now: t0.addingTimeInterval(2 * Prompt.reshowAfterSeconds))
+    expect(!prompt.couldAsk && prompt.asked && !Prompt(storage: store).couldAsk, "after the 3rd → answered \"no\" for good")
+}
+
+print("LaunchAtLoginCardColors — text contrast over the worst desktop")
+for dark in [false, true] {
+    let name = dark ? "dark" : "light"
+    let onCard = LaunchAtLoginCardColors.worstContrast(dark: dark)
+    expect(onCard >= LaunchAtLoginCardColors.minimumContrast, "\(name): card text \(String(format: "%.2f", onCard)):1 ≥ 4.5:1")
+    for (state, fill) in zip(["resting", "hovered", "pressed"], LaunchAtLoginCardColors.secondaryButtonFills) {
+        let onButton = LaunchAtLoginCardColors.worstContrast(dark: dark, buttonFill: fill)
+        expect(onButton >= LaunchAtLoginCardColors.minimumContrast, "\(name): secondary button text, \(state) (fill \(fill)), \(String(format: "%.2f", onButton)):1 ≥ 4.5:1")
+    }
+}
+// The copies in the pure file must be the fills SubtleButtonStyle really draws (UI/Theme.swift).
+expectEqual(LaunchAtLoginCardColors.secondaryButtonFills,
+            [Design.smallButtonFill, Design.smallButtonHoverFill, Design.smallButtonPressedFill],
+            "secondary button fills = Design's small-button fills (resting, hover, pressed)")
+expect(LaunchAtLoginCardColors.tintAlpha < 1, "the card stays slightly transparent")
+expect(abs(LaunchAtLoginCardColors.contrast(0, 1) - 21) < 0.01, "contrast formula: black on white = 21:1")
+
+if failures > 0 {
+    print("\n\(failures) FAILURE(S) in the launch-at-login prompt")
+    exit(1)
+}
+print("\nAll launch-at-login prompt tests passed.")
+EOF
+
+xcrun swiftc -O \
+    "$REPO_ROOT/Sources/JVoice/Services/Orchestration/LaunchAtLoginPrompt.swift" \
+    "$REPO_ROOT/Sources/JVoice/UI/Theme.swift" \
+    "$REPO_ROOT/Sources/JVoice/Models/AppTheme.swift" \
+    "$TMP_DIR/loginprompt/main.swift" \
+    -o "$TMP_DIR/loginprompt-tests"
+
+"$TMP_DIR/loginprompt-tests" | tee -a "$TMP_DIR/all.log"
+# ---- END: Launch-at-login prompt ----
+
 echo
-echo "TOTAL: $(grep -c '✓' "$TMP_DIR/all.log") assertions passed across 4 sections (logic, orchestration/audio, Settings UI, Tours)."
+echo "TOTAL: $(grep -c '✓' "$TMP_DIR/all.log") assertions passed across 5 sections (logic, orchestration/audio, Settings UI, Tours, launch-at-login prompt)."

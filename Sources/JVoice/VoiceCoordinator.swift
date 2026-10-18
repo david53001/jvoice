@@ -258,6 +258,9 @@ final class VoiceCoordinator: ObservableObject {
         if let frontmostObserver {
             NSWorkspace.shared.notificationCenter.removeObserver(frontmostObserver)
         }
+        if let launchAtLoginObserver {
+            NotificationCenter.default.removeObserver(launchAtLoginObserver)
+        }
     }
 
     /// Set before `start()` when the first-run Welcome window will show: it asks for Accessibility
@@ -299,11 +302,33 @@ final class VoiceCoordinator: ObservableObject {
         transcriptionManager.prewarm()
     }
 
-    /// Run once on launch: auto-enable launch-at-login the first time, then
-    /// sync the published mirror to the live OS status.
+    /// Run once on launch: sync the published mirror to the live OS status, and keep it in sync
+    /// with every later change (the menu item, or "Open at Login" on the one-time card). Launch at
+    /// login is no longer switched on silently at first launch (≤ 1.1.4 did): the card asks once,
+    /// after 5 dictations (`UI/LaunchAtLoginPromptController.swift`).
     func bootstrapLaunchAtLogin() {
-        LaunchAtLoginManager.performFirstRunEnableIfNeeded()
         launchAtLogin = LaunchAtLoginManager.isEnabled
+        guard launchAtLoginObserver == nil else { return }
+        launchAtLoginObserver = NotificationCenter.default.addObserver(
+            forName: LaunchAtLoginManager.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.launchAtLogin = LaunchAtLoginManager.isEnabled }
+        }
+    }
+    private var launchAtLoginObserver: NSObjectProtocol?
+
+    /// Called after every dictation whose text reached the user (pasted, or copied in clipboard-only
+    /// mode) — not for a cancelled, empty, failed or refused one. Counts uses for the one-time
+    /// launch-at-login question (`LaunchAtLoginPromptController`).
+    var onDictationCompleted: (() -> Void)?
+
+    /// The menu-bar menu is open (the one-time launch-at-login card waits for it to close).
+    var isMenuBarMenuOpen: Bool { menuBarController.isMenuOpen }
+
+    /// A dictation is under way (recording, mic opening, transcribing, pasting) or a HUD pill is on
+    /// screen: the one-time launch-at-login card waits for this to end.
+    var isDictationActive: Bool {
+        isRecording || isStartingRecording || isStoppingRecording || isTranscriptionInFlight
+            || transcriptionManager.isTranscribing || hudState.isVisible
     }
 
     /// Toggle launch-at-login. Re-reads the OS status afterward so the UI shows
@@ -894,6 +919,7 @@ final class VoiceCoordinator: ObservableObject {
             // Tours: the text reached the user (pasted, or "Copied" in
             // clipboard-only mode). Failed pastes returned above without it.
             TourEvents.post(.action(TourEventName.dictationPasted))
+            onDictationCompleted?()
         } catch {
             // A cancelled decode throws; the user moved on — no error pill.
             if Task.isCancelled || error is CancellationError { return }

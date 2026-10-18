@@ -25,7 +25,19 @@ mirrors it), and updates stats.
   up to 30 entries (`TranscriptEntry`, newest first), JSON-persisted in `UserDefaults`. Same
   plaintext-in-prefs privacy posture as `LastTranscriptStore`; only ever erased by explicit user
   action (per-row delete, "Clear all", or "Restore Default Settings").
-- `LaunchAtLoginManager.swift` — the launch-at-login toggle.
+- `LaunchAtLoginManager.swift` — the launch-at-login toggle (`SMAppService`; `setEnabled` also marks the
+  one-time question answered and posts `didChangeNotification`). No silent first-launch enable since
+  1.2.0; the old flag `jvoice.app.launchAtLogin.didInitialize` is only read.
+- `LaunchAtLoginPrompt.swift` (2026-10-18) — pure rules of the one-time "Open JVoice at login?" card:
+  5 completed dictations, never if already enabled / already asked / a ≤ 1.1.4 user, calm moment,
+  unanswered-card spacing (≤ 3 seen showings), plus the card's contrast math. Keys `jvoice.app.launchAtLoginPrompt.*`.
+  Tested by `run-logic-tests.sh` (section 5) and `Tests/JVoiceTests/LaunchAtLoginPromptTests.swift`.
+- `Updates.swift` (2026-10-18) — Sparkle 2 (`SPUStandardUpdaterController`, gentle reminders): the daily
+  check, "Check for Updates…", Settings → Updates. Docs: `docs/sparkle-updates/README.md`.
+- `SparkleE2EUI.swift` (2026-10-18) — compiled only with `-DSPARKLE_E2E_TEST`, active only with
+  `SPARKLE_E2E_UI=1` (`E2E_UI=1 scripts/sparkle-e2e-test.sh`): clicks through Sparkle's real update
+  windows (Install Update → Install and Relaunch) on the throwaway test copy, logging `pendingVersion`
+  and the menu title on the way. Ported from BetterScreenshot. Never in a normal build.
 - `SystemActions.swift` — small system-action helpers.
 - `PermissionError.swift` — permission-failure types surfaced to the UI.
 - `AppTimings.swift` — named timing constants: `pasteRestoreDelay`, `pasteActivationDelay` (only

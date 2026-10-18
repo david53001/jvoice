@@ -15,7 +15,8 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
   user as new/existing for the first-run tour (`TourCoordinator.classifyAudienceIfNeeded`) — it MUST
   stay before anything writes UserDefaults (see `Tours/CLAUDE.md`).
 - `AppDelegate.swift` (`@MainActor`) — owns the single `VoiceCoordinator`. On launch:
-  `coordinator.start()` + `bootstrapLaunchAtLogin()`, and routes service-level failures to the HUD
+  `coordinator.start()` + `bootstrapLaunchAtLogin()` + `Updates.shared.start()` (Sparkle) + the
+  one-time launch-at-login card (`LaunchAtLoginPromptController`), and routes service-level failures to the HUD
   (the heads-up status pill) via `SystemActions.errorHandler`. Also owns the `TourCoordinator` and
   the first-run `WelcomeWindow` (shown at launch to new users only). On terminate:
   `cleanUpForTermination()` + `flushSettings()`. The app stays alive with no windows open.

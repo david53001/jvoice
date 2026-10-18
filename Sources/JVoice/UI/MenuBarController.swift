@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 @MainActor
 final class MenuBarController: NSObject, NSMenuDelegate {
@@ -14,6 +15,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     /// back the button's image/tint after `updateActivity`.
     private(set) var statusItem: NSStatusItem?
     private var activity: Activity = .idle
+    /// The menu's update item, kept current while the menu is open (`observeUpdates`).
+    private weak var updatesItem: NSMenuItem?
+    private var updatesObservation: AnyCancellable?
 
     init(coordinator: VoiceCoordinator) {
         self.coordinator = coordinator
@@ -35,6 +39,21 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         button.toolTip = "JVoice"
         button.tourAnchor = "menuBar.icon"   // the Welcome tour's first step
         updateStatusButton(button)
+        observeUpdates()
+    }
+
+    /// The menu is rebuilt each time it opens (`menuNeedsUpdate`); this also changes the update item
+    /// while it is open (a check starting or ending, a found update). The main queue, not
+    /// `RunLoop.main`: it is serviced during menu tracking too.
+    private func observeUpdates() {
+        let updates = Updates.shared
+        updatesObservation = updates.$pendingVersion.combineLatest(updates.$canCheck)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] pending, canCheck in
+                guard let item = self?.updatesItem else { return }
+                item.title = Updates.actionTitle(pendingVersion: pending)
+                item.isEnabled = canCheck || pending != nil   // = Updates.canCheckOrShow
+            }
     }
 
     func updateActivity(_ activity: Activity) {
@@ -45,8 +64,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Menu
 
+    /// The status-item menu is open (menu tracking). The one-time launch-at-login card waits for it
+    /// to close (`LaunchAtLoginPromptController.isMenuOpen`).
+    private(set) var isMenuOpen = false
+
+    func menuWillOpen(_ menu: NSMenu) { isMenuOpen = true }
+    func menuDidClose(_ menu: NSMenu) { isMenuOpen = false }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        // Items carry their own isEnabled (the update item can be greyed out while a check runs).
+        menu.autoenablesItems = false
 
         let dictationTitle = activity == .recording ? "Stop Dictation" : "Start Dictation"
         menu.addItem(menuItem(dictationTitle, #selector(toggleDictation)))
@@ -60,6 +88,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(launchItem)
 
         menu.addItem(helpToursItem())
+
+        // Sparkle: the result of a check, or the update a background check found — named right in the
+        // menu ("Update Available (X)…") until the user has looked at it.
+        let updatesItem = menuItem(Updates.shared.actionTitle, #selector(checkForUpdates))
+        updatesItem.isEnabled = Updates.shared.canCheckOrShow
+        menu.addItem(updatesItem)
+        self.updatesItem = updatesItem
 
         menu.addItem(.separator())
 
@@ -99,6 +134,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func openSettings() {
         coordinator?.openSettingsWindow()
+    }
+
+    @objc private func checkForUpdates() {
+        Updates.shared.checkForUpdates()
     }
 
     @objc private func toggleLaunchAtLogin() {

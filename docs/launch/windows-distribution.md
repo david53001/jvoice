@@ -38,7 +38,11 @@ the install folder, `%APPDATA%\JVoice` and `%LOCALAPPDATA%\JVoice` (models). Tes
 overrides as the installer plus `JVOICE_APPDATA_DIR` / `JVOICE_DATA_DIR`.
 
 **Publishing a Windows release: never mark it Latest.** `gh release create windows-vX.Y.Z --latest=false`.
-The repo's Latest release must stay a macOS one; the Mac README links and other tooling assume it. Then
+The repo's Latest release must stay a macOS one; the Mac README links and other tooling assume it — and since
+macOS 1.2.0 every installed Mac copy finds its updates at `releases/latest/download/appcast.xml` (Sparkle), so a
+Windows release marked Latest would leave every Mac without updates until the next Mac release (details:
+`docs/sparkle-updates/README.md`). If one was published as Latest by mistake, fix it with
+`gh release edit vX.Y.Z --repo david53001/jvoice --latest` on the newest Mac release. Then
 update the two versioned manual-download links in `README.md`.
 
 ## What ships — two installers (CPU default, GPU optional)
@@ -91,7 +95,7 @@ iexpress.exe /N /Q windows/artifacts/JVoice-gpu.sed        # writes ~/Downloads/
 > failed: Exception calling ExtractToFile … The directory name is invalid"* (see below).
 
 **Zip directory entries (2026-08-22 bug, fixed):** `Compress-Archive` writes a directory entry using a
-**backslash** separator (`JVoiceuntimes\`). `install.ps1` used to detect directories with
+**backslash** separator (`JVoice\runtimes\`). `install.ps1` used to detect directories with
 `FullName.EndsWith('/')`, so it treated that entry as a file, and `ExtractToFile` failed with *"The
 directory name is invalid"* — nothing extracted and the installer aborted. It now tests
 `[string]::IsNullOrEmpty($entry.Name)`, which is empty for **every** directory entry regardless of
