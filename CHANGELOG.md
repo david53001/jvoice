@@ -4,7 +4,7 @@ All notable changes to JVoice — a free, source-available macOS menu-bar voice-
 
 ---
 
-## [1.2.0] — unreleased (branch `feat/sparkle-updates`)
+## [1.2.0] — 2026-10-18
 
 ### Added
 
