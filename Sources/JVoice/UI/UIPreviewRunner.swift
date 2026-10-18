@@ -102,6 +102,23 @@ enum UIPreviewRunner {
         }
         hud.update(state: .idle)
 
+        // The one-time "Open JVoice at login?" card (`LaunchAtLoginPromptController`), on the screen
+        // under the pointer like the real one; its buttons do nothing here.
+        let card = LaunchAtLoginCard()
+        if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
+            for (label, name) in appearances {
+                card.show(title: "Open JVoice at login?",
+                          message: "Your dictation shortcut keeps working after a restart. You can change this any time in the JVoice menu.",
+                          actions: [.init("No Thanks") {}, .init("Open at Login", primary: true) {}],
+                          on: screen, appearance: NSAppearance(named: name))
+                capture(card.window, "login-card-\(label)")
+                card.show(title: "JVoice will open at login.", message: nil, actions: [],
+                          on: screen, appearance: NSAppearance(named: name))
+                capture(card.window, "login-card-done-\(label)")
+            }
+        }
+        card.hide()
+
         print("ui-preview: \(saved) screenshots in \(dir.path)")
         exit(saved > 0 ? 0 : 1)
     }
