@@ -455,6 +455,15 @@ Not verified here (owner-only checks):
   defaults domain, Launch Services record and the copy's prefs were gone (no new plist in `~/Library/Preferences`).
   Sparkle code/scripts unchanged in this round, so the E2E was not re-run.
 
+Review round 2 (2026-10-18): **8.5 / 10**. Reports are not in the repo (round 1 quotes the last 4 characters
+of the owner's API key): `~/Backups/2026-10-18-release-1.3.0-reviews/JVoice/` on the owner's Mac. Round-2 Lows
+fixed after it: L-A (`Updates.swift` comment names AI Polish), L-C (TERMS.md §5 paragraph on AI Polish +
+effective date), L-D (re-date step moved before the push below). **L-B skipped:** `run-logic-tests.sh` leaves
+small `jvoice.test.*` / `jvoice.logic.*` plists in `~/Library/Preferences`. Removing them in the script was
+tried and doesn't hold: cfprefsd rewrites the empty domain files after the test process (and an exit trap)
+has deleted them. They're 42-byte test-only files; clear them any time with
+`rm ~/Library/Preferences/jvoice.test.*.plist ~/Library/Preferences/jvoice.logic.*.plist`.
+
 #### CI gate for 1.3.0 (fill in after the push)
 
 | Attempt | Run id | Commit | Result |
@@ -470,6 +479,8 @@ Owner's release steps (from the main checkout, after review; `--latest` rule abo
 cd /Users/davidghermansteinberg/Desktop/Home/Projects/Code/JVoice/.claude/worktrees/sparkle-updates
 git merge --ff-only release/1.3.0                           # main has not moved since 42612be, so this fast-forwards
 ./scripts/run-logic-tests.sh && ./scripts/verify-streaming.sh
+# (publishing on another day than CHANGELOG [1.3.0] says? re-date it + PRIVACY.md/TERMS.md now, BEFORE the push,
+#  so the commit the CI gate tests is the one that gets packaged)
 git push origin main                                         # CI runs test.yml on this commit
 # CI GATE (review M1): 3 greens in a row on this exact commit before packaging.
 gh run list --repo david53001/jvoice --workflow test.yml --commit "$(git rev-parse HEAD)"   # note the run id
@@ -478,7 +489,6 @@ gh run rerun <id> --repo david53001/jvoice && gh run watch <id> --repo david5300
 gh run rerun <id> --repo david53001/jvoice && gh run watch <id> --repo david53001/jvoice   # attempt 3
 # Any red: open the failed attempt's "Print test-process crash reports" step, fix the faulting test or
 # initializer, commit, push, and start the 3 greens again. Write the run ids in "CI gate for 1.3.0" above.
-# (re-date CHANGELOG [1.3.0] + PRIVACY.md's effective date if publishing on another day; commit + push)
 scripts/package-release.sh docs/release-1.3.0/release-notes.md   # then run the printed `gh release create v1.3.0 … --latest`
 curl -fsSL https://github.com/david53001/jvoice/releases/latest/download/appcast.xml | grep sparkle:version   # → 8
 ```

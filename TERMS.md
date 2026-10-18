@@ -1,6 +1,6 @@
 # Terms of Use
 
-**Effective date:** 7 July 2026 (licence section updated 30 September 2026) · Applies to JVoice for macOS and Windows.
+**Effective date:** 7 July 2026 (licence section updated 30 September 2026, AI Polish added 18 October 2026) · Applies to JVoice for macOS and Windows.
 
 > **In one sentence:** JVoice is free, source-available software provided **as-is, with no
 > warranty** — you may use it free of charge for noncommercial purposes and read the source,
@@ -85,6 +85,11 @@ JVoice runs OpenAI's **Whisper** speech-recognition models on your own device. O
 use, the app downloads a model file **once** from a public host (Hugging Face) — this is
 the only setup that touches the network, and after that transcription is fully offline.
 See [`PRIVACY.md`](PRIVACY.md) for exactly what leaves your machine and when.
+
+**AI Polish** (macOS, optional, off by default) sends dictated text to Anthropic's API using
+**your own** API key. That use is between you and Anthropic and is governed by Anthropic's terms
+and usage policies; you are responsible for your key and for its charges. See
+[`PRIVACY.md`](PRIVACY.md).
 
 The Whisper models and the open-source libraries JVoice is built on are covered by their
 own licenses, listed in [`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md). Your use of

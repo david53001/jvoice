@@ -10,8 +10,8 @@ import Sparkle
 /// sandboxed, so Sparkle installs via its bundled `Autoupdate` / `Updater.app`; the framework's XPC
 /// services (only for sandboxed apps) are removed by `scripts/build-app.sh`. The only network
 /// traffic is the appcast + update download from GitHub (no system profile is sent) — besides the
-/// one-time Whisper model download, JVoice's only runtime network call; nothing of the user's
-/// (audio, transcripts, settings) is ever sent.
+/// one-time Whisper model download and the opt-in AI Polish (`Services/AIPolish/`), JVoice's only
+/// runtime network call; Sparkle itself sends nothing of the user's (audio, transcripts, settings).
 ///
 /// JVoice is a menu-bar app, so scheduled checks use Sparkle's "gentle reminders": a found update's
 /// window opens *behind* the user's windows instead of taking focus — except when Sparkle decides on
