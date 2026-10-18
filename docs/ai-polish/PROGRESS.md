@@ -3,6 +3,12 @@
 Spec: `docs/ai-polish/PROTOTYPE-PLAN.md`. Branch: `feat/ai-polish` (pushed to `origin` for CI only —
 never merged, tagged or released). "State" is always current; "Log" is newest first.
 
+## Release (2026-10-18)
+
+- Merged into **`release/1.3.0`** (merge `9f7296d`, with main's Sparkle 1.2.0) for release 1.3.0 — not pushed or
+  published yet; status in `docs/sparkle-updates/README.md` → "Release 1.3.0". PRIVACY.md's AI Polish section was
+  rewritten there to say exactly when and what is sent; its effective date is now 18 October 2026.
+
 ## Latest (2026-10-17, Mac session, after the workflow)
 
 - **Key storage moved out of the Keychain** into one owner-only file,

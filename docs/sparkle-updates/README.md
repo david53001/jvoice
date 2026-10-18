@@ -350,6 +350,82 @@ Install and Relaunch; afterwards dictate once (Microphone + Accessibility must s
 
 ## STATUS / NEXT STEPS
 
+### Release 1.3.0 (prepared 2026-10-18, NOT pushed / tagged / published / installed)
+
+1.2.0 (build 7) is published as GitHub release `v1.2.0` (Latest). Branch **`release/1.3.0`**, worktree
+`/Users/davidghermansteinberg/Desktop/Home/Projects/Code/JVoice/.claude/worktrees/release-1.3.0`, made from local
+`main` = `origin/main` = `42612be` ("Release 1.2.0"). Commits: `9f7296d` = `git merge feat/ai-polish` (no rebase/squash;
+`feat/ai-polish` already contains `feat/math-context` and `feat/math-format` — `git merge` of those two says "Already up
+to date"), then the 1.3.0 commit (Launch at Login switch, version 1.3.0 / build 8, docs), then a docs commit with these
+results.
+
+What 1.3.0 is (CHANGELOG `[1.3.0]`): opt-in AI Polish (Claude, user's own Anthropic key in
+`~/Library/Application Support/JVoice/anthropic-api-key` — NOT the Keychain since 2026-10-17 —, prepaid local balance,
+prompt v2), context-aware Greek letters + the shared maths notation, Opacity setting + its tour step, resizable masonry
+Settings, no blank Settings window, and the new **Settings → Startup → Launch at Login** switch.
+
+How the conflicts were resolved (both sides kept): Settings = AI Polish's masonry list + main's **Updates** card (+ the
+new **Startup** card); AppDelegate = main's login card + ai-polish's reopen handler (a no-op in the `SPARKLE_E2E_TEST`
+build); `run-logic-tests.sh` = both new sections (6 now); UIPreviewRunner = ai-polish's in-process capture + main's
+Updates/login-card shots + a new invisible `--offscreen` mode; CI's Settings-smoke step now uses `build-app.sh` (a
+hand-made bundle without Sparkle.framework can't launch since 1.2.0). The 5-use login prompt still counts at the very end
+of `finishTranscription` (`onDictationCompleted`), after AI Polish, so a polished and an unpolished dictation count the
+same, and failed/cancelled ones (incl. one cancelled during the polish) don't. `isDictationActive` covers the new
+`.refining` pill. "Check Automatically" stays default ON (`SUEnableAutomaticChecks` = YES, unchanged).
+
+Launch at Login switch: `SMAppService.mainApp.status` is the source of truth (`VoiceCoordinator.refreshLaunchAtLogin()` →
+`launchAtLogin` + `launchAtLoginNeedsApproval`, on launch, on `LaunchAtLoginManager.didChangeNotification`, on menu open,
+on the card's appear / any window becoming key, after every change). Switch, menu item and card all end in
+`LaunchAtLoginManager.setEnabled` (marks the card answered, closes it if it is up, posts the notification). Only
+`.requiresApproval` shows **Open Login Items**. No first-launch auto-enable. The card's text now says "in Settings or
+the JVoice menu".
+
+Verified 2026-10-18 on this Mac (background only, nothing shown on screen; real output in the release session's report):
+- [x] `swift build -c release` (SDK 26.5 via `scripts/sdk-env.sh`): Build complete, no new warnings in changed files.
+- [x] `./scripts/run-logic-tests.sh`: **2716 assertions in 6 sections, 0 failures** (incl. "Settings tour: Opacity →
+      Launch at login (Startup switch) → ⓘ" and "settings/Launch at login fits").
+- [x] `./scripts/verify-streaming.sh`: "All streaming + recovery verification passed." `./scripts/verify-tour-scroll.sh`: PASS.
+- [x] `--settings-smoke` from a `build-app.sh` copy re-identified `com.jvoice.app.previewtest` (scratch dir):
+      "OK — Settings built, laid out and drawn (700×588)". Its defaults domain + Launch Services record removed after.
+- [x] `--ui-preview <dir> --offscreen` from the same copy: 16 drawings (Settings at designed/wide/fill/small/bottom size,
+      fill with a forced "Update Available (1.2.1)…", the login card + its "done" line, Light + Dark). Looked at: the
+      Updates, Startup and AI Polish cards fit both the 2- and 3-column layouts with nothing clipped. Not committed:
+      the AI Polish card shows the last 4 characters of the real saved key (`••••xxxx`, read from the key file).
+- [x] `scripts/sparkle-e2e-test.sh` (non-UI mode) on the merged code: **GOOD update installed (build 101): PASS**,
+      **BAD signature refused (still build 100): PASS**, codesign strict OK, Authority=JVoice Self-Signed; no leftover
+      process, Launch Services record or work dir; `/Applications/JVoice.app` (pid 4073) untouched.
+- [x] `scripts/package-release.sh` refuses without overrides ("HEAD is not origin/main"); dry run
+      `ALLOW_NOT_MAIN=1 scripts/package-release.sh` (tree clean): JVoice 1.3.0 (build 8), codesign OK, Authority=JVoice
+      Self-Signed, zip 3.46 MB, DMG 3.86 MB, appcast `sparkle:version` 8 with `DRYRUN-not-signed`; no gh command
+      printed. Dry-run files deleted afterwards.
+
+Not verified here (owner-only checks):
+- [ ] The swift-testing suite (incl. the new `TourCatalogTests.settingsTourShowsLaunchAtLoginAfterOpacity` and the AI
+      Polish tests) — CI only; never on this Mac. Check the `test.yml` run after pushing (also the reworked smoke step).
+- [ ] Flipping the switch on a real, signed install (registers a real login item — not done by design); the
+      `.requiresApproval` caption/button (can't force that state); the card ↔ switch sync live with Settings open.
+- [ ] Looking at Settings, the tour's new "Launch at login" step (`tour-login-*`) and the HUD with real translucency:
+      `--ui-preview <dir>` without `--offscreen` (windows appear behind everything for ~1 s each).
+- [ ] AI Polish live with a key (dogfood steps: `docs/ai-polish/PROGRESS.md` → "David: manual test steps").
+
+Owner's release steps (from the main checkout, after review; `--latest` rule above):
+
+```sh
+# `main` is checked out in the sparkle-updates worktree (the main checkout is on feat/guided-tour), so work there:
+cd /Users/davidghermansteinberg/Desktop/Home/Projects/Code/JVoice/.claude/worktrees/sparkle-updates
+git merge --ff-only release/1.3.0                           # main has not moved since 42612be, so this fast-forwards
+./scripts/run-logic-tests.sh && ./scripts/verify-streaming.sh
+git push origin main                                         # CI runs; wait for green
+# (re-date CHANGELOG [1.3.0] + PRIVACY.md's effective date if publishing on another day; commit + push)
+scripts/package-release.sh ~/Desktop/jvoice-1.3.0-notes.md   # then run the printed `gh release create v1.3.0 … --latest`
+curl -fsSL https://github.com/david53001/jvoice/releases/latest/download/appcast.xml | grep sparkle:version   # → 8
+```
+
+Then: the first real Sparkle update (1.2.0 → 1.3.0) on an installed 1.2.0: menu → Check for Updates… → Install Update
+→ Install and Relaunch; dictate once (Microphone + Accessibility must still work without a prompt).
+
+### 1.2.0 work (feat/sparkle-updates, released 2026-10-18 as v1.2.0)
+
 Done on `feat/sparkle-updates` (2026-10-18), commits `31987d4` (app code + tests), `3b5775b` (scripts) and the docs
 commit after it:
 

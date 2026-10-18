@@ -1,7 +1,15 @@
-# HANDOFF — state as of 2026-10-05 (branch `feat/math-context` = `feat/math-format` + context-aware Greek letters, merged with the installed `feat/tour-opacity`; pushed as a branch and installed; v1.1.4 is the last release)
+# HANDOFF — state as of 2026-10-18 (v1.2.0 published; release 1.3.0 prepared on `release/1.3.0`, not pushed — see the first entry)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+
+## 2026-10-18 — Release 1.3.0 prepared (branch `release/1.3.0`, worktree `.claude/worktrees/release-1.3.0`; NOT pushed, tagged, published or installed)
+
+**Ask (David):** every app checks for updates automatically (JVoice: Sparkle's "Check Automatically" stays default ON); Settings gets a place to enable launch at login (like MacStats/BetterScreenshot), alongside the one-time pop-up. The workflow also asked to ship `feat/ai-polish` (+ math context/format) as 1.3.0.
+
+**Done:** `main` (= 1.2.0, published) + `git merge feat/ai-polish`; Settings → **Startup → Launch at Login** switch in sync with the menu item and the one-time card (no first-launch auto-enable); version **1.3.0 / build 8**; CHANGELOG, README, PRIVACY (exactly what AI Polish sends and when), CLAUDE.md + area briefs. Local verification all green (logic 2716/2716, streaming, tour-scroll, Settings smoke, offscreen preview, Sparkle e2e GOOD+BAD, release dry run). Full status, owner-only checks and the exact release commands: `docs/sparkle-updates/README.md` → "STATUS / NEXT STEPS" → "Release 1.3.0".
+
+**Next:** David reviews the branch, merges to `main`, pushes (CI), then `scripts/package-release.sh` + the printed `gh release create v1.3.0 … --latest`.
 
 ## 2026-10-05 — context-aware Greek letters, rounds 2–3 (branch `feat/math-context`, pushed, CI green, INSTALLED; not merged into `main`, not released)
 
