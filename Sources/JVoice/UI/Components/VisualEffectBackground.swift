@@ -34,6 +34,21 @@ struct VisualEffectBackground: NSViewRepresentable {
         return image
     }
 
+    /// A rounded-rectangle mask (continuous corners of `radius`, a stretchable middle), for a view at
+    /// least `2 × radius` in each direction.
+    static func roundedMask(radius: CGFloat) -> NSImage {
+        let cap = ceil(radius)
+        let side = cap * 2 + 1
+        let image = NSImage(size: NSSize(width: side, height: side), flipped: false) { rect in
+            NSColor.black.setFill()
+            NSBezierPath(cgPath: RoundedRectangle(cornerRadius: radius, style: .continuous).path(in: rect).cgPath).fill()
+            return true
+        }
+        image.capInsets = NSEdgeInsets(top: cap, left: cap, bottom: cap, right: cap)
+        image.resizingMode = .stretch
+        return image
+    }
+
     func updateNSView(_ view: NSVisualEffectView, context: Context) {
         view.material = material
         view.state = state

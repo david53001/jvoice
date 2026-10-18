@@ -45,8 +45,17 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     // MARK: - Menu
 
+    /// The status-item menu is open (menu tracking). The one-time launch-at-login card waits for it
+    /// to close (`LaunchAtLoginPromptController.isMenuOpen`).
+    private(set) var isMenuOpen = false
+
+    func menuWillOpen(_ menu: NSMenu) { isMenuOpen = true }
+    func menuDidClose(_ menu: NSMenu) { isMenuOpen = false }
+
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
+        // Items carry their own isEnabled (the update item can be greyed out while a check runs).
+        menu.autoenablesItems = false
 
         let dictationTitle = activity == .recording ? "Stop Dictation" : "Start Dictation"
         menu.addItem(menuItem(dictationTitle, #selector(toggleDictation)))
@@ -60,6 +69,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         menu.addItem(launchItem)
 
         menu.addItem(helpToursItem())
+
+        // Sparkle: the result of a check, or the update a background check found — named right in the
+        // menu ("Update Available (X)…") until the user has looked at it.
+        let updatesItem = menuItem(Updates.shared.actionTitle, #selector(checkForUpdates))
+        updatesItem.isEnabled = Updates.shared.canCheckOrShow
+        menu.addItem(updatesItem)
 
         menu.addItem(.separator())
 
@@ -99,6 +114,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
     @objc private func openSettings() {
         coordinator?.openSettingsWindow()
+    }
+
+    @objc private func checkForUpdates() {
+        Updates.shared.checkForUpdates()
     }
 
     @objc private func toggleLaunchAtLogin() {

@@ -19,12 +19,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         })
     /// The first-run window; made on first use (new users at launch, or the Welcome tour from the menu).
     private var welcomeWindow: WelcomeWindow?
+    /// "Open JVoice at login?", once, after the 5th completed dictation.
+    private var loginPrompt: LaunchAtLoginPromptController?
 
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.accessory)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        #if SPARKLE_E2E_TEST
+        // The throwaway build of scripts/sparkle-e2e-test.sh runs next to the user's real copy: it
+        // only starts the updater — no status item, hotkeys, microphone, model load, orphan-WAV sweep or
+        // Welcome window, which would touch the real app's shared state or ask for permissions.
+        Updates.shared.start()
+        return
+        #endif
         installTours()
         // A new user who hasn't answered "Want a quick tour?" gets the Welcome window, which asks for
         // Accessibility itself — so the launch-time system prompt would only stack a second dialog.
@@ -34,6 +43,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         coordinator.start()
         coordinator.bootstrapLaunchAtLogin()
+        // "Check for Updates…" in the menu, Settings → Updates, and the daily background check.
+        Updates.shared.start()
+        installLoginPrompt()
 
         // Route service-level failures (e.g. settings encode errors) through
         // the HUD instead of silently swallowing them. Installing the handler
@@ -53,12 +65,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        #if SPARKLE_E2E_TEST
+        return   // nothing was started
+        #endif
         coordinator.cleanUpForTermination()
         coordinator.flushSettings()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    // MARK: - Launch at login
+
+    private func installLoginPrompt() {
+        let prompt = LaunchAtLoginPromptController()
+        prompt.isDictationActive = { [weak coordinator] in coordinator?.isDictationActive ?? false }
+        prompt.isMenuOpen = { [weak coordinator] in coordinator?.isMenuBarMenuOpen ?? false }
+        prompt.appearance = { [weak coordinator] in coordinator?.appTheme.nsAppearance }
+        coordinator.onDictationCompleted = { [weak prompt] in prompt?.dictationCompleted() }
+        loginPrompt = prompt
     }
 
     // MARK: - Tours

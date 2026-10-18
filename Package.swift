@@ -21,6 +21,12 @@ let package = Package(
         .package(
             url: "https://github.com/sindresorhus/KeyboardShortcuts.git",
             exact: "1.10.0"
+        ),
+        // Auto-updates (docs/sparkle-updates/README.md). Exact pin: the bundled framework,
+        // the release tools in ~/Developer/Sparkle/2.10.0 and the appcast format must agree.
+        .package(
+            url: "https://github.com/sparkle-project/Sparkle",
+            exact: "2.10.0"
         )
     ],
     targets: [
@@ -34,7 +40,16 @@ let package = Package(
                 .product(
                     name: "KeyboardShortcuts",
                     package: "KeyboardShortcuts"
+                ),
+                .product(
+                    name: "Sparkle",
+                    package: "Sparkle"
                 )
+            ],
+            // Sparkle.framework is embedded in JVoice.app/Contents/Frameworks by
+            // scripts/build-app.sh, so the executable looks for it there.
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
             ]
         ),
         .testTarget(

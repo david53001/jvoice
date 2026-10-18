@@ -19,9 +19,10 @@
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.1.4</string>
+    <string>1.2.0</string>
+    <!-- The integer build number Sparkle compares: raise it by one for every release, never reuse one. -->
     <key>CFBundleVersion</key>
-    <string>6</string>
+    <string>7</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>LSUIElement</key>
@@ -34,5 +35,12 @@
     <string>JVoice needs microphone access to capture speech for transcription.</string>
     <key>NSAccessibilityUsageDescription</key>
     <string>JVoice needs Accessibility access to paste transcribed text into other applications.</string>
+    <!-- Sparkle auto-updates (docs/sparkle-updates/README.md). -->
+    <key>SUFeedURL</key>
+    <string>https://github.com/david53001/jvoice/releases/latest/download/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>JrE6EncJErY++AZZXYrrwcNmcVzY/M2wgDWcCkaBf6U=</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
 </dict>
 </plist>
