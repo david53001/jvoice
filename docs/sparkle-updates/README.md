@@ -468,6 +468,7 @@ has deleted them. They're 42-byte test-only files; clear them any time with
 
 | Attempt | Run id | Commit | Result |
 |---|---|---|---|
+| (pre) | [39161164965](https://github.com/david53001/jvoice/actions/runs/39161164965) | `fd7bef3` | red, no crash: 583/586 passed; `speculativeTailHitMakesFinishImmediate` + `chunkCutReusesSpeculativeDecode` (fixed 120–150 ms sleeps that miss on a loaded runner; tests and streaming code unchanged since 1.2.0). Fixed in the next commit with the file's own `waitUntil` (also `speculativeTailMissRedecodesWholeTail`); gate restarted |
 | 1 | | | |
 | 2 | | | |
 | 3 | | | |

@@ -288,7 +288,7 @@ private func append(_ data: Data, to url: URL) throws {
         log: { events.add($0) }
     )
     await session.start(url: url)
-    try await Task.sleep(nanoseconds: 150_000_000)
+    try await waitUntil { await sum.total >= Int(2.0 * 16_000) }
     let decodedDuringPause = await sum.total
     #expect(decodedDuringPause == Int(2.0 * 16_000))
     let result = await session.finish()
@@ -314,10 +314,10 @@ private func append(_ data: Data, to url: URL) throws {
         log: { events.add($0) }
     )
     await session.start(url: url)
-    try await Task.sleep(nanoseconds: 120_000_000)
+    try await waitUntil { events.contains("started") }
     #expect(events.contains("started"))
     try append(makeWavSegments([(1.0, 0.5), (0.5, 0.0)]), to: url) // the user keeps talking
-    try await Task.sleep(nanoseconds: 120_000_000)
+    try await waitUntil { events.contains("resumed") }
     let result = await session.finish()
     #expect(result != nil)
     #expect(await sum.lastCount == Int(3.3 * 16_000)) // final decode covered the whole pending audio
@@ -344,10 +344,10 @@ private func append(_ data: Data, to url: URL) throws {
         log: { events.add($0) }
     )
     await session.start(url: url)
-    try await Task.sleep(nanoseconds: 120_000_000)
+    try await waitUntil { events.contains("started") }
     #expect(events.contains("started"))
     try append(makeWavSegments([(0.5, 0.0)]), to: url) // more silence → a cut candidate appears
-    try await Task.sleep(nanoseconds: 120_000_000)
+    try await waitUntil { events.contains("reuses") }
     #expect(events.contains("reuses"))
     let result = await session.finish()
     #expect(result == "p")
