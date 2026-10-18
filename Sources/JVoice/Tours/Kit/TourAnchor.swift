@@ -12,6 +12,13 @@ public extension NSView {
         }
         set { setAccessibilityIdentifier(newValue ?? "") }
     }
+
+    /// The corner radius of the control's own shape, so the tour's outline box follows it (grown by the
+    /// box's padding) instead of drawing a small-radius rectangle around, say, a capsule. Nil = the
+    /// default box radius; any radius is capped at half the box's short side (`.infinity` = a capsule).
+    var tourCornerRadius: CGFloat? {
+        (self as? TourAnchorNSView)?.cornerRadius
+    }
 }
 
 public extension NSWindow {
@@ -36,21 +43,30 @@ public extension NSWindow {
 public extension View {
     /// SwiftUI windows (Settings, History): puts a transparent AppKit view carrying `id` behind this
     /// view, the same size, so `NSWindow.view(forTourAnchor:)` finds SwiftUI content too.
-    func tourAnchor(_ id: String) -> some View {
-        background(TourAnchorView(id: id))
+    /// `cornerRadius`: the view's own shape (see `NSView.tourCornerRadius`), e.g. `.infinity` for a capsule.
+    func tourAnchor(_ id: String, cornerRadius: CGFloat? = nil) -> some View {
+        background(TourAnchorView(id: id, cornerRadius: cornerRadius))
     }
+}
+
+/// The transparent view carrying a SwiftUI anchor (and its shape's corner radius).
+final class TourAnchorNSView: NSView {
+    var cornerRadius: CGFloat?
 }
 
 private struct TourAnchorView: NSViewRepresentable {
     let id: String
+    let cornerRadius: CGFloat?
 
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
+    func makeNSView(context: Context) -> TourAnchorNSView {
+        let view = TourAnchorNSView()
         view.tourAnchor = id
+        view.cornerRadius = cornerRadius
         return view
     }
 
-    func updateNSView(_ view: NSView, context: Context) {
+    func updateNSView(_ view: TourAnchorNSView, context: Context) {
         view.tourAnchor = id
+        view.cornerRadius = cornerRadius
     }
 }

@@ -59,6 +59,8 @@ public final class TagOverlayController: TourTagPresenting {
     private weak var anchor: NSView?
     /// The step on screen and its resolved body (to redo the counter in `updateProgress`).
     private var shown: (step: TourStep, body: String)?
+    /// The "n of m" on screen (to redo the bubble in `updateBody`).
+    private var counter = (number: 1, total: 1)
     private var isExplain = true
     private var isDone = false
     private var isMenuBarHost = false
@@ -89,6 +91,7 @@ public final class TagOverlayController: TourTagPresenting {
         if self.anchor !== anchor || scrollObservers.isEmpty { followScrolling(of: anchor) }
         self.anchor = anchor
         shown = (step, body)
+        counter = (number, total)
         isExplain = step.kind == .explain
         isDone = false
         tagSize = bubble.configure(title: step.title, body: body, number: number, total: total,
@@ -101,8 +104,18 @@ public final class TagOverlayController: TourTagPresenting {
 
     public func updateProgress(number: Int, total: Int) {
         guard host != nil, !isDone, let shown else { return }
+        counter = (number, total)
         tagSize = bubble.configure(title: shown.step.title, body: shown.body, number: number, total: total,
                                    isExplain: isExplain)
+        laidOut = nil
+        refresh()
+    }
+
+    public func updateBody(_ body: String) {
+        guard host != nil, !isDone, let shown, shown.body != body else { return }
+        self.shown = (shown.step, body)
+        tagSize = bubble.configure(title: shown.step.title, body: body, number: counter.number,
+                                   total: counter.total, isExplain: isExplain)
         laidOut = nil
         refresh()
     }
@@ -252,7 +265,8 @@ public final class TagOverlayController: TourTagPresenting {
                                 screen: screen?.frame,
                                 preferred: shown?.step.placement ?? .automatic,
                                 host: isMenuBarHost ? nil : hostRect,
-                                obstacles: Self.obstacles(around: anchor, in: host))
+                                obstacles: Self.obstacles(around: anchor, in: host),
+                                anchorRadius: anchor.tourCornerRadius)
 
         // The decor spans the host (for the dim), the box and the tag (for the leader line).
         var frame = p.outer.union(p.tag)
@@ -263,6 +277,7 @@ public final class TagOverlayController: TourTagPresenting {
         func local(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x - o.x, y: p.y - o.y) }
         decorView.dim = isMenuBarHost ? nil : (local(hostRect), shape?.cornerRadius ?? Self.cornerRadius(of: host))
         decorView.box = local(p.box)
+        decorView.boxRadius = TagLayout.boxRadius(box: p.box, anchorRadius: anchor.tourCornerRadius)
         decorView.outer = local(p.outer)
         decorView.leader = p.leader.map { (local($0.from), local($0.to)) }
         decor.setFrame(frame, display: false)

@@ -10,6 +10,8 @@ public enum HUDState: Equatable, Codable, Sendable {
     case downloadingModel(downloadedBytes: Int64, totalBytes: Int64)
     case preparingModel
     case transcribing
+    /// AI Polish (opt-in) is waiting on Claude — at most `AppTimings.aiPolishTimeout`.
+    case refining
     case done(String)
     /// Clipboard-only mode finished: the transcript is on the clipboard, not in
     /// an app — never say "Pasted".
@@ -39,6 +41,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         case downloadingModel
         case preparingModel
         case transcribing
+        case refining
         case done
         case copied
         case error
@@ -57,6 +60,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Preparing model…"
         case .transcribing:
             return "Transcribing…"
+        case .refining:
+            return "Refining with AI…"
         case .done:
             return "Pasted"
         case .copied:
@@ -80,6 +85,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "Optimizing for Neural Engine"
         case .transcribing:
             return "Transcribing"
+        case .refining:
+            return "AI refining"
         case .done:
             return "Pasted"
         case .copied:
@@ -103,6 +110,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "One-time per model. Keep JVoice open."
         case .transcribing:
             return "Processing the latest recording…"
+        case .refining:
+            return "Claude is polishing the text…"
         case .done, .copied:
             return nil
         case .error(let message):
@@ -124,6 +133,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return "gearshape.2"
         case .transcribing:
             return "arrow.triangle.2.circlepath"
+        case .refining:
+            return "sparkles"
         case .done:
             return "checkmark.circle.fill"
         case .copied:
@@ -147,6 +158,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             return .blue
         case .transcribing:
             return .blue
+        case .refining:
+            return .orange
         case .done, .copied:
             return .green
         case .error:
@@ -160,14 +173,14 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .idle:
             return false
-        case .recording, .downloadingModel, .preparingModel, .transcribing, .done, .copied, .error, .notice:
+        case .recording, .downloadingModel, .preparingModel, .transcribing, .refining, .done, .copied, .error, .notice:
             return true
         }
     }
 
     public var isBusy: Bool {
         switch self {
-        case .recording, .downloadingModel, .preparingModel, .transcribing:
+        case .recording, .downloadingModel, .preparingModel, .transcribing, .refining:
             return true
         case .idle, .done, .copied, .error, .notice:
             return false
@@ -178,7 +191,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .done, .copied, .error, .notice:
             return true
-        case .idle, .recording, .downloadingModel, .preparingModel, .transcribing:
+        case .idle, .recording, .downloadingModel, .preparingModel, .transcribing, .refining:
             return false
         }
     }
@@ -187,7 +200,7 @@ public enum HUDState: Equatable, Codable, Sendable {
         switch self {
         case .done(let text), .copied(let text), .error(let text), .notice(let text):
             return text
-        case .idle, .recording, .downloadingModel, .preparingModel, .transcribing:
+        case .idle, .recording, .downloadingModel, .preparingModel, .transcribing, .refining:
             return nil
         }
     }
@@ -210,6 +223,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             self = .preparingModel
         case .transcribing:
             self = .transcribing
+        case .refining:
+            self = .refining
         case .done:
             self = .done(try container.decode(String.self, forKey: .payload))
         case .copied:
@@ -237,6 +252,8 @@ public enum HUDState: Equatable, Codable, Sendable {
             try container.encode(Kind.preparingModel, forKey: .kind)
         case .transcribing:
             try container.encode(Kind.transcribing, forKey: .kind)
+        case .refining:
+            try container.encode(Kind.refining, forKey: .kind)
         case .done(let text):
             try container.encode(Kind.done, forKey: .kind)
             try container.encode(text, forKey: .payload)

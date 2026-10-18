@@ -19,9 +19,13 @@ public protocol TourTagPresenting: AnyObject {
     func hide()
     /// The step on screen keeps its place, but "n of m" changed (a later step's control appeared or went).
     func updateProgress(number: Int, total: Int)
+    /// The step on screen keeps its place, but its body text changed (a live caption — the Opacity
+    /// step's "Watch: 37 %").
+    func updateBody(_ body: String)
 }
 
 public extension TourTagPresenting {
     /// Presenters that only show a counter when a step appears can ignore mid-step changes.
     func updateProgress(number: Int, total: Int) {}
+    func updateBody(_ body: String) {}
 }

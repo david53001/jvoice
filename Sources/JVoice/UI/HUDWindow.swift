@@ -86,6 +86,9 @@ final class HUDWindow: NSPanel {
     }
 
     func update(state: HUDState, theme: AppTheme = .system, meter: AudioLevelMeter? = nil) {
+        // A pill appearing (not morphing from one on screen — the invisible prewarm doesn't count) goes
+        // to the display the user is on now.
+        if !isVisible || prewarmHidePending { pillScreen = nil }
         // A real state change always wins over a still-pending prewarm hide.
         prewarmHidePending = false
         alphaValue = 1
@@ -140,8 +143,16 @@ final class HUDWindow: NSPanel {
         setFrame(NSRect(origin: frame.origin, size: NSSize(width: width, height: height)), display: false)
     }
 
+    /// The display the pill is on: picked when it appears (the one under the mouse — where the user is
+    /// working), then kept while it stays up, so a recording → transcribing → Pasted morph never jumps
+    /// to another monitor if the pointer moves.
+    private weak var pillScreen: NSScreen?
+
     private func positionAtBottomCenter() {
-        guard let screen = NSScreen.main else { return }
+        if pillScreen == nil || !NSScreen.screens.contains(where: { $0 === pillScreen }) {
+            pillScreen = NSScreen.underMouse
+        }
+        guard let screen = pillScreen else { return }
         let visibleFrame = screen.visibleFrame
         let x = visibleFrame.midX - frame.width / 2
         let y = visibleFrame.minY + HUDLayout.bottomGap - HUDLayout.shadowPadding

@@ -3,20 +3,36 @@ import SwiftUI
 
 /// Hidden dev mode: `JVoice --ui-preview <dir>`.
 ///
-/// Opens the real Settings window (Light and Dark), the Welcome window (both pages) and the HUD pill
+/// Opens the real Settings window (Light and Dark; top and scrolled to the bottom), the Welcome window (both pages) and the HUD pill
 /// in every state (plus a tour tag over Settings), one at a time, and saves a screenshot of the screen
 /// under each window — desktop included, so the translucency shows — to `<dir>` with
-/// `screencapture -R`. That needs Screen Recording permission for the terminal that runs it; without
-/// it (`CGPreflightScreenCaptureAccess()` false, or `screencapture` fails) each window is drawn from
-/// its views instead (`NSView.cacheDisplay`, no permission needed): layout, text, tints and corners
-/// are right, but behind-window materials come out flat and a tour tag's own panel is left out
-/// (files end in `-views.png`). `ImageRenderer` / `CALayer.render` come back blank, see `UI/CLAUDE.md`.
-/// Settings is also shown scrolled to the bottom (the Updates card), once with a forced
-/// "Update Available (1.2.1)…" label (`Updates.showPendingVersionForPreview`), the longest title.
+/// `CGWindowListCreateImage` of that screen region, taken in-process: the only way to look at the UI without clicking through the app (`ImageRenderer` / `CALayer.render` come back blank, see `UI/CLAUDE.md`). A process
+/// may capture its own windows without Screen Recording permission (other apps' windows are left out,
+/// so use `--backdrop` for a known background).
+///
+/// Options (2026-09-30, Settings → Opacity): `--opacity <0…1>` previews that Opacity without saving it;
+/// `--backdrop white|black|wallpaper` puts a full-screen window of that under everything (white = the
+/// worst case for the pill; wallpaper = a bright macOS wallpaper); `--active` draws Settings' and
+/// Welcome's material in its active (key-window, see-through) state instead of the inactive one the
+/// never-key preview windows get (controls still look inactive); `--hud-timeline`
+/// also captures the "Pasted" and error pills 0.5, 2 and 5 s after they appear (Liquid Glass re-adapts
+/// to what's behind it over ~1 s). Settings is also captured with a forced "Update Available (1.2.1)…"
+/// on the Updates card's button (`Updates.showPendingVersionForPreview`, its longest label), and the
+/// one-time "Open JVoice at login?" card (`LaunchAtLoginCard`) is captured in both appearances.
+///
+/// `--offscreen` (2026-10-18): nothing at all appears on screen — every window is ordered in with
+/// `alphaValue = 0`, ignoring the mouse, parked behind every real window, and drawn from its views
+/// (`NSView.cacheDisplay`, files end in `-views.png`): layout, text, tints and corners are right,
+/// behind-window materials come out flat. Only Settings (every size, bottom, update available) and
+/// the login card are drawn; tour tags, Welcome and the HUD are skipped (they order their own
+/// windows in). Use it to check a layout while someone works on the Mac.
 ///
 /// Like `--settings-smoke` it never calls `VoiceCoordinator.start()` and never writes a setting:
 /// appearances are forced on the windows directly, not through `appTheme`. Run it from an assembled
-/// `.app` (recipe in `UI/CLAUDE.md`). The windows really appear on screen for about a second each.
+/// `.app` (recipe in `UI/CLAUDE.md`). The windows really appear on screen for about a second each, but
+/// parked just above the desktop — BEHIND every real window — and the app never activates, so a run
+/// doesn't cover or steal focus from whatever the owner is working in (2026-10-17). Each capture is
+/// the topmost preview window and everything below it, so the owner's windows never show up in it.
 @MainActor
 enum UIPreviewRunner {
     static func shouldRun(arguments: [String]) -> Bool {
@@ -31,45 +47,33 @@ enum UIPreviewRunner {
         let dir = URL(fileURLWithPath: arguments[flag + 1], isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         NSApplication.shared.setActivationPolicy(.accessory)
+        func option(_ name: String) -> String? {
+            arguments.firstIndex(of: name).flatMap { arguments.indices.contains($0 + 1) ? arguments[$0 + 1] : nil }
+        }
+        if let raw = option("--opacity"), let value = Double(raw) {
+            UIOpacityStore.shared.persists = false   // preview only — never written
+            UIOpacityStore.shared.value = UIOpacity.clamped(value)
+        }
+        WindowMaterial.forcesActiveState = arguments.contains("--active")
+        TagOverlayController.probeLevel = Self.behindLevel
+        WelcomeWindow.activatesOnShow = false
+        let offscreen = arguments.contains("--offscreen")
+        let backdrop = option("--backdrop").flatMap(Self.backdropWindow)
+        backdrop?.orderFrontRegardless()
         let coordinator = VoiceCoordinator()
         var saved = 0
 
-        // Without Screen Recording `screencapture` saves nothing (or only the wallpaper): draw from the views.
-        var screenCapture = CGPreflightScreenCaptureAccess()
-        if !screenCapture { print("ui-preview: no Screen Recording permission; drawing windows from their views (materials flat)") }
-
         func capture(_ window: NSWindow, _ name: String, after delay: TimeInterval = 0.8) {
             window.displayIfNeeded()
-            capture(window.frame, name, after: delay, window: window)
-        }
-
-        /// `window`: what to draw from its views when the screen can't be captured.
-        func capture(_ frame: NSRect, _ name: String, after delay: TimeInterval = 0.8, window: NSWindow? = nil) {
-            RunLoop.main.run(until: Date().addingTimeInterval(delay))
-            if !screenCapture {
-                if let window { drawFromViews(window, name) }
+            if offscreen {
+                RunLoop.main.run(until: Date().addingTimeInterval(delay))
+                drawFromViews(window, name)
                 return
             }
-            let out = dir.appendingPathComponent("\(name).png").path
-            let task = Process()
-            task.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
-            // The screen region under the window, not `-l <window>`: a single-window capture has no
-            // backdrop, so materials and Liquid Glass would come out flat black.
-            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
-            let r = frame.insetBy(dx: -12, dy: -12)
-            let region = "\(Int(r.minX)),\(Int(primaryHeight - r.maxY)),\(Int(r.width)),\(Int(r.height))"
-            task.arguments = ["-x", "-R", region, out]
-            try? task.run()
-            task.waitUntilExit()
-            if task.terminationStatus == 0 {
-                saved += 1; print("ui-preview: \(out)")
-            } else {
-                screenCapture = false   // e.g. "could not create image from rect": no permission after all
-                print("ui-preview: screencapture failed; drawing windows from their views (materials flat)")
-                if let window { drawFromViews(window, name) }
-            }
+            capture(window.frame, name, after: delay, windows: [window])
         }
 
+        /// `--offscreen`: the window's own views drawn into a bitmap (no screen involved).
         func drawFromViews(_ window: NSWindow, _ name: String) {
             // The frame view (title bar included) when there is one, else the content view.
             guard let view = window.contentView?.superview ?? window.contentView,
@@ -77,22 +81,34 @@ enum UIPreviewRunner {
             view.cacheDisplay(in: view.bounds, to: rep)
             let out = dir.appendingPathComponent("\(name)-views.png")
             guard let png = rep.representation(using: .png, properties: [:]), (try? png.write(to: out)) != nil else { return }
-            saved += 1; print("ui-preview: \(out.path)")
+            saved += 1
+            print("ui-preview: \(out.path)")
         }
 
-        /// Scrolls Settings' content to the bottom (the Updates card is last in the right column).
-        func scrollToBottom(_ window: NSWindow) {
-            func firstScrollView(_ view: NSView) -> NSScrollView? {
-                if let scroll = view as? NSScrollView { return scroll }
-                for sub in view.subviews { if let found = firstScrollView(sub) { return found } }
-                return nil
+        /// Orders a preview window in behind every real window; with `--offscreen` also invisible and
+        /// click-through, so it can't show or swallow a click.
+        func present(_ window: NSWindow) {
+            window.level = Self.behindLevel
+            if offscreen {
+                window.alphaValue = 0
+                window.ignoresMouseEvents = true
             }
-            guard let content = window.contentView, let scroll = firstScrollView(content),
-                  let document = scroll.documentView else { return }
-            let clip = scroll.contentView
-            let y = document.isFlipped ? max(0, document.bounds.height - clip.bounds.height) : 0
-            clip.scroll(to: NSPoint(x: clip.bounds.minX, y: y))
-            scroll.reflectScrolledClipView(clip)
+            window.orderFrontRegardless()
+        }
+
+        func capture(_ frame: NSRect, _ name: String, after delay: TimeInterval = 0.8, windows: [NSWindow]) {
+            RunLoop.main.run(until: Date().addingTimeInterval(delay))
+            let out = dir.appendingPathComponent("\(name).png")
+            // The screen region under the window, not the window alone: a single-window capture has no
+            // backdrop, so materials and Liquid Glass would come out flat black.
+            let primaryHeight = NSScreen.screens.first?.frame.height ?? 0
+            let r = frame.insetBy(dx: -12, dy: -12)
+            let region = CGRect(x: r.minX, y: primaryHeight - r.maxY, width: r.width, height: r.height)
+            guard let image = Self.captureRegion(region, below: Self.topmost(windows)),
+                  let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]),
+                  (try? png.write(to: out)) != nil else { return }
+            saved += 1
+            print("ui-preview: \(out.path)")
         }
 
         let appearances: [(String, NSAppearance.Name)] = [("light", .aqua), ("dark", .darkAqua)]
@@ -100,28 +116,73 @@ enum UIPreviewRunner {
         for (label, name) in appearances {
             let settings = SettingsWindow(coordinator: coordinator)
             settings.appearance = NSAppearance(named: name)
-            settings.orderFrontRegardless()
+            present(settings)
             capture(settings, "settings-\(label)")
+            // Resized (the window is resizable since 2026-10-17): wide = three columns, small = the
+            // minimum the window allows. Then back to the designed size for the shots below.
+            let designed = settings.frame
+            let area = settings.screen?.visibleFrame ?? designed
+            for (shot, size) in [("wide", NSSize(width: min(1240, area.width - 40), height: min(860, area.height - 40))),
+                                 ("fill", NSSize(width: area.width - 40, height: area.height - 40)),
+                                 ("small", settings.minSize)] {
+                // Inside the visible screen, top-left, so nothing is cut off.
+                settings.setFrame(NSRect(x: area.minX + 20, y: area.maxY - size.height - 20,
+                                         width: size.width, height: size.height), display: true)
+                capture(settings, "settings-\(shot)-\(label)")
+                if shot == "fill" {
+                    // Every card at once, the Updates button with its longest label: a found update
+                    // waiting (the updater isn't started here, so the button is otherwise disabled).
+                    Updates.shared.showPendingVersionForPreview("1.2.1")
+                    capture(settings, "settings-fill-update-available-\(label)")
+                    Updates.shared.showPendingVersionForPreview(nil)
+                }
+            }
+            settings.setFrame(designed, display: true)
+            // Scrolled to the bottom: the last cards of the masonry columns.
+            if let scroll = Self.outermostScrollView(in: settings.contentView), let document = scroll.documentView {
+                let bottom = document.isFlipped ? max(0, document.bounds.height - scroll.contentView.bounds.height) : 0
+                scroll.contentView.scroll(to: NSPoint(x: 0, y: bottom))
+                scroll.reflectScrolledClipView(scroll.contentView)
+                capture(settings, "settings-bottom-\(label)")
+                scroll.contentView.scroll(to: .zero)
+                scroll.reflectScrolledClipView(scroll.contentView)
+            }
+            if offscreen { settings.orderOut(nil); continue }   // tags, Welcome: their own windows
             // A tour tag on the model card (the Settings tour's second step).
             if let anchor = settings.view(forTourAnchor: "settings.model"),
                let step = TourCatalog.settings.steps.first(where: { $0.anchor == "settings.model" }) {
                 let tag = TagOverlayController()
                 tag.show(step: step, body: step.body, number: 2, total: TourCatalog.settings.steps.count,
                          anchor: anchor, host: settings)
-                capture(settings.frame.union(tag.tagPanel.frame), "tour-tag-\(label)", window: settings)
+                capture(settings.frame.union(tag.tagPanel.frame), "tour-tag-\(label)", windows: [settings] + tag.windows)
                 tag.hide()
             }
-            // The Updates card: as installed (not started here, so its button is disabled), then with
-            // a found update waiting — the longest label the button gets.
-            scrollToBottom(settings)
-            capture(settings, "settings-bottom-\(label)")
-            Updates.shared.showPendingVersionForPreview("1.2.1")
-            capture(settings, "settings-update-available-\(label)")
-            Updates.shared.showPendingVersionForPreview(nil)
+            // The Opacity step with its demo playing: falling, at Transparent, rising, at Opaque.
+            if let anchor = settings.view(forTourAnchor: OpacityDemoTimeline.anchor),
+               let step = TourCatalog.settings.steps.first(where: { $0.anchor == OpacityDemoTimeline.anchor }) {
+                let wasPersisting = UIOpacityStore.shared.persists
+                UIOpacityStore.shared.persists = false   // the demo restores this; never written
+                anchor.scrollToVisible(anchor.bounds)
+                let tag = TagOverlayController()
+                tag.show(step: step, body: step.body, number: 9, total: TourCatalog.settings.steps.count,
+                         anchor: anchor, host: settings)
+                let demo = OpacityTourDemo()
+                demo.start { tag.updateBody(step.body + " " + $0) }
+                var elapsed = 0.0
+                for (t, name) in [(1.0, "falling"), (2.4, "transparent"), (4.3, "rising"), (5.8, "opaque")] {
+                    capture(settings.frame.union(tag.tagPanel.frame), "tour-opacity-\(name)-\(label)",
+                            after: t - elapsed, windows: [settings] + tag.windows)
+                    elapsed = t + 0.05
+                }
+                demo.stop()
+                tag.hide()
+                UIOpacityStore.shared.persists = wasPersisting
+            }
             settings.orderOut(nil)
 
             let welcome = WelcomeWindow(coordinator: coordinator)
             welcome.appearance = NSAppearance(named: name)
+            welcome.level = Self.behindLevel
             welcome.show(page: .permissions, askTourQuestion: true)
             capture(welcome, "welcome-permissions-\(label)")
             welcome.show(page: .allSet)
@@ -129,11 +190,50 @@ enum UIPreviewRunner {
             welcome.orderOut(nil)
         }
 
+        // The one-time "Open JVoice at login?" card (`LaunchAtLoginPromptController`), at the top right
+        // of the screen under the pointer like the real one; its buttons do nothing here. Its view is
+        // hosted in a preview window of our own (not `LaunchAtLoginCard.show`, which orders a floating
+        // panel in front and makes a VoiceOver announcement).
+        let cardScreen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main
+        for (label, name) in appearances {
+            let looks: [(String, String, String?, [LaunchAtLoginCard.Action])] = [
+                ("login-card", "Open JVoice at login?",
+                 "Your dictation shortcut keeps working after a restart. You can change this any time in Settings or the JVoice menu.",
+                 [.init("No Thanks") {}, .init("Open at Login", primary: true) {}]),
+                ("login-card-done", "JVoice will open at login.", nil, []),
+            ]
+            for (shot, title, message, actions) in looks {
+                let hosting = FirstClickHostingView(rootView: LaunchAtLoginCardView(title: title, message: message, actions: actions))
+                let size = hosting.fittingSize
+                let vf = cardScreen?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+                let panel = LaunchAtLoginCardPanel(
+                    contentRect: NSRect(x: vf.maxX - size.width - LaunchAtLoginCard.screenMargin,
+                                        y: vf.maxY - size.height - LaunchAtLoginCard.screenMargin,
+                                        width: size.width, height: size.height),
+                    styleMask: [.nonactivatingPanel, .borderless], backing: .buffered, defer: false)
+                panel.backgroundColor = .clear
+                panel.isOpaque = false
+                panel.isReleasedWhenClosed = false
+                panel.appearance = NSAppearance(named: name)
+                panel.contentView = hosting
+                present(panel)
+                capture(panel, "\(shot)-\(label)")
+                panel.orderOut(nil)
+            }
+        }
+
+        if offscreen {
+            print("ui-preview: \(saved) drawings in \(dir.path)")
+            exit(saved > 0 ? 0 : 1)
+        }
+
         let hud = HUDWindow()
+        hud.level = Self.behindLevel
         hud.onStop = {}   // show the stop button
         let states: [(String, HUDState)] = [
             ("recording", .recording),
             ("transcribing", .transcribing),
+            ("refining", .refining),
             ("preparing", .preparingModel),
             ("downloading", .downloadingModel(downloadedBytes: 180_000_000, totalBytes: 600_000_000)),
             ("done", .done("Pasted")),
@@ -145,6 +245,27 @@ enum UIPreviewRunner {
                 hud.update(state: state, theme: theme)
                 capture(hud, "hud-\(stateName)-\(label)")
             }
+            if arguments.contains("--hud-timeline") {
+                // A fresh show each time (not a morph), sampled as the glass settles over the backdrop.
+                for (stateName, state) in [("done", HUDState.done("Pasted")), ("error", states[5].1)] {
+                    hud.update(state: .idle)
+                    RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+                    hud.update(state: state, theme: theme)
+                    capture(hud, "hud-\(stateName)-\(label)-t0.5", after: 0.5)
+                    capture(hud, "hud-\(stateName)-\(label)-t2", after: 1.5)
+                    capture(hud, "hud-\(stateName)-\(label)-t5", after: 3)
+                }
+            }
+            // The Recording tour's tag on the recording pill: the outline must hug the capsule.
+            hud.update(state: .recording, theme: theme)
+            RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+            if let anchor = hud.view(forTourAnchor: "pill.controls"),
+               let step = TourCatalog.recordingPill.steps.first {
+                let tag = TagOverlayController()
+                tag.show(step: step, body: step.body, number: 1, total: 1, anchor: anchor, host: hud)
+                capture(hud.frame.union(tag.tagPanel.frame), "tour-pill-\(label)", windows: [hud] + tag.windows)
+                tag.hide()
+            }
             // Half-way through the transcribing → Pasted morph (`HUDLayout.morph`, 0.3 s).
             hud.update(state: .transcribing, theme: theme)
             RunLoop.main.run(until: Date().addingTimeInterval(0.5))
@@ -154,24 +275,66 @@ enum UIPreviewRunner {
         }
         hud.update(state: .idle)
 
-        // The one-time "Open JVoice at login?" card (`LaunchAtLoginPromptController`), on the screen
-        // under the pointer like the real one; its buttons do nothing here.
-        let card = LaunchAtLoginCard()
-        if let screen = NSScreen.screens.first(where: { $0.frame.contains(NSEvent.mouseLocation) }) ?? NSScreen.main {
-            for (label, name) in appearances {
-                card.show(title: "Open JVoice at login?",
-                          message: "Your dictation shortcut keeps working after a restart. You can change this any time in the JVoice menu.",
-                          actions: [.init("No Thanks") {}, .init("Open at Login", primary: true) {}],
-                          on: screen, appearance: NSAppearance(named: name))
-                capture(card.window, "login-card-\(label)")
-                card.show(title: "JVoice will open at login.", message: nil, actions: [],
-                          on: screen, appearance: NSAppearance(named: name))
-                capture(card.window, "login-card-done-\(label)")
-            }
-        }
-        card.hide()
-
+        backdrop?.orderOut(nil)
         print("ui-preview: \(saved) screenshots in \(dir.path)")
         exit(saved > 0 ? 0 : 1)
+    }
+
+    /// The biggest `NSScrollView` under `view` (SwiftUI's page-level `ScrollView`, not a card's list).
+    private static func outermostScrollView(in view: NSView?) -> NSScrollView? {
+        guard let view else { return nil }
+        var found: [NSScrollView] = []
+        func walk(_ v: NSView) {
+            if let s = v as? NSScrollView { found.append(s) }
+            v.subviews.forEach(walk)
+        }
+        walk(view)
+        return found.max { $0.frame.height < $1.frame.height }
+    }
+
+    /// `CGWindowListCreateImage` (on-screen windows in `rect`, global top-left coordinates), looked up at
+    /// run time: the macOS 15 SDK marks it unavailable to Swift in favour of ScreenCaptureKit, which
+    /// needs Screen Recording permission even for the app's own windows.
+    /// Just above the desktop: behind every real window (the tour probes' `probeLevel` trick).
+    static let behindLevel = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.desktopWindow)) + 1)
+
+    /// The front-most of `windows` that is on screen (window-server order), for `captureRegion`.
+    private static func topmost(_ windows: [NSWindow]) -> CGWindowID {
+        let ours = Set(windows.filter(\.isVisible).map { CGWindowID($0.windowNumber) })
+        let list = CGWindowListCopyWindowInfo(.optionOnScreenOnly, kCGNullWindowID) as? [[String: Any]] ?? []
+        for info in list {   // front to back
+            if let number = info[kCGWindowNumber as String] as? CGWindowID, ours.contains(number) { return number }
+        }
+        return ours.first ?? kCGNullWindowID
+    }
+
+    private static func captureRegion(_ rect: CGRect, below window: CGWindowID) -> CGImage? {
+        typealias CreateImage = @convention(c) (CGRect, UInt32, UInt32, UInt32) -> Unmanaged<CGImage>?
+        guard let handle = dlopen("/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics", RTLD_NOW),
+              let symbol = dlsym(handle, "CGWindowListCreateImage") else { return nil }
+        let create = unsafeBitCast(symbol, to: CreateImage.self)
+        // kCGWindowListOptionOnScreenBelowWindow | kCGWindowListOptionIncludingWindow (that window and
+        // everything under it — never the owner's windows above), kCGWindowImageBestResolution
+        return create(rect, (1 << 2) | (1 << 3), window, 1 << 3)?.takeRetainedValue()
+    }
+
+    /// A full-screen borderless window under every preview window: `white`, `black`, or `wallpaper` (a
+    /// bright stock macOS wallpaper — the "busy bright wallpaper" of the opacity spec).
+    private static func backdropWindow(_ kind: String) -> NSWindow? {
+        guard let screen = NSScreen.main else { return nil }
+        let window = NSWindow(contentRect: screen.frame, styleMask: .borderless, backing: .buffered, defer: false)
+        window.level = behindLevel
+        window.isReleasedWhenClosed = false
+        switch kind {
+        case "white": window.backgroundColor = .white
+        case "black": window.backgroundColor = .black
+        case "wallpaper":
+            guard let image = NSImage(contentsOfFile: "/System/Library/Desktop Pictures/Mac Yellow.heic") else { return nil }
+            let view = NSImageView(image: image)
+            view.imageScaling = .scaleAxesIndependently
+            window.contentView = view
+        default: return nil
+        }
+        return window
     }
 }

@@ -18,6 +18,10 @@ public struct SettingsState: Codable, Equatable, Sendable {
     /// v4: spoken mathematics → real notation ("x squared equals 4" → "x² = 4").
     /// Opt-out, like the Windows port's `MathNotation` (schema v6 there).
     public var mathNotation: Bool
+    /// Opt-in AI Polish: send the finished transcript to Anthropic (the user's own key, kept in the
+    /// Keychain — never here) to fix punctuation and misheard words. Default OFF. A NEW key, like
+    /// `appearance`: the schema stays v4 so older builds (feat/math-context) keep reading this blob.
+    public var aiPolish: Bool
 
     public var whisperModel: WhisperModelOption {
         get { model }
@@ -36,7 +40,8 @@ public struct SettingsState: Codable, Equatable, Sendable {
         copyToClipboardOnly: Bool = false,
         appAwareModes: Bool = false,
         appModeRules: [AppModeRule] = [],
-        mathNotation: Bool = true
+        mathNotation: Bool = true,
+        aiPolish: Bool = false
     ) {
         self.mode = mode
         self.model = model
@@ -50,6 +55,7 @@ public struct SettingsState: Codable, Equatable, Sendable {
         self.appAwareModes = appAwareModes
         self.appModeRules = appModeRules
         self.mathNotation = mathNotation
+        self.aiPolish = aiPolish
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -68,6 +74,7 @@ public struct SettingsState: Codable, Equatable, Sendable {
         case appAwareModes
         case appModeRules
         case mathNotation
+        case aiPolish
     }
 
     public init(from decoder: Decoder) throws {
@@ -105,6 +112,8 @@ public struct SettingsState: Codable, Equatable, Sendable {
         appModeRules = try container.decodeIfPresent([AppModeRule].self, forKey: .appModeRules) ?? []
         // v4 field: absent in v1–v3 blobs → default ON, so an upgrade gains the feature.
         mathNotation = try container.decodeIfPresent(Bool.self, forKey: .mathNotation) ?? true
+        // Absent in every older blob → OFF: AI Polish is the one network feature and is never on by itself.
+        aiPolish = try container.decodeIfPresent(Bool.self, forKey: .aiPolish) ?? false
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -124,5 +133,6 @@ public struct SettingsState: Codable, Equatable, Sendable {
         try container.encode(appAwareModes, forKey: .appAwareModes)
         try container.encode(appModeRules, forKey: .appModeRules)
         try container.encode(mathNotation, forKey: .mathNotation)
+        try container.encode(aiPolish, forKey: .aiPolish)
     }
 }

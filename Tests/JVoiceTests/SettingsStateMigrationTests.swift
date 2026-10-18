@@ -145,6 +145,32 @@ import Foundation
     #expect(back.mathNotation == false)
 }
 
+// MARK: - AI Polish (new key, schema stays v4)
+
+@Test func aiPolishDefaultsOffAndAnOlderV4BlobDecodesItOff() throws {
+    #expect(SettingsState().aiPolish == false)
+    #expect(SettingsState.currentSchemaVersion == 4)   // no bump: older builds must keep reading the blob
+    let v4JSON = """
+    {"schemaVersion":4,"mode":"casual","model":"tiny","language":"english",
+     "customWords":[],"removeFillerWords":true,"theme":"dark","developerTerms":true,
+     "translateToEnglish":false,"copyToClipboardOnly":false,"appAwareModes":false,
+     "appModeRules":[],"mathNotation":true}
+    """.data(using: .utf8)!
+    let decoded = try JSONDecoder().decode(SettingsState.self, from: v4JSON)
+    #expect(decoded.aiPolish == false)
+}
+
+@Test func aiPolishRoundTripsThroughSettingsState() throws {
+    var s = SettingsState()
+    s.aiPolish = true
+    let data = try JSONEncoder().encode(s)
+    let back = try JSONDecoder().decode(SettingsState.self, from: data)
+    #expect(back.aiPolish == true)
+    // The flag is the only AI Polish state in the blob — never the key.
+    let json = String(decoding: data, as: UTF8.self).lowercased()
+    #expect(!json.contains("apikey") && !json.contains("sk-ant"))
+}
+
 @Test func newSettingsStateV3Defaults() {
     let s = SettingsState()
     #expect(s.developerTerms == true)

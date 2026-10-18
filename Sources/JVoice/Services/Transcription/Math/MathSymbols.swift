@@ -29,6 +29,8 @@ import Foundation
 ///     the alpha and the omega").
 ///   • "is" / "are" / "by" / "in" / "on" / "at" / "than" — the connective tissue of every
 ///     sentence; as a Relation they would turn ordinary clauses into equations.
+///   • "more than" / "is more than" — "y is 5 more than x" is y = x + 5, not y > x, and "we
+///     got 20 more than 15 last year" is a sentence. "greater than" carries ">" instead.
 ///   • "cross" — "the cross of Christ". Only "cross product" / "cartesian product" → ×.
 ///   • "sin" / "cos" / "tan" / "sec" / "cot" — the bare three-letter trig abbreviations are
 ///     ordinary English ("my sin", "a tan", "wait a sec"). The spelled-out spoken forms
@@ -63,6 +65,16 @@ public enum MathSymbols {
     /// negative 50"). It still renders inside a run something else activated ("x = -5").
     public static let weakPrefixes: Set<String> = ["-"]
 
+    /// Operators that do NOT count as evidence of mathematics: "per" ("/") joins two numbers
+    /// in ordinary speech far more often than in an equation ("5 per 100,000", "3 per 1000
+    /// births"). It still renders inside a run something else activated ("v = 5m / s²").
+    public static let weakOperators: Set<String> = ["/"]
+
+    /// Postfixes that DO count as evidence of mathematics, because their spoken form is never
+    /// ordinary English: "5 factorial" → "5!" on its own (2026-09-29). Every other postfix
+    /// ("percent", "degrees", "prime", "inverse") stays weak.
+    public static let activatingPostfixes: Set<String> = ["!", "!!"]
+
     /// Prefixes whose body follows after a SPACE ("∑ᵢ₌₁ⁿ i²") rather than binding tight ("√x").
     public static let bigOperators: Set<String> = ["∑", "∏", "∫", "∬", "∭", "∮", "⋃", "⋂", "⨁", "lim"]
 
@@ -77,11 +89,13 @@ public enum MathSymbols {
         "over", "from", "to", "of", "point",
         // big-operator openers (bare "sum"/"product" are ordinary English — the engine only
         // accepts them with bounds, e.g. "sum from n equals 1 to infinity")
-        "sum", "sums", "summation", "product", "products",
+        "sum", "sums", "summation", "product", "products", "sigma",
         // structural constructs
         "absolute value of", "absolute value", "derivative of", "partial derivative of",
         "with respect to", "limit", "limit as", "as", "approaches", "tends to", "goes to",
         "to the", "base", "choose", "the",
+        // 2026-09-29: grouping words ("all over", "the quantity")
+        "all over", "the quantity",
         // explicit span markers
         "start equation", "begin equation", "end equation", "end of equation",
     ]
@@ -129,12 +143,15 @@ public enum MathSymbols {
 
         // equality & inequality
         add("=", .relation,
-            "equals", "equal to", "is equal to", "is equals to", "is the same as", "the same as", "=")
+            "equals", "equal to", "is equal to", "is equals to", "equals to", "is the same as", "the same as", "=")
         add("≠", .relation,
             "not equal to", "is not equal to", "does not equal", "not equals", "isn't equal to",
             "is unequal to", "≠", "!=")
         add("<", .relation, "less than", "is less than", "is smaller than", "is fewer than", "<")
-        add(">", .relation, "greater than", "is greater than", "more than", "is more than",
+        // NOT "more than" / "is more than": "y is 5 more than x" means y = x + 5, and "we got
+        // 20 more than 15 last year" is a sentence. "no more than" (≤) stays — "no" rules out
+        // the comparative reading.
+        add(">", .relation, "greater than", "is greater than",
             "is bigger than", "is larger than", ">")
         add("≤", .relation, "less than or equal to", "is less than or equal to",
             "less than or equal", "at most", "is at most", "no more than", "<=", "≤")
@@ -188,15 +205,17 @@ public enum MathSymbols {
         // arithmetic
         add("+", .operatorSymbol, "plus", "added to", "+")
         add("-", .operatorSymbol, "minus", "take away")
-        // Multiplication prints the MIDDLE DOT, not "×" (David, 2026-08-30): "3 · 4" is how
-        // a multiplication is written once the operands are symbols, and "×" stays what it
-        // is uniquely — the cross product. A resolution ("1600 times 1080") therefore also
-        // comes out with a dot; consistency beats a special case here.
-        add("·", .operatorSymbol, "times", "multiplied by", "dot product", "dot",
-            "inner product", "scalar product", "·")
+        // A spoken "times" is laid out by the engine once both sides are known
+        // (docs/math-notation-format.md, 2026-09-29): "×" between numbers ("6 × 7"),
+        // juxtaposition between letter terms ("2ab", "(n - 1)d"). "*" is only its internal
+        // marker and never printed. The MIDDLE DOT is the dot product alone ("a · b").
+        add("*", .operatorSymbol, "times", "multiplied by")
+        add("·", .operatorSymbol, "dot product", "dot", "inner product", "scalar product", "·")
         add("×", .operatorSymbol, "cross product", "cartesian product", "×")
         add("÷", .operatorSymbol, "divided by", "÷")
-        add("/", .operatorSymbol, "per")                 // "m per s" → "m / s"
+        // WEAK (see `weakOperators`): "m per s" → "m / s" inside an equation, but "the
+        // infection rate is 5 per 100,000" is a sentence.
+        add("/", .operatorSymbol, "per")
         add("±", .operatorSymbol, "plus or minus", "plus minus", "±")
         add("∓", .operatorSymbol, "minus or plus")
 
@@ -327,6 +346,9 @@ public enum MathSymbols {
         add("N_A", .operand, "avogadro's number", "avogadros number")
         add("R", .operand, "the gas constant")
         add("G", .operand, "the gravitational constant")
+        // the vacuum constants as said in IB physics ("4 pi epsilon naught" → 4πε₀)
+        add("ε₀", .operand, "epsilon naught", "epsilon nought", "epsilon zero", "epsilon 0")
+        add("μ₀", .operand, "mu naught", "mu nought", "mu zero", "mu 0")
         add("µ", .operand, "micro")
 
         // greek — the complete alphabet, lower case by name and upper case as "capital x"
@@ -340,14 +362,19 @@ public enum MathSymbols {
         greek("θ", "Θ", "theta", "vartheta")
         greek("ι", "Ι", "iota")
         greek("κ", "Κ", "kappa")
-        greek("λ", "Λ", "lambda")
+        greek("λ", "Λ", "lambda", "lamda") // "lamda": a whisper spelling
         greek("μ", "Μ", "mu")
         greek("ν", "Ν", "nu")
         greek("ξ", "Ξ", "xi")
         greek("ο", "Ο", "omicron")
         greek("π", "Π", "pi")
         greek("ρ", "Ρ", "rho", "varrho")
+        // Bare "sigma" is the SUM SIGN ∑ (David, 2026-09-29) — the engine parses it like "sum",
+        // so it is reserved, not a key here. The letter is "lowercase/small sigma"; the capital
+        // letter Σ keeps "capital/big/uppercase sigma".
         greek("σ", "Σ", "sigma")
+        d.removeValue(forKey: "sigma")
+        add("σ", .operand, "lowercase sigma", "small sigma", "lower case sigma")
         greek("τ", "Τ", "tau")
         greek("υ", "Υ", "upsilon")
         greek("φ", "Φ", "phi", "varphi")
@@ -463,7 +490,7 @@ public enum MathSymbols {
         // "of <thing>" takes ONE operand (a Function); "that <clause>" takes a whole
         // proposition, so it opens a bracket the run closes for us:
         //   "the probability of x equals 0.5"        → "P(x) = 0.5"
-        //   "the probability that x is more than 5"  → "P(x > 5)"
+        //   "the probability that x is greater than 5"  → "P(x > 5)"
         add("P(", .open, "probability that", "the probability that",
             "conditional probability of", "the conditional probability of")
 

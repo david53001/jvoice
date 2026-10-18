@@ -19,6 +19,11 @@ enum JVoiceMain {
         if MathProbe.shouldRun(arguments: CommandLine.arguments) {
             MathProbe.runAndExit(arguments: CommandLine.arguments)
         }
+        // Hidden dev mode: `JVoice --polish-eval <cases.json> [--model …] [--thinking off|low]` runs
+        // the AI Polish eval against the real API (the user's own key) — accuracy + latency + cost.
+        if PolishEvalRunner.shouldRun(arguments: CommandLine.arguments) {
+            PolishEvalRunner.runAndExit(arguments: CommandLine.arguments)
+        }
         // Hidden dev mode: `JVoice --settings-smoke` builds the Settings
         // window and exits — the only way to catch an AppKit/SwiftUI crash in
         // Settings on a machine that cannot execute the test suite.
@@ -57,10 +62,12 @@ struct JVoiceApp: App {
 
     var body: some Scene {
         // No scenes. Windows are managed imperatively by AppDelegate / SettingsWindow.
-        // SwiftUI requires at least one Scene; an empty Settings scene is acceptable as a placeholder.
-        // Its own "Settings…" (⌘,) menu command would open that placeholder — a blank window —
-        // so the command is replaced with one that opens the real SettingsWindow.
-        Settings { EmptyView() }
+        // SwiftUI requires at least one Scene. It used to be an empty `Settings` scene, but SwiftUI
+        // opened that placeholder as a blank 900×450 "JVoice Settings" window on its own (e.g. when the
+        // running app was launched again) — David saw it, 2026-10-17. A menu-bar extra that is never
+        // inserted is a scene that can't produce any window (the real status item is MenuBarController's).
+        // "Settings…" (⌘,) opens the real SettingsWindow.
+        MenuBarExtra("JVoice", systemImage: "waveform", isInserted: .constant(false)) { EmptyView() }
             .commands {
                 CommandGroup(replacing: .appSettings) {
                     Button("Settings…") { appDelegate.coordinator.openSettingsWindow() }

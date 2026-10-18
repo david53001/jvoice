@@ -21,6 +21,9 @@ public enum AppTimings {
     /// (a hit makes the stop→paste wait ≈ 0). Shorter = more wasted decodes on
     /// mid-sentence pauses; longer = less head start before the press.
     public static let speculativeTailPause: TimeInterval = 0.4
+    /// AI Polish: hard deadline on the whole polish attempt (key read + request + reply). Past it
+    /// the local text is pasted unchanged — the polish is never worth more than this wait.
+    public static let aiPolishTimeout: TimeInterval = 3.0
 
     /// Motion tokens — durations and curves used across the UI.
     public enum Motion {

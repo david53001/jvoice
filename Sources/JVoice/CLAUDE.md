@@ -10,8 +10,10 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
   `--bench` CLI mode (`BenchRunner` — measures transcription speed/accuracy on this machine, where
   the XCTest runner cannot execute); otherwise launches the SwiftUI `JVoiceApp`. The app is a
   **menu-bar accessory** (`.accessory` activation policy, no Dock icon). It declares no real SwiftUI
-  scenes — windows are managed imperatively by `AppDelegate` / `SettingsWindow`; the empty `Settings`
-  scene is only the placeholder SwiftUI requires. Right before launching the app it classifies the
+  scenes — windows are managed imperatively by `AppDelegate` / `SettingsWindow`; the one scene SwiftUI
+  requires is a `MenuBarExtra` that is never inserted (since 2026-10-17 — the old empty `Settings`
+  scene got opened by SwiftUI itself as a blank 900×450 "JVoice Settings" window). Launching the
+  running app again opens the real Settings (`AppDelegate.applicationShouldHandleReopen`). Right before launching the app it classifies the
   user as new/existing for the first-run tour (`TourCoordinator.classifyAudienceIfNeeded`) — it MUST
   stay before anything writes UserDefaults (see `Tours/CLAUDE.md`).
 - `AppDelegate.swift` (`@MainActor`) — owns the single `VoiceCoordinator`. On launch:
@@ -28,6 +30,8 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
 - `Services/Transcription/` — WhisperKit engine, streaming-while-recording, custom-word accuracy.
 - `Services/Audio/` — recording + microphone routing.
 - `Services/Orchestration/` — system glue: paste, hotkey, settings/stats/transcript stores.
+- `Services/AIPolish/` — the opt-in Claude polish step (BYOK key in the Keychain, hard 3 s
+  deadline, any failure pastes the local text) + the `--polish-eval` harness.
 - `UI/` — the HUD, the Settings window, the Welcome window, the menu-bar status item.
 - `Tours/` — the first-run guided tour (ported from BetterScreenshot): who gets it, the tour
   catalog, the on-screen tag.

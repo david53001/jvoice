@@ -117,6 +117,27 @@ final class VoiceCoordinator: ObservableObject {
         }
     }
 
+    /// Opt-in AI Polish: the finished transcript goes to Anthropic (the user's own key) to fix
+    /// punctuation and misheard words. Turning it off also forgets the in-memory context.
+    @Published var aiPolish: Bool {
+        didSet {
+            if !aiPolish { polishContext.clear() }
+            persistSettings()
+        }
+    }
+
+    /// "••••abcd" while an Anthropic key is saved (`APIKeyStore`), else nil. Read lazily by Settings
+    /// (`refreshAPIKeyStatus`), never at launch.
+    @Published private(set) var apiKeyHint: String?
+
+    /// What AI Polish has cost this month / in total (Settings → AI Polish).
+    @Published private(set) var polishUsage = AIPolishUsageStore.Totals()
+
+    /// USD left on the AI Polish balance (Settings → AI Polish). At $0 nothing is sent.
+    @Published private(set) var polishBalance: Double = 0
+    /// The last top-up amount — the Settings bar shows `polishBalance` against it.
+    @Published private(set) var polishLastTopUp: Double = 0
+
     /// Copy the transcript to the clipboard instead of auto-pasting it.
     @Published var copyToClipboardOnly: Bool {
         didSet {
@@ -159,6 +180,7 @@ final class VoiceCoordinator: ObservableObject {
     private let transcriptionManager: TranscriptionManager
     private let pasteManager: PasteManager
     private let statsStore = StatsStore()
+    private let polishUsageStore = AIPolishUsageStore()
     private lazy var hotKeyManager: HotKeyManager = {
         HotKeyManager(shortcutName: .toggleRecording) { [weak self] in
             // KeyboardShortcuts delivers on the main queue: take the press
@@ -189,6 +211,8 @@ final class VoiceCoordinator: ObservableObject {
     /// the undo hotkey only fires while `lastPastedPID` is still frontmost.
     private var lastPastedText: String = ""
     private var lastPastedPID: pid_t?
+    /// AI Polish's "previous sentences": the last few pasted results, IN MEMORY ONLY.
+    private var polishContext = AIPolishContext()
     private var hudDismissTask: Task<Void, Never>?
     private var currentTranscriptionTask: Task<Void, Never>?
     /// True from the stop press until `finishTranscription` returns — the whole
@@ -242,6 +266,7 @@ final class VoiceCoordinator: ObservableObject {
         self.removeFillerWords = settingsStore.state.removeFillerWords
         self.developerTerms = settingsStore.state.developerTerms
         self.mathNotation = settingsStore.state.mathNotation
+        self.aiPolish = settingsStore.state.aiPolish
         self.copyToClipboardOnly = settingsStore.state.copyToClipboardOnly
         self.appAwareModes = settingsStore.state.appAwareModes
         self.appModeRules = settingsStore.state.appModeRules
@@ -249,6 +274,9 @@ final class VoiceCoordinator: ObservableObject {
         self.totalWordsSpoken = statsStore.totalWords
         self.averageWPM = statsStore.averageWPM
         self.minutesSaved = statsStore.estimatedMinutesSaved
+        self.polishUsage = polishUsageStore.totals()
+        self.polishBalance = polishUsageStore.balance
+        self.polishLastTopUp = polishUsageStore.lastTopUp
         self.lastTranscript = lastTranscriptStore.transcript
         self.recentTranscripts = transcriptHistoryStore.entries
         self.isInitializing = false
@@ -499,7 +527,7 @@ final class VoiceCoordinator: ObservableObject {
         switch state {
         case .recording:
             menuBarController.updateActivity(.recording)
-        case .downloadingModel, .preparingModel, .transcribing:
+        case .downloadingModel, .preparingModel, .transcribing, .refining:
             menuBarController.updateActivity(.transcribing)
         case .idle, .done, .copied, .error, .notice:
             menuBarController.updateActivity(.idle)
@@ -603,6 +631,7 @@ final class VoiceCoordinator: ObservableObject {
         removeFillerWords = settingsStore.state.removeFillerWords
         developerTerms = settingsStore.state.developerTerms
         mathNotation = settingsStore.state.mathNotation
+        aiPolish = settingsStore.state.aiPolish
         copyToClipboardOnly = settingsStore.state.copyToClipboardOnly
         appAwareModes = settingsStore.state.appAwareModes
         appModeRules = settingsStore.state.appModeRules
@@ -846,14 +875,51 @@ final class VoiceCoordinator: ObservableObject {
                 return
             }
 
-            var completedState: HUDState = .done(processed)
+            // AI Polish (opt-in): the pill says "AI refining" meanwhile. ANY failure — no key,
+            // offline, a bad key, the 3 s deadline, an odd reply — hands back `processed`.
+            // It only runs while the prepaid balance has money left; at $0 it is skipped silently
+            // (the one "used up" pill was shown when the balance ran out).
+            var finalText = processed
+            var polishBalanceRanOut = false
+            // `hasKey: true` — the key's presence is not read here (that would be a file read
+            // on every dictation, and `apiKeyHint` is only loaded by Settings); a missing key is
+            // the façade's own `fallback(no-key)`, and the toggle can't be turned on without one.
+            let canPolish = AIPolishUsageStore.shouldPolish(enabled: aiPolish, hasKey: true,
+                                                            balance: polishUsageStore.balance)
+            if aiPolish, !canPolish {
+                Self.latencyLog.info("AIPolish skipped(balance)")
+            } else if canPolish, AIPolish.isWorthPolishing(processed) {
+                updateHUD(.refining)
+                let previous = polishContext.previous(for: targetBundleId)
+                let polish = await AIPolish.polish(processed, previous: previous, mode: effectiveMode,
+                                                   vocabulary: customWords)
+                // Every reply Anthropic billed counts, used or not — and comes off the balance.
+                if let usage = polish.usage {
+                    polishBalanceRanOut = polishUsageStore.record(usage, model: AIPolishRequest.Options.standard.model)
+                    refreshPolishUsage()
+                }
+                if Task.isCancelled { return }
+                // The tone the user chose wins: its formatting (Casual's missing final period,
+                // Formal's capital + period) is applied to the reply as it was to the local text.
+                if polish.isPolished {
+                    // A punctuation-only reply would format to "" — never paste nothing.
+                    let formatted = TextProcessor.format(polish.text, mode: effectiveMode)
+                    if !formatted.isEmpty { finalText = formatted }
+                }
+                // The reason only — never the text or the key.
+                Self.latencyLog.info("AIPolish \(polish.logLabel, privacy: .public) \(polish.milliseconds, privacy: .public)ms context=\(previous.count, privacy: .public) changed=\(finalText != processed, privacy: .public)")
+            } else if canPolish {
+                Self.latencyLog.info("AIPolish skipped(short)")
+            }
+
+            var completedState: HUDState = .done(finalText)
             if copyToClipboardOnly {
                 // Clipboard-only: put the text on the clipboard and stop — the user
                 // pastes it themselves. No Cmd+V is synthesized, so this path needs
                 // NO Accessibility trust. Nothing landed in an app, so the undo
                 // record stays unset.
-                pasteManager.copyOnly(processed)
-                completedState = .copied(processed)
+                pasteManager.copyOnly(finalText)
+                completedState = .copied(finalText)
             } else {
                 // Bring the target app back to focus before synthesizing Cmd+V —
                 // but ONLY if it lost it. It nearly always is still frontmost (the
@@ -871,9 +937,9 @@ final class VoiceCoordinator: ObservableObject {
 
                 let outcome: PasteOutcome
                 if let pid = targetPID {
-                    outcome = pasteManager.paste(processed, targetPID: pid)
+                    outcome = pasteManager.paste(finalText, targetPID: pid)
                 } else {
-                    outcome = pasteManager.paste(processed)
+                    outcome = pasteManager.paste(finalText)
                 }
 
                 switch outcome {
@@ -881,13 +947,13 @@ final class VoiceCoordinator: ObservableObject {
                     // Remember the paste (and where it landed) so the opt-in undo
                     // hotkey can reverse it, but only while that app stays frontmost.
                     if let pid = targetPID {
-                        lastPastedText = processed
+                        lastPastedText = finalText
                         lastPastedPID = pid
                     }
                 case .accessibilityDenied:
                     // Never lose the dictation: the clipboard needs no
                     // Accessibility, so leave the text there for a manual ⌘V.
-                    keepUnpastedTranscript(processed)
+                    keepUnpastedTranscript(finalText)
                     PermissionError.accessibilityDenied.surfaceAndOpenSettings()
                     // The usual 3 s like every other error (this was a 1 s reset
                     // that cut the permission message short).
@@ -897,7 +963,7 @@ final class VoiceCoordinator: ObservableObject {
                     show(.clipboardBusy)
                     return
                 case .targetRejected:
-                    keepUnpastedTranscript(processed)
+                    keepUnpastedTranscript(finalText)
                     show(.pasteFailed)
                     return
                 }
@@ -907,11 +973,18 @@ final class VoiceCoordinator: ObservableObject {
             // bookkeeping (three UserDefaults writes + history) behind it.
             let pastedMs = millisecondsSincePress
             updateHUD(completedState)
-            scheduleHUDReset()
+            if polishBalanceRanOut {
+                // ONE pill, after the paste: "Pasted" first, then the warning for the usual 3 s.
+                // A single dismiss task, so a new recording (which cancels it) is never overdrawn.
+                showAfterPaste(.error(AIPolishUsageStore.balanceUsedUpMessage))
+            } else {
+                scheduleHUDReset()
+            }
             Self.latencyLog.info("Timing stop->transcript=\(transcribedMs, privacy: .public)ms stop->pasted=\(pastedMs, privacy: .public)ms stop->done=\(self.millisecondsSincePress, privacy: .public)ms recSecs=\(self.lastRecordingDuration, format: .fixed(precision: 2), privacy: .public)")
 
-            let wordCount = processed.split(separator: " ").count
-            rememberTranscript(processed)
+            let wordCount = finalText.split(separator: " ").count
+            rememberTranscript(finalText)
+            if aiPolish { polishContext.append(finalText, bundleId: targetBundleId) }
             statsStore.record(words: wordCount, durationSeconds: lastRecordingDuration)
             totalWordsSpoken = statsStore.totalWords
             averageWPM = statsStore.averageWPM
@@ -946,6 +1019,20 @@ final class VoiceCoordinator: ObservableObject {
         return TextProcessor.removeWhisperHallucinations(text)
     }
 
+    /// Keeps the current terminal pill up for the usual 1 s, then shows `next` for 3 s, then hides —
+    /// all on the one `hudDismissTask`, so a new recording's pill cancels the whole chain.
+    private func showAfterPaste(_ next: HUDState) {
+        hudDismissTask?.cancel()
+        hudDismissTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+            guard !Task.isCancelled, let self else { return }
+            self.updateHUD(next)
+            do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+            guard !Task.isCancelled else { return }
+            self.updateHUD(.idle)
+        }
+    }
+
     func scheduleHUDReset(after delayNanoseconds: UInt64 = 1_000_000_000) {
         hudDismissTask?.cancel()
         hudDismissTask = Task { [weak self] in
@@ -970,6 +1057,7 @@ final class VoiceCoordinator: ObservableObject {
         s.removeFillerWords = removeFillerWords
         s.developerTerms = developerTerms
         s.mathNotation = mathNotation
+        s.aiPolish = aiPolish
         s.translateToEnglish = translateToEnglish
         s.copyToClipboardOnly = copyToClipboardOnly
         s.appAwareModes = appAwareModes
@@ -977,6 +1065,71 @@ final class VoiceCoordinator: ObservableObject {
         s.theme = appTheme
         settingsStore.state = s
         settingsState = s
+    }
+
+    // MARK: AI Polish key (one owner-only file — see APIKeyStore)
+
+    func refreshAPIKeyStatus() {
+        apiKeyHint = APIKeyStore.savedHint()
+        // A key removed outside JVoice (its file deleted) can't leave the toggle on.
+        if apiKeyHint == nil, aiPolish { aiPolish = false }
+    }
+
+    /// Saves `key` (replacing any saved one). False when it couldn't be written.
+    @discardableResult
+    func saveAPIKey(_ key: String) -> Bool {
+        let saved = APIKeyStore.save(key)
+        refreshAPIKeyStatus()
+        return saved
+    }
+
+    /// Re-reads the usage totals (a new month starts at zero) and the balance — Settings calls it
+    /// when shown.
+    func refreshPolishUsage() {
+        polishUsage = polishUsageStore.totals()
+        polishBalance = polishUsageStore.balance
+        polishLastTopUp = polishUsageStore.lastTopUp
+    }
+
+    /// Settings → AI Polish → Add. False when the amount was refused (≤ 0, or over the cap).
+    @discardableResult
+    func addPolishBalance(_ amount: Double) -> Bool {
+        let added = polishUsageStore.addBalance(amount)
+        refreshPolishUsage()
+        return added
+    }
+
+    /// Settings → AI Polish → Remove: takes an amount back off the balance (never below $0).
+    @discardableResult
+    func removePolishBalance(_ amount: Double) -> Bool {
+        let removed = polishUsageStore.removeBalance(amount)
+        refreshPolishUsage()
+        return removed
+    }
+
+    /// Removes the key and turns AI Polish off (it can't run without one).
+    func removeAPIKey() {
+        APIKeyStore.delete()
+        aiPolish = false
+        refreshAPIKeyStatus()
+    }
+
+    /// The saved key itself — only for the Settings eye button.
+    func revealAPIKey() -> String? {
+        APIKeyStore.read()
+    }
+
+    /// Tests `candidate` (what's typed in the field) or, when it's empty, the saved key.
+    func testAPIKey(_ candidate: String) async -> AIPolish.KeyCheck {
+        let typed = candidate.trimmingCharacters(in: .whitespacesAndNewlines)
+        let key: String?
+        if typed.isEmpty {
+            key = await Task.detached { APIKeyStore.read() }.value
+        } else {
+            key = typed
+        }
+        guard let key, !key.isEmpty else { return .failed("No key to test — paste one first.") }
+        return await AIPolish.checkKey(key)
     }
 
     // NOTE: comma-splitting (e.g. "React, Swift" → two entries) is deliberately

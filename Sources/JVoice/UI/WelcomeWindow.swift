@@ -70,13 +70,17 @@ final class WelcomeWindow: NSWindow {
 
     /// Shows `page`. `askTourQuestion` = the all-set page carries "Want a quick tour?" (a new user who
     /// hasn't answered — `TourCoordinator.shouldAskQuestion`); nil keeps whatever is already decided.
+    /// `--ui-preview` turns this off so its screenshots never pull focus from the owner's work.
+    static var activatesOnShow = true
+
     func show(page: Page, askTourQuestion: Bool? = nil) {
         if let askTourQuestion { model.pendingQuestion = askTourQuestion }
         model.page = page
         model.refresh()
         startPolling()
         // Accessory (LSUIElement) app: without this the window opens behind the frontmost app.
-        NSApp.activate(ignoringOtherApps: true)
+        if Self.activatesOnShow { NSApp.activate(ignoringOtherApps: true) }
+        centerOnActiveScreen()   // on the display the user is on, not always the primary one
         makeKeyAndOrderFront(nil)
         TourEvents.surfaceShown(.welcome, in: self)
     }

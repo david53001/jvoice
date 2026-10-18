@@ -1,7 +1,119 @@
-# HANDOFF — state as of 2026-09-29 (v1.1.4 shipped: the native macOS look + morphing pill; the maths-engine package is still unfinished in its worktree)
+# HANDOFF — state as of 2026-10-05 (branch `feat/math-context` = `feat/math-format` + context-aware Greek letters, merged with the installed `feat/tour-opacity`; pushed as a branch and installed; v1.1.4 is the last release)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
+
+## 2026-10-05 — context-aware Greek letters, rounds 2–3 (branch `feat/math-context`, pushed, CI green, INSTALLED; not merged into `main`, not released)
+
+**What happened.** David's first real dictation on the 2026-10-04 build was "Where's the lambda in this equation for x = 5?", and it pasted unchanged. Two causes:
+- "the" before the name vetoed it.
+- An equation Whisper had already written as symbols (`x = 5`) did not count as evidence.
+
+**What was done.** Three more workflow rounds, all committed and pushed, now cover these wordings:
+- symbol-written evidence;
+- determiners;
+- units (θ with degrees, λ with nm, …);
+- strong maths vocabulary (eigenvalue, "both sides by", …);
+- `pi/4` and `(x + λ)²`;
+- one meaning per dictation;
+- places ("the λ is in the menu" stays as words).
+
+**Result.**
+- Everyday corpora (about 2,300 lines): byte-identical to before.
+- Fresh maths dictations: 72.5 % fully correct, against 45 % for round 2 and 11 % for the engine before any context work.
+- Logic tests: 2539/2539. CI swift-testing: 517/517.
+
+**Details.**
+- `docs/math-context-progress.md`: the latest entries, open items 1–6, and a question for David about "sigma = 4".
+- `docs/math-context-design.md`: §10–§12.
+
+**Install.** `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk ./scripts/dev-install.sh`, from the worktree `.claude/worktrees/math-context`.
+
+## 2026-10-04 session — context-aware Greek letters in Math Notation (branch `feat/math-context`; merged with the installed `feat/tour-opacity`; PUSHED as a branch, INSTALLED; not merged into `main`, not released)
+
+**Ask (David, dictated):**
+- "lambda" should become λ when he's speaking mathematics.
+- Words that mean one thing in maths and another in everyday speech should be decided from the WHOLE dictation: "lambda … 5 = K and X = 5" → λ; "lambda … the pie is really tasty" → keep the word; "λ = 5" on its own must still convert.
+- Done with a multi-agent workflow. Then (same day): "document and commit and push, update the applications with the current version, close and reopen".
+
+**What landed (branch history):**
+- `feat/math-context` starts at `feat/math-format` (`90c6836`), the maths-engine package plus the shared notation format, previously local-only.
+- Then 3 feature commits: `41c60b7` context promotion; `761c3ee` Whisper's "pie" as π next to a number or letter; `9119cb9` the fixes from the adversarial verify.
+- Then a docs commit, and a merge of `feat/tour-opacity` (the build that was installed on 2026-09-30) so that installing this branch loses nothing.
+- `feat/launch-at-login` (2026-10-01) is NOT included. It was never installed or approved.
+
+**How it works:**
+- New `Sources/JVoice/Services/Transcription/Math/MathContext.swift` holds the word lists and pure checks; the hooks are in `MathSpeech.swift`.
+- A Greek name outside an equation becomes its letter only when (a) and (b) both hold:
+  - (a) Either the dictation has EVIDENCE, or the name sits in an IB question-stem ANCHOR ("find/calculate/hence find …", "the value of …", "express … in terms of …", "let λ equal 3", "the wavelength/angle/eigenvalue λ").
+    - Evidence = an equation that converted, contains a letter operand and has a real construct (a relation, function, power, fraction, root…). A bare "X plus Y" or "T minus 10" does not count.
+  - (b) No veto applies:
+    - collocations: AWS Lambda, beta access, venture capital, alpha team…;
+    - capitalised names mid-sentence;
+    - quoted mentions;
+    - finance, gaming and slang anti-cues;
+    - one meaning per dictation.
+- It never activates anything new. A dictation with no Greek-name candidate goes through exactly the old code path and comes back unchanged, byte for byte.
+- Full design: `docs/math-context-design.md`; §9 overrides §3. Numbers, deviations and the Windows mirror list: `docs/math-context-progress.md`.
+
+**Verified:**
+- Logic tests: `./scripts/run-logic-tests.sh` 1287/1287 on the feature commits, 1329/1329 after the merge.
+- Test corpora, kept in `.build/math-context/` (gitignored, partly personal — never commit):
+  - ~550 everyday plus adversarial sentences and David's 30 real dictations: byte-identical to the baseline;
+  - context.tsv: 137/137 hand-labelled cases correct;
+  - 10k lines run in about the same time as before (+1.4 %).
+- The adversarial verify had 2 agents: 12 bleeds and 13 recall misses found, all bleeds fixed.
+
+**⚠️ Toolchain (this Mac, since the Command Line Tools 26.6 install on 2026-10-02):**
+- `swift build` crashed: dyld "Symbol not found … BuildServerProtocol" in `swift-package`.
+- The default SDK `MacOSX27.0.sdk` needs Swift 6.4, but the compiler was 6.3.3.
+- Workaround for the pure-logic code: `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk` (that symlink points to 26.5) with `./scripts/run-logic-tests.sh`, or with `scripts/build-math-probe.sh [out]`. The second is a new script that builds a standalone `--math-probe` with plain `swiftc`.
+- FIXED the same day by installing Command Line Tools 27.0 (`softwareupdate -i "Command Line Tools for Xcode 27.0-27.0"`, no sudo needed). That gives Swift 6.4 and a working SwiftPM.
+- BUT the app does not build against the new default `MacOSX27.0.sdk`: its SwiftUI turns `@State` into a macro, and the Command Line Tools ship no `SwiftUIMacros` plugin ("external macro implementation type 'SwiftUIMacros.StateMacro' could not be found").
+- **Build with `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk`**, e.g. `SDKROOT=…/MacOSX26.5.sdk ./scripts/dev-install.sh`. That builds clean.
+
+**Install record (2026-10-04):**
+- `SDKROOT=…/MacOSX26.5.sdk ./scripts/dev-install.sh` from the worktree (merge commit `a90f869` + docs). It quit and relaunched JVoice.
+- Signed "JVoice Self-Signed", so permissions persist; `codesign --verify --deep --strict` OK.
+- `--settings-smoke` from a copied `.app`: OK (700×588).
+- The installed `--math-probe` gives `λ is the unknown here, and we know that 5 = K and X = 5.` and leaves "Lambda, I don't know, the pie is really tasty." alone.
+- CI on the pushed branch passed: Test + Windows, runs `37198612628` / `37198612598`.
+
+**Known open (these exist on the baseline too; not caused by this branch):**
+- "given that" becomes `∣`.
+- "det of A minus lambda I equals 0" only half converts (`I` ends the run).
+- "pie r squared" with no number before it stays `pie r²`.
+
+**Not done:**
+- The Windows mirror (no .NET on this Mac; the list is in the progress log).
+- Merging into `main` and a release.
+
+## 2026-09-30 session (2) — Tour polish: capsule outline on the pill, an animated Opacity step, windows on the active display (branch `feat/tour-opacity`, off `feat/opacity-setting`; PUSHED as a branch, installed to /Applications; `main` NOT moved, no release)
+
+**Asks (David, dictated):** (1) the recording tour "doesn't perfectly outline that pill"; (2) the tour has no Opacity part — it must show the opacity, with "the bar slowly going down" and how it decreased and increased; (3) (mid-task) Settings / the UI must open "on the screen that you actually open it on, not on the main screen"; then push to GitHub and reinstall the app. Worktree `.claude/worktrees/tour-opacity`.
+
+**Done:**
+1. **Pill outline** — the box was a 6 pt-radius rectangle around the 56 pt capsule (screenshot proved it). Anchors can now declare their shape: `.tourAnchor("pill.controls", cornerRadius: HUDLayout.pillCorner)`; `TagLayout.boxRadius` makes the box a concentric capsule (drawn with SwiftUI's circular `Capsule()`, like the pill); the dim hole + leader clearance follow. Details: `Sources/JVoice/Tours/CLAUDE.md` → "Outline shape".
+2. **Opacity step** — new Settings-tour step "Opacity" (anchor `settings.appearance`, 9 of 10, before the ⓘ step; also in the ⓘ's Show Me list). While it's up, `OpacityTourDemo` glides the real slider from the user's value → 0 → 1 → back (eased, looping ~9.5 s) so the whole window follows live, and the tag reads "Watch: 37 % ↓" / "Watch: 0 % Transparent" / "Watch: 100 % Opaque" / "Yours: 50 %". It never writes the setting; touching the slider hands control back. New generic hooks: `TourCoordinator.makeDemo` / `TourStepDemo`, `TourTagPresenting.updateBody`. Details: Tours brief → "Step demos".
+3. **Active display** — `UI/ActiveScreen.swift`: Settings and Welcome centre on the display under the mouse each time they open; the pill appears on that display (kept during its morphs).
+4. `scripts/verify-tour-scroll.sh` was already broken on `feat/opacity-setting` (the tag uses `OpacityBackingView`, not in its file list) — fixed.
+
+**Verified:** `swift build -c release`, `swift build --build-tests` (compile only; new CI file `Tests/JVoiceTests/TourOpacityAndShapeTests.swift`); `./scripts/run-logic-tests.sh` 1027/1027 (18 new, Tours section); `./scripts/verify-tour-scroll.sh` PASS; `--settings-smoke` OK (700×592); `--ui-preview` looked at: `tour-pill-*` (capsule hugging the pill), `tour-opacity-{falling,transparent,rising,opaque}-*` (thumb + readout correct); `jvoice.app.uiOpacity` still 0.5 after the preview (nothing written).
+
+**NOT verified:** the active-display behaviour on a real second monitor (only one display was connected here — logic is `NSEvent.mouseLocation` → screen); the Opacity demo interrupted by a live slider drag was reasoned, not clicked.
+
+**Pushed + CI:** branch `feat/tour-opacity` pushed (after merging `origin/main`'s README/license commit `f1bf056`, clean); CI run `36742433368` green — swift-testing 510 authored = 510 executed, logic scripts 1027/1027. Installed via `./scripts/dev-install.sh` (signed "JVoice Self-Signed"). Next, only with David's go-ahead: fast-forward `main` and/or release v1.1.5.
+
+
+## 2026-09-30 session — Opacity setting + "a touch more transparent" (branch `feat/opacity-setting`, off `feat/native-look`; NOT merged / pushed / installed)
+
+**Ask (David, via the lead agent):** make JVoice a touch more transparent, like MacStats, and add an Opacity setting identical in MacStats, JVoice and BetterScreenshot (shared spec `../MacStats/.claude/worktrees/opacity/docs/design-language/opacity-setting.md`). Worktree `.claude/worktrees/opacity`.
+
+**Done:** Settings → new **Appearance** card (bottom of the right column): Opacity slider Transparent…Opaque, small bordered **Default** (disabled at 0.5), help line; live, stored as `jvoice.app.uiOpacity` (standard domain, default 0.5). Every translucent surface = system material + a `windowBackgroundColor` backing whose alpha the slider sets (`UI/UIOpacity.swift`, pure + logic-tested; `UI/Components/OpacityBacking.swift`): Settings/Welcome/tour tag `.popover` (was `.sidebar`) with backing 0 → 0.35 → 1; the HUD pill `.clear` Liquid Glass as a background layer (was `.regular` as the content's effect — it flipped light over white pages and washed the red stop pink) with backing 0.45 → 0.62 → 1. At the default: windows 17 → 23 % see-through (Dark), pill steady with 5.1:1 text over a white page. `--ui-preview` gained in-process capture (no Screen Recording permission needed), `--opacity`, `--backdrop`, `--active`, `--hud-timeline` and a scrolled-to-bottom Settings shot. Full numbers, screenshots and method: `docs/opacity-progress.md`.
+
+**Verified:** `swift build`, `swift build -c release`, `swift build --build-tests` (compile only); `./scripts/run-logic-tests.sh` 1009/1009 (22 new, Settings UI section); `--settings-smoke` OK (700×592); `--ui-preview` at 0/0.5/1 × Light/Dark over white, black and a bright wallpaper, looked at by eye; contrast measured from the PNGs.
+
+**NOT verified:** the live app (real pill over apps, Settings while key, dragging the slider), Reduce Transparency, macOS 14/15 (fallback pill only emulated via `JVOICE_HUD_MATERIAL=1`). "Restore Default Settings…" doesn't reset Opacity (separate key; follow-up if wanted).
 
 ## 2026-09-29 session — Native macOS look (MacStats design language) for the whole UI (branch `feat/native-look`, off `feat/guided-tour` @ `0877330`; SHIPPED as v1.1.4 — `main` fast-forwarded to it)
 
@@ -28,6 +140,21 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 **Verified:** `swift build` + `swift build -c release` + `swift build --build-tests`; `./scripts/run-logic-tests.sh` 987/987; `./scripts/verify-tour-scroll.sh` PASS; `--settings-smoke` from an assembled `.app` OK (700×592, unchanged); `--ui-preview` screenshots of Settings/Welcome/tour tag (Light + Dark), all 7 HUD states, a mid-morph frame, and the pre-26 material pill looked right by eye. CI-only swift-testing files updated for the new default/migration (NOT executed locally — never run `swift test` here).
 
 **NOT verified:** the live app (hotkey → pill latency, real mic bars, glass over a bright wallpaper, Settings while key/active = translucent). Suggested dogfood: install from the worktree, dictate once in Light and once in Dark, open Settings over a bright wallpaper, switch System/Light/Dark with Settings open.
+
+## 2026-09-29 session — maths engine: the unfinished package landed, then the shared notation format (branch `feat/math-format`, off `feat/guided-tour` @ `0877330`; 3 commits, NOT merged, NOT pushed; installed via `./scripts/dev-install.sh` 2026-09-29, `--settings-smoke` OK from the installed .app)
+
+**Ask (lead session, from David's spec `docs/math-notation-format.md`):** (1) land the unfinished 2026-09-23 maths-engine package from worktree `.claude/worktrees/agent-a94ba1b50b2a7c999` to its acceptance bar; (2) implement the spec's §4 table (the format BetterScreenshot's Capture Text pastes), except the §6 open decisions; add `--no-math` to `--bench`. Full log, deviations, Windows mirror list and a before/after table of every §3/§4 example: **`docs/math-notation-progress.md`**.
+
+**Commits:** `563bf4f` the package (bug-hunt fixes 1–7: "to the" between plain numbers, whisper's "3 x 4", the "probability that" bracket, "over" a choose/factorial, smart grouping, ordinal powers, the "more than"/"a plus one"/"per" leaks) · `6bcd031` the format: "over" → `/` with brackets on multi-term sides (`(x² - 9)/(x - 3)`, `12/(2T)`), no stacked `ᵇ⁄₂`; "times" → `×` between numbers / juxtaposition between letter terms (`6 × 7 ÷ 2`, `(n - 1)d`), `·` only for "dot"; "divided by" `÷` only between plain numbers; `sin θ`, `cos 2θ`, `sin²θ`, `ln 2`, `log₂8`; `√(2x)`; `10⁻³`, `e^(-x²)`; `dy/dx`, `f′(x)`, `f⁻¹(x)`, `5!`, `x → ∞`, `20% of 50`, `∠ABC`; new WEAK grouping words "all over" and "the quantity" (`√(b² - 4ac)`, `sin(x + 1)`, the quadratic formula `(-b ± √(b² - 4ac))/(2a)`) · `fdacf33` `--bench … --no-math` (+ a `postprocess: … ms` line; not run). Plus this docs commit.
+
+**Verified:** `swift build -c release` ✓; `./scripts/run-logic-tests.sh` **1090/1090** (was 985); swift-testing cases NOT run (never locally) — every conversion/leave-alone case in `MathSpeechTests.swift` + `MathSymbolsTests.swift` (174 + 114) was checked through a standalone probe of the same sources, incl. idempotence; `.build/release/JVoice --math-probe` byte-identical to that probe on 1,036 lines. No-bleed: the 494-sentence everyday corpus (`.build/bench-2026-09-23/hunt-math/`) — 479 byte-identical, the same 15 pre-existing conversions as before (only their symbols changed); a new 55-sentence bleed list for the new trigger words (saved in `hunt-math/format-2026-09-29/`) caught "a 2 by 2 factorial design" → `2!` and "plan B tends to 5 percent" → `→` before commit (both fixed); 18,397 lines of repo prose: 2 newly converted, both quoting spoken maths. Maths corpus: every changed line reviewed (80 for the package, 153 for the format). Windows spec cases: 106/130 identical, the 24 others are deliberate symbol changes.
+
+**Needs David:** denominator brackets `12/(2T)` (JVoice now) vs BetterScreenshot's wording `12/2T` — the two apps should agree; keep or drop a spoken leading "the" (`the √14`); spec §6 decisions unchanged. His real dictation ("k plus 1 times k plus 2 …", meaning a product of brackets) needs "the quantity …" or "open paren" — worth telling him before the pending maths-accuracy review (`docs/math-accuracy/`, gitignored).
+
+**Follow-up fix (same day, David's real dictation on the installed branch build):** "K squared plus the root of K cubed times Kx squared sigma of 3." pasted `K² plus the root of K³ times Kx squared sigma of 3.`; now `K² + √K³ × Kx² ∑ 3.` — bare "root of" is a weak square root, whisper's glued "Kx" is read as two variables only after an operator/before a script (never activating, English two-letter words and acronyms excluded), "sigma" is the SUM SIGN ∑ (David's answer, same day: bounded like "sum from … to …", bare "sigma of 3" a weak `∑ 3` inside an equation; the letter σ is "lowercase/small sigma" — cost: 7 statistics lines in the maths corpus that said "sigma" for the standard deviation now keep the word), `×` after an unbracketed root. Everyday/prose corpora 0 lines changed; logic tests 1123/1123. Reinstalled again after the sigma change (commit `ede7a2d`): `--settings-smoke` OK, the installed `--math-probe` pastes `K² + √K³ × Kx² ∑ 3.`, signature verifies. Details: `docs/math-notation-progress.md` "Fix — David's failed dictation". Reinstalled to `/Applications` with `./scripts/dev-install.sh` (commit `382da82`, same "JVoice Self-Signed" identity so permissions persist): `codesign --verify --deep --strict` OK, `--settings-smoke` OK (700×592), `/Applications/JVoice.app/Contents/MacOS/JVoice --math-probe` gives the fixed output, app relaunched.
+
+**Not done:** the Windows engine (no .NET here — mirror list in the progress doc); the `--no-math` bench measurement; CI. Nested chains of one construct are now quadratic in depth (1,000-deep ≤ 0.1 s; real dictation nests a handful).
+
 
 ## 2026-09-28 session — First-run guided tour, ported from BetterScreenshot (branch `feat/guided-tour`, off `improve/bug-hunt-and-parity`; SHIPPED as v1.1.3 — `main` fast-forwarded to it)
 
@@ -75,6 +202,8 @@ Plus one UNCOMMITTED change on the branch: the "never run the suite locally" rul
 **NOT verified yet:** CI on the branch (never pushed); `--settings-smoke` on the merged build (the UI agent passed it in its own worktree); `python3 scripts/verify-transcription.py --model large --quick` on the merged build; a live dogfood.
 
 ### Unfinished — the maths-engine package (David approved the design)
+
+> **Update 2026-09-29:** landed on branch `feat/math-format` (commit `563bf4f`) and then extended with the shared notation format — see the 2026-09-29 entry at the top and `docs/math-notation-progress.md`. The text below is the original brief.
 
 The agent was stopped when the session ended. Its partial, UNCOMMITTED work (~600 changed lines in `Sources/JVoice/Services/Transcription/Math/MathSpeech.swift`, `MathSymbol.swift`, `MathSymbols.swift`; NO tests, NO acceptance run, compile state unknown) is in the worktree `.claude/worktrees/agent-a94ba1b50b2a7c999`. The bug hunt's corpora (494 everyday sentences for the no-bleed guarantee, 367 maths dictations), probes and a patched prototype for fixes 1–4 + 6 are in `.build/bench-2026-09-23/hunt-math/` (gitignored). The fixes, with the examples that must pass:
 1. "to the" must not activate between two plain numbers: "I gave 5 to the 3 kids" → unchanged (today "I gave 5³ kids"); "x to the 3" / "2 to the power of 10" still convert.

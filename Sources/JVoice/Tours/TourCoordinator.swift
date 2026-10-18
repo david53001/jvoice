@@ -30,6 +30,8 @@ final class TourCoordinator {
     /// menu-bar status item's window (the Welcome tour's first step points at the icon). The tag then
     /// attaches to that window; the host still decides pausing.
     var extraAnchorWindows: () -> [NSWindow] = { [] }
+    /// What a step plays while it's on screen (the Opacity step's slider demo); nil for most steps.
+    var makeDemo: (TourStep) -> TourStepDemo? = { _ in nil }
     /// How long a completed Try step shows its "done" state before the next step.
     var completedDelay: TimeInterval = 0.8
 
@@ -65,6 +67,8 @@ final class TourCoordinator {
     private var shownProgress: (number: Int, total: Int)?
     private var closeObserver: NSObjectProtocol?
     private var watchdog: Timer?
+    /// The demo of the step on screen, stopped the moment that step leaves.
+    private var demo: TourStepDemo?
 
     init(defaults: UserDefaults = .standard, catalog: [Tour] = TourCatalog.all,
          makePresenter: @escaping () -> TourTagPresenting,
@@ -341,6 +345,7 @@ final class TourCoordinator {
     private func present(_ index: Int) {
         guard let session = running, let window = session.window,
               session.engine.tour.steps.indices.contains(index) else { return }
+        stopDemo()
         let step = session.engine.tour.steps[index]
         guard let (anchor, anchorWindow) = locate(step.anchor, in: window) else {
             checkHost()
@@ -358,6 +363,15 @@ final class TourCoordinator {
         shownProgress = progress
         tagPresenter.show(step: step, body: body, number: progress.number,
                           total: progress.total, anchor: anchor, host: anchorWindow)
+        if let made = makeDemo(step) {
+            demo = made
+            made.start { [weak self] readout in self?.presenter?.updateBody(body + " " + readout) }
+        }
+    }
+
+    private func stopDemo() {
+        demo?.stop()
+        demo = nil
     }
 
     /// Redoes "n of m" for the step on screen; the tag is told only when it changed.
@@ -371,6 +385,7 @@ final class TourCoordinator {
 
     /// The Try step's brief "done" state, then `then` (unless something else was shown meanwhile).
     private func afterCompleted(_ then: @escaping () -> Void) {
+        stopDemo()
         generation += 1
         let token = generation
         showingCompleted = true
@@ -386,6 +401,7 @@ final class TourCoordinator {
     /// showing "Done" when the next tour replaces it) is reported through `onFinished`.
     private func stopRunning() {
         let finished = running.flatMap { !$0.isPart && $0.engine.status == .finished ? $0.engine.tour.id : nil }
+        stopDemo()
         generation += 1
         showingCompleted = false
         shownProgress = nil

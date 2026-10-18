@@ -84,11 +84,17 @@ pinned to version 1.0.0). To work in this area, read the files below.
   2026-09-24: edit distance ≤ 1 (was 2 — "verse"/"Obama" became Vercel/Ollama), never swallows the
   word before a custom word, keeps possessives, never joins across a comma.
 - `Math/` — **spoken mathematics → real notation** (ported 1:1 from the Windows port's
-  `windows/JVoice.Core/Math/`, 2026-09-21). "x squared plus y squared equals z squared" becomes
+  `windows/JVoice.Core/Math/`, 2026-09-21; the macOS engine has since diverged — the 2026-09-23
+  grouping package and the 2026-09-29 output format, listed for the Windows port in
+  `docs/math-notation-progress.md`). "x squared plus y squared equals z squared" becomes
   "x² + y² = z²"; "the limit as x approaches 0 of sine of x over x equals 1" becomes
-  "the lim_(x→0) sin(x) ÷ x = 1". Applied LAST in `VoiceCoordinator.finishTranscription`, after
-  `TextProcessor.process`, and gated on the opt-out `SettingsState.mathNotation` (default ON).
+  "the lim_(x→0) (sin x)/x = 1". Applied LAST in `VoiceCoordinator.finishTranscription`, after
+  `TextProcessor.process`, and gated on the opt-out `SettingsState.mathNotation` (default ON);
+  with it off NO maths code runs (`--bench … --no-math` does the same).
   - `MathSymbols.swift` — the ~700-form vocabulary ("how it is said" → "what to print"), data only.
+    "times" maps to the internal marker `*` (never printed); `·` is the dot product only. Bare
+    "sigma" is NOT a key: it is the sum sign ∑ (David, 2026-09-29), parsed by the engine like
+    "sum" (weak without "from"); the letter σ is "lowercase sigma" / "small sigma".
   - `MathSpeech.swift` — the grammar, the activation rules and the emitter. **The no-bleed
     guarantee is STRUCTURAL, not a classifier**: a word only becomes a symbol inside a RUN
     (consecutive maths-lexing words, ended by any ordinary word or punctuation), and a run only
@@ -96,17 +102,96 @@ pinned to version 1.0.0). To work in this area, read the files below.
     operand on both sides, a prefix with one after it, or a structural construct — script, power,
     root, fraction, bounds, derivative, limit, absolute value, choose). π, α, %, °, `sin`,
     brackets, number words and signs are WEAK: they render inside an already-activated run and
-    stay plain words otherwise. When nothing activates, `convert` returns the input unchanged.
+    stay plain words otherwise. When nothing activates, `convert` returns the input unchanged,
+    unless context promotion applies (`MathContext.swift`, below).
+    **Structural activators added 2026-09-29**, each checked against a bleed list for its own
+    words: "d y by d x" (→ `dy/dx`); "f prime/inverse of x" (a single non-weak letter + mark +
+    "of" + operand); "natural log of …" and a powered function ("sine squared θ"); a factorial
+    ONLY where it ends the sentence ("a 2 by 2 factorial design" is English); "tends to" ONLY after
+    a lower-case variable or `f(x)` ("plan B tends to 5 percent" is English). The grouping words
+    "all over" and "the quantity" are WEAK. How far each construct reaches is the numbered
+    grouping rule on `Parser` (rules 1–7); without a grouping word every construct takes the
+    SMALLEST reading (`√x + 1`, `sin x + 1`, `log₃x + 1` — spec §6.1).
+  - `MathContext.swift` (2026-10-04, branch `feat/math-context`; revised the same day after an
+    adversarial verify — design §9) — **dictation-level context promotion** of Greek-letter NAMES:
+    "Find the value of lambda. … X equals 5." → "… of λ. … X = 5.", while "Lambda, the pie is
+    really tasty." stays words. A curated name (alpha, beta, gamma, epsilon, zeta, theta,
+    lambda/"lamda", mu, rho, tau, upsilon, phi, chi, omega, pi, small sigma, and "capital/uppercase
+    X" for every letter — never "big X") outside any converted segment is written as its letter when
+    (a) the dictation has EVIDENCE — a converted segment holding a real letter operand (`x`, `x̄`,
+    `dy/dx`; not `a`/`A`/`i`, not all-caps `ETA`) AND a real construct (relation, power, fraction,
+    root, function…; a bare `+`/`-`/`×` is not one, so "T minus 10", "press X plus Y", "n plus 1
+    tickets" are no evidence), or an equation Whisper already WROTE as symbols ("x = 5", "5x + 7z =
+    5", "F = ma", "y=mx+c"; a numbers-only "0 = 0" only beside maths words such as "solutions",
+    "denominator" — `MathContext.writtenEquations`, recall rework 2026-10-04, design §10) — which
+    promotes every passing name; or the name sits in an ANCHOR
+    ("find the value of λ", "solve for θ", "Find λ.", "Express your answer in terms of π.", "let λ
+    be 3", "the angle/wavelength/constant/eigenvalue λ", "find tan θ", a deliberate "capital Σ"),
+    which promotes only that letter and the names of its own sentence; and (b) no VETO applies:
+    quoted/bracketed/dashed/colon-labelled (a mention), name-like casing (V1: "AWS Lambda", "PI"),
+    a word before (V2: "hey", "aws", "closed", "project", "very"… always; any determiner or possessive —
+    the/this/that/our/your/a/an/my/his/her/their — for EVERY letter unless the name's own
+    neighbourhood is maths: the letter written as a symbol, a value statement "the λ is 3, and …", the
+    name in/of an equation or maths noun, a question/command about it ("I have x = 5. Where's the λ?"),
+    a condition "… when x = 5", a maths word; a status word after it — "down", "fine", "best" — cancels
+    that: "The lambda is down when x = 2." stays (fix round, design §10.7); a
+    "room 1"/"Pixel 9"-style label), a word after
+    that is not in the `continuation` allowlist (V3: "alpha team", "lambda sensor", "beta keys"), a
+    number after alpha/beta/gamma/pi/omega or a capitalised word or a Greek neighbour (V4: "omega 3", "Pi Day", "Lambda Chi Alpha" —
+    two lower-case names like "alpha beta" are a product, αβ), an anti-cue anywhere (V5: "deployed",
+    "fraternity", finance words like "stock"/"options", "call sign", "server", "code", "crypto"…), or a
+    relation left as words in its stretch (a broken equation is never half-converted). The everyday
+    letters (alpha, beta, gamma, pi) promote by evidence only with maths around them (evidence in their
+    stretch, a maths word in the dictation, a value statement, a number before them). An occurrence vetoed as a NAME blocks
+    that letter in the whole dictation ("we had pi on pi day"). Promoted names are written together
+    with the numbers/letters/functions beside them as one product ("2 pi r" → `2πr`, "sine theta" →
+    `sin θ`, an indexed family "lambda 1 and lambda 2" → `λ₁`, `λ₂`). It only runs when such a name
+    is present; `MathSpeech.Emitter.promote` applies it at the end of `convert`. Tuning = editing the
+    sets in this file. Also promotable: Whisper's glued forms "lambda's", "lambda²", "lambda=3" (→
+    `λ's`, `λ²`, `λ=3`), glued after Whisper's minus or a bracket ("-lambda", "sin(theta", "N(mu",
+    "e^(-lambda" → `-λ`, `sin(θ`, `N(μ`, `e^(-λ`), and "delta ⟨letter or Greek name⟩", which the engine
+    now reads as the change `Δx`/`Δθ` everywhere ("delta x equals 3" → `Δx = 3`). Whisper-written right
+    sides make a name its own evidence ("lambda = -3", "theta = π/6", "lambda² - 4 = 0"). **Round 3 (design §11):**
+    a name in an everyday PLACE is a thing ("the lambda is in the cloud" stays; "… in the denominator" promotes);
+    one meaning per dictation — a letter converted anywhere also converts after a colon or (everyday letters)
+    an article in a maths position ("Solve for λ: 3λ - 6 = 0."); "the same as"/"such that" before English is
+    no broken equation; a QUANTITY with a unit its letter stands for promotes ("θ is 30 degrees", "the λ is
+    600 nm", "ω is 3 rad/s" — never "30% off", "40 mm", "512 MB"); STRONG maths vocabulary
+    (`MathContext.strongTerms`: eigenvalue, "both sides by", "double angle", "standard deviation", …) is
+    evidence for the names of its own sentence; "multiply/divide ⟨maths object⟩ by λ" and "λ is an eigenvalue
+    of A" anchor; whisper's "|x - 2|", "(x + λ)²", "arctan(3/4)", "pi/4" are read as notation; bare "delta"
+    promotes only as a term of such an equation (`windowOnlyNames`). Corpus `.build/math-context/round3.tsv`.
+    **Round 3b (design §12):** an everyday definition noun (angle, slope, mean, parameter…) needs a maths tail
+    ("θ is the angle between the vectors", never "the slope at the ski resort"); a quantity must end the
+    sentence or go on in maths (never "Beta is 38 degrees, he has a fever"); strong vocabulary counts in the
+    name's own stretch, never when it modifies an everyday noun ("the eigenvalue quiz") or the name acts as a
+    person; places are judged by the head noun ("the graph database", "room 5" stay); vetoes are per
+    occurrence (a written equation's term converts; "the beta is 2 weeks away" stays even when β is written
+    elsewhere); notation under a slash, in bars, bracket products, exponents, intervals ("c/λ", "|λ|",
+    "(x - α)(x - β)", "e^(-λt)", "[0, 2π]"). Engine-wide: "the one" is a pronoun, "is the same as" never chains
+    an equation, a powered letter juxtaposes (`ω²r`).
+    Design + rejected alternatives:
+    `docs/math-context-design.md` (§10, with §10.7 the current V2/evidence rules and §11 round 3); log:
+    `docs/math-context-progress.md`. Related, run-only: whisper's "pie" is a weak π after a number or
+    an infix relation/operator and before a single letter or "over" (or "root" after a number):
+    "C equals 2 pie r" → `C = 2πr`, "A equals pie r squared" → `A = πr²`; never promoted.
   - `SpokenNumbers.swift` — "twenty five" → "25", "three point one four" → "3.14", "three
     quarters" → "¾". Greedy on purpose (it only ever runs inside a recognised run) but it never
     over-consumes: "and", "point" and "a" are each settled by lookahead.
-  - `MathScript.swift` — Unicode super/subscripts and stacked fractions, all-or-nothing with a
-    `^`/`_` fallback (there is no subscript "b", so "a subscript b" prints `a_b`).
+  - `MathScript.swift` — Unicode super/subscripts, all-or-nothing with a `^`/`_` fallback (there
+    is no subscript "b", so "a subscript b" prints `a_b`), and the LAYOUT of the shared format:
+    `slashFraction` (a side gets brackets when it holds a space or an operator, a denominator also
+    when it is a juxtaposed product — `12/(2T)`), `radical` (`√(2x)`), `applyFunction` (`sin θ`,
+    `sin²θ`, `log₂8`, `sin(x + 1)`), `productSeparator` (a spoken "times" is `×` between numbers,
+    juxtaposition between letter terms: `6 × 7`, `(n - 1)d`), `powerBase` (`(5/6)⁴`). The stacked
+    `fraction` (`½`, `ˣ⁄ₙ`) is no longer used by the engine.
   - `MathSymbol.swift` — `MathKind` + the one record type; `activates` is the whole rule.
   - `MathProbe.swift` — the hidden `--math-probe` command-line mode; see the verification section.
   - **Output format:** `docs/math-notation-format.md` — the notation shared with BetterScreenshot's
-    Capture Text (Unicode, `/` fractions, `×` vs `·`, `^(…)` fallbacks), where today's output differs, and
-    the rule that the Math Notation toggle must measurably save time when off.
+    Capture Text (Unicode, `/` fractions, `×` vs `·`, `^(…)` fallbacks) and the rule that the Math
+    Notation toggle must measurably save time when off. Its §4 is implemented on macOS (branch
+    `feat/math-format`, 2026-09-29); what changed, deviations and the before/after probe table are in
+    `docs/math-notation-progress.md`.
 - `BenchRunner.swift` — the hidden `--bench` command-line harness that measures transcription
   speed and verifies vocabulary biasing / streaming on this machine. Not part of the running app's
   user flow; it is a dev tool, co-located here because it exercises this pipeline.
@@ -119,9 +204,24 @@ pinned to version 1.0.0). To work in this area, read the files below.
 3. Long clips keep timestamps (the WhisperKit 1.0.0 truncation trap above).
 4. Mathematics must never bleed into ordinary talking. Before changing anything under `Math/`,
    re-run the no-bleed half of the suite (`./scripts/run-logic-tests.sh`) AND sweep a real corpus
-   through `--math-probe`; a new vocabulary entry of an ACTIVATING kind (Relation / Operator /
-   Prefix) is the only thing that can turn a sentence into an equation, so everyday English words
-   may only ever be added as weak kinds.
+   through `--math-probe`. The single exception to "weak words render only inside an activated
+   run" is **dictation-level context promotion** (`Math/MathContext.swift`,
+   `docs/math-context-design.md`): a curated set of Greek-letter names (never bare sigma,
+   eta, iota, kappa, nu, xi, omicron, psi; bare delta only as a term of a whisper-written equation) may render outside an activated run, only when the
+   dictation holds evidence (a converted segment with a letter operand and a real construct, or an
+   anchor such as "find the value of λ") and every veto passes. It never activates anything; with no candidate word the
+   output is byte identical. Changes to the set, anchors or vetoes must be swept against
+   `.build/math-context/everyday.txt`, `everyday-adversarial.txt` AND `everyday-whisper.txt` (511 lines
+   since the fix round; 0 lines
+   differing from the baseline probe), the S rows of `wordings.tsv` (all exact) and the S/M rows of
+   `.build/math-context/context.tsv` (gitignored corpora,
+   described in `docs/math-context-progress.md`; rebuild them if a cleanup deleted `.build/`).
+   Otherwise: a new vocabulary entry of an ACTIVATING kind (Relation / Operator / Prefix) is the
+   only thing that can turn a sentence into an equation, so everyday English words
+   may only ever be added as weak kinds. A new STRUCTURAL activator (like the 2026-09-29 ones) must
+   also be swept against a list of ordinary sentences using its own words — the 494-sentence corpus
+   in `.build/bench-2026-09-23/hunt-math/` never said "factorial design" or "plan B tends to", which
+   is how two bleeds nearly shipped.
 
 ## How to verify changes here
 - `./scripts/verify-streaming.sh` — compiles and EXECUTES the streaming data-loss + recovery

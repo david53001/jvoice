@@ -10,25 +10,71 @@ import KeyboardShortcuts
 /// content, on a faint tint of the window's material (`CardBackground`).
 private struct SettingsSection<Content: View>: View {
     let title: String
+    /// The AI Polish card's title gets the subtle Claude-orange sweep (David, 2026-10-17).
+    var glows = false
     let content: Content
 
-    init(_ title: String, @ViewBuilder content: () -> Content) {
+    init(_ title: String, glows: Bool = false, @ViewBuilder content: () -> Content) {
         self.title = title
+        self.glows = glows
         self.content = content()
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(title.uppercased())
+            Group {
+                if glows {
+                    ClaudeGlowText(text: title.uppercased(), base: .secondary, style: .subtle)
+                } else {
+                    Text(title.uppercased())
+                        .foregroundStyle(.secondary)
+                }
+            }
                 .font(.caption2)
                 .fontWeight(.semibold)
-                .foregroundStyle(.secondary)
                 .accessibilityAddTraits(.isHeader)
             content
         }
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(CardBackground())
+    }
+}
+
+// MARK: - Masonry
+
+/// Cards in `columns` equal columns, each placed in the column that is shortest so far (in order), so
+/// the columns end up nearly the same height at any window width — no holes under a short column.
+/// Re-laid out on every pass, so a live window resize reflows instantly.
+private struct MasonryColumns: Layout {
+    var columns: Int
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.width ?? 660
+        return CGSize(width: width, height: arrange(width: width, subviews: subviews).height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let (origins, _, columnWidth) = arrange(width: bounds.width, subviews: subviews)
+        for (subview, origin) in zip(subviews, origins) {
+            subview.place(at: CGPoint(x: bounds.minX + origin.x, y: bounds.minY + origin.y),
+                          proposal: ProposedViewSize(width: columnWidth, height: nil))
+        }
+    }
+
+    private func arrange(width: CGFloat, subviews: Subviews) -> (origins: [CGPoint], height: CGFloat, columnWidth: CGFloat) {
+        let count = max(1, columns)
+        let columnWidth = max(0, (width - spacing * CGFloat(count - 1)) / CGFloat(count))
+        var heights = Array(repeating: CGFloat(0), count: count)
+        var origins: [CGPoint] = []
+        for subview in subviews {
+            let column = heights.indices.min { heights[$0] < heights[$1] } ?? 0
+            origins.append(CGPoint(x: CGFloat(column) * (columnWidth + spacing), y: heights[column]))
+            let height = subview.sizeThatFits(ProposedViewSize(width: columnWidth, height: nil)).height
+            heights[column] += height + spacing
+        }
+        return (origins, max(0, (heights.max() ?? 0) - spacing), columnWidth)
     }
 }
 
@@ -126,13 +172,30 @@ struct SettingsView: View {
     @State private var toursEnabled = false
     /// Sparkle (`Services/Orchestration/Updates.swift`): the daily check's switch and "Check for Updates…".
     @ObservedObject private var updates = Updates.shared
+    /// Settings → Appearance → Opacity; shared with every window and pill, which follow it live.
+    @ObservedObject private var opacity = UIOpacityStore.shared
+    /// AI Polish key field. `revealKey` is never persisted and resets whenever Settings closes;
+    /// `draftIsSavedKey` marks a field filled by the eye button, which hiding clears again.
+    @State private var apiKeyDraft = ""
+    @State private var revealKey = false
+    @State private var draftIsSavedKey = false
+    @State private var keyStatus: String?
+    @State private var testingKey = false
+    /// AI Polish top-up amount (USD) typed next to "Add"; `topUpNotice` explains a refused amount.
+    @State private var topUpDraft: Double? = 5
+    @State private var topUpNotice: String?
 
     var body: some View {
         let theme = coordinator.appTheme.theme
 
         // No background of its own: the window's content view is a behind-window material
         // (`WindowMaterial`), and its appearance (System / Light / Dark) is set on the NSWindow.
-        return ScrollView {
+        // The window's real width picks the column count (re-read on every layout pass, so a live
+        // resize reflows instantly). Not `ViewThatFits`: it compares IDEAL widths, and the long
+        // Recent Transcripts lines make every layout's ideal width "too wide".
+        return GeometryReader { proxy in
+        let contentWidth = min(proxy.size.width, Self.maxContentWidth) - 40
+        ScrollView {
             VStack(alignment: .leading, spacing: 12) {
 
                 // Header: title left, appearance picker right
@@ -151,34 +214,42 @@ struct SettingsView: View {
                 // Stats — full width
                 statsSection
 
-                // Two columns: controls (left) · your data (right)
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(spacing: 12) {
-                        modelSection
-                        processingSection
-                        voiceStyleSection
-                        languageSection
-                        appModesSection(theme)
-                        shortcutSection(theme)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
-
-                    VStack(spacing: 12) {
-                        recentTranscriptsSection
-                        customWordsSection(theme)
-                        // The right column is the shorter one, so these cards cost no height.
-                        toursSection
-                        updatesSection
-                    }
-                    .frame(maxWidth: .infinity, alignment: .top)
+                // The cards, masonry-style: each goes into the column that is currently shortest, so no
+                // column is left with a hole whatever the width. Two columns, three once it's wide enough.
+                MasonryColumns(columns: contentWidth >= Self.threeColumnMinWidth ? 3 : 2, spacing: 12) {
+                    modelSection
+                    recentTranscriptsSection
+                    processingSection
+                    customWordsSection(theme)
+                    voiceStyleSection
+                    languageSection
+                    appModesSection(theme)
+                    shortcutSection(theme)
+                    aiPolishSection(theme)
+                    toursSection
+                    updatesSection
+                    appearanceSection
                 }
 
                 footer
             }
             .padding(20)
+            // Filling a big screen: the content stops at a readable width and stays centred.
+            .frame(maxWidth: Self.maxContentWidth)
+            .frame(maxWidth: .infinity)
         }
-        .frame(width: 700, height: 560)
+        }
+        // Resizable (2026-10-17): opens at 700 × 560, never smaller than the 2-column minimum, as big
+        // as the screen. `SettingsWindow` takes its minimum size from this frame.
+        .frame(minWidth: Self.minWindowWidth, idealWidth: 700, maxWidth: .infinity,
+               minHeight: Self.minWindowHeight, idealHeight: 560, maxHeight: .infinity)
     }
+
+    static let minWindowWidth: CGFloat = 700
+    static let minWindowHeight: CGFloat = 420
+    /// Below this the three columns would be narrower than the two-column cards were designed for.
+    static let threeColumnMinWidth: CGFloat = 1000
+    static let maxContentWidth: CGFloat = 1400
 
     // MARK: Sections
 
@@ -259,6 +330,252 @@ struct SettingsView: View {
             }
         }
         .tourAnchor("settings.processing")
+    }
+
+    /// AI Polish (opt-in, bring your own Anthropic key, paid from a prepaid balance). Full width:
+    /// the switch + key on the left, the balance + what it has cost on the right. The key lives only
+    /// in its owner-only file (`APIKeyStore`): the field is masked, the eye button is the only thing that reads it back,
+    /// Save clears the field.
+    private func aiPolishSection(_ theme: Theme) -> some View {
+        SettingsSection("AI Polish", glows: true) {
+            // A normal card in the masonry columns: switch + key on top, the balance under it.
+            VStack(alignment: .leading, spacing: 10) {
+                aiPolishKeyColumn
+                Divider()
+                polishBalanceColumn(theme)
+            }
+        }
+        .onAppear {
+            coordinator.refreshAPIKeyStatus()
+            coordinator.refreshPolishUsage()
+        }
+        // Reveal never outlives the window: hidden again (and a revealed key cleared) on close.
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { note in
+            if note.object is SettingsWindow { hideKey() }
+        }
+        .onDisappear { hideKey() }
+    }
+
+    /// The switch, the key field (masked + eye) and Save / Test Key / Remove Key.
+    private var aiPolishKeyColumn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            // At $0 the switch reads OFF (nothing is being polished) and can't be turned on; the
+            // stored choice comes back by itself once money is added.
+            toggleRow("Polish with Claude",
+                      "Sends dictations to Claude to fix mistakes.",
+                      isOn: Binding(get: { coordinator.aiPolish && coordinator.polishBalance > 0 },
+                                    set: { coordinator.aiPolish = $0 }))
+                .disabled(coordinator.apiKeyHint == nil || coordinator.polishBalance <= 0)
+
+            if coordinator.apiKeyHint == nil {
+                Text("Save your Anthropic API key below to turn this on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if coordinator.polishBalance <= 0 {
+                Text("Add a balance to turn this on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            // Typing clears the last status line and makes the field a NEW key (not the revealed one).
+            let draft = Binding(get: { apiKeyDraft },
+                                set: { apiKeyDraft = $0; draftIsSavedKey = false; keyStatus = nil })
+            HStack(spacing: 6) {
+                Group {
+                    if revealKey {
+                        TextField(coordinator.apiKeyHint ?? "sk-ant-…", text: draft)
+                    } else {
+                        // A saved key shows as dots + its last 4 — never the key itself.
+                        SecureField(coordinator.apiKeyHint ?? "sk-ant-…", text: draft)
+                    }
+                }
+                .inputFieldStyle()
+                .onSubmit { saveKey() }
+
+                Button {
+                    toggleReveal()
+                } label: {
+                    Image(systemName: revealKey ? "eye.slash" : "eye")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(width: 18, height: 18)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(PanelPressableButtonStyle())
+                .help(revealKey ? "Hide key" : "Show key")
+                .accessibilityLabel(revealKey ? "Hide key" : "Show key")
+            }
+
+            // The buttons get their own row and the status goes under them, so the card works at
+            // any column width (the hint + three buttons on one line needed ~350 pt).
+            HStack(spacing: 6) {
+                Button("Save") { saveKey() }
+                    .buttonStyle(SubtleButtonStyle())
+                    .disabled(apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || draftIsSavedKey)
+                Button(testingKey ? "Testing…" : "Test Key") { testKey() }
+                    .buttonStyle(SubtleButtonStyle())
+                    .disabled(testingKey || (coordinator.apiKeyHint == nil
+                                             && apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
+                Button("Remove Key", role: .destructive) { removeKey() }
+                    .buttonStyle(SubtleButtonStyle(destructive: true))
+                    .disabled(coordinator.apiKeyHint == nil)
+                Spacer(minLength: 0)
+            }
+            Text(coordinator.apiKeyHint == nil ? "No key saved" : "Key saved")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let keyStatus {
+                Text(keyStatus)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// The prepaid balance (what's left of the last top-up, with a bar), "$ [5] Add / Remove", and
+    /// what AI Polish has cost this month / all time.
+    private func polishBalanceColumn(_ theme: Theme) -> some View {
+        let usage = coordinator.polishUsage
+        let balance = coordinator.polishBalance
+        let topUp = coordinator.polishLastTopUp
+        let fraction = topUp > 0 ? min(1, max(0, balance / topUp)) : 0
+        let usedUp = balance <= 0 && topUp > 0
+        return VStack(alignment: .leading, spacing: 6) {
+            Text("Balance: \(AIPolishUsageStore.dollars(balance)) left")
+                .font(.callout)
+                .monospacedDigit()
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Color.primary.opacity(0.1))
+                    Capsule().fill(Color.accentColor)
+                        .frame(width: geometry.size.width * fraction)
+                }
+            }
+            .frame(height: 4)
+            .accessibilityElement()
+            .accessibilityLabel("\(Int((fraction * 100).rounded())) percent of the last top-up left")
+            HStack(spacing: 6) {
+                Text("Amount")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                Text("$")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                TextField("5", value: $topUpDraft, format: .number)
+                    .font(.caption)
+                    .monospacedDigit()
+                    .multilineTextAlignment(.trailing)
+                    .inputFieldStyle()
+                    .frame(width: 56)
+                    .onSubmit { addBalance() }
+                    .onChange(of: topUpDraft) { topUpNotice = nil }
+                    .accessibilityLabel("Amount to add or remove, in dollars")
+                Button("Add") { addBalance() }
+                    .buttonStyle(SubtleButtonStyle())
+                    .disabled((topUpDraft ?? 0) <= 0)
+                    .help("Adds this many dollars to what AI Polish may spend. Anthropic bills your own account.")
+                Button("Remove") { removeBalance() }
+                    .buttonStyle(SubtleButtonStyle())
+                    .disabled((topUpDraft ?? 0) <= 0 || balance <= 0)
+                    .help("Takes this many dollars off the balance (never below $0).")
+            }
+
+            if let topUpNotice {
+                Text(topUpNotice)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else if usedUp {
+                Text("Balance used up — add more to keep polishing.")
+                    .font(.caption)
+                    .foregroundStyle(theme.danger)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Divider()
+                .padding(.vertical, 2)
+            Text("This month: \(AIPolishUsageStore.dollars(usage.monthCost)) · \(usage.monthPolishes) \(usage.monthPolishes == 1 ? "polish" : "polishes")")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+            Text("All time: \(AIPolishUsageStore.dollars(usage.totalCost)) · \(usage.totalPolishes) \(usage.totalPolishes == 1 ? "polish" : "polishes")")
+                .font(.caption)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    private func addBalance() {
+        let amount = topUpDraft ?? 0
+        if coordinator.addPolishBalance(amount) {
+            topUpNotice = nil
+        } else {
+            topUpNotice = "Enter an amount between $0.01 and \(AIPolishUsageStore.dollars(AIPolishUsageStore.maxTopUp))."
+        }
+    }
+
+    private func removeBalance() {
+        if coordinator.removePolishBalance(topUpDraft ?? 0) {
+            topUpNotice = nil
+        } else {
+            topUpNotice = "Enter an amount above $0 to remove."
+        }
+    }
+
+    private func toggleReveal() {
+        if revealKey {
+            hideKey()
+        } else {
+            // Only an empty field is filled from the saved key; a key being typed is just unmasked.
+            if apiKeyDraft.isEmpty, let saved = coordinator.revealAPIKey() {
+                apiKeyDraft = saved
+                draftIsSavedKey = true
+            }
+            revealKey = true
+        }
+    }
+
+    private func hideKey() {
+        revealKey = false
+        if draftIsSavedKey {
+            apiKeyDraft = ""
+            draftIsSavedKey = false
+        }
+    }
+
+    private func saveKey() {
+        let key = apiKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !key.isEmpty, !draftIsSavedKey else { return }
+        if coordinator.saveAPIKey(key) {
+            apiKeyDraft = ""
+            revealKey = false
+            keyStatus = "Saved on this Mac."
+        } else {
+            keyStatus = "Couldn't save the key."
+        }
+    }
+
+    private func removeKey() {
+        coordinator.removeAPIKey()
+        hideKey()
+        apiKeyDraft = ""
+        keyStatus = "Key removed. AI Polish is off."
+    }
+
+    private func testKey() {
+        let candidate = draftIsSavedKey ? "" : apiKeyDraft
+        testingKey = true
+        keyStatus = nil
+        Task {
+            let check = await coordinator.testAPIKey(candidate)
+            testingKey = false
+            keyStatus = check.message
+        }
     }
 
     /// A labelled switch row, System-Settings style: `.callout` title, `.caption` secondary subtitle,
@@ -523,6 +840,40 @@ struct SettingsView: View {
                 }
             }
         }
+    }
+
+    /// "Appearance": the Opacity slider shared by MacStats, JVoice and BetterScreenshot
+    /// (`../MacStats/docs/design-language/opacity-setting.md` §2). Applies live; "Default" = 0.5.
+    private var appearanceSection: some View {
+        SettingsSection("Appearance") {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Opacity")
+                        .font(.callout)
+                    Spacer(minLength: 0)
+                    Button("Default") { opacity.value = UIOpacity.defaultValue }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(abs(opacity.value - UIOpacity.defaultValue) < 0.001)
+                        .help("Back to the standard look")
+                }
+                Slider(value: $opacity.value, in: 0...1) {
+                    Text("Opacity")
+                } minimumValueLabel: {
+                    Text("Transparent").font(.caption).foregroundStyle(.secondary)
+                } maximumValueLabel: {
+                    Text("Opaque").font(.caption).foregroundStyle(.secondary)
+                }
+                .labelsHidden()
+                .controlSize(.small)
+                Text("How much of what's behind JVoice shows through its windows and the recording pill.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+        // The Settings tour's Opacity step plays the slider down and up here (`OpacityTourDemo`).
+        .tourAnchor(OpacityTourDemo.anchor)
     }
 
     /// The MacStats footer: the secondary/destructive actions as small buttons, red where destructive.

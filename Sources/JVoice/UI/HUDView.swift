@@ -41,6 +41,9 @@ struct HUDView: View {
         case .transcribing:
             TranscribingPill(theme: theme)
                 .transition(.opacity)
+        case .refining:
+            RefiningPill(theme: theme)
+                .transition(.opacity)
         case .done, .copied, .error, .notice:
             StatusPill(state: state, theme: theme)
                 .transition(.opacity)
@@ -108,7 +111,13 @@ private struct PillMaterial: ViewModifier {
     func body(content: Content) -> some View {
         #if compiler(>=6.2)
         if #available(macOS 26, *), !Self.forceFallback {
-            content.glassEffect(.regular, in: Capsule())
+            // The glass is a layer BEHIND the content, not the content's own effect: `.regular` glass
+            // re-tints itself AND its content light over a white page (measured 2026-09-30), and glass
+            // content gets a vibrancy that washes the red stop out to pink. `.clear` glass stays put,
+            // and the Opacity backing on top of it carries the contrast (`UIOpacity`, `.pill`).
+            content
+                .background(OpacityBacking(surface: .pill, shape: Capsule()))
+                .background(Color.clear.glassEffect(.clear, in: Capsule()))
         } else {
             fallback(content)
         }
@@ -119,6 +128,7 @@ private struct PillMaterial: ViewModifier {
 
     private func fallback(_ content: Content) -> some View {
         content
+            .background(OpacityBacking(surface: .pill, shape: Capsule()))
             .background(VisualEffectBackground(material: .hudWindow, maskImage: Self.mask).clipShape(Capsule()))
             .overlay(Capsule().strokeBorder(Color.primary.opacity(0.1), lineWidth: Design.hairlineWidth))
     }
@@ -258,10 +268,11 @@ private struct RecordingPill: View {
             }
         }
         .padding(.horizontal, 16)
-        // The Recording tour's anchor spans the whole capsule, so the tag's box outlines the pill
-        // itself. This frame repeats `pillChrome`'s own minimums, so layout is unchanged.
+        // The Recording tour's anchor spans the whole capsule and declares its radius, so the tag's box
+        // is a capsule hugging the pill (not a rectangle around it). This frame repeats `pillChrome`'s own
+        // minimums, so layout is unchanged.
         .frame(minWidth: HUDLayout.pillMinWidth, minHeight: HUDLayout.pillHeight)
-        .tourAnchor("pill.controls")
+        .tourAnchor("pill.controls", cornerRadius: HUDLayout.pillCorner)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Recording")
     }
@@ -281,6 +292,29 @@ private struct TranscribingPill: View {
         .frame(minWidth: HUDLayout.pillMinWidth, minHeight: HUDLayout.pillHeight)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("Transcribing")
+    }
+}
+
+// MARK: - Refining pill (AI Polish)
+
+/// AI Polish waiting on Claude: "AI refining" with a Claude-orange glow sweeping through the letters
+/// — the same "Claude is working" shimmer as David's session dashboard. Same size as the
+/// transcribing pill, so the capsule doesn't jump between the two.
+private struct RefiningPill: View {
+    let theme: Theme
+
+    var body: some View {
+        HStack(spacing: 14) {
+            JMark(theme: theme)
+            ClaudeGlowText(text: "AI refining", base: theme.textPrimary)
+                .font(.callout.weight(.semibold))
+                .frame(maxWidth: .infinity)
+            Color.clear.frame(width: 22) // mirror the J mark so the label stays centred
+        }
+        .padding(.horizontal, 16)
+        .frame(minWidth: HUDLayout.pillMinWidth, minHeight: HUDLayout.pillHeight)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("AI refining")
     }
 }
 

@@ -18,7 +18,8 @@ public enum MathKind: Equatable, Sendable {
     case operatorSymbol
     /// Binds the operand that FOLLOWS — "√", "∫", "¬", "-" (negation). ACTIVATING.
     case prefix
-    /// Attaches tight to the operand BEFORE it — "!", "°", "%", "′". Weak.
+    /// Attaches tight to the operand BEFORE it — "!", "°", "%", "′". Weak, except the
+    /// factorials in `MathSymbols.activatingPostfixes` ("5 factorial" → "5!").
     case postfix
     /// A value — "π", "∞", "ℝ", "α". Weak.
     case operand
@@ -45,8 +46,9 @@ public struct MathSymbol: Equatable, Sendable {
     /// surrounding run of words into mathematics.
     public var activates: Bool {
         kind == .relation
-            || kind == .operatorSymbol
+            || (kind == .operatorSymbol && !MathSymbols.weakOperators.contains(text))
             || (kind == .prefix && !MathSymbols.weakPrefixes.contains(text))
+            || (kind == .postfix && MathSymbols.activatingPostfixes.contains(text))
     }
 
     /// Big operators take their body after a space ("∑ᵢ₌₁ⁿ i²"); every other prefix binds
