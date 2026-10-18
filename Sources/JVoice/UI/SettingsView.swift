@@ -228,6 +228,7 @@ struct SettingsView: View {
                     aiPolishSection(theme)
                     toursSection
                     updatesSection
+                    startupSection
                     appearanceSection
                 }
 
@@ -362,7 +363,7 @@ struct SettingsView: View {
             // At $0 the switch reads OFF (nothing is being polished) and can't be turned on; the
             // stored choice comes back by itself once money is added.
             toggleRow("Polish with Claude",
-                      "Sends dictations to Claude to fix mistakes.",
+                      "Sends the text of each dictation (never the audio) to Anthropic's Claude to fix mistakes. Off until you turn it on.",
                       isOn: Binding(get: { coordinator.aiPolish && coordinator.polishBalance > 0 },
                                     set: { coordinator.aiPolish = $0 }))
                 .disabled(coordinator.apiKeyHint == nil || coordinator.polishBalance <= 0)
@@ -579,8 +580,9 @@ struct SettingsView: View {
     }
 
     /// A labelled switch row, System-Settings style: `.callout` title, `.caption` secondary subtitle,
-    /// a small native switch.
-    private func toggleRow(_ title: String, _ subtitle: String, isOn: Binding<Bool>) -> some View {
+    /// a small native switch. `switchAnchor`: a tour anchor on the switch itself (capsule outline).
+    private func toggleRow(_ title: String, _ subtitle: String, isOn: Binding<Bool>,
+                           switchAnchor: String? = nil) -> some View {
         HStack(alignment: .center, spacing: 10) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
@@ -591,10 +593,15 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
-            Toggle(title, isOn: isOn)
+            let toggle = Toggle(title, isOn: isOn)
                 .labelsHidden()
                 .toggleStyle(.switch)
                 .controlSize(.small)
+            if let switchAnchor {
+                toggle.tourAnchor(switchAnchor, cornerRadius: .infinity)
+            } else {
+                toggle
+            }
         }
     }
 
@@ -839,6 +846,39 @@ struct SettingsView: View {
                         .minimumScaleFactor(0.8)
                 }
             }
+        }
+    }
+
+    /// "Startup": Launch at Login, like MacStats' and BetterScreenshot's switch. `SMAppService.mainApp.status`
+    /// is the source of truth (`coordinator.launchAtLogin`, shared with the menu-bar item and the
+    /// one-time "Open JVoice at login?" card): re-read on appear and whenever a window becomes key (e.g.
+    /// back from System Settings), and after every change, so a failed change snaps the switch back.
+    /// Flipping it counts as the answer to the one-time card (`LaunchAtLoginManager.setEnabled`).
+    private var startupSection: some View {
+        SettingsSection("Startup") {
+            VStack(alignment: .leading, spacing: 8) {
+                toggleRow("Launch at Login",
+                          "Open JVoice when you log in, so your shortcut always works.",
+                          isOn: Binding(get: { coordinator.launchAtLogin },
+                                        set: { coordinator.setLaunchAtLogin($0) }),
+                          switchAnchor: "settings.launchAtLogin")
+                // The only case JVoice sends anyone to System Settings: macOS wants their OK first.
+                if coordinator.launchAtLoginNeedsApproval {
+                    HStack(spacing: 8) {
+                        Text("Needs your OK in System Settings.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        Button("Open Login Items") { LaunchAtLoginManager.openSystemSettings() }
+                            .buttonStyle(SubtleButtonStyle())
+                    }
+                }
+            }
+        }
+        .onAppear { coordinator.refreshLaunchAtLogin() }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            coordinator.refreshLaunchAtLogin()
         }
     }
 

@@ -2,7 +2,7 @@
 
 # JVoice
 
-Free voice dictation for macOS and Windows. Press a hotkey, talk, and the text is typed where your cursor is. Speech recognition runs on your computer (OpenAI's Whisper model), so nothing is sent anywhere.
+Free voice dictation for macOS and Windows. Press a hotkey, talk, and the text is typed where your cursor is. Speech recognition runs on your computer (OpenAI's Whisper model), so your voice is never sent anywhere.
 
 ## Install and update
 
@@ -16,7 +16,7 @@ curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/inst
 
 The same command installs JVoice and updates it to the newest version. Updating keeps your settings, custom words, stats, downloaded model and permissions. You can read the script first: [`scripts/install.sh`](scripts/install.sh). From version 1.2.0, JVoice also updates itself: it checks once a day and offers new versions in a window (menu bar > Check for Updates…, or turn the daily check off in Settings > Updates).
 
-Prefer a manual download? Get [`JVoice-1.2.0.dmg`](https://github.com/david53001/jvoice/releases/download/v1.2.0/JVoice-1.2.0.dmg) and drag JVoice into Applications.
+Prefer a manual download? Get [`JVoice-1.3.0.dmg`](https://github.com/david53001/jvoice/releases/download/v1.3.0/JVoice-1.3.0.dmg) and drag JVoice into Applications.
 
 ### Windows
 
@@ -70,10 +70,13 @@ You can change them in Settings.
 - Custom words, so names and project terms come out right.
 - Stats: words dictated, time saved, speaking speed.
 - English and Romanian.
+- Spoken maths becomes notation: "x squared equals 4" types `x² = 4`.
+- Launch at login: a switch in Settings (macOS asks once after your 5th dictation).
+- Optional AI Polish (macOS): Claude fixes punctuation and misheard words, with your own Anthropic API key. Off by default.
 
 ## Privacy
 
-Your voice never leaves your computer. The only network use is the one-time model download and the update check, which you can turn off. No accounts, no tracking. Details: [PRIVACY.md](PRIVACY.md).
+Your voice never leaves your computer. The network is used only for the one-time model download, the daily update check (on by default; turn it off in Settings > Updates), and, on macOS, AI Polish if you turn it on: it is off by default, and once you switch it on with your own Anthropic API key, the text of each dictation (never the audio) is sent to Anthropic to be cleaned up. No accounts, no tracking. Details: [PRIVACY.md](PRIVACY.md).
 
 ## Build from source
 

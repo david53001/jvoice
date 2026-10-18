@@ -54,6 +54,9 @@ public enum TourCatalog {
                  body: "Add names and jargon so JVoice always spells them your way."),
         TourStep(anchor: OpacityDemoTimeline.anchor, kind: .explain, title: "Opacity",
                  body: "Sets how see-through JVoice's windows and pill are."),
+        TourStep(anchor: "settings.launchAtLogin", kind: .explain, title: "Launch at login",
+                 body: "Opens JVoice when you log in, so your shortcut always works.",
+                 placement: .above),
         TourStep(anchor: "settings.help", kind: .explain, title: "Replay any tour",
                  body: "Click ⓘ to replay this tour, or pick one part to see again."),
     ])

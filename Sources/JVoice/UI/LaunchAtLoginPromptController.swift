@@ -115,7 +115,7 @@ final class LaunchAtLoginPromptController {
 
     private func ask() {
         show(title: "Open JVoice at login?",
-             message: "Your dictation shortcut keeps working after a restart. You can change this any time in the JVoice menu.",
+             message: "Your dictation shortcut keeps working after a restart. You can change this any time in Settings or the JVoice menu.",
              actions: [
                 .init("No Thanks") { [weak self] in
                     self?.rules.markAsked()
@@ -200,7 +200,7 @@ final class LaunchAtLoginPromptController {
             showResultUntilHidden()
         default:
             show(title: "Couldn't turn it on.",
-                 message: "You can try again with Launch at Login in the JVoice menu.",
+                 message: "You can try again with Launch at Login in Settings or the JVoice menu.",
                  actions: [.init("Done", primary: true) { [weak self] in self?.close() }])
             showResultUntilHidden()
         }

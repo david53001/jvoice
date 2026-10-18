@@ -53,7 +53,7 @@ E = Explain step, T = Try step.
 |---|---|---|
 | Welcome | Show Me Around / menu / replay | E menu-bar J (`menuBar.icon`) · E dictation shortcut (`welcome.shortcut`) · T "Try it now" (`welcome.tryIt`, advances on `recording.started`) |
 | Recording | first recording pill (`surfaceShown(.recordingPill)`) | T "JVoice is listening" (`pill.controls`, advances on `recording.stopped`) |
-| Settings | first Settings window | E stats · model · processing · voice style · app modes · shortcut · recent transcripts · custom words · Opacity (`settings.appearance`, plays a demo) · ⓘ (`settings.*`) |
+| Settings | first Settings window | E stats · model · processing · voice style · app modes · shortcut · recent transcripts · custom words · Opacity (`settings.appearance`, plays a demo) · Launch at login (`settings.launchAtLogin` — on the Startup card's switch itself, capsule outline, tag `.above`; 1.3.0) · ⓘ (`settings.*`) |
 
 Events (`TourEventName`, posted by `VoiceCoordinator`): `recording.started` (after the pill is shown,
 on the next main-queue turn — never between the press and the pill/mic, see the latency contract in the
@@ -97,6 +97,10 @@ root `CLAUDE.md`), `recording.stopped` (before the pill leaves the recording sta
   **never saves**: `persists` is off while it plays (restored to its previous mode after — so
   `--ui-preview` still writes nothing), `stop()` puts the user's value back, and a value that isn't the
   demo's own (the user dragged the slider or pressed Default) ends the demo and is kept + saved.
+- **Scrolling a step into view (1.3.0, from `feat/launch-at-login`):** `TourCoordinator.present` scrolls to
+  `TourCoordinator.scrollTarget(for:)` — the anchor's bounds plus twice the outline box's reach
+  (padding + stroke) above and below — not the bare bounds, so a small control at a viewport edge (the
+  Startup switch) isn't left flush with it with its box cut off.
 - Tag bodies must fit 2 lines at 260 pt with the longest shortcut (⌃⌥⇧⌘F12); the fit check in the
   logic tests fails otherwise.
 

@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to JVoice — a free, source-available macOS menu-bar voice-dictation app (press ⌥Space to record, on-device speech recognition via WhisperKit, styled text pasted into the frontmost app; zero network calls at runtime) — are documented here. WhisperKit is an Apple-Silicon-optimised on-device Whisper inference library. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+All notable changes to JVoice — a free, source-available macOS menu-bar voice-dictation app (press ⌥Space to record, on-device speech recognition via WhisperKit, styled text pasted into the frontmost app; no network calls at runtime except the one-time model download, the optional update check and the opt-in AI Polish — see PRIVACY.md) — are documented here. WhisperKit is an Apple-Silicon-optimised on-device Whisper inference library. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
@@ -8,6 +8,12 @@ All notable changes to JVoice — a free, source-available macOS menu-bar voice-
 
 ### Added
 
+- **AI Polish (optional, off by default).** Settings → **AI Polish** can send each finished dictation to Anthropic's Claude to fix punctuation, run-on sentences and misheard words — using what you were just talking about to pick the right word ("deploy it to versails" → "deploy it to Vercel"). It never answers a question you dictate, keeps words that were already right, keeps maths symbols and code as they are, and keeps your tone. While it works, the pill says "AI refining".
+  - **You bring your own Anthropic API key** (paste it in Settings, **Test Key** checks it). It is kept in one file on your Mac that only your user account can open, never in settings, logs or the clipboard. **Remove Key** deletes it.
+  - **You set a spending limit:** AI Polish only runs while its balance is above $0 (it starts at $0: type an amount and click **Add**; **Remove** takes some off again). Each polish costs a fraction of a cent and comes off the balance; Anthropic bills your own account. When the balance runs out you see one short notice and dictation simply goes on without polishing.
+  - **What is sent, and when:** only while it's on, with a key and a balance — the text of each dictation of three words or more (never the audio), your tone, your custom words and up to three of your previous dictations into the same app from the last 10 minutes. Nothing is sent while it is off. Details in PRIVACY.md.
+  - **It never costs you a dictation:** if anything goes wrong (offline, bad key, no answer within 3 seconds, an odd reply), JVoice pastes its own text as before.
+- **Launch at Login in Settings.** A new **Startup** card has a *Launch at Login* switch, so you no longer need System Settings → Login Items to check or change it. It always shows the real state and stays in step with the menu bar's **Launch at Login** item and the one-time "Open JVoice at login?" card: flip any of them and the others follow (using the switch also counts as your answer to the card). If macOS still needs your OK, the card says so and an **Open Login Items** button takes you straight there. JVoice still never turns it on by itself. The Settings tour has a new "Launch at login" step.
 - **Opacity setting.** Settings → **Appearance** → **Opacity**: a slider from *Transparent* to *Opaque* that sets how much of what's behind JVoice shows through its windows, tour tags and the recording pill. It applies instantly; **Default** puts it back. The same setting exists in MacStats and BetterScreenshot.
 - **The Settings tour shows the Opacity slider in action.** A new "Opacity" step glides the real slider down to *Transparent*, up to *Opaque* and back to your value while the window follows it live, with a readout in the tour tag ("Watch: 37 % ↓"). It never changes your saved setting, and touching the slider hands it back to you.
 - **Math Notation decides Greek letters from the whole dictation.** Say "lambda" in a maths dictation and you get λ: "Lambda is the unknown, and 5 equals K and X equals 5" pastes `λ is the unknown, and 5 = K and X = 5`. Question wording counts too ("find the value of lambda" → `find the value of λ`). Without any maths nearby it stays a word ("lambda, the pie is really tasty" is untouched), and names like "AWS Lambda", "beta access" or "Delta" the airline are never converted. Works for every Greek letter; Whisper's "lamda" and "pie" (π next to a number) are understood.
@@ -19,11 +25,13 @@ All notable changes to JVoice — a free, source-available macOS menu-bar voice-
 
 ### Fixed
 
+- **No more empty "JVoice Settings" window.** macOS could open a blank window by itself; it can't any more, and opening JVoice again while it runs (Finder, Spotlight, Launchpad) shows the real Settings.
 - **The recording tour's outline now hugs the pill.** It was a square-cornered box around the round capsule; it's now a capsule of its own, running parallel to the pill's edge.
 - **Windows open on the display you're using.** Settings, the Welcome window and the recording pill appear on the screen with your mouse pointer, not always on the main display.
 
 ### Changed
 
+- **Settings can be resized.** Drag its edges, or double-click the title bar / press the green button to fill the screen. The cards rearrange into two or three columns to fit, with no gaps.
 - **A touch more see-through by default, like MacStats.** Settings and the Welcome window use the same frosted material family as MacStats' panel, slightly more transparent than before. The recording pill is now a steady frosted capsule that keeps its colour over any app — before, over a white page it could turn itself white after a second — and the red stop button stays red. Text stays readable at the default even over a white page (checked: ≥ 5:1 for the pill's text).
 
 ---

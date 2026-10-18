@@ -204,7 +204,7 @@ private struct WelcomeView: View {
             Text("Welcome to JVoice")
                 .font(.title2.bold())
                 .padding(.top, 14)
-            Text("Press \(model.toggleShortcut) anywhere, talk, press it again — your words are typed for you. Everything stays on this Mac.")
+            Text("Press \(model.toggleShortcut) anywhere, talk, press it again — your words are typed for you. Your voice never leaves this Mac.")
                 .font(.body)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

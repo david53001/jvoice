@@ -352,8 +352,10 @@ final class TourCoordinator {
             return
         }
         // A control further down a scrolling window (Settings' Keyboard Shortcuts card) is brought
-        // into view first; no-op when it's already visible.
-        anchor.scrollToVisible(anchor.bounds)
+        // into view first; no-op when it's already visible. The margin keeps the outline box (padding +
+        // stroke) inside the viewport too — a small control like the Startup switch at the bottom edge
+        // otherwise lands flush with it and its box is cut off.
+        anchor.scrollToVisible(Self.scrollTarget(for: anchor))
         generation += 1
         showingCompleted = false
         let body = TourText.resolvingShortcuts(in: step.body, shortcutText)
@@ -367,6 +369,11 @@ final class TourCoordinator {
             demo = made
             made.start { [weak self] readout in self?.presenter?.updateBody(body + " " + readout) }
         }
+    }
+
+    /// `anchor`'s bounds grown by twice the outline box's reach (padding + stroke) above and below.
+    static func scrollTarget(for anchor: NSView) -> NSRect {
+        anchor.bounds.insetBy(dx: 0, dy: -2 * (TagStyle.boxPadding + TagStyle.boxStroke))
     }
 
     private func stopDemo() {

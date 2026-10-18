@@ -211,6 +211,12 @@ private func makeSettingsTour(_ steps: [TourStep]) -> Tour {
         }
         #expect(TourCatalog.tour(.welcome).steps.first?.anchor == "menuBar.icon")
     }
+
+    @Test func settingsTourShowsLaunchAtLoginAfterOpacity() {
+        // Added 2026-10-18 (1.3.0): the Startup card's switch, between Opacity and the closing ⓘ step.
+        let anchors = TourCatalog.settings.steps.map(\.anchor)
+        #expect(anchors.suffix(3) == [OpacityDemoTimeline.anchor, "settings.launchAtLogin", "settings.help"])
+    }
 }
 
 // MARK: - Tag fit

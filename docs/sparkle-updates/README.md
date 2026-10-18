@@ -90,7 +90,7 @@ flag `jvoice.app.launchAtLogin.didInitialize`). That is **removed**. Now:
 - **The card** (`Sources/JVoice/UI/LaunchAtLoginCard.swift`): a notification-style card in the **top-right** corner of
   the screen under the pointer, 12 pt below the menu bar (the HUD lives at the bottom centre, so they never overlap).
   The app icon, **"Open JVoice at login?"**, "Your dictation shortcut keeps working after a restart. You can change
-  this any time in the JVoice menu.", **No Thanks** (secondary) and **Open at Login** (primary).
+  this any time in Settings or the JVoice menu." (since 1.3.0; 1.2.0 said "in the JVoice menu"), **No Thanks** (secondary) and **Open at Login** (primary).
   - Never takes focus: a borderless `.nonactivatingPanel` that can't become key; its buttons take the first click
     (`FirstClickHostingView`). So no keyboard shortcuts on it (there's no focus to receive them) — by design. VoiceOver
     announces the title and line when it appears and can reach its buttons; the full keyboard alternative is the
@@ -120,10 +120,11 @@ flag `jvoice.app.launchAtLogin.didInitialize`). That is **removed**. Now:
 - **No Thanks** → card goes, never asked again. **Open at Login** → `SMAppService.mainApp.register()`, then: enabled →
   "JVoice will open at login." for 1.6 s; `.requiresApproval` → "One more step / Allow JVoice in Login Items to
   finish." + **Done** / **Open Login Items** (`SMAppService.openSystemSettingsLoginItems()`); error (e.g. an unsigned
-  dev copy) → "Couldn't turn it on. / You can try again with Launch at Login in the JVoice menu." + **Done**. Those
+  dev copy) → "Couldn't turn it on. / You can try again with Launch at Login in Settings or the JVoice menu." + **Done**. Those
   two also go away by themselves after 25 s.
-- **Menu item in sync:** JVoice has no Settings switch for this on `main` — the menu bar's **Launch at Login** item is
-  the control. `LaunchAtLoginManager.setEnabled` posts `LaunchAtLoginManager.didChangeNotification`;
+- **Controls in sync:** in 1.2.0 the menu bar's **Launch at Login** item was the only control; since **1.3.0**
+  Settings → **Startup → Launch at Login** is a second one (same `VoiceCoordinator.setLaunchAtLogin` path, so
+  everything below applies to it too; `.requiresApproval` shows an **Open Login Items** button there). `LaunchAtLoginManager.setEnabled` posts `LaunchAtLoginManager.didChangeNotification`;
   `VoiceCoordinator.launchAtLogin` (which the menu item's checkmark reads) re-reads `SMAppService` on it. Any choice
   made with the menu item counts as answered (`setEnabled` marks it asked) and closes the card if it's up.
 - **Answered at most once ever. Never asked if launch at login is already on** (checked when it becomes due and again
@@ -166,10 +167,11 @@ jvoice.app.launchAtLoginPrompt.uses -int 5`, make sure `jvoice.app.launchAtLogin
 seconds. Or just look at it: `--ui-preview <dir>` from an assembled bundle saves `login-card-{light,dark}.png`
 (`login-card-{light,dark}-views.png` when the terminal has no Screen Recording permission).
 
-**Unmerged related branch:** `feat/launch-at-login` (worktree `.claude/worktrees/launch-at-login`, `2aa00cc`) adds a
-Settings switch + a tour step. If it's merged after this branch, its switch must call `LaunchAtLoginManager.setEnabled`
-(so a choice there counts as the answer and the card closes), observe `didChangeNotification`, and any tour text
-claiming new users "have it on already" is wrong now.
+**Related branch, now ported:** `feat/launch-at-login` (worktree `.claude/worktrees/launch-at-login`, `2aa00cc`, never
+merged) built a Settings switch + a tour step. Release 1.3.0 re-did its switch and tour step on top of this work
+(`release/1.3.0`): the switch calls `VoiceCoordinator.setLaunchAtLogin` → `LaunchAtLoginManager.setEnabled` (a choice
+there counts as the answer and closes the card), the coordinator re-reads `SMAppService` on `didChangeNotification`,
+and that branch's first-launch auto-enable was NOT brought back. Don't merge the old branch.
 
 ## Where the keys live (and their backups)
 

@@ -83,6 +83,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
         menu.addItem(menuItem("Settings…", #selector(openSettings)))
 
+        coordinator?.refreshLaunchAtLogin()   // it may have changed in System Settings → Login Items
         let launchItem = menuItem("Launch at Login", #selector(toggleLaunchAtLogin))
         launchItem.state = (coordinator?.launchAtLogin ?? false) ? .on : .off
         menu.addItem(launchItem)

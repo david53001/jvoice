@@ -3530,6 +3530,9 @@ for tour in TourCatalog.all {
     if case .surfaceShown(let s) = tour.trigger { expectEqual(s, tour.surface, "\(tour.id) triggers on its own surface") }
 }
 expectEqual(TourCatalog.tour(.welcome).steps.first?.anchor, "menuBar.icon", "Welcome starts at the menu-bar J")
+expectEqual(Array(TourCatalog.settings.steps.map(\.anchor).suffix(3)),
+            [OpacityDemoTimeline.anchor, "settings.launchAtLogin", "settings.help"],
+            "Settings tour: Opacity → Launch at login (Startup switch) → ⓘ")
 
 // MARK: - Tag fit (bodies fit the tag's two lines at max width, with a long combo)
 

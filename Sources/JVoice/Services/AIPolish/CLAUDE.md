@@ -6,7 +6,9 @@ previous dictations to pick the meant word ("versails" → Vercel when deploying
 history lesson). Spec: `docs/ai-polish/PROTOTYPE-PLAN.md`; state and next steps:
 `docs/ai-polish/PROGRESS.md`.
 
-It is the ONE exception to "zero network calls at runtime", so three rules hold everywhere here:
+It is the only runtime network call that carries user data (the others: the one-time model download
+and Sparkle's daily appcast check, which send none; `PRIVACY.md` lists all three), so these rules
+hold everywhere here:
 - **Off by default, bring your own key.** No key ships in the app or the repo. The user's key lives
   only in one owner-only file (`APIKeyStore`); never in UserDefaults, `SettingsState`, history, files, the
   clipboard or a log line. Tests use a fake transport and a placeholder key.

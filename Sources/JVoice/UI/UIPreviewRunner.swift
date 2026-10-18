@@ -178,6 +178,17 @@ enum UIPreviewRunner {
                 tag.hide()
                 UIOpacityStore.shared.persists = wasPersisting
             }
+            // The Launch at login step: a capsule outline around the Startup card's switch, tag above.
+            if let anchor = settings.view(forTourAnchor: "settings.launchAtLogin"),
+               let index = TourCatalog.settings.steps.firstIndex(where: { $0.anchor == "settings.launchAtLogin" }) {
+                let step = TourCatalog.settings.steps[index]
+                anchor.scrollToVisible(TourCoordinator.scrollTarget(for: anchor))   // as the real tour does
+                let tag = TagOverlayController()
+                tag.show(step: step, body: step.body, number: index + 1, total: TourCatalog.settings.steps.count,
+                         anchor: anchor, host: settings)
+                capture(settings.frame.union(tag.tagPanel.frame), "tour-login-\(label)", windows: [settings] + tag.windows)
+                tag.hide()
+            }
             settings.orderOut(nil)
 
             let welcome = WelcomeWindow(coordinator: coordinator)

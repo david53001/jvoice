@@ -84,7 +84,9 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   `settings-small-*` shots. Default layout: a 700-wide, 2-column layout of
   MacStats-style cards (`.caption2` semibold section labels, no dots) on a translucent `.sidebar`
   window material (controls on the left — Whisper Model, Processing, Voice Style, Language, App Modes,
-  Keyboard Shortcut; your data on the right — Recent Transcripts, Custom Words, Tours & Tips), Stats
+  Keyboard Shortcut; your data on the right — Recent Transcripts, Custom Words, Tours & Tips; since the
+  masonry layout the order in `SettingsView.body` decides placement — AI Polish, Tours & Tips,
+  Updates, Startup and Appearance come last), Stats
   full-width on top (MacStats stat pattern), a native segmented **System / Light / Dark** picker
   (top-right) and a Restore-Defaults…/Quit footer (small red buttons). Restore Defaults confirms with a
   native `NSAlert` sheet (a SwiftUI dialog can lose focus in an accessory app). Rows in the lists
@@ -165,8 +167,17 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   or use `.secondary` text there without redoing that check. Buttons: `SubtleButtonStyle` + a
   label-colour primary (`.borderedProminent` would draw grey in a window that is never key).
   `--ui-preview` shows it in Light and Dark.
-- Settings → **Updates** card (right column, under Tours & Tips): "Check Automatically" switch + the
-  same "Check for Updates…" / "Update Available (X)…" button as the menu (`Services/Orchestration/Updates.swift`).
+- Settings → **Updates** card (a masonry card after Tours & Tips): "Check Automatically" switch (default
+  ON, from `SUEnableAutomaticChecks`) + the same "Check for Updates…" / "Update Available (X)…" button as
+  the menu (`Services/Orchestration/Updates.swift`).
+- Settings → **Startup** card (1.3.0, after Updates; ported from the unmerged `feat/launch-at-login`
+  `2aa00cc` WITHOUT its first-launch auto-enable): the **Launch at Login** switch, the same control as
+  MacStats' and BetterScreenshot's. `SMAppService.mainApp.status` is the source of truth via
+  `VoiceCoordinator.launchAtLogin` (shared with the menu item and the one-time card; flipping it goes
+  through `LaunchAtLoginManager.setEnabled`, which answers + closes the card). Re-read on appear, when a
+  window becomes key, and after every change, so a failed change snaps the switch back. Only
+  `.requiresApproval` shows a caption + **Open Login Items** (`SMAppService.openSystemSettingsLoginItems()`).
+  The switch carries the tour anchor `settings.launchAtLogin` (capsule outline, `toggleRow(switchAnchor:)`).
 - `MenuBarController.swift` — the menu-bar status item: a bold "J" template image when idle, a red
   microphone while recording, a tinted waveform while transcribing, plus the dropdown NSMenu.
   (Deliberately left untouched by the redesigns — it is already native.)

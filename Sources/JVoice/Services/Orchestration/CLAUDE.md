@@ -27,7 +27,12 @@ mirrors it), and updates stats.
   action (per-row delete, "Clear all", or "Restore Default Settings").
 - `LaunchAtLoginManager.swift` — the launch-at-login toggle (`SMAppService`; `setEnabled` also marks the
   one-time question answered and posts `didChangeNotification`). No silent first-launch enable since
-  1.2.0; the old flag `jvoice.app.launchAtLogin.didInitialize` is only read.
+  1.2.0; the old flag `jvoice.app.launchAtLogin.didInitialize` is only read. Three controls share it
+  (1.3.0): the menu item, Settings → Startup → **Launch at Login**, and the one-time card — all through
+  `setEnabled` (the first two via `VoiceCoordinator.setLaunchAtLogin`); `VoiceCoordinator.refreshLaunchAtLogin()`
+  re-reads `SMAppService.mainApp.status` (the source of truth) into `launchAtLogin` +
+  `launchAtLoginNeedsApproval` on launch, on `didChangeNotification`, when the menu opens and when
+  Settings → Startup appears / a window becomes key.
 - `LaunchAtLoginPrompt.swift` (2026-10-18) — pure rules of the one-time "Open JVoice at login?" card:
   5 completed dictations, never if already enabled / already asked / a ≤ 1.1.4 user, calm moment,
   unanswered-card spacing (≤ 3 seen showings), plus the card's contrast math. Keys `jvoice.app.launchAtLoginPrompt.*`.

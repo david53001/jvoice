@@ -167,8 +167,12 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     @Published private(set) var settingsState: SettingsState
-    /// Reflects the live `SMAppService` registration state, not a stored setting.
+    /// Reflects the live `SMAppService` registration state, not a stored setting. Shared by the
+    /// menu-bar item, Settings → Startup and the one-time card (`refreshLaunchAtLogin`).
     @Published private(set) var launchAtLogin: Bool = LaunchAtLoginManager.isEnabled
+    /// `SMAppService` says `.requiresApproval` (registered, waiting for the user in System Settings →
+    /// Login Items): the only case Settings → Startup shows an "Open Login Items" button.
+    @Published private(set) var launchAtLoginNeedsApproval = false
     @Published private(set) var isRecording = false
     @Published private(set) var hudState: HUDState = .idle
     @Published private(set) var totalWordsSpoken: Int = 0
@@ -331,18 +335,29 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     /// Run once on launch: sync the published mirror to the live OS status, and keep it in sync
-    /// with every later change (the menu item, or "Open at Login" on the one-time card). Launch at
-    /// login is no longer switched on silently at first launch (≤ 1.1.4 did): the card asks once,
-    /// after 5 dictations (`UI/LaunchAtLoginPromptController.swift`).
+    /// with every later change (the menu item, Settings → Startup, or "Open at Login" on the one-time
+    /// card — each goes through `LaunchAtLoginManager.setEnabled`, which posts `didChangeNotification`).
+    /// Launch at login is no longer switched on silently at first launch (≤ 1.1.4 did): the card asks
+    /// once, after 5 dictations (`UI/LaunchAtLoginPromptController.swift`).
     func bootstrapLaunchAtLogin() {
-        launchAtLogin = LaunchAtLoginManager.isEnabled
+        refreshLaunchAtLogin()
         guard launchAtLoginObserver == nil else { return }
         launchAtLoginObserver = NotificationCenter.default.addObserver(
             forName: LaunchAtLoginManager.didChangeNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.launchAtLogin = LaunchAtLoginManager.isEnabled }
+            MainActor.assumeIsolated { self?.refreshLaunchAtLogin() }
         }
     }
     private var launchAtLoginObserver: NSObjectProtocol?
+
+    /// Re-reads `SMAppService.mainApp.status` (the source of truth — the user may have changed it in
+    /// System Settings). Called on launch, after every change, when the menu opens and when Settings →
+    /// Startup appears or a window becomes key. Always publishes, even an unchanged value, so a switch
+    /// the user just flipped snaps back to the real state when the change failed.
+    func refreshLaunchAtLogin() {
+        let status = LaunchAtLoginManager.status
+        launchAtLogin = status == .enabled
+        launchAtLoginNeedsApproval = status == .requiresApproval
+    }
 
     /// Called after every dictation whose text reached the user (pasted, or copied in clipboard-only
     /// mode) — not for a cancelled, empty, failed or refused one. Counts uses for the one-time
@@ -359,15 +374,17 @@ final class VoiceCoordinator: ObservableObject {
             || transcriptionManager.isTranscribing || hudState.isVisible
     }
 
-    /// Toggle launch-at-login. Re-reads the OS status afterward so the UI shows
-    /// the real state, and routes any failure through the HUD error path.
+    /// Toggle launch-at-login (the menu item and Settings → Startup). Re-reads the OS status afterward
+    /// so the UI shows the real state, and routes any failure through the HUD error path.
+    /// `LaunchAtLoginManager.setEnabled` also counts as the answer to the one-time card (closing it
+    /// if it is up) and posts `didChangeNotification`, so every control shows the same state.
     func setLaunchAtLogin(_ enabled: Bool) {
         do {
             try LaunchAtLoginManager.setEnabled(enabled)
         } catch {
             SystemActions.errorHandler?("Couldn't \(enabled ? "enable" : "disable") Launch at Login: \(error.localizedDescription)")
         }
-        launchAtLogin = LaunchAtLoginManager.isEnabled
+        refreshLaunchAtLogin()
     }
 
     private func ensureAccessibilityOnceForLaunch() {
