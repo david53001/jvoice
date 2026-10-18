@@ -350,7 +350,9 @@ Install and Relaunch; afterwards dictate once (Microphone + Accessibility must s
 
 ## STATUS / NEXT STEPS
 
-### Release 1.3.0 (prepared 2026-10-18, NOT pushed / tagged / published / installed)
+### Release 1.3.0 (RELEASED 2026-10-18)
+
+**Status:** v1.3.0 (build 8) RELEASED 2026-10-18: review round 2 8.5/10; `main` = `release/1.3.0` + the review-2 Lows + a CI flake fix, pushed; 3 green `test.yml` attempts in a row on `8f5d14d` (run 39161719242), packaged from that exact commit and published as https://github.com/david53001/jvoice/releases/tag/v1.3.0 (`--latest`, zip + DMG + appcast; the feed serves build 8); installed in /Applications (same "JVoice Self-Signed" cert, so Microphone/Accessibility are kept). The rest of this section is the record of how it was prepared.
 
 1.2.0 (build 7) is published as GitHub release `v1.2.0` (Latest). Branch **`release/1.3.0`**, worktree
 `/Users/davidghermansteinberg/Desktop/Home/Projects/Code/JVoice/.claude/worktrees/release-1.3.0`, made from local
@@ -410,7 +412,7 @@ Not verified here (owner-only checks):
       `--ui-preview <dir>` without `--offscreen` (windows appear behind everything for ~1 s each).
 - [ ] AI Polish live with a key (dogfood steps: `docs/ai-polish/PROGRESS.md` → "David: manual test steps").
 
-#### Independent review round 1 (8/10, `docs/release-1.3.0/REVIEW-round1.md`), fixed 2026-10-18
+#### Independent review round 1 (8/10, report kept outside the repo, see "Review round 2" below), fixed 2026-10-18
 
 - [ ] **M1 (Medium) swift-testing suite never run on the merged code + the unexplained intermittent signal-6
       abort at suite start** (3 sightings on `feat/ai-polish`, `docs/ai-polish/PROGRESS.md` → CI). Can't be fixed

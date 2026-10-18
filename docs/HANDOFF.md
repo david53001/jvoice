@@ -1,17 +1,19 @@
-# HANDOFF — state as of 2026-10-18 (v1.2.0 published; release 1.3.0 prepared on `release/1.3.0`, not pushed — see the first entry)
+# HANDOFF — state as of 2026-10-18 (v1.3.0 published and installed — see the first entry)
 
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
-## 2026-10-18 — Release 1.3.0 prepared (branch `release/1.3.0`, worktree `.claude/worktrees/release-1.3.0`; NOT pushed, tagged, published or installed)
+## 2026-10-18 — Release 1.3.0 (published + installed)
+
+**Status:** v1.3.0 (build 8) RELEASED 2026-10-18: review round 2 8.5/10; `main` = `release/1.3.0` + the review-2 Lows + a CI flake fix, pushed; 3 green `test.yml` attempts in a row on `8f5d14d` (run 39161719242), packaged from that exact commit and published as https://github.com/david53001/jvoice/releases/tag/v1.3.0 (`--latest`, zip + DMG + appcast; the feed serves build 8); installed in /Applications (same "JVoice Self-Signed" cert, so Microphone/Accessibility are kept).
 
 **Ask (David):** every app checks for updates automatically (JVoice: Sparkle's "Check Automatically" stays default ON); Settings gets a place to enable launch at login (like MacStats/BetterScreenshot), alongside the one-time pop-up. The workflow also asked to ship `feat/ai-polish` (+ math context/format) as 1.3.0.
 
 **Done:** `main` (= 1.2.0, published) + `git merge feat/ai-polish`; Settings → **Startup → Launch at Login** switch in sync with the menu item and the one-time card (no first-launch auto-enable); version **1.3.0 / build 8**; CHANGELOG, README, PRIVACY (exactly what AI Polish sends and when), CLAUDE.md + area briefs. Local verification all green (logic 2716/2716, streaming, tour-scroll, Settings smoke, offscreen preview, Sparkle e2e GOOD+BAD, release dry run). Full status, owner-only checks and the exact release commands: `docs/sparkle-updates/README.md` → "STATUS / NEXT STEPS" → "Release 1.3.0".
 
-**Review round 1 (8/10) fixed 2026-10-18:** AI Polish subtitle names everything sent, the "balance used up" notice can't be lost, CHANGELOG "budget (approximate)", previews never read the real key, stale "Keychain" docs, `.requiresApproval` caption, release notes in `docs/release-1.3.0/release-notes.md`. M1 (swift-testing suite + intermittent signal-6 abort) is now a release gate: 3 green `test.yml` runs in a row on the pushed commit. Report `docs/release-1.3.0/REVIEW-round1.md` is NOT committed (it quotes the last 4 characters of David's real key).
+**Review round 1 (8/10) fixed 2026-10-18:** AI Polish subtitle names everything sent, the "balance used up" notice can't be lost, CHANGELOG "budget (approximate)", previews never read the real key, stale "Keychain" docs, `.requiresApproval` caption, release notes in `docs/release-1.3.0/release-notes.md`. M1 (swift-testing suite + intermittent signal-6 abort) is now a release gate: 3 green `test.yml` runs in a row on the pushed commit. Reports are NOT in the repo (round 1 quotes the last 4 characters of David's real key): `~/Backups/2026-10-18-release-1.3.0-reviews/JVoice/` on David's Mac.
 
-**Next:** David reviews the branch, merges to `main`, pushes (CI), gets 3 greens in a row, then `scripts/package-release.sh docs/release-1.3.0/release-notes.md` + the printed `gh release create v1.3.0 … --latest`. Exact commands: `docs/sparkle-updates/README.md` → "Release 1.3.0".
+**Next (owner checks only):** the first real Sparkle update (1.2.0 → 1.3.0) on a Mac running 1.2.0; the "balance used up" notice after a failed paste (needs a real billed polish); the Launch at Login caption in a real `.requiresApproval` state; Settings with real translucency. The release recipe used is in `docs/sparkle-updates/README.md` → "Release 1.3.0".
 
 ## 2026-10-05 — context-aware Greek letters, rounds 2–3 (branch `feat/math-context`, pushed, CI green, INSTALLED; not merged into `main`, not released)
 
