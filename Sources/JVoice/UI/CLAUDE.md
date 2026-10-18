@@ -176,7 +176,11 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   `VoiceCoordinator.launchAtLogin` (shared with the menu item and the one-time card; flipping it goes
   through `LaunchAtLoginManager.setEnabled`, which answers + closes the card). Re-read on appear, when a
   window becomes key, and after every change, so a failed change snaps the switch back. Only
-  `.requiresApproval` shows a caption + **Open Login Items** (`SMAppService.openSystemSettingsLoginItems()`).
+  `.requiresApproval` shows a caption ("Waiting for your OK in Login Items, where you can also turn it off.")
+  + **Open Login Items** (`SMAppService.openSystemSettingsLoginItems()`). In that state the switch and the menu
+  item read OFF and flipping them calls `register()` again, so turning a waiting item OFF is done in Login
+  Items — hence the caption (release 1.3.0 review L7; not changed in code because the state can't be produced
+  here to test a different behaviour).
   The switch carries the tour anchor `settings.launchAtLogin` (capsule outline, `toggleRow(switchAnchor:)`).
 - `MenuBarController.swift` — the menu-bar status item: a bold "J" template image when idle, a red
   microphone while recording, a tinted waveform while transcribing, plus the dropdown NSMenu.

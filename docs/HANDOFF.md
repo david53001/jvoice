@@ -9,7 +9,9 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 
 **Done:** `main` (= 1.2.0, published) + `git merge feat/ai-polish`; Settings → **Startup → Launch at Login** switch in sync with the menu item and the one-time card (no first-launch auto-enable); version **1.3.0 / build 8**; CHANGELOG, README, PRIVACY (exactly what AI Polish sends and when), CLAUDE.md + area briefs. Local verification all green (logic 2716/2716, streaming, tour-scroll, Settings smoke, offscreen preview, Sparkle e2e GOOD+BAD, release dry run). Full status, owner-only checks and the exact release commands: `docs/sparkle-updates/README.md` → "STATUS / NEXT STEPS" → "Release 1.3.0".
 
-**Next:** David reviews the branch, merges to `main`, pushes (CI), then `scripts/package-release.sh` + the printed `gh release create v1.3.0 … --latest`.
+**Review round 1 (8/10) fixed 2026-10-18:** AI Polish subtitle names everything sent, the "balance used up" notice can't be lost, CHANGELOG "budget (approximate)", previews never read the real key, stale "Keychain" docs, `.requiresApproval` caption, release notes in `docs/release-1.3.0/release-notes.md`. M1 (swift-testing suite + intermittent signal-6 abort) is now a release gate: 3 green `test.yml` runs in a row on the pushed commit. Report `docs/release-1.3.0/REVIEW-round1.md` is NOT committed (it quotes the last 4 characters of David's real key).
+
+**Next:** David reviews the branch, merges to `main`, pushes (CI), gets 3 greens in a row, then `scripts/package-release.sh docs/release-1.3.0/release-notes.md` + the printed `gh release create v1.3.0 … --latest`. Exact commands: `docs/sparkle-updates/README.md` → "Release 1.3.0".
 
 ## 2026-10-05 — context-aware Greek letters, rounds 2–3 (branch `feat/math-context`, pushed, CI green, INSTALLED; not merged into `main`, not released)
 

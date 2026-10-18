@@ -22,6 +22,17 @@ enum APIKeyStore {
 
     static var fileURL: URL { directory.appendingPathComponent("anthropic-api-key") }
 
+    /// For the dev modes that draw Settings (`--ui-preview`, `--settings-smoke`): points the store at a
+    /// fresh, empty temp folder (removed when the process exits), so a test copy never reads the owner's
+    /// real key and its last 4 characters can't end up in a screenshot. `fakeKey` is saved there so the
+    /// "key saved" state still draws.
+    static func useScratchDirectory(fakeKey: String? = nil) {
+        directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("jvoice-preview-key-\(UUID().uuidString)", isDirectory: true)
+        atexit { try? FileManager.default.removeItem(at: APIKeyStore.directory) }
+        if let fakeKey { save(fakeKey) }
+    }
+
     /// The masked form shown in Settings: "••••" + the last 4 characters.
     static func hint(for key: String) -> String {
         "••••" + String(key.suffix(4))

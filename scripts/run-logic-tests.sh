@@ -3930,7 +3930,7 @@ xcrun swiftc -O \
 # ---- BEGIN: AI Polish (added 2026-10-17, docs/ai-polish/PROTOTYPE-PLAN.md §6) ----
 # Own main, own source list: the pure request/parser + context ring (AIPolishRequest) and the
 # client's fallback paths + hard deadline (AIPolishClient), driven by a fake transport — no network,
-# no Keychain. Canonical suite: Tests/JVoiceTests/AIPolishTests.swift.
+# no key file. Canonical suite: Tests/JVoiceTests/AIPolishTests.swift.
 mkdir -p "$TMP_DIR/aipolish"
 cat > "$TMP_DIR/aipolish/main.swift" <<'EOF'
 import Foundation

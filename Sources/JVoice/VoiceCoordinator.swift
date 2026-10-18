@@ -217,6 +217,10 @@ final class VoiceCoordinator: ObservableObject {
     private var lastPastedPID: pid_t?
     /// AI Polish's "previous sentences": the last few pasted results, IN MEMORY ONLY.
     private var polishContext = AIPolishContext()
+    /// The balance ran out on a polish and its one "used up" notice hasn't been shown yet. Stored,
+    /// not local, so a dictation that ends early (paste refused, pasteboard busy, cancelled) can't
+    /// eat it: the next dictation that reaches the user shows it (unless money was added meanwhile).
+    private var pendingBalanceNotice = false
     private var hudDismissTask: Task<Void, Never>?
     private var currentTranscriptionTask: Task<Void, Never>?
     /// True from the stop press until `finishTranscription` returns — the whole
@@ -897,7 +901,6 @@ final class VoiceCoordinator: ObservableObject {
             // It only runs while the prepaid balance has money left; at $0 it is skipped silently
             // (the one "used up" pill was shown when the balance ran out).
             var finalText = processed
-            var polishBalanceRanOut = false
             // `hasKey: true` — the key's presence is not read here (that would be a file read
             // on every dictation, and `apiKeyHint` is only loaded by Settings); a missing key is
             // the façade's own `fallback(no-key)`, and the toggle can't be turned on without one.
@@ -912,7 +915,9 @@ final class VoiceCoordinator: ObservableObject {
                                                    vocabulary: customWords)
                 // Every reply Anthropic billed counts, used or not — and comes off the balance.
                 if let usage = polish.usage {
-                    polishBalanceRanOut = polishUsageStore.record(usage, model: AIPolishRequest.Options.standard.model)
+                    if polishUsageStore.record(usage, model: AIPolishRequest.Options.standard.model) {
+                        pendingBalanceNotice = true
+                    }
                     refreshPolishUsage()
                 }
                 if Task.isCancelled { return }
@@ -990,9 +995,12 @@ final class VoiceCoordinator: ObservableObject {
             // bookkeeping (three UserDefaults writes + history) behind it.
             let pastedMs = millisecondsSincePress
             updateHUD(completedState)
-            if polishBalanceRanOut {
+            let showBalanceNotice = pendingBalanceNotice && polishUsageStore.balance <= 0
+            pendingBalanceNotice = false
+            if showBalanceNotice {
                 // ONE pill, after the paste: "Pasted" first, then the warning for the usual 3 s.
                 // A single dismiss task, so a new recording (which cancels it) is never overdrawn.
+                // Shown on this dictation or, if one that ran the balance out ended early, the next.
                 showAfterPaste(.error(AIPolishUsageStore.balanceUsedUpMessage))
             } else {
                 scheduleHUDReset()

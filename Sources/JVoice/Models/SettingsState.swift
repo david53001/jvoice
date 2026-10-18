@@ -18,8 +18,8 @@ public struct SettingsState: Codable, Equatable, Sendable {
     /// v4: spoken mathematics → real notation ("x squared equals 4" → "x² = 4").
     /// Opt-out, like the Windows port's `MathNotation` (schema v6 there).
     public var mathNotation: Bool
-    /// Opt-in AI Polish: send the finished transcript to Anthropic (the user's own key, kept in the
-    /// Keychain — never here) to fix punctuation and misheard words. Default OFF. A NEW key, like
+    /// Opt-in AI Polish: send the finished transcript to Anthropic (the user's own key, kept in one
+    /// owner-only file by `APIKeyStore` — never here) to fix punctuation and misheard words. Default OFF. A NEW key, like
     /// `appearance`: the schema stays v4 so older builds (feat/math-context) keep reading this blob.
     public var aiPolish: Bool
 

@@ -333,10 +333,10 @@ struct SettingsView: View {
         .tourAnchor("settings.processing")
     }
 
-    /// AI Polish (opt-in, bring your own Anthropic key, paid from a prepaid balance). Full width:
-    /// the switch + key on the left, the balance + what it has cost on the right. The key lives only
-    /// in its owner-only file (`APIKeyStore`): the field is masked, the eye button is the only thing that reads it back,
-    /// Save clears the field.
+    /// AI Polish (opt-in, bring your own Anthropic key, paid from a prepaid balance). A normal card in
+    /// the masonry columns: the switch + key on top, the balance + what it has cost under them. The key
+    /// lives only in its owner-only file (`APIKeyStore`): the field is masked, the eye button is the only
+    /// thing that reads it back, Save clears the field.
     private func aiPolishSection(_ theme: Theme) -> some View {
         SettingsSection("AI Polish", glows: true) {
             // A normal card in the masonry columns: switch + key on top, the balance under it.
@@ -363,7 +363,7 @@ struct SettingsView: View {
             // At $0 the switch reads OFF (nothing is being polished) and can't be turned on; the
             // stored choice comes back by itself once money is added.
             toggleRow("Polish with Claude",
-                      "Sends the text of each dictation (never the audio) to Anthropic's Claude to fix mistakes. Off until you turn it on.",
+                      "Sends the text of each dictation (never the audio), with your custom words and your last few dictations in that app, to Anthropic's Claude to fix mistakes. Off until you turn it on.",
                       isOn: Binding(get: { coordinator.aiPolish && coordinator.polishBalance > 0 },
                                     set: { coordinator.aiPolish = $0 }))
                 .disabled(coordinator.apiKeyHint == nil || coordinator.polishBalance <= 0)
@@ -863,9 +863,11 @@ struct SettingsView: View {
                                         set: { coordinator.setLaunchAtLogin($0) }),
                           switchAnchor: "settings.launchAtLogin")
                 // The only case JVoice sends anyone to System Settings: macOS wants their OK first.
+                // The switch reads OFF then and flipping it registers again, so it can't turn a
+                // waiting login item off: the caption says where to do that (review L7, 2026-10-18).
                 if coordinator.launchAtLoginNeedsApproval {
                     HStack(spacing: 8) {
-                        Text("Needs your OK in System Settings.")
+                        Text("Waiting for your OK in Login Items, where you can also turn it off.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

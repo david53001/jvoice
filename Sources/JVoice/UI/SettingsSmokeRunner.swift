@@ -25,6 +25,7 @@ enum SettingsSmokeRunner {
 
     static func runAndExit() -> Never {
         NSApplication.shared.setActivationPolicy(.accessory)
+        APIKeyStore.useScratchDirectory()   // never reads the owner's real key
 
         let coordinator = VoiceCoordinator()
         let window = SettingsWindow(coordinator: coordinator)

@@ -391,6 +391,8 @@ Verified 2026-10-18 on this Mac (background only, nothing shown on screen; real 
       fill with a forced "Update Available (1.2.1)…", the login card + its "done" line, Light + Dark). Looked at: the
       Updates, Startup and AI Polish cards fit both the 2- and 3-column layouts with nothing clipped. Not committed:
       the AI Polish card shows the last 4 characters of the real saved key (`••••xxxx`, read from the key file).
+      *(Fixed in review round 1: `--ui-preview` and `--settings-smoke` now use a temp key folder with a dummy key,
+      so renders show `••••0000`.)*
 - [x] `scripts/sparkle-e2e-test.sh` (non-UI mode) on the merged code: **GOOD update installed (build 101): PASS**,
       **BAD signature refused (still build 100): PASS**, codesign strict OK, Authority=JVoice Self-Signed; no leftover
       process, Launch Services record or work dir; `/Applications/JVoice.app` (pid 4073) untouched.
@@ -408,6 +410,59 @@ Not verified here (owner-only checks):
       `--ui-preview <dir>` without `--offscreen` (windows appear behind everything for ~1 s each).
 - [ ] AI Polish live with a key (dogfood steps: `docs/ai-polish/PROGRESS.md` → "David: manual test steps").
 
+#### Independent review round 1 (8/10, `docs/release-1.3.0/REVIEW-round1.md`), fixed 2026-10-18
+
+- [ ] **M1 (Medium) swift-testing suite never run on the merged code + the unexplained intermittent signal-6
+      abort at suite start** (3 sightings on `feat/ai-polish`, `docs/ai-polish/PROGRESS.md` → CI). Can't be fixed
+      on this branch: the suite runs only in CI (never on this Mac, root CLAUDE.md) and the branch may not be pushed
+      by a session. Turned into a hard **release gate** in the steps below: after `git push origin main`, the
+      `test.yml` run on that exact commit must be green **3 times in a row** before `package-release.sh`. I read
+      the log of the 3rd abort (run 39035152148): the line is only `error: Exited with unexpected signal code 6`
+      at 0.5 s, interleaved with ~560 parallel test starts, no message and no test name — so no root cause can be
+      found from it; the "Print test-process crash reports" step (added after it, `441e4a2`) is what will name it.
+      Record the run ids in "CI gate for 1.3.0" below.
+- [x] **L1 AI Polish switch subtitle** now names everything sent: "Sends the text of each dictation (never the
+      audio), with your custom words and your last few dictations in that app, to Anthropic's Claude to fix
+      mistakes. Off until you turn it on." (`SettingsView.swift`). Off-screen renders checked: 3 lines in the
+      3-column fill layout, 4 lines in the 2-column bottom layout, nothing clipped.
+- [x] **L2 "balance used up" notice can't be lost:** `VoiceCoordinator.pendingBalanceNotice` (stored, was a local)
+      is set when `record` returns true and shown + cleared on the next dictation that reaches the user (the same
+      one, or the next one if a paste failure / cancel ended it early); skipped if money was added meanwhile.
+      Closes fix #4 of `docs/ai-polish/REVIEW.md`. Not exercised live (needs a real billed polish that empties the
+      balance); compiled + logic harness green.
+- [x] **L3 balance wording:** CHANGELOG now says "You set a budget (approximate)" and explains that late replies
+      and Test Key aren't deducted; hard cap = the key's spend limit in the Anthropic console (as PRIVACY.md says).
+- [x] **L4 previews never read the real key:** `APIKeyStore.useScratchDirectory(fakeKey:)` points the store at a
+      fresh temp folder (removed at exit); `--ui-preview` saves a dummy (`••••0000` in the renders), `--settings-smoke`
+      none. Checked: renders show `••••0000`; the temp folder is gone after the run.
+- [x] **L5 stale "Keychain" wording** fixed in `SettingsState.swift`, `run-logic-tests.sh`, `PROGRESS.md` (State
+      table, decisions 2/3/7 marked superseded 2026-10-17, the eval how-to) and the AI Polish card's doc comment.
+      Left as is: historical log lines (eval results / CI run 100) and the swift-testing case name
+      `theDeadlineAlsoCoversABlockingKeychainRead` (renaming a test that can only run in CI isn't worth it).
+- [x] **L6 release notes:** `docs/release-1.3.0/release-notes.md` (committed, plain language, leads with "AI Polish
+      is new, optional and off"). It is what every 1.2.0 user reads in Sparkle's update window and on GitHub.
+- [x] **L7 `.requiresApproval`:** caption changed to "Waiting for your OK in Login Items, where you can also turn it
+      off." Behaviour unchanged on purpose (the switch reads OFF and re-registers): a different behaviour can't be
+      tested here because the state can't be produced. Owner-only check: if you ever see that state, confirm the
+      caption + **Open Login Items** button.
+- Nit (not mine to delete): `~/Library/Preferences/com.jvoice.app.previewtest.plist` (42 bytes, empty) is still there;
+  `rm ~/Library/Preferences/com.jvoice.app.previewtest.plist` if you like.
+- Verification after the fixes (2026-10-18, background only, nothing shown on screen): `swift build -c release`
+  (SDK 26.5) Build complete, only the existing `WelcomeWindow.swift:153` warning; `./scripts/run-logic-tests.sh`
+  **2716 assertions, 6 sections, 0 failures**; `./scripts/verify-streaming.sh` passed; a `build-app.sh` copy in the
+  scratchpad re-identified `com.jvoice.app.fixtest` (ad-hoc): `--settings-smoke` "OK — Settings built, laid out and
+  drawn (700×588)", `--ui-preview --offscreen` 16 drawings (looked at fill-light and bottom-dark). Afterwards its
+  defaults domain, Launch Services record and the copy's prefs were gone (no new plist in `~/Library/Preferences`).
+  Sparkle code/scripts unchanged in this round, so the E2E was not re-run.
+
+#### CI gate for 1.3.0 (fill in after the push)
+
+| Attempt | Run id | Commit | Result |
+|---|---|---|---|
+| 1 | | | |
+| 2 | | | |
+| 3 | | | |
+
 Owner's release steps (from the main checkout, after review; `--latest` rule above):
 
 ```sh
@@ -415,9 +470,16 @@ Owner's release steps (from the main checkout, after review; `--latest` rule abo
 cd /Users/davidghermansteinberg/Desktop/Home/Projects/Code/JVoice/.claude/worktrees/sparkle-updates
 git merge --ff-only release/1.3.0                           # main has not moved since 42612be, so this fast-forwards
 ./scripts/run-logic-tests.sh && ./scripts/verify-streaming.sh
-git push origin main                                         # CI runs; wait for green
+git push origin main                                         # CI runs test.yml on this commit
+# CI GATE (review M1): 3 greens in a row on this exact commit before packaging.
+gh run list --repo david53001/jvoice --workflow test.yml --commit "$(git rev-parse HEAD)"   # note the run id
+gh run watch <id> --repo david53001/jvoice                   # attempt 1
+gh run rerun <id> --repo david53001/jvoice && gh run watch <id> --repo david53001/jvoice   # attempt 2
+gh run rerun <id> --repo david53001/jvoice && gh run watch <id> --repo david53001/jvoice   # attempt 3
+# Any red: open the failed attempt's "Print test-process crash reports" step, fix the faulting test or
+# initializer, commit, push, and start the 3 greens again. Write the run ids in "CI gate for 1.3.0" above.
 # (re-date CHANGELOG [1.3.0] + PRIVACY.md's effective date if publishing on another day; commit + push)
-scripts/package-release.sh ~/Desktop/jvoice-1.3.0-notes.md   # then run the printed `gh release create v1.3.0 … --latest`
+scripts/package-release.sh docs/release-1.3.0/release-notes.md   # then run the printed `gh release create v1.3.0 … --latest`
 curl -fsSL https://github.com/david53001/jvoice/releases/latest/download/appcast.xml | grep sparkle:version   # → 8
 ```
 

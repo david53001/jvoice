@@ -27,7 +27,8 @@ import SwiftUI
 /// the login card are drawn; tour tags, Welcome and the HUD are skipped (they order their own
 /// windows in). Use it to check a layout while someone works on the Mac.
 ///
-/// Like `--settings-smoke` it never calls `VoiceCoordinator.start()` and never writes a setting:
+/// Like `--settings-smoke` it never reads the owner's AI Polish key (a dummy `••••0000` in a temp folder,
+/// `APIKeyStore.useScratchDirectory`), never calls `VoiceCoordinator.start()` and never writes a setting:
 /// appearances are forced on the windows directly, not through `appTheme`. Run it from an assembled
 /// `.app` (recipe in `UI/CLAUDE.md`). The windows really appear on screen for about a second each, but
 /// parked just above the desktop — BEHIND every real window — and the app never activates, so a run
@@ -60,6 +61,8 @@ enum UIPreviewRunner {
         let offscreen = arguments.contains("--offscreen")
         let backdrop = option("--backdrop").flatMap(Self.backdropWindow)
         backdrop?.orderFrontRegardless()
+        // Never the owner's real key: a dummy in a temp folder, so AI Polish draws "key saved" (••••0000).
+        APIKeyStore.useScratchDirectory(fakeKey: "sk-ant-preview-0000")
         let coordinator = VoiceCoordinator()
         var saved = 0
 

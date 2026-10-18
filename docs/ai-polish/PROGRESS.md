@@ -8,6 +8,11 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
 - Merged into **`release/1.3.0`** (merge `9f7296d`, with main's Sparkle 1.2.0) for release 1.3.0 — not pushed or
   published yet; status in `docs/sparkle-updates/README.md` → "Release 1.3.0". PRIVACY.md's AI Polish section was
   rewritten there to say exactly when and what is sent; its effective date is now 18 October 2026.
+- Release review round 1 (2026-10-18) fixes on `release/1.3.0`: REVIEW.md fix **#4 done** (the "balance used up"
+  notice is a stored `pendingBalanceNotice`, shown on the next dictation that reaches the user if a failed paste
+  ate it); the switch subtitle names custom words + recent dictations; CHANGELOG calls the balance an approximate
+  budget; previews/smoke use a dummy key in a temp folder; stale "Keychain" wording fixed below. Details:
+  `docs/sparkle-updates/README.md` → "Release 1.3.0" → "Independent review round 1".
 
 ## Latest (2026-10-17, Mac session, after the workflow)
 
@@ -40,7 +45,7 @@ never merged, tagged or released). "State" is always current; "Log" is newest fi
 | SettingsState `aiPolish` flag (default off, no schema bump) | done |
 | `AIPolishRequest` (prompt, body, parser, fallback rules) + `AIPolishContext` ring | done |
 | `AIPolishClient` (transport protocol, ephemeral URLSession, hard deadline) | done |
-| `APIKeyStore` (Keychain) | done |
+| `APIKeyStore` (one owner-only file, `~/Library/Application Support/JVoice/anthropic-api-key`; the Keychain until 2026-10-17) | done |
 | `AIPolish` façade + Test Key | done |
 | VoiceCoordinator hook + context buffer + log line | done |
 | Settings UI section | done |
@@ -90,7 +95,7 @@ run 3 times, all candidates at the same time per round so they saw the same netw
 placeholders: `{{TONE}}`, `{{TONE_RULE}}`, `{{CUSTOM_WORDS}}` (filled exactly like the app does).
 Run a candidate: `/Applications/JVoice.app/Contents/MacOS/JVoice --polish-eval <cases.json>
 --prompt-file <template.txt> --out <file.md>` (~1.5–2 min, ~$0.005 per 78 cases; the installed app
-reads the key from the Keychain).
+reads the saved key file, `APIKeyStore` — the Keychain until 2026-10-17).
 
 **Decision rule** (David's priorities): (1) never change words that were already correct, (2) never
 answer a dictated question/request, (3) keep the context fixes, (4) stay fast. Gates: mean p95
@@ -202,13 +207,17 @@ AI Polish code; it passed on run 97. If it shows up again, it is that flake, not
 1. **No schema bump** for `aiPolish`: a new key with the schema left at v4, like `appearance`, so
    David's daily `feat/math-context` build keeps reading the settings blob (a v5 blob would be
    refused by it and reset his settings).
-2. **The deadline is a continuation race, not a task group**, and it covers the Keychain read too:
-   a task group waits for every child, so a transport (or a Keychain permission prompt) that
+2. **The deadline is a continuation race, not a task group**, and it covers the key read too:
+   a task group waits for every child, so a transport (or a slow key read) that
    ignored cancellation could hold the paste past 3 s. Its timer is a GCD timer and the
-   synchronous Keychain read runs on a GCD queue, so a busy Swift cooperative pool can't delay it
-   (CI run 100 caught exactly that with a `Task.sleep` timer).
-3. **The key hint "••••abcd" is the Keychain item's `kSecAttrComment`**, so Settings can say "Key
-   saved" by reading attributes only — the secret is read only for a dictation, Test Key or the eye.
+   synchronous key read runs on a GCD queue, so a busy Swift cooperative pool can't delay it
+   (CI run 100 caught exactly that with a `Task.sleep` timer). *(Updated 2026-10-17: the read was
+   the Keychain item then and is the `APIKeyStore` file now; the race is unchanged. The test is
+   still named `theDeadlineAlsoCoversABlockingKeychainRead`.)*
+3. ~~**The key hint "••••abcd" is the Keychain item's `kSecAttrComment`**, so Settings can say "Key
+   saved" by reading attributes only.~~ **Superseded 2026-10-17: file, see `APIKeyStore`** — the hint
+   is computed from the key file (`APIKeyStore.savedHint()`, no prompt possible); the secret is still
+   used only for a dictation, Test Key or the eye.
 4. **`--thinking low` adds 2048 to `max_tokens`** (thinking spends tokens inside the budget; without
    headroom configs (b)/(c) would end in `max_tokens` → fallback and look worse than they are).
    `low` sends `thinking: adaptive` + `output_config.effort: low` for both models; on Sonnet 5.5
@@ -219,8 +228,9 @@ AI Polish code; it passed on run 97. If it shows up again, it is that flake, not
    previous dictation that isn't in the transcript, falls back (`leaked-context`). Chatty openers
    only count when the transcript itself doesn't contain that phrase ("Sure, I'll be there" is kept).
 6. **Context needs a known target app**: with no bundle id, no context is sent.
-7. **Restore Default Settings turns AI Polish off but keeps the key** in the Keychain (Remove Key
-   deletes it). Easy to change if David prefers the reset to delete it too.
+7. **Restore Default Settings turns AI Polish off but keeps the key** in its file (Remove Key
+   deletes it). *(Superseded wording 2026-10-17: it said "in the Keychain"; the key is in the
+   `APIKeyStore` file now — same behaviour.)* Easy to change if David prefers the reset to delete it too.
 8. **Eval latency** is measured with a 30 s per-call deadline (the app's is 3 s) so slow calls are
    measured, not cut; a call past 3 s is graded as the local text (what the app would paste). Each
    summary line shows accuracy (what the user gets), accuracy by a real polish, the do-nothing
@@ -245,7 +255,8 @@ git add docs/ai-polish/eval-results && git commit -m "docs(ai-polish): eval resu
 ```
 
 (If the key is already saved in Settings → AI Polish, skip the `read -s`/`export` lines: the runner
-falls back to the Keychain item — macOS may ask once to allow the access.) Never type the key inline
+falls back to the saved key file, `~/Library/Application Support/JVoice/anthropic-api-key`
+(`APIKeyStore.read()`, no prompt; since 2026-10-17 — before that it was a Keychain item).) Never type the key inline
 as `ANTHROPIC_API_KEY=sk-… cmd` (shell history). Each run is 64 calls: under 1 cent on Haiku,
 roughly 10 cents on Sonnet. The results files contain only the case texts and outputs, never the key.
 Default = the most accurate config whose p95 ≤ 1.5 s; ties → the cheaper one.
