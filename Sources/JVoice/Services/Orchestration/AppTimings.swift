@@ -4,7 +4,12 @@ import SwiftUI
 /// of writing literal delays / animation durations inline.
 public enum AppTimings {
     /// PasteManager: how long to delay before restoring the prior pasteboard.
-    public static let pasteRestoreDelay: TimeInterval = 0.30
+    /// Chromium/Electron apps (the Claude desktop app, browsers) read the
+    /// clipboard only when their page gets to the Cmd+V; while it is busy (e.g.
+    /// streaming a reply) that took longer than the old 0.30 s, so they pasted the
+    /// RESTORED clipboard instead of the dictation (reproduced 2026-10-20: a page
+    /// busy 600 ms pasted the old clipboard at 0.30 s, the dictation at 1.5 s).
+    public static let pasteRestoreDelay: TimeInterval = 1.5
     /// PasteManager: how long to wait after activating the front app before pasting.
     /// Only paid when the paste target is NOT already frontmost (it nearly always
     /// is — the user dictates into the app they're in), see `finishTranscription`.

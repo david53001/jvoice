@@ -49,6 +49,7 @@ enum AIPolishRequest {
         case chatty
         case leakedContext
         case addedContent
+        case changedNumbers
 
         var logLabel: String {
             switch self {
@@ -69,6 +70,7 @@ enum AIPolishRequest {
             case .chatty: return "chatty"
             case .leakedContext: return "leaked-context"
             case .addedContent: return "added-content"
+            case .changedNumbers: return "changed-numbers"
             }
         }
     }
@@ -122,7 +124,7 @@ enum AIPolishRequest {
     }
 
     /// Prompt v2 ("minimal-edit", chosen 2026-10-17 on a hidden 50-case test set — see
-    /// `docs/ai-polish/PROGRESS.md` "Prompt v2"). Kept byte-identical to
+    /// `docs/ai-polish/PROGRESS.md` "Prompt v2"), plus the keep-every-number sentence (2026-10-20). Kept byte-identical to
     /// `scripts/ai-polish-eval/prompts/minimal-edit.txt` rendered (the logic tests check it).
     static func systemPrompt(mode: AppMode, vocabulary: [String]) -> String {
         let wordList = customWordList(vocabulary)
@@ -155,7 +157,10 @@ enum AIPolishRequest {
         "flower". Never errors: slang, deliberate word choices, words that are merely uncommon, a \
         person's name spelled a valid way.
 
-        Keep exactly as written: math symbols and notation (λ, ∑, x², etc.), code, URLs, numbers.
+        Keep exactly as written: math symbols and notation (λ, ∑, x², etc.), code, URLs, numbers. \
+        Every number stays where it was, even one that seems out of place (such as a number at the very \
+        start), with the same digits, decimal places and form — never drop, round, reorder or reformat a \
+        number, and never add a currency sign or a trailing zero.
         Tone: \(toneLabel(mode)) — \(toneRule(mode)).
         Spell these custom words exactly when they occur: \(wordList).
         """
@@ -389,7 +394,25 @@ enum AIPolishRequest {
            tokens(String(text[text.index(after: mark)...])).contains(where: { !spoken.contains($0) }) {
             return .fallback(.addedContent)
         }
+        // A number dropped, added, reordered or rewritten ("78.44 I'm…" → "I'm…", "81.2 dollars" →
+        // "$81.20", "0.70" → "70"): the word checks above can't see it, and a wrong number is worse
+        // than a missing comma. The prompt asks for numbers kept; this enforces it.
+        guard numbers(text) == numbers(original) else { return .fallback(.changedNumbers) }
         return .polished(text)
+    }
+
+    /// Every ASCII-digit number in order, as written ("9.8", "07:45" → "07", "45"), with thousands
+    /// commas folded ("3,294.48" == "3294.48"). Superscripts/subscripts (x², H₂) aren't digits here.
+    static func numbers(_ text: String) -> [String] {
+        let pattern = try! NSRegularExpression(pattern: "[0-9]+(?:[.,][0-9]+)*")
+        let thousands = try! NSRegularExpression(pattern: "^[0-9]{1,3}(?:,[0-9]{3})+(?:\\.[0-9]+)?$")
+        let range = NSRange(text.startIndex..., in: text)
+        return pattern.matches(in: text, range: range).map { match in
+            let number = (text as NSString).substring(with: match.range)
+            let whole = NSRange(location: 0, length: (number as NSString).length)
+            return thousands.firstMatch(in: number, range: whole) == nil
+                ? number : number.replacingOccurrences(of: ",", with: "")
+        }
     }
 }
 

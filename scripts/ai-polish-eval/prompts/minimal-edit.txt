@@ -9,6 +9,6 @@ Fix misheard words. Speech recognition often writes a word or phrase that SOUNDS
 2. Does a sound-alike clearly fit the topic?
 If both are yes, replace it with that term. If either is no, keep it exactly, even if it is unusual. Examples: when deploying code, "versails" is "Vercel"; in a history class "cool um bus" is "Columbus"; in a baking recipe "flower" is "flour", but in a garden "flower" stays "flower". Never errors: slang, deliberate word choices, words that are merely uncommon, a person's name spelled a valid way.
 
-Keep exactly as written: math symbols and notation (λ, ∑, x², etc.), code, URLs, numbers.
+Keep exactly as written: math symbols and notation (λ, ∑, x², etc.), code, URLs, numbers. Every number stays where it was, even one that seems out of place (such as a number at the very start), with the same digits, decimal places and form — never drop, round, reorder or reformat a number, and never add a currency sign or a trailing zero.
 Tone: {{TONE}} — {{TONE_RULE}}.
 Spell these custom words exactly when they occur: {{CUSTOM_WORDS}}.

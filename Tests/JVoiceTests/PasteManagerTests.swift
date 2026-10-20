@@ -24,6 +24,9 @@ final class MockPasteActionPerformer: PasteActionPerforming {
 import Testing
 @testable import JVoice
 
+/// Past `AppTimings.pasteRestoreDelay` plus Task scheduling slack.
+private let restoreWait = UInt64((AppTimings.pasteRestoreDelay + 0.5) * 1_000_000_000)
+
 @Test
 @MainActor
 func stageWritesTextToPasteboard() {
@@ -146,8 +149,8 @@ func pasteDeniedWhenAccessibilityUntrusted() {
     // During the restore window the transcript is staged.
     #expect(pasteboard.string(forType: .string) == "TRANSCRIPT")
 
-    // Wait past pasteRestoreDelay (0.30s) + Task scheduling slack.
-    try? await Task.sleep(nanoseconds: 700_000_000)
+    // Wait past pasteRestoreDelay + Task scheduling slack.
+    try? await Task.sleep(nanoseconds: restoreWait)
 
     #expect(pasteboard.string(forType: .string) == "PRIOR")
 }
@@ -168,14 +171,14 @@ func pasteDeniedWhenAccessibilityUntrusted() {
     // First paste captures "FIRST" and stages "T1".
     #expect(manager.paste("T1", targetPID: 0) == .ok)
     #expect(pasteboard.string(forType: .string) == "T1")
-    // Second paste (well within the 0.30s window) captures "T1" and stages "T2".
+    // Second paste (well within the restore window) captures "T1" and stages "T2".
     #expect(manager.paste("T2", targetPID: 0) == .ok)
     #expect(pasteboard.string(forType: .string) == "T2")
 
     // Wait (bounded) for the restore: a fixed 700 ms sleep flaked on a busy CI runner (run
     // 39032022751, the test took 2.3 s), so poll until the clipboard leaves "T2", then give a
     // cancelled-but-late first restore time to show up before checking.
-    for _ in 0..<50 where pasteboard.string(forType: .string) == "T2" {
+    for _ in 0..<80 where pasteboard.string(forType: .string) == "T2" {
         try? await Task.sleep(nanoseconds: 100_000_000)
     }
     try? await Task.sleep(nanoseconds: 400_000_000)
@@ -201,7 +204,7 @@ func pasteDeniedWhenAccessibilityUntrusted() {
                                accessibilityTrusted: { true })
     #expect(manager.paste("TRANSCRIPT", targetPID: 0) == .ok)
 
-    try? await Task.sleep(nanoseconds: 700_000_000)
+    try? await Task.sleep(nanoseconds: restoreWait)
 
     let restored = pasteboard.pasteboardItems ?? []
     #expect(restored.count == 2)
@@ -222,7 +225,7 @@ func pasteDeniedWhenAccessibilityUntrusted() {
     pasteboard.clearContents()
     pasteboard.setString("USER COPY", forType: .string)
 
-    try? await Task.sleep(nanoseconds: 700_000_000)
+    try? await Task.sleep(nanoseconds: restoreWait)
 
     #expect(pasteboard.string(forType: .string) == "USER COPY")
 }
@@ -248,6 +251,9 @@ func pasteDeniedWhenAccessibilityUntrusted() {
 #elseif canImport(XCTest)
 import XCTest
 @testable import JVoice
+
+/// Past `AppTimings.pasteRestoreDelay` plus Task scheduling slack.
+private let restoreWait = UInt64((AppTimings.pasteRestoreDelay + 0.5) * 1_000_000_000)
 
 @MainActor
 final class PasteManagerTests: XCTestCase {
@@ -349,7 +355,7 @@ final class PasteManagerTests: XCTestCase {
         XCTAssertEqual(performer.callCount, 1)
         XCTAssertEqual(pasteboard.string(forType: .string), "TRANSCRIPT")
 
-        try? await Task.sleep(nanoseconds: 700_000_000)
+        try? await Task.sleep(nanoseconds: restoreWait)
 
         XCTAssertEqual(pasteboard.string(forType: .string), "PRIOR")
     }
@@ -368,7 +374,7 @@ final class PasteManagerTests: XCTestCase {
         XCTAssertEqual(manager.paste("T2", targetPID: 0), .ok)
         XCTAssertEqual(pasteboard.string(forType: .string), "T2")
 
-        try? await Task.sleep(nanoseconds: 700_000_000)
+        try? await Task.sleep(nanoseconds: restoreWait)
 
         // First restore cancelled (would set "FIRST"); surviving restore sets "T1".
         XCTAssertEqual(pasteboard.string(forType: .string), "T1")
