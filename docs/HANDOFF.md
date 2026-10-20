@@ -3,7 +3,7 @@
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
-## 2026-10-20 — AI Polish number guard + paste-into-Claude-app fix (branch `fix/polish-numbers`, NOT installed, NOT pushed)
+## 2026-10-20 — AI Polish number guard + paste-into-Claude-app fix (branch `fix/polish-numbers`, INSTALLED 2026-10-20, NOT pushed)
 
 **Reports (David):** (1) with AI Polish on, numbers come out wrong — "78.44" said at the start of a dictation vanished; (2) dictating into the **Claude desktop app** sometimes shows "Pasted" but nothing appears in the chat.
 
@@ -13,7 +13,7 @@ Audience: the next Claude session (opened in this directory) and David. Read `CL
 
 **Verified:** `swift build` (with `scripts/sdk-env.sh`), `swift build --build-tests` (compiles; the suite runs in CI only), `./scripts/run-logic-tests.sh` 2725/2725, release-built `--polish-eval` 36/36.
 
-**Next:** David installs (`./scripts/dev-install.sh`) and dogfoods dictation into the Claude app; push the branch for CI; merge into `main` with the next release.
+**Next:** installed via `./scripts/dev-install.sh` (signed "JVoice Self-Signed"; installed `--polish-eval` on `cases-numbers.json` 12/12) — David dogfoods dictation into the Claude app; push the branch for CI; merge into `main` with the next release.
 
 ## 2026-10-18 — Release 1.3.0 (published + installed)
 
