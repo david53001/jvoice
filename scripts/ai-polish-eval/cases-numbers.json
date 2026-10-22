@@ -1,0 +1,158 @@
+[
+  {
+    "id": "num-n1",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "78.44 I'm currently having an issue saying the number at the start of this message",
+    "mode": "formal",
+    "mustContain": [
+      "78.44"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n2",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "I have the mass, I mean, sorry, the distance. I have it as 0.70, 42 kilograms is the mass, 7.41 is the final velocity, and the acceleration is negative 9.8.",
+    "mode": "formal",
+    "mustContain": [
+      "0.70",
+      "42",
+      "7.41",
+      "9.8"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n3",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "so I had 0.7 m and my initial velocity was 7.41 and my final velocity was zero",
+    "mode": "formal",
+    "mustContain": [
+      "0.7",
+      "7.41"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n4",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "and so I did 7.41² = 2 · 0.70 · a and then I got a to be 37.8 meters per second squared",
+    "mode": "formal",
+    "mustContain": [
+      "7.41",
+      "2",
+      "0.70",
+      "37.8"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n5",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "the displacement was 0.70 since he's pushing up with his legs and that gave us 3294.48",
+    "mode": "formal",
+    "mustContain": [
+      "0.70",
+      "3294.48"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n6",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "3294.48 newtons minus 411.6 newtons gave us 2882.88 newtons which is the answer",
+    "mode": "formal",
+    "mustContain": [
+      "3294.48",
+      "411.6",
+      "2882.88"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n7",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "the price went from 78.44 to 81.2 dollars which is about a 3.5% increase",
+    "mode": "formal",
+    "mustContain": [
+      "78.44",
+      "81.2",
+      "3.5"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n8",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "so 42 × -9.8 is minus 411.6 newtons",
+    "mode": "formal",
+    "mustContain": [
+      "42",
+      "9.8",
+      "411.6"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n9",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "my acceleration was 37.8 and my mass was 42 so the force is 1587.6",
+    "mode": "formal",
+    "mustContain": [
+      "37.8",
+      "42",
+      "1587.6"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n10",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "the answer is 0.0045 and the error was 1.20 percent",
+    "mode": "formal",
+    "mustContain": [
+      "0.0045",
+      "1.20"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n11",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "I scored 78.44 on the test, she got 81 and he got 90.5",
+    "mode": "formal",
+    "mustContain": [
+      "78.44",
+      "81",
+      "90.5"
+    ],
+    "lengthTolerance": 0.5
+  },
+  {
+    "id": "num-n12",
+    "category": "preserve",
+    "previous": [],
+    "transcript": "the speed of light is 3 × 10^8 meters per second and I wrote 3.0 × 10^8",
+    "mode": "formal",
+    "mustContain": [
+      "3",
+      "10",
+      "8",
+      "3.0",
+      "10",
+      "8"
+    ],
+    "lengthTolerance": 0.5
+  }
+]

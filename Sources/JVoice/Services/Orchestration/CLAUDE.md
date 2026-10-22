@@ -45,7 +45,10 @@ mirrors it), and updates stats.
   and the menu title on the way. Ported from BetterScreenshot. Never in a normal build.
 - `SystemActions.swift` — small system-action helpers.
 - `PermissionError.swift` — permission-failure types surfaced to the UI.
-- `AppTimings.swift` — named timing constants: `pasteRestoreDelay`, `pasteActivationDelay` (only
+- `AppTimings.swift` — named timing constants: `pasteRestoreDelay` (1.5 s since 2026-10-20 — at 0.30 s a
+  busy Chromium/Electron app such as the Claude desktop app read the clipboard AFTER the restore and pasted
+  the old clipboard while the HUD said "Pasted"; don't shorten it without re-running that repro),
+  `pasteActivationDelay` (only
   paid when the paste target is NOT already frontmost — the coordinator checks first), and
   `streamingPoll` (100 ms cadence of the streaming session's WAV check) and `speculativeTailPause`
   (0.4 s of trailing silence before the pending tail is decoded speculatively).

@@ -4139,6 +4139,31 @@ do {
     expectEqual(AIPolishRequest.validate("Deploy it to Vercel.", original: "deploy it to versails", previous: []), .polished("Deploy it to Vercel."), "one sound-alike swap passes")
 }
 
+print("AIPolishRequest — a reply that changes a number falls back")
+do {
+    // Real Claude replies (2026-10-20): the leading number dropped, a price reformatted.
+    for (original, reply) in [("78.44 I'm currently having an issue saying the number at the start of this message",
+                               "I'm currently having an issue saying the number at the start of this message."),
+                              ("the price went from 78.44 to 81.2 dollars which is about a 3.5% increase",
+                               "The price went from $78.44 to $81.20, which is about a 3.5% increase."),
+                              ("the displacement was 0.70 since he's pushing up with his legs",
+                               "The displacement was 70 since he's pushing up with his legs."),
+                              ("the force was 1587.6 and the weight was 411.6 newtons",
+                               "The force was 1587.6 and the weight was 411.66 newtons."),
+                              ("first it was 7.41 and then it went to 37.8 after the push",
+                               "First it was 37.8 and then it went to 7.41 after the push.")] {
+        expectEqual(AIPolishRequest.validate(reply, original: original, previous: []), .fallback(.changedNumbers), "number changed → local text: \(reply)")
+    }
+    expectEqual(AIPolishRequest.validate("The invoice total is 1,284.50, and it's due on the 14th.", original: "the invoice total is 1,284.50 and it's due on the 14th", previous: []),
+                .polished("The invoice total is 1,284.50, and it's due on the 14th."), "same numbers, new punctuation → passes")
+    expectEqual(AIPolishRequest.validate("That gave us 3,294.48 newtons.", original: "that gave us 3294.48 newtons", previous: []),
+                .polished("That gave us 3,294.48 newtons."), "a thousands separator is the same number → passes")
+    expectEqual(AIPolishRequest.validate("My flight is BA0871 at 07:45.", original: "my flight is BA0871 at 07:45", previous: []),
+                .polished("My flight is BA0871 at 07:45."), "codes and times kept → pass")
+    expectEqual(AIPolishRequest.numbers("It was 9.8. Then 1,284.50, 3,294.48 and 1,2,3 at 07:45 x² H₂"), ["9.8", "1284.50", "3294.48", "1,2,3", "07", "45"],
+                "numbers: ASCII digits, thousands commas folded, a sentence's final period not part of the number")
+}
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S) in AI Polish")
     exit(1)

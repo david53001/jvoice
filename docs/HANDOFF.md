@@ -3,6 +3,18 @@
 Audience: the next Claude session (opened in this directory) and David. Read `CLAUDE.md` first for the rules; this file is the mutable status.
 
 
+## 2026-10-20 — AI Polish number guard + paste-into-Claude-app fix (branch `fix/polish-numbers`, INSTALLED 2026-10-20, NOT pushed)
+
+**Reports (David):** (1) with AI Polish on, numbers come out wrong — "78.44" said at the start of a dictation vanished; (2) dictating into the **Claude desktop app** sometimes shows "Pasted" but nothing appears in the chat.
+
+**(1) Root cause:** Claude (AI Polish) itself drops/reformats numbers, and `AIPolishRequest.validate` only checked words. Reproduced with `--polish-eval` on `scripts/ai-polish-eval/cases-numbers.json`: the old prompt changed numbers in 4/36 replies (dropped the leading "78.44" 2/3 runs; "81.2 dollars" → "$81.20"). **Fix:** a deterministic guard — the reply's digit numbers, in order, must equal the local text's (thousands commas folded) or it falls back (`changed-numbers`); plus one prompt sentence (keep every number, even one at the very start; never drop/round/reorder/reformat, no currency sign or trailing zero). After: 36/36 kept, 0 fallbacks; general eval within noise (test 96/96/96 vs 96/96/98, train 92.3/91.0/92.3 vs 93.6). Files: `docs/ai-polish/eval-results/2026-10-20-numbers-*.md`. Not covered: Whisper mis-hearing a number before the polish (the guard keeps whatever Whisper wrote).
+
+**(2) Root cause:** `PasteManager` restored the user's old clipboard 0.30 s after Cmd+V. Chromium/Electron apps read the clipboard only when their page handles the paste; a busy page (Claude streaming a reply) takes longer, so it pasted the RESTORED clipboard. Reproduced in Chrome (same engine): a page busy 600 ms pasted the old clipboard at 0.30 s and the dictation at 1.5 s. **Fix:** `AppTimings.pasteRestoreDelay` 0.30 → 1.5 s (a copy made during the window still wins — `changeCount` guard). Tests' restore waits now derive from the constant.
+
+**Verified:** `swift build` (with `scripts/sdk-env.sh`), `swift build --build-tests` (compiles; the suite runs in CI only), `./scripts/run-logic-tests.sh` 2725/2725, release-built `--polish-eval` 36/36.
+
+**Next:** installed via `./scripts/dev-install.sh` (signed "JVoice Self-Signed"; installed `--polish-eval` on `cases-numbers.json` 12/12) — David dogfoods dictation into the Claude app; push the branch for CI; merge into `main` with the next release.
+
 ## 2026-10-18 — Release 1.3.0 (published + installed)
 
 **Status:** v1.3.0 (build 8) RELEASED 2026-10-18: review round 2 8.5/10; `main` = `release/1.3.0` + the review-2 Lows + a CI flake fix, pushed; 3 green `test.yml` attempts in a row on `8f5d14d` (run 39161719242), packaged from that exact commit and published as https://github.com/david53001/jvoice/releases/tag/v1.3.0 (`--latest`, zip + DMG + appcast; the feed serves build 8); installed in /Applications (same "JVoice Self-Signed" cert, so Microphone/Accessibility are kept).

@@ -15,7 +15,9 @@ hold everywhere here:
 - **Never lose a dictation.** ANY failure — no key, offline, HTTP ≠ 200, the 3 s deadline, a stop
   reason other than `end_turn`, empty/over-long/chatty output, the context echoed back, or the
   user's words gone (< 60 % of the length, or < 60 % of its 3+-letter words kept — a short answer,
-  a summary, a cut-off reply) — returns the local text unchanged.
+  a summary, a cut-off reply), or **any number changed** (`changed-numbers`: the digit numbers, in
+  order, must match the local text's exactly — thousands commas aside; added 2026-10-20 after Claude
+  dropped a leading "78.44" and turned "81.2 dollars" into "$81.20") — returns the local text unchanged.
 - **The user's tone wins.** The prompt spells out each tone, and the coordinator re-applies
   `TextProcessor.format(_, mode:)` to the reply (Casual's missing final period, Formal's capital +
   period). Dictations under 3 words are not sent at all (`AIPolish.isWorthPolishing`).

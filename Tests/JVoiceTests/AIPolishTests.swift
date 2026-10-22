@@ -457,6 +457,29 @@ private func date(_ y: Int, _ m: Int, _ d: Int) -> Date {
                                      previous: []) == .polished("Is it working? Yes, it is."))
 }
 
+@Test func repliesThatChangeANumberFallBack() {
+    // Real Claude replies (2026-10-20): the leading number dropped, a price reformatted.
+    let changed: [(String, String)] = [
+        ("78.44 I'm currently having an issue saying the number at the start of this message",
+         "I'm currently having an issue saying the number at the start of this message."),
+        ("the price went from 78.44 to 81.2 dollars which is about a 3.5% increase",
+         "The price went from $78.44 to $81.20, which is about a 3.5% increase."),
+        ("the displacement was 0.70 since he's pushing up with his legs",
+         "The displacement was 70 since he's pushing up with his legs."),
+        ("first it was 7.41 and then it went to 37.8 after the push",
+         "First it was 37.8 and then it went to 7.41 after the push."),
+    ]
+    for (original, reply) in changed {
+        #expect(AIPolishRequest.validate(reply, original: original, previous: []) == .fallback(.changedNumbers), "\(reply)")
+    }
+    // Same numbers in the same order (a thousands comma is the same number) still pass.
+    #expect(AIPolishRequest.validate("That gave us 3,294.48 newtons.", original: "that gave us 3294.48 newtons",
+                                     previous: []) == .polished("That gave us 3,294.48 newtons."))
+    #expect(AIPolishRequest.validate("My flight is BA0871 at 07:45.", original: "my flight is BA0871 at 07:45",
+                                     previous: []) == .polished("My flight is BA0871 at 07:45."))
+    #expect(AIPolishRequest.numbers("It was 9.8. Then 1,284.50 and 1,2,3 at 07:45 x² H₂") == ["9.8", "1284.50", "1,2,3", "07", "45"])
+}
+
 @Test func balanceStartsAtZeroAndTopUpsAddUp() {
     let store = AIPolishUsageStore(defaults: usageDefaults())
     #expect(store.balance == 0 && store.lastTopUp == 0 && store.remainingFraction == 0)

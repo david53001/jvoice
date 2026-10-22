@@ -3,6 +3,16 @@
 Spec: `docs/ai-polish/PROTOTYPE-PLAN.md`. Branch: `feat/ai-polish` (pushed to `origin` for CI only —
 never merged, tagged or released). "State" is always current; "Log" is newest first.
 
+## Number guard (2026-10-20, branch `fix/polish-numbers`)
+
+- David: numbers came out wrong with AI Polish (a leading "78.44" vanished). Claude dropped/reformatted
+  numbers in 4/36 replies (`eval-results/2026-10-20-numbers-before-*.md`). New `validate` fallback
+  `changed-numbers` (digit numbers in order must match, thousands commas folded) + one prompt sentence
+  in `minimal-edit.txt`/`systemPrompt` (keep every number). After: 36/36, 0 fallbacks
+  (`…-numbers-built-in-*`); hidden test 96/96/96, train 92.3/91.0/92.3 (`…-numbers-prompt-*`) — within
+  noise of v2. New case file `scripts/ai-polish-eval/cases-numbers.json` (12 cases; mustContain = the
+  numbers; the result files above predate the `num-` id prefix).
+
 ## Release (2026-10-18)
 
 - Merged into **`release/1.3.0`** (merge `9f7296d`, with main's Sparkle 1.2.0) for release 1.3.0 — released as
