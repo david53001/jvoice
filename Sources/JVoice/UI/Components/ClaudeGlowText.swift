@@ -21,8 +21,12 @@ struct ClaudeGlowText: View {
     var base: Color = .primary
     var style: Style = .full
 
+    @Environment(\.windowOnScreen) private var onScreen
+
     var body: some View {
-        TimelineView(.periodic(from: .now, by: 1.0 / 30.0)) { context in
+        // Paused while the window is off screen: a hidden Settings window kept ticking at 30 Hz and
+        // re-rendering its whole tree (~23 % of a core, measured 2026-10-22).
+        TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: !onScreen)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             // The highlight's centre runs from just before the first letter to just past the last.
             let centre = -0.3 + 1.6 * (t.truncatingRemainder(dividingBy: style.period) / style.period)
@@ -41,4 +45,17 @@ struct ClaudeGlowText: View {
     }
 
     private static func clamp(_ x: Double) -> Double { min(1, max(0, x)) }
+}
+
+private struct WindowOnScreenKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// False while the hosting window is closed (ordered out), minimised or fully covered, so looping
+    /// animations can pause. Set by `SettingsWindow`; everywhere else it stays true.
+    var windowOnScreen: Bool {
+        get { self[WindowOnScreenKey.self] }
+        set { self[WindowOnScreenKey.self] = newValue }
+    }
 }

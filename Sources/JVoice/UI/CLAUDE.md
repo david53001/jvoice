@@ -15,6 +15,9 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   **One exception (David, 2026-10-17): Claude.** `Components/ClaudeGlowText` — a Claude-orange
   (#D97757) highlight sweeping through the letters + a soft glow — marks "Claude is working": the HUD's
   "AI refining" pill (full strength) and the AI Polish card's title in Settings (`.subtle`).
+  Its 30 Hz sweep pauses while `\.windowOnScreen` is false — `SettingsWindow` sets it from its occlusion
+  state, because a closed Settings window is only ordered out and kept ticking at ~23 % of a core
+  (measured 2026-10-22). Any new looping animation in Settings must read it too.
 - `Theme.swift` — the semantic tokens (`Theme.native`: `Color.primary` tints + `.primary/.secondary/
   .tertiary` text; `danger` = red) and `Design` (radii/opacities copied from MacStats). `AppTheme`
   (`Models/`) is **System** (default — follows macOS) / Light / Dark; `AppTheme.nsAppearance` is the

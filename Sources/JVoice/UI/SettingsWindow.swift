@@ -14,6 +14,10 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
     /// builds and draws it too.
     private var infoButton: InfoButton?
     private var shortcutsObserver: NSObjectProtocol?
+    /// Closing only orders this window out (`isReleasedWhenClosed = false`), so the SwiftUI tree lives
+    /// on; this tells it (`\.windowOnScreen`) when nobody can see it, and the glow stops ticking.
+    private let visibility = WindowVisibility()
+    private var occlusionObserver: NSObjectProtocol?
 
     init(coordinator: VoiceCoordinator) {
         super.init(
@@ -29,7 +33,9 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
         isReleasedWhenClosed = false
         appearance = coordinator.appTheme.nsAppearance   // nil = follow macOS
         // A behind-window material under a transparent title bar: the desktop shows softly through.
-        let hosting = WindowMaterial.install(SettingsView(coordinator: coordinator), in: self, belowTitleBar: true)
+        let hosting = WindowMaterial.install(
+            OnScreenGate(visibility: visibility, content: SettingsView(coordinator: coordinator)),
+            in: self, belowTitleBar: true)
         // Only the SwiftUI MINIMUM becomes a constraint: its intrinsic (ideal) size would pin the window
         // and stop the user resizing it. Then open at the designed 700 × 560 (+ the title bar).
         hosting.sizingOptions = [.minSize]
@@ -56,6 +62,19 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
         ) { [weak info] _ in
             MainActor.assumeIsolated { info?.shortcuts = Self.infoShortcuts() }
         }
+        // The notification only reports changes, so start from the real state (not yet shown = off
+        // screen); otherwise a window that is never visible would keep the default and tick forever.
+        syncVisibility()
+        occlusionObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didChangeOcclusionStateNotification, object: self, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.syncVisibility() }
+        }
+    }
+
+    private func syncVisibility() {
+        let onScreen = occlusionState.contains(.visible)
+        if visibility.isOnScreen != onScreen { visibility.isOnScreen = onScreen }
     }
 
     // MARK: Fill the screen / back (title-bar double-click, green button)
@@ -127,5 +146,21 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
         #else
         return []
         #endif
+    }
+}
+
+/// Whether the Settings window is on screen (its occlusion state), for `\.windowOnScreen`.
+@MainActor
+private final class WindowVisibility: ObservableObject {
+    @Published var isOnScreen = true
+}
+
+/// Hands `WindowVisibility` to the Settings tree as `\.windowOnScreen`.
+private struct OnScreenGate<Content: View>: View {
+    @ObservedObject var visibility: WindowVisibility
+    let content: Content
+
+    var body: some View {
+        content.environment(\.windowOnScreen, visibility.isOnScreen)
     }
 }
