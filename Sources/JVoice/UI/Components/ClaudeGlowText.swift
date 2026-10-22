@@ -52,7 +52,7 @@ private struct WindowOnScreenKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// False while the hosting window is closed (ordered out), minimised or fully covered, so looping
+    /// False while the hosting window is closed (ordered out), on another Space or fully covered, so looping
     /// animations can pause. Set by `SettingsWindow`; everywhere else it stays true.
     var windowOnScreen: Bool {
         get { self[WindowOnScreenKey.self] }
