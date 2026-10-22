@@ -4,6 +4,16 @@ All notable changes to JVoice — a free, source-available macOS menu-bar voice-
 
 ---
 
+## [1.3.1] — 2026-10-22
+
+### Fixed
+
+- **JVoice no longer uses CPU in the background after you open Settings.** Closing Settings only hides the window, and the glowing "AI Polish" title kept animating out of sight — about a quarter of a CPU core, all the time, until JVoice was quit (more heat and battery drain, especially on a fanless MacBook Air). The animation now pauses whenever Settings isn't on screen and picks up again when you open it.
+- **AI Polish never changes a number.** If Claude's reply drops or rewrites a number from your dictation ("81.2 dollars" → "$81.20"), JVoice pastes its own text instead.
+- **Pasting into busy apps.** In a slow Chrome or Electron app (like the Claude desktop app), the paste could come out as your old clipboard while the pill said "Pasted". JVoice now waits longer before putting your clipboard back.
+
+---
+
 ## [1.3.0] — 2026-10-18
 
 ### Added
