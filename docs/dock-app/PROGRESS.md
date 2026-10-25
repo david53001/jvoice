@@ -100,3 +100,9 @@ local). Waiting for: the owner's live check on the installed app (list below), t
 - The Sparkle e2e throwaway build (`-DSPARKLE_E2E_TEST`) stays `.accessory` (no second JVoice in the Dock); not re-run.
 - `TourCoordinator.extraAnchorWindows`, the Kit's menu-bar-host code in `TagOverlayController`, and
   `LaunchAtLoginPromptController.isMenuOpen` are now unused (left in place, documented — dead code not deleted).
+
+## 2026-10-25 23:58 — merged + installed
+- Local `main` fast-forwarded to `4a20d65` (not pushed, no release). `main` is checked out in worktree `.claude/worktrees/sparkle-updates`.
+- Installed to `/Applications/JVoice.app` with `JVOICE_REQUIRE_IDENTITY=1 scripts/dev-install.sh`: 1.4.0 (build 10), signing certificate leaf `1164938a…` unchanged, so Microphone + Accessibility permissions carry over. Launch log: `Launch atLogin=false isDefault=true window=settings`. System Events shows a single menu bar (no status item) and the main menu JVoice · Edit · Window · Help.
+- Previous install (1.3.0 build 8) backed up at `~/Backups/2026-10-25-pre-dock-app/JVoice-1.3.0-build8.app`.
+- NEXT: the owner runs the live checks above; to ship publicly, set the CHANGELOG date, point the README DMG link at 1.4.0, push, and follow `docs/sparkle-updates/README.md` "How to cut a release".
