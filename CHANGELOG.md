@@ -1,6 +1,23 @@
 # Changelog
 
-All notable changes to JVoice — a free, source-available macOS menu-bar voice-dictation app (press ⌥Space to record, on-device speech recognition via WhisperKit, styled text pasted into the frontmost app; no network calls at runtime except the one-time model download, the optional update check and the opt-in AI Polish — see PRIVACY.md) — are documented here. WhisperKit is an Apple-Silicon-optimised on-device Whisper inference library. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+All notable changes to JVoice — a free, source-available macOS voice-dictation app (a Dock app since 1.4.0, a menu-bar app before) (press ⌥Space to record, on-device speech recognition via WhisperKit, styled text pasted into the frontmost app; no network calls at runtime except the one-time model download, the optional update check and the opt-in AI Polish — see PRIVACY.md) — are documented here. WhisperKit is an Apple-Silicon-optimised on-device Whisper inference library. Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
+
+---
+
+## [1.4.0] — Unreleased
+
+### Changed
+
+- **JVoice is now a regular Mac app in the Dock instead of an icon in the menu bar.** The "J" in the top-right menu bar is gone. Everything its menu did is still there, in two places:
+  - **Right-click (or Control-click) JVoice's Dock icon** for Start / Stop Dictation, Settings…, Launch at Login, Help & Tours and Check for Updates… (the Dock adds Quit).
+  - **JVoice's own menu bar** when it's in front: About, Start / Stop Dictation, Settings… (⌘,), Check for Updates…, Launch at Login, Hide, Quit (⌘Q), plus the usual Edit (copy and paste in Settings' text boxes), Window and Help (Help & Tours) menus.
+- **Click the Dock icon to open Settings.** Opening JVoice from Finder, Launchpad or Spotlight shows Settings too. Closing the window never quits JVoice; ⌘Q or the Dock's Quit does.
+- **At login JVoice starts quietly:** if it opens at login, it just sits in the Dock with your shortcut ready — no window.
+- Your shortcut (⌥Space) works exactly as before, in any app: dictating never brings JVoice to the front, and the text always goes into the app you were using — also when you start or stop a dictation from JVoice's menus.
+- The recording pill now stays visible even if JVoice is hidden (⌘H, or another app's Hide Others).
+- The Welcome tour's first step now points at the Dock instead of the menu bar.
+
+Your settings, custom words, stats, downloaded model, permissions and automatic updates are unchanged.
 
 ---
 

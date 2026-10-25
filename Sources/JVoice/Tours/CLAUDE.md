@@ -13,7 +13,7 @@ people who already use JVoice must never get it by itself.
   Next / Skip Tour). **Explain** steps advance on Next (Return); **Try** steps advance by themselves when
   the user does the thing (the app posts a **tour event**); Skip Step / Skip Tour (Esc) always work.
 - **Anchor** — a stable id ("<surface>.<name>") on a real control: `.tourAnchor("settings.model")` in
-  SwiftUI, `view.tourAnchor = "menuBar.icon"` in AppKit (stored as the accessibility identifier). A
+  SwiftUI, `view.tourAnchor = "settings.help"` in AppKit (stored as the accessibility identifier). A
   step whose anchor isn't on screen is skipped.
 - **Audience** — `new` or `existing`, decided ONCE and stored (`tourAudience`); never recomputed.
 
@@ -32,11 +32,11 @@ people who already use JVoice must never get it by itself.
    suppressed (`VoiceCoordinator.suppressLaunchAccessibilityPrompt`) — the window asks instead.
 3. A tour starts **by itself** only when `firstUseToursEnabled == true` (absent = off) and its version
    isn't in `toursSeen` (`TourRules.shouldAutoStart`). Existing users: no window, no automatic tour, ever
-   (also not after a version bump). Everyone can run any tour on purpose: menu bar → Help & Tours,
+   (also not after a version bump). Everyone can run any tour on purpose: JVoice menu / Dock menu → Help & Tours,
    the ⓘ, Settings → Tours & Tips (which also has the opt-in toggle and Reset All Tours).
 
 **The ⓘ (David, 2026-09-28: "on top of everything")** sits in the title bar's top-right of every JVoice
-window — Settings and the Welcome window (the pill is too small; its tour replays from the menu bar).
+window — Settings and the Welcome window (the pill is too small; its tour replays from the menus' Help & Tours).
 Its menu: **Replay Tour** (the whole tour) · **Show Me** — one item per step, by title ("Custom words",
 "Your shortcut"…), which explains JUST that part: `TourEvents.replayPart` →
 `TourCoordinator.replayPart` runs a one-step copy of the tour (a "part" session: never marks the tour
@@ -51,7 +51,7 @@ E = Explain step, T = Try step.
 
 | Tour | Starts | Steps |
 |---|---|---|
-| Welcome | Show Me Around / menu / replay | E menu-bar J (`menuBar.icon`) · E dictation shortcut (`welcome.shortcut`) · T "Try it now" (`welcome.tryIt`, advances on `recording.started`) |
+| Welcome | Show Me Around / menu / replay | E "Your Dock icon" (`welcome.dock` — the page's "JVoice lives in your Dock" line; was the menu-bar J `menuBar.icon` until 1.3.1, gone with the status item) · E dictation shortcut (`welcome.shortcut`) · T "Try it now" (`welcome.tryIt`, advances on `recording.started`) |
 | Recording | first recording pill (`surfaceShown(.recordingPill)`) | T "JVoice is listening" (`pill.controls`, advances on `recording.stopped`) |
 | Settings | first Settings window | E stats · model · processing · voice style · app modes · shortcut · recent transcripts · custom words · Opacity (`settings.appearance`, plays a demo) · Launch at login (`settings.launchAtLogin` — on the Startup card's switch itself, capsule outline, tag `.above`; 1.3.0) · ⓘ (`settings.*`) |
 
@@ -118,7 +118,7 @@ root `CLAUDE.md`), `recording.stopped` (before the pill leaves the recording sta
 - `OpacityTourDemo.swift` (`TourStepDemo` + the player) and `OpacityDemoTimeline.swift` (pure motion,
   logic-tested) — the Opacity step's demo.
 - Wiring: `AppDelegate.swift` (creates + installs the coordinator, Welcome window at launch,
-  `openSurface`, `notify`), `UI/WelcomeWindow.swift`, `UI/MenuBarController.swift` (Help & Tours submenu, `menuBar.icon`),
+  `openSurface`, `notify`), `UI/WelcomeWindow.swift` (`welcome.dock`), `UI/AppMenus.swift` (Help & Tours submenu),
   `UI/HUDView.swift` (`pill.controls`, capsule radius), `UI/SettingsView.swift` + `SettingsWindow.swift` (anchors incl. `settings.appearance`,
   Tours & Tips card, ⓘ, `surfaceShown(.settings)`), `VoiceCoordinator.swift` (events).
 

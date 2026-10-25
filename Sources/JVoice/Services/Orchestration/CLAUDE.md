@@ -9,8 +9,7 @@ working on the end-to-end flow, read it too.
 
 ## The flow
 Global hotkey (⌥Space) → record → transcribe → post-process → paste into the frontmost app.
-`VoiceCoordinator` orchestrates this, owns the HUD state (the heads-up recording pill; the menu bar
-mirrors it), and updates stats.
+`VoiceCoordinator` orchestrates this, owns the HUD state (the heads-up recording pill), and updates stats.
 
 ## Files
 - `PasteManager.swift` — pastes text into the frontmost app via the macOS Accessibility API.
@@ -43,6 +42,11 @@ mirrors it), and updates stats.
   `SPARKLE_E2E_UI=1` (`E2E_UI=1 scripts/sparkle-e2e-test.sh`): clicks through Sparkle's real update
   windows (Install Update → Install and Relaunch) on the throwaway test copy, logging `pendingVersion`
   and the menu title on the way. Ported from BetterScreenshot. Never in a normal build.
+- `LaunchWindowPolicy.swift` (1.4.0, a Dock app) — pure: which window a launch opens (first run →
+  Welcome, launch at login → none, otherwise Settings) and a Dock click opens (Settings, or Welcome
+  forward), and whether the launch Apple Event says "opened at login" (`kAEOpenApplication` +
+  `keyAEPropData` = `keyAELaunchedAsLogInItem`; works for `SMAppService.mainApp`, which can't pass
+  launch arguments). Tested by `run-logic-tests.sh` (section 5) and `LaunchWindowPolicyTests`.
 - `SystemActions.swift` — small system-action helpers.
 - `PermissionError.swift` — permission-failure types surfaced to the UI.
 - `AppTimings.swift` — named timing constants: `pasteRestoreDelay` (1.5 s since 2026-10-20 — at 0.30 s a

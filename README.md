@@ -14,7 +14,7 @@ Needs macOS 14 or newer (Apple Silicon recommended). Paste this into Terminal:
 curl -fsSL https://raw.githubusercontent.com/david53001/jvoice/main/scripts/install.sh | bash
 ```
 
-The same command installs JVoice and updates it to the newest version. Updating keeps your settings, custom words, stats, downloaded model and permissions. You can read the script first: [`scripts/install.sh`](scripts/install.sh). From version 1.2.0, JVoice also updates itself: it checks once a day and offers new versions in a window (menu bar > Check for Updates…, or turn the daily check off in Settings > Updates).
+The same command installs JVoice and updates it to the newest version. Updating keeps your settings, custom words, stats, downloaded model and permissions. You can read the script first: [`scripts/install.sh`](scripts/install.sh). From version 1.2.0, JVoice also updates itself: it checks once a day and offers new versions in a window (JVoice menu or the Dock icon's menu > Check for Updates…, or turn the daily check off in Settings > Updates).
 
 Prefer a manual download? Get [`JVoice-1.3.1.dmg`](https://github.com/david53001/jvoice/releases/download/v1.3.1/JVoice-1.3.1.dmg) and drag JVoice into Applications.
 

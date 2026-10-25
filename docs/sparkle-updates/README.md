@@ -1,6 +1,6 @@
 # JVoice: Sparkle auto-updates + the one-time "open at login?" prompt
 
-Written 2026-10-18 for a fresh session with no context. JVoice is a SwiftPM macOS menu-bar dictation app
+Written 2026-10-18 for a fresh session with no context. JVoice is a SwiftPM macOS dictation app (a menu-bar app when this was written; a Dock app since 1.4.0 — `docs/dock-app/PROGRESS.md`)
 (no Xcode project; Command Line Tools only) in `/Users/davidghermansteinberg/Desktop/Home/Projects/Code/JVoice`,
 GitHub `david53001/jvoice` (**public** repo; the same repo also holds the Windows port under `windows/`). This
 work is on branch **`feat/sparkle-updates`**, worktree
@@ -38,7 +38,7 @@ work is on branch **`feat/sparkle-updates`**, worktree
 | `.package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0")`, linked into the `JVoice` target with rpath `@executable_path/../Frameworks` | `Package.swift`, `Package.resolved` |
 | `SUFeedURL` = `https://github.com/david53001/jvoice/releases/latest/download/appcast.xml`, `SUPublicEDKey` = `JrE6EncJErY++AZZXYrrwcNmcVzY/M2wgDWcCkaBf6U=`, `SUEnableAutomaticChecks` = YES (daily check, no "may we check?" dialog). Version **1.2.0**, build **7** (1.1.4 was 6; no branch has a higher one — checked with every local and remote branch's `Resources/Info.plist`) | `Resources/Info.plist` |
 | Updater: `SPUStandardUpdaterController`, started at launch, "gentle reminders": a background find opens Sparkle's window *behind* other apps, without taking focus — except when Sparkle chooses "immediate focus" (its default when the app was launched recently, e.g. at login, or the Mac had been idle): then it opens in front, as in most Mac apps. So a window behind others isn't missed, the menu item and the Settings button both read **"Update Available (X)…"** (`Updates.actionTitle`) until the user looks at it. No notification (JVoice never asks for that permission). | `Sources/JVoice/Services/Orchestration/Updates.swift` (started in `AppDelegate`) |
-| Menu bar: **Check for Updates…** under Help & Tours (greyed out while a check runs) | `Sources/JVoice/UI/MenuBarController.swift` |
+| Menu bar: **Check for Updates…** under Help & Tours (greyed out while a check runs). Since 1.4.0: in the JVoice main menu and the Dock menu | `Sources/JVoice/UI/MenuBarController.swift` (since 1.4.0 `UI/AppMenus.swift`) |
 | Settings → **UPDATES** card (right column, under Tours & Tips): **Check Automatically** switch ("Look for a new version once a day."), the same **Check for Updates…** / **Update Available (X)…** button, "You have JVoice X." | `Sources/JVoice/UI/SettingsView.swift` (`updatesSection`) |
 | Bundle: copies `Sparkle.framework` into `Contents/Frameworks` (ditto, keeps symlinks), removes its `XPCServices`, `Headers`, `PrivateHeaders`, `Modules`; deletes every rpath except `/usr/lib/swift` and `@executable_path/../Frameworks` (SwiftPM also bakes in `@loader_path` and the CLT's swift-6.2 folder); fails if an `@rpath` library other than Sparkle appears. Env vars `JVOICE_APP` (destination), `JVOICE_SWIFT_FLAGS`, `JVOICE_REQUIRE_IDENTITY=1` | `scripts/build-app.sh` (new — the ONE way a JVoice.app is assembled; `package-release.sh`, `dev-install.sh` and the e2e test all use it) |
 | Signing, inside-out, no `--deep`: `Autoupdate`, `Updater.app`, the framework (all `-o runtime`, as Sparkle ships them), then the app with identifier = its bundle id (`com.jvoice.app`), no entitlements, no hardened runtime (as before) | `scripts/sign-app.sh` (new) |
@@ -81,7 +81,7 @@ flag `jvoice.app.launchAtLogin.didInitialize`). That is **removed**. Now:
   transcription error, or a refused paste (no Accessibility / target rejected / clipboard busy) isn't one.
 - After the **5th** use, the app checks once a second (for up to 120 s; the next dictation tries again) for a **calm
   moment**: ≥ 3 s since that dictation, no key pressed for ≥ 2 s (`CGEventSource.secondsSinceLastEventType`, needs no
-  permission), no mouse button down, the menu-bar menu closed (`MenuBarController.isMenuOpen`), **no dictation
+  permission), no mouse button down, the menu-bar menu closed (`MenuBarController.isMenuOpen`; gone since 1.4.0 — the main menu only opens while JVoice is active, which already holds the card back, and the Dock menu can't be observed), **no dictation
   activity at all** (`VoiceCoordinator.isDictationActive`: recording, mic opening, stopping, transcribing,
   pasting, or any HUD pill — incl. "Pasted" and errors — on screen), none of JVoice's windows in front
   (`NSApp.isActive` false: not while in Settings or Welcome), no guided-tour tag on screen, and **nothing

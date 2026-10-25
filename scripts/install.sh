@@ -58,5 +58,5 @@ xattr -dr com.apple.quarantine "$DEST" 2>/dev/null || true
 echo "==> Launching..."
 open -a "$DEST"
 VERSION="$(defaults read "$DEST/Contents/Info.plist" CFBundleShortVersionString 2>/dev/null || echo "?")"
-echo "Done — JVoice $VERSION is installed. Look for the J in your menu bar; press ⌥Space to dictate."
+echo "Done — JVoice $VERSION is installed. It's running in your Dock (click it for Settings); press ⌥Space to dictate."
 echo "First install only: macOS asks for Microphone and Accessibility access, then the Whisper model downloads."

@@ -1,6 +1,6 @@
 # Sources/JVoice — app shell & orientation
 
-JVoice is a macOS menu-bar voice-dictation app (press ⌥Space → record → on-device WhisperKit
+JVoice is a macOS voice-dictation app — a Dock app since 1.4.0, a menu-bar app before (press ⌥Space → record → on-device WhisperKit
 transcription → styled text pasted into the frontmost app). This file is the top-level orientation;
 each subfolder has its own `CLAUDE.md` with the real detail — **read the relevant area brief before
 working there.** Kept short on purpose: it auto-loads for any work under `Sources/JVoice/`.
@@ -8,22 +8,28 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
 ## Boot path (the three top-level files)
 - `JVoiceApp.swift` — the `@main` entry (`JVoiceMain` enum). First checks for the hidden
   `--bench` CLI mode (`BenchRunner` — measures transcription speed/accuracy on this machine, where
-  the XCTest runner cannot execute); otherwise launches the SwiftUI `JVoiceApp`. The app is a
-  **menu-bar accessory** (`.accessory` activation policy, no Dock icon). It declares no real SwiftUI
-  scenes — windows are managed imperatively by `AppDelegate` / `SettingsWindow`; the one scene SwiftUI
-  requires is a `MenuBarExtra` that is never inserted (since 2026-10-17 — the old empty `Settings`
-  scene got opened by SwiftUI itself as a blank 900×450 "JVoice Settings" window). Launching the
-  running app again opens the real Settings (`AppDelegate.applicationShouldHandleReopen`). Right before launching the app it classifies the
+  the XCTest runner cannot execute) and the other hidden dev modes; otherwise runs a **plain AppKit**
+  app (`NSApplication.shared` + `AppDelegate` + `run()`, since 1.4.0). There is no SwiftUI `App` any more:
+  its required scene (an empty `Settings` scene until 2026-10-17, then a never-inserted `MenuBarExtra`)
+  could open a blank "JVoice Settings" window by itself and built its own main menu. SwiftUI is still
+  used inside the windows (`NSHostingView`). The app is a **regular Dock app** since 1.4.0 (`.regular`,
+  no `LSUIElement`; it was a menu-bar accessory with a status item until 1.3.1). Right before launching the app it classifies the
   user as new/existing for the first-run tour (`TourCoordinator.classifyAudienceIfNeeded`) — it MUST
   stay before anything writes UserDefaults (see `Tours/CLAUDE.md`).
-- `AppDelegate.swift` (`@MainActor`) — owns the single `VoiceCoordinator`. On launch:
+- `AppDelegate.swift` (`@MainActor`) — owns the single `VoiceCoordinator` and `AppMenus` (the main menu,
+  installed in `applicationWillFinishLaunching`, and the Dock menu, `applicationDockMenu`). Which window
+  opens is `LaunchWindowPolicy` (`Services/Orchestration/`): a user launch → Settings, a launch at login →
+  none (the launch Apple Event's `keyAELaunchedAsLogInItem`, logged as `Launch atLogin=…` in category
+  `launch`), first run → Welcome; a Dock click / launching it again → Settings (or Welcome forward). On launch:
   `coordinator.start()` + `bootstrapLaunchAtLogin()` + `Updates.shared.start()` (Sparkle) + the
   one-time launch-at-login card (`LaunchAtLoginPromptController`), and routes service-level failures to the HUD
   (the heads-up status pill) via `SystemActions.errorHandler`. Also owns the `TourCoordinator` and
   the first-run `WelcomeWindow` (shown at launch to new users only). On terminate:
-  `cleanUpForTermination()` + `flushSettings()`. The app stays alive with no windows open.
+  `cleanUpForTermination()` + `flushSettings()`. The app stays alive with no windows open (closing a
+  window never quits; ⌘Q / the Dock's Quit does).
 - `VoiceCoordinator.swift` — the spine. Drives the hotkey → record → transcribe → post-process →
-  paste flow, owns the HUD state (the menu bar mirrors it), and tracks stats. Its collaborators are
+  paste flow, owns the HUD state, and tracks stats. It never pastes into JVoice itself: when JVoice is
+  frontmost at the stop, the target is the last other app that was (`resolveTargetPID`). Its collaborators are
   briefed under `Services/Orchestration/`.
 
 ## Where things live (each has its own CLAUDE.md brief)
@@ -32,7 +38,7 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
 - `Services/Orchestration/` — system glue: paste, hotkey, settings/stats/transcript stores.
 - `Services/AIPolish/` — the opt-in Claude polish step (off by default; BYOK key in one owner-only file, hard 3 s
   deadline, any failure pastes the local text) + the `--polish-eval` harness.
-- `UI/` — the HUD, the Settings window, the Welcome window, the menu-bar status item.
+- `UI/` — the HUD, the Settings window, the Welcome window, the main menu + Dock menu (`AppMenus`).
 - `Tours/` — the first-run guided tour (ported from BetterScreenshot): who gets it, the tour
   catalog, the on-screen tag.
 - `Models/` — small shared enums/structs (tone styles, HUD state, model options, language, settings).

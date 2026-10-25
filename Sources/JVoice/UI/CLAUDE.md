@@ -1,4 +1,4 @@
-# UI — HUD, Settings window, and menu bar
+# UI — HUD, Settings window, and the app's menus
 
 The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoordinator.swift`
 (at `Sources/JVoice/VoiceCoordinator.swift`).
@@ -120,7 +120,8 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
 - `SettingsSmokeRunner.swift` — the hidden `JVoice --settings-smoke` dev mode: it builds the real
   Settings window, shows it transparently so SwiftUI performs a genuine display pass, and exits 0.
   Run it **from an assembled `.app` bundle** — that is the environment the crash above only ever
-  happened in. It does NOT call `VoiceCoordinator.start()` (no status item, no hotkey
+  happened in. Since 1.4.0 it also builds the main menu and the Dock menu and validates every item.
+  It does NOT call `VoiceCoordinator.start()` (no hotkey
   registration, no login item, no model load), so it is safe to run while the installed app is in
   use. This is the only automated check that can catch an AppKit/SwiftUI crash in Settings on a
   machine that cannot execute the test suite.
@@ -185,15 +186,26 @@ The app's SwiftUI/AppKit surfaces. All three mirror the state owned by `VoiceCoo
   Items — hence the caption (release 1.3.0 review L7; not changed in code because the state can't be produced
   here to test a different behaviour).
   The switch carries the tour anchor `settings.launchAtLogin` (capsule outline, `toggleRow(switchAnchor:)`).
-- `MenuBarController.swift` — the menu-bar status item: a bold "J" template image when idle, a red
-  microphone while recording, a tinted waveform while transcribing, plus the dropdown NSMenu.
-  (Deliberately left untouched by the redesigns — it is already native.)
-  The button is tour anchor `menuBar.icon`; the menu has a **Help & Tours** submenu (Welcome /
-  Recording / Settings tours, Reset All Tours) and **Check for Updates…** (Sparkle; reads "Update
-  Available (X)…" while a found update waits). `isMenuOpen` (menu tracking) holds back the login card.
+- `AppMenus.swift` (1.4.0, when JVoice became a Dock app; it replaced `MenuBarController.swift`, the
+  menu-bar status item and its NSMenu) — the **main menu** (JVoice: About · Start/Stop Dictation ·
+  Settings… ⌘, · Check for Updates… · Launch at Login ✓ · Services · Hide ⌘H / Hide Others ⌥⌘H / Show All ·
+  Quit JVoice ⌘Q; **Edit**: Undo/Redo/Cut/Copy/Paste/Delete/Select All — the Settings text fields need
+  them, there's no other Edit handling; **Window**: Minimize ⌘M, Zoom, Close ⌘W, Bring All to Front;
+  **Help**: Help & Tours ▸) and the **Dock menu** (Start/Stop Dictation, Settings…, Launch at Login,
+  Help & Tours ▸, Check for Updates… — the Dock adds its own Quit). Same item builders and coordinator
+  calls for both; dynamic titles/checkmark in `validateMenuItem` (main) or at `makeDockMenu`. **No key
+  equivalent for Start Dictation**: the global shortcut (a Carbon hotkey via KeyboardShortcuts, which takes
+  the key before any menu) is its keyboard path — nothing double-fires. Apple's own "Start Dictation…" is
+  kept out of the Edit menu (`NSDisabledDictationMenuItem`, registration domain). `--settings-smoke`
+  builds and validates both menus. A menu-started dictation pastes into the app the user was in (the
+  frontmost app at the stop; when that's JVoice, the last other frontmost app, re-activated for the paste).
+- **Dock-app rules for floating panels (1.4.0):** the HUD and the login card set `canHide = false` (a
+  regular app gets hidden by ⌘H, the Dock's Hide and other apps' Hide Others — the pill must still show)
+  and `isExcludedFromWindowsMenu = true`; a tour tag copies its host's `canHide`. Every panel stays
+  `.nonactivatingPanel` + never key: dictation must never activate JVoice.
 
 ## How to verify changes here
-- `swift build` must pass; `MenuBarIconTests` runs in CI.
+- `swift build` must pass; `LaunchWindowPolicyTests` (and the rest of the suite) run in CI only.
 - **Any change to the Settings window must be smoke-tested in a real bundle**, because a crash
   there is invisible to `swift build` and to the test suite:
   ```
