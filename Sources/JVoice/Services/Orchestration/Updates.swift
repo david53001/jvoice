@@ -13,11 +13,11 @@ import Sparkle
 /// one-time Whisper model download and the opt-in AI Polish (`Services/AIPolish/`), JVoice's only
 /// runtime network call; Sparkle itself sends nothing of the user's (audio, transcripts, settings).
 ///
-/// JVoice is a menu-bar app, so scheduled checks use Sparkle's "gentle reminders": a found update's
+/// JVoice runs in the background most of the time, so scheduled checks use Sparkle's "gentle reminders": a found update's
 /// window opens *behind* the user's windows instead of taking focus — except when Sparkle decides on
 /// "immediate focus" (its documented default: the app was launched recently, e.g. at login, or the
 /// Mac had been idle), when it opens in front, as in most Mac apps. So that a window behind others
-/// isn't missed, the menu's "Check for Updates…" item and the Settings → Updates button both read
+/// isn't missed, the menus' "Check for Updates…" item and the Settings → Updates button both read
 /// "Update Available (X)…" (`actionTitle`) until the user looks at it; either one brings Sparkle's
 /// window forward. (No notification: the app never asks for that permission.)
 @MainActor
@@ -55,7 +55,7 @@ final class Updates: NSObject, ObservableObject {
     /// "Check for Updates…" / "Update Available (X)…": shows Sparkle's window with the result, or
     /// brings the waiting update's window forward.
     func checkForUpdates() {
-        NSApp.activate(ignoringOtherApps: true)   // a menu-bar app: otherwise the window can open behind others
+        NSApp.activate(ignoringOtherApps: true)   // e.g. from the Dock menu: otherwise the window can open behind others
         showSparkleWindow()
     }
 

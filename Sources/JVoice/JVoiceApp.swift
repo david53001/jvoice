@@ -1,7 +1,6 @@
 import AppKit
 import ApplicationServices
 import AVFoundation
-import SwiftUI
 
 @main
 enum JVoiceMain {
@@ -9,7 +8,7 @@ enum JVoiceMain {
         // Hidden dev/bench mode: `JVoice --bench <wav> [--model …] [--vocab …]`.
         // Lets transcription speed and vocabulary biasing be verified on this
         // machine, where XCTest cannot execute. Normal launches fall through
-        // to the SwiftUI app unchanged.
+        // to the app unchanged.
         if BenchRunner.shouldRun(arguments: CommandLine.arguments) {
             BenchRunner.runAndExit(arguments: CommandLine.arguments)
         }
@@ -36,7 +35,7 @@ enum JVoiceMain {
             MainActor.assumeIsolated { UIPreviewRunner.runAndExit(arguments: CommandLine.arguments) }
         }
         // Guided tours are for NEW users only (BetterScreenshot spec §14.9). Decide once, for good,
-        // whether this is a first launch — and do it HERE, before `JVoiceApp.main()` builds the
+        // whether this is a first launch — and do it HERE, before the app builds the
         // AppDelegate → VoiceCoordinator → SettingsStore, whose init writes `jvoice.app.settings.state`
         // on a fresh install (and the KeyboardShortcuts names write their defaults on first touch),
         // either of which would make a brand-new user look like an existing one. Nothing above this line
@@ -49,30 +48,14 @@ enum JVoiceMain {
             TourCoordinator.classifyAudienceIfNeeded(permissionGranted: micGranted || AXIsProcessTrusted())
         }
         #endif
-        JVoiceApp.main()
-    }
-}
-
-struct JVoiceApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    init() {
-        NSApplication.shared.setActivationPolicy(.accessory)
-    }
-
-    var body: some Scene {
-        // No scenes. Windows are managed imperatively by AppDelegate / SettingsWindow.
-        // SwiftUI requires at least one Scene. It used to be an empty `Settings` scene, but SwiftUI
-        // opened that placeholder as a blank 900×450 "JVoice Settings" window on its own (e.g. when the
-        // running app was launched again) — David saw it, 2026-10-17. A menu-bar extra that is never
-        // inserted is a scene that can't produce any window (the real status item is MenuBarController's).
-        // "Settings…" (⌘,) opens the real SettingsWindow.
-        MenuBarExtra("JVoice", systemImage: "waveform", isInserted: .constant(false)) { EmptyView() }
-            .commands {
-                CommandGroup(replacing: .appSettings) {
-                    Button("Settings…") { appDelegate.coordinator.openSettingsWindow() }
-                        .keyboardShortcut(",", modifiers: .command)
-                }
-            }
+        // A plain AppKit app (since 1.4.0, when JVoice became a Dock app): no SwiftUI `App`, so no SwiftUI
+        // scene can open a window of its own (it opened a blank "JVoice Settings" window in 2026-10) and
+        // the main menu is entirely JVoice's (`AppMenus`). SwiftUI is still used inside the windows.
+        MainActor.assumeIsolated {
+            let app = NSApplication.shared
+            let delegate = AppDelegate()
+            app.delegate = delegate   // weak: `withExtendedLifetime` keeps it for the app's whole life
+            withExtendedLifetime(delegate) { app.run() }
+        }
     }
 }

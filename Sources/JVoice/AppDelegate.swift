@@ -1,5 +1,6 @@
 import AppKit
 import KeyboardShortcuts
+import os
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
@@ -21,15 +22,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var welcomeWindow: WelcomeWindow?
     /// "Open JVoice at login?", once, after the 5th completed dictation.
     private var loginPrompt: LaunchAtLoginPromptController?
+    /// The main menu and the Dock icon's menu (a Dock app since 1.4.0; it was a menu-bar item before).
+    private lazy var menus = AppMenus(coordinator: coordinator)
+    private static let launchLog = Logger(subsystem: "com.jvoice.app", category: "launch")
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        #if SPARKLE_E2E_TEST
+        // The throwaway updater-only copy stays out of the Dock, beside the user's real JVoice.
         NSApp.setActivationPolicy(.accessory)
+        #else
+        NSApp.setActivationPolicy(.regular)
+        #endif
+        // The system's own "Start Dictation…" (Apple dictation) would sit in JVoice's Edit menu right
+        // next to JVoice's Start Dictation. Registration domain only: nothing is written to disk.
+        UserDefaults.standard.register(defaults: ["NSDisabledDictationMenuItem": true])
+        NSApp.mainMenu = menus.makeMainMenu()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         #if SPARKLE_E2E_TEST
         // The throwaway build of scripts/sparkle-e2e-test.sh runs next to the user's real copy: it
-        // only starts the updater — no status item, hotkeys, microphone, model load, orphan-WAV sweep or
+        // only starts the updater — no hotkeys, microphone, model load, orphan-WAV sweep or
         // Welcome window, which would touch the real app's shared state or ask for permissions.
         Updates.shared.start()
         return
@@ -37,7 +50,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installTours()
         // A new user who hasn't answered "Want a quick tour?" gets the Welcome window, which asks for
         // Accessibility itself — so the launch-time system prompt would only stack a second dialog.
-        // Existing users (and new users who already answered) see nothing new at launch, ever.
+        // Existing users (and new users who already answered) never get it.
         let showWelcome = tourCoordinator.shouldAskQuestion
         if showWelcome { coordinator.suppressLaunchAccessibilityPrompt = true }
 
@@ -56,11 +69,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             coordinator?.showError(message)
         }
 
-        if showWelcome {
-            // Once launch has finished, so the status item (the tour's first anchor) is in place.
-            DispatchQueue.main.async { [weak self] in
-                self?.welcome().show(page: .permissions, askTourQuestion: true)
+        // At login JVoice opens no window — it waits in the Dock with the shortcut ready; opened by the
+        // user, it shows Settings (`LaunchWindowPolicy`). The launch Apple Event says which it was.
+        let launchEvent = NSAppleEventManager.shared().currentAppleEvent
+        let atLogin = LaunchWindowPolicy.isLoginItemLaunch(
+            eventID: launchEvent?.eventID,
+            launchProperty: launchEvent?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue)
+        let window = LaunchWindowPolicy.atLaunch(showWelcome: showWelcome, launchedAsLoginItem: atLogin)
+        Self.launchLog.info("Launch atLogin=\(atLogin, privacy: .public) window=\(String(describing: window), privacy: .public)")
+        // Once launch has finished, so everything above is in place.
+        DispatchQueue.main.async { [weak self] in self?.open(window, atLaunch: true) }
+    }
+
+    /// Opens what `LaunchWindowPolicy` decided. The Welcome window opens on its first page with the tour
+    /// question at launch, and is just brought forward on a Dock click.
+    private func open(_ window: LaunchWindowPolicy.Window, atLaunch: Bool) {
+        switch window {
+        case .welcome:
+            if atLaunch {
+                welcome().show(page: .permissions, askTourQuestion: true)
+            } else {
+                welcomeWindow?.makeKeyAndOrderFront(nil)
             }
+        case .settings:
+            coordinator.openSettingsWindow()
+        case .none:
+            break
         }
     }
 
@@ -76,14 +110,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// Launching JVoice again while it runs (Finder, Spotlight, Launchpad, `open`) shows the real
-    /// Settings window — never SwiftUI's own default window.
+    /// A click on the Dock icon, or launching JVoice again while it runs (Finder, Spotlight, Launchpad,
+    /// `open`), shows Settings — or brings the first-run Welcome window forward while that is open. Not
+    /// gated on `hasVisibleWindows`: the HUD pill or the login card counts as a visible window, and a
+    /// Dock click must still open Settings then.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         #if SPARKLE_E2E_TEST
         return false   // the throwaway updater-only build never opens a window
         #endif
-        if !flag { coordinator.openSettingsWindow() }
+        open(LaunchWindowPolicy.onReopen(welcomeVisible: welcomeWindow?.isVisible ?? false), atLaunch: false)
         return false
+    }
+
+    /// The Dock icon's right-click menu: every action of the old menu-bar menu (`AppMenus`).
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        #if SPARKLE_E2E_TEST
+        return nil
+        #endif
+        return menus.makeDockMenu()
     }
 
     // MARK: - Launch at login
@@ -91,7 +135,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func installLoginPrompt() {
         let prompt = LaunchAtLoginPromptController()
         prompt.isDictationActive = { [weak coordinator] in coordinator?.isDictationActive ?? false }
-        prompt.isMenuOpen = { [weak coordinator] in coordinator?.isMenuBarMenuOpen ?? false }
         prompt.appearance = { [weak coordinator] in coordinator?.appTheme.nsAppearance }
         coordinator.onDictationCompleted = { [weak prompt] in prompt?.dictationCompleted() }
         loginPrompt = prompt
@@ -122,9 +165,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         tours.onFinished = { [weak self] id in
             if id == .welcome { self?.welcomeWindow?.close() }
         }
-        // The Welcome tour's first step points at the menu-bar "J", which lives in the status bar's own
-        // window — any visible window of ours may hold a step's anchor.
-        tours.extraAnchorWindows = { NSApp.windows.filter(\.isVisible) }
     }
 
     private func welcome() -> WelcomeWindow {

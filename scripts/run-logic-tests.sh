@@ -3382,7 +3382,8 @@ expectEqual(TagStyle.announcement(title: "Your stats", body: "Words dictated.", 
 let shortcutNames: Set<String> = ["toggleRecording", "undoLastPaste"]
 /// Every `TourEventName` constant (the `.action(…)` names a Try step may wait for).
 let eventNames: Set<String> = [TourEventName.recordingStarted, TourEventName.recordingStopped, TourEventName.dictationPasted]
-/// The anchor prefix of each surface's controls ("<surface>.<name>"); the menu-bar J is the one extra anchor.
+/// The anchor prefix of each surface's controls ("<surface>.<name>"). No extra anchors since 1.4.0 (the
+/// menu-bar J, the Welcome tour's old first step, is gone with the status item).
 func anchorPrefix(_ s: TourSurface) -> String {
     switch s {
     case .welcome: return "welcome"
@@ -3390,7 +3391,7 @@ func anchorPrefix(_ s: TourSurface) -> String {
     case .settings: return "settings"
     }
 }
-let extraAnchors: Set<String> = ["menuBar.icon"]
+let extraAnchors: Set<String> = []
 
 enum CatalogLint {
     static let maxTitleWords = 4, maxBodyWords = 20, maxSentences = 2
@@ -3473,7 +3474,7 @@ let welcomeTour = TourCatalog.tour(.welcome)
 expectEqual(CatalogLint.problems(step("Speech model", "Bigger is slower. It runs here."), in: lintTour), [], "accepts good copy")
 expectEqual(CatalogLint.problems(step("Try it", "Press {shortcut:toggleRecording} and talk — anything works.", anchor: "welcome.tryIt",
                                       kind: .tryIt(advanceOn: .action(TourEventName.recordingStarted))), in: welcomeTour), [], "accepts a good Try step")
-expectEqual(CatalogLint.problems(step("Your menu bar J", "Click it.", anchor: "menuBar.icon"), in: welcomeTour), [], "accepts menuBar.icon")
+expectEqual(CatalogLint.problems(step("Your menu bar J", "Click it.", anchor: "menuBar.icon"), in: welcomeTour).count, 1, "rejects menuBar.icon (no status item since 1.4.0)")
 expectEqual(CatalogLint.problems(step("Pick one", "Open the model menu.", kind: .tryIt(advanceOn: .menuOpened("settings.model"))), in: lintTour), [], "accepts a menuOpened Try step")
 expectEqual(CatalogLint.problems(step("This title is five words", "Fine."), in: lintTour).count, 1, "rejects a 5-word title")
 expectEqual(CatalogLint.problems(step("Title", Array(repeating: "word", count: 21).joined(separator: " ")), in: lintTour).count, 1, "rejects a 21-word body")
@@ -3529,7 +3530,7 @@ for tour in TourCatalog.all {
     expectEqual(Set(tour.steps.map(\.anchor)).count, tour.steps.count, "\(tour.id): no anchor used twice")
     if case .surfaceShown(let s) = tour.trigger { expectEqual(s, tour.surface, "\(tour.id) triggers on its own surface") }
 }
-expectEqual(TourCatalog.tour(.welcome).steps.first?.anchor, "menuBar.icon", "Welcome starts at the menu-bar J")
+expectEqual(TourCatalog.tour(.welcome).steps.first?.anchor, "welcome.dock", "Welcome starts at the Dock line (was the menu-bar J until 1.3.1)")
 expectEqual(Array(TourCatalog.settings.steps.map(\.anchor).suffix(3)),
             [OpacityDemoTimeline.anchor, "settings.launchAtLogin", "settings.help"],
             "Settings tour: Opacity → Launch at login (Startup switch) → ⓘ")
@@ -3661,11 +3662,14 @@ xcrun swiftc -O \
 # ---- BEGIN: Launch-at-login prompt (added 2026-10-18 with Sparkle updates) ----
 # The one-time "Open JVoice at login?" decision (LaunchAtLoginPrompt): 5 completed dictations, never
 # when already enabled / already asked / a ≤ 1.1.4 user (legacy auto-enable flag), the calm moment,
-# the flow steps, the unanswered-card spacing, and the card's worst-case text contrast.
-# Canonical suite: Tests/JVoiceTests/LaunchAtLoginPromptTests.swift (same cases).
+# the flow steps, the unanswered-card spacing, and the card's worst-case text contrast. Since 1.4.0
+# (a Dock app) also LaunchWindowPolicy: which window a launch / a Dock click opens, and how a launch
+# at login is told apart (the launch Apple Event).
+# Canonical suite: Tests/JVoiceTests/LaunchAtLoginPromptTests.swift + LaunchWindowPolicyTests.swift.
 mkdir -p "$TMP_DIR/loginprompt"
 cat > "$TMP_DIR/loginprompt/main.swift" <<'EOF'
 import CoreGraphics
+import CoreServices
 import Foundation
 
 var failures = 0
@@ -3910,6 +3914,23 @@ expectEqual(LaunchAtLoginCardColors.secondaryButtonFills,
 expect(LaunchAtLoginCardColors.tintAlpha < 1, "the card stays slightly transparent")
 expect(abs(LaunchAtLoginCardColors.contrast(0, 1) - 21) < 0.01, "contrast formula: black on white = 21:1")
 
+print("LaunchWindowPolicy — a Dock app: what a launch and a Dock click open (1.4.0)")
+typealias LWP = LaunchWindowPolicy
+expectEqual(LWP.atLaunch(showWelcome: false, launchedAsLoginItem: false), .settings, "opened by the user → Settings")
+expectEqual(LWP.atLaunch(showWelcome: false, launchedAsLoginItem: true), .none, "at login → no window, just the Dock icon")
+expectEqual(LWP.atLaunch(showWelcome: true, launchedAsLoginItem: false), .welcome, "first run → Welcome, not Settings")
+expectEqual(LWP.atLaunch(showWelcome: true, launchedAsLoginItem: true), .welcome, "unanswered tour question at login → Welcome (asks again next launch, as before)")
+expectEqual(LWP.onReopen(welcomeVisible: false), .settings, "Dock click → Settings")
+expectEqual(LWP.onReopen(welcomeVisible: true), .welcome, "Dock click while Welcome is open → Welcome forward, nothing on top")
+expectEqual(LWP.openApplicationEvent, UInt32(kAEOpenApplication), "'oapp' = the SDK's kAEOpenApplication")
+expectEqual(LWP.loginItemProperty, UInt32(keyAELaunchedAsLogInItem), "'lgit' = the SDK's keyAELaunchedAsLogInItem")
+let oapp = UInt32(kAEOpenApplication), lgit = UInt32(keyAELaunchedAsLogInItem)
+expect(LWP.isLoginItemLaunch(eventID: oapp, launchProperty: lgit), "open-application event + login-item property → at login")
+expect(!LWP.isLoginItemLaunch(eventID: oapp, launchProperty: nil), "open-application event, no property (Finder, Dock, open) → the user")
+expect(!LWP.isLoginItemLaunch(eventID: oapp, launchProperty: UInt32(keyAELaunchedAsServiceItem)), "launched as a service item → not a login")
+expect(!LWP.isLoginItemLaunch(eventID: UInt32(kAEReopenApplication), launchProperty: lgit), "another event → not a login")
+expect(!LWP.isLoginItemLaunch(eventID: nil, launchProperty: nil), "no launch event at all → the user")
+
 if failures > 0 {
     print("\n\(failures) FAILURE(S) in the launch-at-login prompt")
     exit(1)
@@ -3919,6 +3940,7 @@ EOF
 
 xcrun swiftc -O \
     "$REPO_ROOT/Sources/JVoice/Services/Orchestration/LaunchAtLoginPrompt.swift" \
+    "$REPO_ROOT/Sources/JVoice/Services/Orchestration/LaunchWindowPolicy.swift" \
     "$REPO_ROOT/Sources/JVoice/UI/Theme.swift" \
     "$REPO_ROOT/Sources/JVoice/Models/AppTheme.swift" \
     "$TMP_DIR/loginprompt/main.swift" \

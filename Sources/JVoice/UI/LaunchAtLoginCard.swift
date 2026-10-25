@@ -49,6 +49,8 @@ final class LaunchAtLoginCard {
         panel.isOpaque = false
         panel.hasShadow = true   // the one soft system shadow of a floating element
         panel.hidesOnDeactivate = false
+        panel.canHide = false   // shown while JVoice is in the background — also when it's hidden
+        panel.isExcludedFromWindowsMenu = true
         panel.isReleasedWhenClosed = false
         // Not `.fullScreenAuxiliary`: not on full-screen Spaces (a presentation, a shared screen).
         panel.collectionBehavior = [.canJoinAllSpaces]

@@ -26,9 +26,9 @@ final class TourCoordinator {
     /// A tour was finished (its last step done or handed over — not Skip tour). The app closes the Welcome
     /// window when the Welcome tour ends, so it isn't left behind the tours that follow (review W4).
     var onFinished: ((TourID) -> Void)?
-    /// Windows besides a tour's host where a step's anchor may live, searched after the host: the
-    /// menu-bar status item's window (the Welcome tour's first step points at the icon). The tag then
-    /// attaches to that window; the host still decides pausing.
+    /// Windows besides a tour's host where a step's anchor may live, searched after the host (the tag
+    /// then attaches to that window; the host still decides pausing). Unused since 1.4.0: it found the
+    /// menu-bar J of the Welcome tour's old first step; every anchor now lives in its surface's window.
     var extraAnchorWindows: () -> [NSWindow] = { [] }
     /// What a step plays while it's on screen (the Opacity step's slider demo); nil for most steps.
     var makeDemo: (TourStep) -> TourStepDemo? = { _ in nil }

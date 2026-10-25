@@ -123,9 +123,9 @@ final class SettingsWindow: NSWindow, TourKeysClaiming {
     }
 
     func show() {
-        // Accessory (LSUIElement) apps don't auto-activate when ordering a
-        // window front — without this the window opens behind whatever app
-        // currently owns the foreground.
+        // Opened from the Dock menu, Help & Tours or a tour, JVoice isn't
+        // active — without this the window opens behind whatever app
+        // currently owns the foreground. (A Dock click activates it anyway.)
         NSApp.activate(ignoringOtherApps: true)
         centerOnActiveScreen()   // on the display the user is on, not always the primary one
         makeKeyAndOrderFront(nil)

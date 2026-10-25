@@ -168,7 +168,7 @@ final class VoiceCoordinator: ObservableObject {
 
     @Published private(set) var settingsState: SettingsState
     /// Reflects the live `SMAppService` registration state, not a stored setting. Shared by the
-    /// menu-bar item, Settings → Startup and the one-time card (`refreshLaunchAtLogin`).
+    /// menu item (main + Dock menu), Settings → Startup and the one-time card (`refreshLaunchAtLogin`).
     @Published private(set) var launchAtLogin: Bool = LaunchAtLoginManager.isEnabled
     /// `SMAppService` says `.requiresApproval` (registered, waiting for the user in System Settings →
     /// Login Items): the only case Settings → Startup shows an "Open Login Items" button.
@@ -252,7 +252,6 @@ final class VoiceCoordinator: ObservableObject {
     private var pendingRevertWords: [String] = []
     private var preFixTranscript: String = ""
 
-    private lazy var menuBarController = MenuBarController(coordinator: self)
     private var settingsWindow: SettingsWindow?
     private lazy var hudWindow = HUDWindow()
     private var didStart = false
@@ -321,7 +320,6 @@ final class VoiceCoordinator: ObservableObject {
 
         hotKeyManager.register()
         undoHotKeyManager.register()
-        menuBarController.installStatusItem()
         updateHUD(.idle)
 
         // Zero-latency HUD: realize the pill's window once now (transparent,
@@ -368,9 +366,6 @@ final class VoiceCoordinator: ObservableObject {
     /// launch-at-login question (`LaunchAtLoginPromptController`).
     var onDictationCompleted: (() -> Void)?
 
-    /// The menu-bar menu is open (the one-time launch-at-login card waits for it to close).
-    var isMenuBarMenuOpen: Bool { menuBarController.isMenuOpen }
-
     /// A dictation is under way (recording, mic opening, transcribing, pasting) or a HUD pill is on
     /// screen: the one-time launch-at-login card waits for this to end.
     var isDictationActive: Bool {
@@ -410,6 +405,13 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     private func installFrontmostObserver() {
+        // Start from the app in front now (Finder, or whatever the user was in when they opened JVoice):
+        // a dictation stopped while JVoice itself is frontmost — from its menus, Settings, a Dock
+        // click right after launch — pastes into the app the user came from, never into JVoice.
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != ownPID {
+            lastNonSelfFrontmostPID = front.processIdentifier
+        }
         let center = NSWorkspace.shared.notificationCenter
         frontmostObserver = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                            object: nil,
@@ -428,7 +430,7 @@ final class VoiceCoordinator: ObservableObject {
         // Every flag flips synchronously on the main actor, so a re-entry
         // from a fast hotkey press short-circuits here rather than
         // double-dispatching a startRecordingFlow / stopRecordingAndTranscribe.
-        // The menu's Start/Stop Dictation item and the pill's stop button come
+        // The menus' Start/Stop Dictation item and the pill's stop button come
         // through here too, so they obey the same rules.
         //
         // A pending transcript outranks a new start request:
@@ -543,16 +545,6 @@ final class VoiceCoordinator: ObservableObject {
     func updateHUD(_ state: HUDState) {
         hudState = state
         hudWindow.update(state: state, theme: appTheme, meter: recordingManager.levelMeter)
-        // The menu bar mirrors the HUD so progress stays visible even when
-        // the pill is dismissed or off-screen.
-        switch state {
-        case .recording:
-            menuBarController.updateActivity(.recording)
-        case .downloadingModel, .preparingModel, .transcribing, .refining:
-            menuBarController.updateActivity(.transcribing)
-        case .idle, .done, .copied, .error, .notice:
-            menuBarController.updateActivity(.idle)
-        }
     }
 
     /// Keep the HUD honest while the model loads. The wait has two very

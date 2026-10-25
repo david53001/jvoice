@@ -78,7 +78,7 @@ final class WelcomeWindow: NSWindow {
         model.page = page
         model.refresh()
         startPolling()
-        // Accessory (LSUIElement) app: without this the window opens behind the frontmost app.
+        // Opened at launch or from a menu: without this the window can open behind the frontmost app.
         if Self.activatesOnShow { NSApp.activate(ignoringOtherApps: true) }
         centerOnActiveScreen()   // on the display the user is on, not always the primary one
         makeKeyAndOrderFront(nil)
@@ -257,10 +257,13 @@ private struct WelcomeView: View {
             Text("You're all set!")
                 .font(.title2.bold())
                 .padding(.top, 12)
-            Text("JVoice lives in your menu bar. Your shortcuts:")
+            Text("JVoice lives in your Dock. Your shortcuts:")
                 .font(.body)
                 .foregroundStyle(.secondary)
-                .padding(.top, 6)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 4)
+                .tourAnchor("welcome.dock")   // the Welcome tour's first step
+                .padding(.top, 2)
 
             VStack(spacing: 8) {
                 ShortcutRow(theme: theme, keys: model.toggleShortcut, name: "Start / stop dictation")

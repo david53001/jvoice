@@ -13,11 +13,11 @@ public enum TourCatalog {
     }
 
     /// Started by "Show Me Around" on the Welcome window's last page, by the Help & Tours menu, or a
-    /// replay; hosted by the Welcome window. Step 1's anchor is the menu-bar status item's button, which
-    /// lives in the status bar's own window (found through `TourCoordinator.extraAnchorWindows`).
+    /// replay; hosted by the Welcome window. Step 1 points at the page's "JVoice lives in your Dock" line
+    /// (since 1.4.0; it pointed at the menu-bar J before — the Dock icon itself is the Dock's, not ours).
     static let welcome = Tour(id: .welcome, surface: .welcome, trigger: .startedByApp, steps: [
-        TourStep(anchor: "menuBar.icon", kind: .explain, title: "Your menu bar J",
-                 body: "JVoice lives here. Click it to start dictating, open Settings or quit."),
+        TourStep(anchor: "welcome.dock", kind: .explain, title: "Your Dock icon",
+                 body: "Click JVoice in the Dock for Settings. Right-click it to start dictating or quit."),
         TourStep(anchor: "welcome.shortcut", kind: .explain, title: "Your dictation shortcut",
                  body: "Press {shortcut:toggleRecording} in any app to start talking. Press it again to stop."),
         TourStep(anchor: "welcome.tryIt", kind: .tryIt(advanceOn: .action(TourEventName.recordingStarted)),

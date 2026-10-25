@@ -203,7 +203,7 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("JVoice")
                             .font(.title2.bold())
-                        Text("Menu bar transcription controls")
+                        Text("Dictation settings")
                             .font(.callout)
                             .foregroundStyle(.secondary)
                     }
@@ -850,7 +850,7 @@ struct SettingsView: View {
     }
 
     /// "Startup": Launch at Login, like MacStats' and BetterScreenshot's switch. `SMAppService.mainApp.status`
-    /// is the source of truth (`coordinator.launchAtLogin`, shared with the menu-bar item and the
+    /// is the source of truth (`coordinator.launchAtLogin`, shared with the menu items and the
     /// one-time "Open JVoice at login?" card): re-read on appear and whenever a window becomes key (e.g.
     /// back from System Settings), and after every change, so a failed change snaps the switch back.
     /// Flipping it counts as the answer to the one-time card (`LaunchAtLoginManager.setEnabled`).
@@ -930,7 +930,7 @@ struct SettingsView: View {
         .padding(.top, 2)
     }
 
-    /// A native `NSAlert` sheet, not a SwiftUI `.confirmationDialog`: in an accessory (menu-bar) app a
+    /// A native `NSAlert` sheet, not a SwiftUI `.confirmationDialog`: in an accessory app (JVoice until 1.3.1) a
     /// SwiftUI dialog can lose focus (MacStats hit exactly this — `AppModel.confirmAndEmptyTrash`).
     private func confirmReset() {
         let alert = NSAlert()

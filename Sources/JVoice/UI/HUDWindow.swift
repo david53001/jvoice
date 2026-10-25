@@ -36,6 +36,10 @@ final class HUDWindow: NSPanel {
         level = NSWindow.Level(rawValue: Int(CGWindowLevelForKey(.statusWindow)) + 2)
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         hidesOnDeactivate = false
+        // A Dock app can be hidden (⌘H, the Dock's Hide, another app's Hide Others): the pill must still
+        // show over the app the user dictates into. And it's no window to list in the Window menu.
+        canHide = false
+        isExcludedFromWindowsMenu = true
         isReleasedWhenClosed = false
         ignoresMouseEvents = true
         animationBehavior = .utilityWindow

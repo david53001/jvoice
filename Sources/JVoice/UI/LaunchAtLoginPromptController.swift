@@ -8,7 +8,7 @@ import ServiceManagement
 ///
 /// After a dictation makes it due (`afterUse`), it checks once a second (`waitStep`, for up to
 /// `giveUpSeconds`) for a calm moment — the dictation settled for 3 s, no key pressed for 2 s, no
-/// mouse button down, the menu-bar menu closed, no recording / transcription / HUD pill, none of our
+/// mouse button down, no recording / transcription / HUD pill, none of our
 /// windows in front, no tour tag, nothing full-screen in front — then shows a card in the top-right
 /// screen corner (the HUD lives at the bottom centre). The card never takes focus. Unanswered, it goes
 /// away after `unansweredHideSeconds` (not while the pointer is on it); if the user could have seen it
@@ -16,7 +16,7 @@ import ServiceManagement
 /// dictation a day later or after a relaunch; if not, after a dictation at least 10 minutes later.
 /// Answers: **No Thanks**, or **Open at Login** → `SMAppService.mainApp.register()`, then "will open at
 /// login" (closes after 1.6 s), "One more step" + **Open Login Items** (`.requiresApproval`) or
-/// "Couldn't turn it on." (error); those two also go away after `unansweredHideSeconds`. The menu's
+/// "Couldn't turn it on." (error); those two also go away after `unansweredHideSeconds`. The menus'
 /// Launch at Login item re-reads the status on every change (`LaunchAtLoginManager.didChangeNotification`).
 @MainActor
 final class LaunchAtLoginPromptController {
@@ -40,7 +40,9 @@ final class LaunchAtLoginPromptController {
 
     /// Recording, transcribing, pasting or a HUD pill on screen (set by the app delegate).
     var isDictationActive: () -> Bool = { false }
-    /// The menu-bar menu is open (set by the app delegate from `MenuBarController.isMenuOpen`).
+    /// A JVoice menu is open. Unused since 1.4.0 (left at `false`; the pure rule keeps its input): the
+    /// old menu-bar menu is gone, JVoice's main menu only opens while JVoice is active — which already
+    /// holds the card back — and the Dock draws the Dock menu in its own process, out of JVoice's sight.
     var isMenuOpen: () -> Bool = { false }
     /// JVoice's System / Light / Dark choice for the card's window.
     var appearance: () -> NSAppearance? = { nil }

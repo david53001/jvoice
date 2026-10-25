@@ -2,8 +2,8 @@ import AppKit
 
 extension NSScreen {
     /// The display the user is working on: the one under the mouse pointer (where they just clicked the
-    /// menu-bar J, or where they're dictating). `NSScreen.main` is the screen of JVoice's own key window —
-    /// for a menu-bar app with no window open that's the primary display, so windows used to open there
+    /// Dock icon, or where they're dictating). `NSScreen.main` is the screen of JVoice's own key window —
+    /// for an app with no window open that's the primary display, so windows used to open there
     /// even when the user was on another monitor (David, 2026-09-30).
     static var underMouse: NSScreen? {
         let mouse = NSEvent.mouseLocation

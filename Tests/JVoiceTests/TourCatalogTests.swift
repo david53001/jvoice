@@ -21,8 +21,9 @@ private func anchorPrefix(_ s: TourSurface) -> String {
     case .settings: return "settings"
     }
 }
-/// Anchors outside any surface's window: the menu-bar J (the Welcome tour's first step).
-private let extraAnchors: Set<String> = ["menuBar.icon"]
+/// Anchors outside any surface's window: none since 1.4.0 (the menu-bar J, the Welcome tour's old first
+/// step, is gone with the status item).
+private let extraAnchors: Set<String> = []
 
 /// Copy rules: title ≤ 4 words; body ≤ 20 words and ≤ 2 sentences; Try bodies start with a verb; anchors
 /// look like "<surface>.<name>" on the tour's own surface; placeholders name real shortcuts; a Try step's
@@ -119,7 +120,7 @@ private func makeSettingsTour(_ steps: [TourStep]) -> Tour {
         #expect(CatalogLint.problems(step("Speech model", "Bigger is slower. It runs here."), in: settingsTour) == [])
         #expect(CatalogLint.problems(step("Try it", "Press {shortcut:toggleRecording} and talk — anything works.", anchor: "welcome.tryIt",
                                           kind: .tryIt(advanceOn: .action(TourEventName.recordingStarted))), in: welcomeTour) == [])
-        #expect(CatalogLint.problems(step("Your menu bar J", "Click it.", anchor: "menuBar.icon"), in: welcomeTour) == [])
+        #expect(CatalogLint.problems(step("Your menu bar J", "Click it.", anchor: "menuBar.icon"), in: welcomeTour).count == 1)
         #expect(CatalogLint.problems(step("Pick one", "Open the model menu.",
                                           kind: .tryIt(advanceOn: .menuOpened("settings.model"))), in: settingsTour) == [])
     }
@@ -209,7 +210,7 @@ private func makeSettingsTour(_ steps: [TourStep]) -> Tour {
             #expect(Set(tour.steps.map(\.anchor)).count == tour.steps.count, "\(tour.id) uses an anchor twice")
             if case .surfaceShown(let s) = tour.trigger { #expect(s == tour.surface, "\(tour.id)") }
         }
-        #expect(TourCatalog.tour(.welcome).steps.first?.anchor == "menuBar.icon")
+        #expect(TourCatalog.tour(.welcome).steps.first?.anchor == "welcome.dock")
     }
 
     @Test func settingsTourShowsLaunchAtLoginAfterOpacity() {

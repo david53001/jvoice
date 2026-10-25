@@ -344,6 +344,7 @@ public final class TagOverlayController: TourTagPresenting {
             for w in [decor, tagPanel] {   // decor first, then the tag above it
                 w.level = Self.probeLevel ?? host.level
                 w.collectionBehavior = [.fullScreenAuxiliary, .ignoresCycle]
+                w.canHide = host.canHide   // the pill's tag stays with the pill when the app is hidden
                 host.addChildWindow(w, ordered: .above)
             }
         }
