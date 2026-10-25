@@ -43,7 +43,7 @@ Global hotkey (⌥Space) → record → transcribe → post-process → paste in
   windows (Install Update → Install and Relaunch) on the throwaway test copy, logging `pendingVersion`
   and the menu title on the way. Ported from BetterScreenshot. Never in a normal build.
 - `LaunchWindowPolicy.swift` (1.4.0, a Dock app) — pure: which window a launch opens (first run →
-  Welcome, launch at login → none, otherwise Settings) and a Dock click opens (Settings, or Welcome
+  Welcome, launch at login or a non-default launch such as a session restore → no window, otherwise Settings) and a Dock click opens (Settings, or Welcome
   forward), and whether the launch Apple Event says "opened at login" (`kAEOpenApplication` +
   `keyAEPropData` = `keyAELaunchedAsLogInItem`; works for `SMAppService.mainApp`, which can't pass
   launch arguments). Tested by `run-logic-tests.sh` (section 5) and `LaunchWindowPolicyTests`.

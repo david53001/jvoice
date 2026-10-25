@@ -28,9 +28,15 @@ local). Waiting for: the owner's live check on the installed app (list below), t
   run); `applicationDockMenu`.
 - `Sources/JVoice/Services/Orchestration/LaunchWindowPolicy.swift` (new, pure): launch → Settings / none (at login) /
   Welcome (first run); reopen → Settings / Welcome; `isLoginItemLaunch` (`'oapp'` + `keyAEPropData` = `'lgit'`).
-  The launch logs `Launch atLogin=<bool> window=<…>` (subsystem `com.jvoice.app`, category `launch`).
-- `VoiceCoordinator`: status-item wiring removed; `lastNonSelfFrontmostPID` seeded with the frontmost app at
-  launch (a dictation stopped while JVoice is in front never targets JVoice).
+  A non-default launch (`NSApplication.launchIsDefaultUserInfoKey` = false in the did-finish-launching notification,
+  e.g. macOS's "Reopen windows when logging back in" session restore, which may not carry `'lgit'`) also opens no
+  window. The launch logs `Launch atLogin=<bool> isDefault=<bool> window=<…>` (subsystem `com.jvoice.app`, category
+  `launch`).
+- `VoiceCoordinator`: status-item wiring removed. Paste-target logic unchanged from `main`: when JVoice is frontmost
+  at the stop, the target is the last OTHER app activated since JVoice started; none yet → "No text field focused"
+  (a launch-time seed was tried and dropped after review — it pasted into Finder after a Finder launch).
+- `refreshLaunchAtLogin(onlyChanges: true)` from the JVoice menu's `menuNeedsUpdate` (AppKit runs it on every
+  key-equivalent search, e.g. each ⌘V in Settings): publishes only a real change, so Settings isn't redrawn.
 - HUD + login card: `canHide = false`, excluded from the Window menu; tour tag panels copy the host's `canHide`.
 - Welcome page line "JVoice lives in your Dock." carries anchor `welcome.dock` = Welcome tour step 1
   ("Your Dock icon"); `menuBar.icon` is gone from the catalog and the lint's extra anchors.
@@ -51,6 +57,11 @@ local). Waiting for: the owner's live check on the installed app (list below), t
   - `./scripts/verify-tour-scroll.sh`: PASS (12 ✓). `./scripts/verify-streaming.sh`: passed (62 ✓).
   - `--ui-preview` (windows behind everything): Welcome all-set page shows "JVoice lives in your Dock." correctly.
 
+- Review fixes (2026-10-25, after an independent review): session-restore launch → no window
+  (`launchIsDefaultUserInfoKey`), launch-time paste-target seed dropped, `onlyChanges` refresh in the JVoice menu,
+  `Window.none` → `.noWindow`. Re-verified: release build OK; `--settings-smoke` OK (39 / 12 menu items);
+  logic tests 2741 ✓ 0 failures; test target compiles (not run). Tour-scroll / streaming code untouched.
+
 ## NEXT STEPS (owner / main session)
 1. Install (`./scripts/dev-install.sh` from this worktree) and do the live checks below.
 2. Merge `feat/dock-app` → `main`; at release time follow `docs/sparkle-updates/README.md` (date the CHANGELOG
@@ -69,7 +80,12 @@ local). Waiting for: the owner's live check on the installed app (list below), t
 - ⌥Space while Settings is frontmost → pastes into the previous app (unchanged behaviour), never into JVoice.
 - Launch at login: log out/in with Launch at Login on → JVoice in the Dock, no window. Confirm with
   `/usr/bin/log show --last 10m --info --predicate 'subsystem == "com.jvoice.app" && category == "launch"'`
-  → `Launch atLogin=true window=none`. A Finder/Spotlight launch → `atLogin=false window=settings`.
+  → `Launch atLogin=true isDefault=… window=noWindow`. A Finder/Spotlight launch → `atLogin=false isDefault=true
+  window=settings`.
+- Restart (or log out) with "Reopen windows when logging back in" TICKED, Launch at Login on or off → JVoice comes
+  back with no Settings window (log: `isDefault=false window=noWindow`, or `atLogin=true`).
+- Right after opening JVoice from Finder (Settings in front, no other app clicked yet), ⌥Space → "No text field
+  focused" (same as 1.3.1), not a paste into Finder.
 - Whether a login launch leaves JVoice frontmost with only its menu bar (cosmetic; see RISKS).
 - First-run flow (only on a test account / wiped domain): Welcome → "Show Me Around" → step 1 outlines the
   "JVoice lives in your Dock" line; Return keys / buttons on Welcome still work.

@@ -16,8 +16,9 @@ import Combine
 ///
 /// Where the text goes: a dictation started or stopped from either menu pastes into the app the user
 /// was in — the frontmost app at the stop, or, when that is JVoice itself (its menu bar, Settings, a
-/// Dock click), the last other app that was frontmost (`VoiceCoordinator.resolveTargetPID`), which is
-/// brought back for the paste. JVoice itself is never the target.
+/// Dock click), the last other app that was frontmost since JVoice started
+/// (`VoiceCoordinator.resolveTargetPID`), which is brought back for the paste; none yet → "No text field
+/// focused". JVoice itself is never the target.
 @MainActor
 final class AppMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
     private weak var coordinator: VoiceCoordinator?
@@ -106,9 +107,11 @@ final class AppMenus: NSObject, NSMenuDelegate, NSMenuItemValidation {
             }
     }
 
-    /// The JVoice menu is about to open: Launch at Login may have changed in System Settings → Login Items.
+    /// The JVoice menu is about to open (or AppKit searches it for a key equivalent — on every ⌘-key while
+    /// JVoice is in front): Launch at Login may have changed in System Settings → Login Items. Publishes
+    /// only a change, so a ⌘V in Settings doesn't redraw it.
     func menuNeedsUpdate(_ menu: NSMenu) {
-        coordinator?.refreshLaunchAtLogin()
+        coordinator?.refreshLaunchAtLogin(onlyChanges: true)
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {

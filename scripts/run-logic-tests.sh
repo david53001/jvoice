@@ -3916,10 +3916,13 @@ expect(abs(LaunchAtLoginCardColors.contrast(0, 1) - 21) < 0.01, "contrast formul
 
 print("LaunchWindowPolicy — a Dock app: what a launch and a Dock click open (1.4.0)")
 typealias LWP = LaunchWindowPolicy
-expectEqual(LWP.atLaunch(showWelcome: false, launchedAsLoginItem: false), .settings, "opened by the user → Settings")
-expectEqual(LWP.atLaunch(showWelcome: false, launchedAsLoginItem: true), .none, "at login → no window, just the Dock icon")
-expectEqual(LWP.atLaunch(showWelcome: true, launchedAsLoginItem: false), .welcome, "first run → Welcome, not Settings")
-expectEqual(LWP.atLaunch(showWelcome: true, launchedAsLoginItem: true), .welcome, "unanswered tour question at login → Welcome (asks again next launch, as before)")
+expectEqual(LWP.atLaunch(showWelcome: false, launchedAsLoginItem: false, isDefaultLaunch: true), .settings, "opened by the user → Settings")
+expectEqual(LWP.atLaunch(showWelcome: false, launchedAsLoginItem: true, isDefaultLaunch: true), .noWindow, "at login → no window, just the Dock icon")
+expectEqual(LWP.atLaunch(showWelcome: false, launchedAsLoginItem: false, isDefaultLaunch: false), .noWindow, "not a default launch (session restore at login, no 'lgit') → no window")
+expectEqual(LWP.atLaunch(showWelcome: false, launchedAsLoginItem: true, isDefaultLaunch: false), .noWindow, "login item AND restored → no window")
+expectEqual(LWP.atLaunch(showWelcome: true, launchedAsLoginItem: false, isDefaultLaunch: true), .welcome, "first run → Welcome, not Settings")
+expectEqual(LWP.atLaunch(showWelcome: true, launchedAsLoginItem: true, isDefaultLaunch: true), .welcome, "unanswered tour question at login → Welcome (asks again next launch, as before)")
+expectEqual(LWP.atLaunch(showWelcome: true, launchedAsLoginItem: false, isDefaultLaunch: false), .welcome, "unanswered tour question on a restore → Welcome")
 expectEqual(LWP.onReopen(welcomeVisible: false), .settings, "Dock click → Settings")
 expectEqual(LWP.onReopen(welcomeVisible: true), .welcome, "Dock click while Welcome is open → Welcome forward, nothing on top")
 expectEqual(LWP.openApplicationEvent, UInt32(kAEOpenApplication), "'oapp' = the SDK's kAEOpenApplication")

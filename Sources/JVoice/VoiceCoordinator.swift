@@ -354,11 +354,14 @@ final class VoiceCoordinator: ObservableObject {
     /// Re-reads `SMAppService.mainApp.status` (the source of truth — the user may have changed it in
     /// System Settings). Called on launch, after every change, when the menu opens and when Settings →
     /// Startup appears or a window becomes key. Always publishes, even an unchanged value, so a switch
-    /// the user just flipped snaps back to the real state when the change failed.
-    func refreshLaunchAtLogin() {
+    /// the user just flipped snaps back to the real state when the change failed — except with
+    /// `onlyChanges` (the JVoice menu's `menuNeedsUpdate`, which AppKit also runs on every key-equivalent
+    /// search, e.g. each ⌘V in Settings: publishing there would redraw Settings every time).
+    func refreshLaunchAtLogin(onlyChanges: Bool = false) {
         let status = LaunchAtLoginManager.status
-        launchAtLogin = status == .enabled
-        launchAtLoginNeedsApproval = status == .requiresApproval
+        let enabled = status == .enabled, needsApproval = status == .requiresApproval
+        if !onlyChanges || launchAtLogin != enabled { launchAtLogin = enabled }
+        if !onlyChanges || launchAtLoginNeedsApproval != needsApproval { launchAtLoginNeedsApproval = needsApproval }
     }
 
     /// Called after every dictation whose text reached the user (pasted, or copied in clipboard-only
@@ -405,13 +408,6 @@ final class VoiceCoordinator: ObservableObject {
     }
 
     private func installFrontmostObserver() {
-        // Start from the app in front now (Finder, or whatever the user was in when they opened JVoice):
-        // a dictation stopped while JVoice itself is frontmost — from its menus, Settings, a Dock
-        // click right after launch — pastes into the app the user came from, never into JVoice.
-        let ownPID = ProcessInfo.processInfo.processIdentifier
-        if let front = NSWorkspace.shared.frontmostApplication, front.processIdentifier != ownPID {
-            lastNonSelfFrontmostPID = front.processIdentifier
-        }
         let center = NSWorkspace.shared.notificationCenter
         frontmostObserver = center.addObserver(forName: NSWorkspace.didActivateApplicationNotification,
                            object: nil,

@@ -19,8 +19,9 @@ working there.** Kept short on purpose: it auto-loads for any work under `Source
 - `AppDelegate.swift` (`@MainActor`) — owns the single `VoiceCoordinator` and `AppMenus` (the main menu,
   installed in `applicationWillFinishLaunching`, and the Dock menu, `applicationDockMenu`). Which window
   opens is `LaunchWindowPolicy` (`Services/Orchestration/`): a user launch → Settings, a launch at login →
-  none (the launch Apple Event's `keyAELaunchedAsLogInItem`, logged as `Launch atLogin=…` in category
-  `launch`), first run → Welcome; a Dock click / launching it again → Settings (or Welcome forward). On launch:
+  no window (the launch Apple Event's `keyAELaunchedAsLogInItem`), and so does a non-default launch
+  (`launchIsDefaultUserInfoKey` false — a session restore at login); logged as `Launch atLogin=… isDefault=…`
+  in category `launch`; first run → Welcome; a Dock click / launching it again → Settings (or Welcome forward). On launch:
   `coordinator.start()` + `bootstrapLaunchAtLogin()` + `Updates.shared.start()` (Sparkle) + the
   one-time launch-at-login card (`LaunchAtLoginPromptController`), and routes service-level failures to the HUD
   (the heads-up status pill) via `SystemActions.errorHandler`. Also owns the `TourCoordinator` and

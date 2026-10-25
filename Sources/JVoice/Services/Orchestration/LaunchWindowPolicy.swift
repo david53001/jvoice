@@ -7,20 +7,24 @@ import Foundation
 /// - At launch: a new user who hasn't answered "Want a quick tour?" gets the Welcome window (as
 ///   before, also when that launch was at login: quitting with it open asks again next launch).
 ///   Otherwise a launch at login opens nothing — the app just sits in the Dock with the shortcut
-///   ready — and a launch the user started (Finder, Launchpad, Spotlight, `open`, a Sparkle relaunch)
-///   shows Settings, so opening the app visibly does something.
+///   ready — and neither does a launch that wasn't a "default" one (`launchIsDefaultUserInfoKey`
+///   false: macOS reopening apps at login with "Reopen windows when logging back in", which may not
+///   say "login item"). A launch the user started (Finder, Launchpad, Spotlight, `open`, a Sparkle
+///   relaunch) shows Settings, so opening the app visibly does something.
 /// - Dock click / launching it again while it runs: Settings, or the Welcome window while that is
 ///   still on screen (first run), so nothing opens on top of it.
 enum LaunchWindowPolicy {
     enum Window: Equatable {
         case welcome
         case settings
-        case none
+        case noWindow
     }
 
-    static func atLaunch(showWelcome: Bool, launchedAsLoginItem: Bool) -> Window {
+    /// `isDefaultLaunch`: `NSApplication.launchIsDefaultUserInfoKey` from the did-finish-launching
+    /// notification (missing = true).
+    static func atLaunch(showWelcome: Bool, launchedAsLoginItem: Bool, isDefaultLaunch: Bool) -> Window {
         if showWelcome { return .welcome }
-        return launchedAsLoginItem ? .none : .settings
+        return launchedAsLoginItem || !isDefaultLaunch ? .noWindow : .settings
     }
 
     static func onReopen(welcomeVisible: Bool) -> Window {

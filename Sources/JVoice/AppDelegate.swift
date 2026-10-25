@@ -75,8 +75,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let atLogin = LaunchWindowPolicy.isLoginItemLaunch(
             eventID: launchEvent?.eventID,
             launchProperty: launchEvent?.paramDescriptor(forKeyword: AEKeyword(keyAEPropData))?.enumCodeValue)
-        let window = LaunchWindowPolicy.atLaunch(showWelcome: showWelcome, launchedAsLoginItem: atLogin)
-        Self.launchLog.info("Launch atLogin=\(atLogin, privacy: .public) window=\(String(describing: window), privacy: .public)")
+        // A session restore at login ("Reopen windows when logging back in") may not carry the login-item
+        // property, but it isn't a default launch.
+        let isDefault = notification.userInfo?[NSApplication.launchIsDefaultUserInfoKey] as? Bool ?? true
+        let window = LaunchWindowPolicy.atLaunch(showWelcome: showWelcome, launchedAsLoginItem: atLogin,
+                                                 isDefaultLaunch: isDefault)
+        Self.launchLog.info("Launch atLogin=\(atLogin, privacy: .public) isDefault=\(isDefault, privacy: .public) window=\(String(describing: window), privacy: .public)")
         // Once launch has finished, so everything above is in place.
         DispatchQueue.main.async { [weak self] in self?.open(window, atLaunch: true) }
     }
@@ -93,7 +97,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         case .settings:
             coordinator.openSettingsWindow()
-        case .none:
+        case .noWindow:
             break
         }
     }

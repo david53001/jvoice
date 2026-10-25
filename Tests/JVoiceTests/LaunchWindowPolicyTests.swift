@@ -9,11 +9,14 @@ import Testing
 @Suite struct LaunchWindowPolicyTests {
     typealias Policy = LaunchWindowPolicy
 
-    @Test func launchOpensSettingsUnlessAtLoginOrFirstRun() {
-        #expect(Policy.atLaunch(showWelcome: false, launchedAsLoginItem: false) == .settings)
-        #expect(Policy.atLaunch(showWelcome: false, launchedAsLoginItem: true) == .none)
-        #expect(Policy.atLaunch(showWelcome: true, launchedAsLoginItem: false) == .welcome)
-        #expect(Policy.atLaunch(showWelcome: true, launchedAsLoginItem: true) == .welcome)
+    @Test func launchOpensSettingsUnlessAtLoginRestoredOrFirstRun() {
+        #expect(Policy.atLaunch(showWelcome: false, launchedAsLoginItem: false, isDefaultLaunch: true) == .settings)
+        #expect(Policy.atLaunch(showWelcome: false, launchedAsLoginItem: true, isDefaultLaunch: true) == .noWindow)
+        #expect(Policy.atLaunch(showWelcome: false, launchedAsLoginItem: false, isDefaultLaunch: false) == .noWindow)
+        #expect(Policy.atLaunch(showWelcome: false, launchedAsLoginItem: true, isDefaultLaunch: false) == .noWindow)
+        #expect(Policy.atLaunch(showWelcome: true, launchedAsLoginItem: false, isDefaultLaunch: true) == .welcome)
+        #expect(Policy.atLaunch(showWelcome: true, launchedAsLoginItem: true, isDefaultLaunch: true) == .welcome)
+        #expect(Policy.atLaunch(showWelcome: true, launchedAsLoginItem: false, isDefaultLaunch: false) == .welcome)
     }
 
     @Test func dockClickOpensSettingsOrBringsWelcomeForward() {
