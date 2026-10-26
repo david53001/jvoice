@@ -4,7 +4,7 @@ All notable changes to JVoice — a free, source-available macOS voice-dictation
 
 ---
 
-## [1.4.0] — Unreleased
+## [1.4.0] — 2026-10-26
 
 ### Changed
 
