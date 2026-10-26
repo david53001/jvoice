@@ -178,7 +178,10 @@ Already matching the format:
 
 **Requirement (David, 2026-09-29).** Switching Math Notation **off** must make dictation measurably
 faster, not just change the formatting. BetterScreenshot's new Capture Text toggle does this: it skips
-every maths-only pass and is ≈ 3× faster with it off (median 413 → 133 ms per capture).
+every maths-only pass, so screenshots of equations are ≈ 2× faster with it off (88 → 42 ms median,
+release build). The lesson carried over from it: first make the math-on path skip work on input that
+can't be math (BetterScreenshot's first version re-read every table row, 413 vs 133 ms), then gate
+whatever real math work is left on the toggle.
 
 **JVoice today: the toggle saves no measurable time.**
 - `MathSpeech.convert` is pure text processing. Measured on 2026-09-29: 4,400 dictations in 0.19 s with the
